@@ -1,0 +1,74 @@
+OpenMemoriesMCP Development Roadmap
+
+Epic 1: Configuration & Security Hardening
+
+Priority: High
+
+- Task 1.1: Validate all required environment variables at startup with clear error messages
+- Task 1.2: Add secure configuration validation for PROJECT_ID (prevent path traversal)
+- Task 1.3: Implement API key rotation detection and warnings
+- Task 1.4: Add rate limiting for MCP tool operations
+- Task 1.5: Create configuration schema validation with pydantic
+
+Epic 2: Async Performance & Embedding Optimization
+
+Priority: High
+
+- Task 2.1: Implement connection pooling for OpenRouter API calls
+- Task 2.2: Add embedding request batching with configurable batch sizes
+- Task 2.3: Optimize async semaphore limits based on empirical testing
+- Task 2.4: Add embedding cache with TTL for repeated queries
+- Task 2.5: Implement async operation timeouts and cancellation
+
+Epic 3: USearch Persistence & Reliability
+
+Priority: Medium
+
+- Task 3.1: Add USearch index corruption detection and recovery
+- Task 3.2: Implement atomic USearch index updates to prevent corruption
+- Task 3.3: Add automatic USearch index backup before modifications
+- Task 3.4: Implement USearch index versioning for rollback capability
+
+Epic 4: MCP Tool Behavior & Error Handling
+
+Priority: Medium
+
+- Task 4.1: Add idempotency handling for add/remove operations
+- Task 4.2: Implement graceful degradation when LLM reranking fails
+- Task 4.3: Add input sanitization for MCP tool parameters
+- Task 4.4: Implement structured error responses for MCP tool failures
+
+Epic 5: Testing & Quality Assurance
+
+Priority: Medium
+
+- Task 5.1: Add integration tests for USearch persistence across server restarts
+- Task 5.2: Implement performance benchmarks for embedding and search operations
+- Task 5.3: Add property-based testing for vector similarity operations
+- Task 5.4: Create test scenarios for edge cases in message validation
+
+Epic 6: Observability & Monitoring
+
+Priority: Low
+
+- Task 6.1: Add structured logging for all MCP tool invocations with timing metrics
+- Task 6.2: Implement health check endpoints for HTTP transport
+- Task 6.3: Add metrics collection for search relevance and performance
+
+Epic 7: Documentation & Developer Experience
+
+Priority: Low
+
+- Task 7.1: Create comprehensive API documentation with usage examples
+- Task 7.2: Add troubleshooting guide for common deployment issues
+
+Technical Constraints & Dependencies
+
+- Vector Store: USearch HNSW with cosine distance, configurable embedding dimensions
+- Text Store: SQLite with WAL mode for message persistence
+- Async Framework: anyio with 32 concurrent request limit
+- Transport Modes: stdio (default), HTTP, SSE, streamable-http
+- Required: PROJECT_ID environment variable, OPENROUTER_API_KEY
+- Storage: Local filesystem persistence at indexes/{PROJECT_ID}/usearch/
+- No Frontend: This is an MCP server, not a web application
+- Memory Architecture: USearch HNSW + SQLite MessageStore + Tantivy full-text search

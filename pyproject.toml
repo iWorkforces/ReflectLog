@@ -1,0 +1,173 @@
+[project]
+name = "openmemories"
+version = "0.1.1"
+description = "MCP Server For AI Agent Project-base Memories"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "CCWorkforce Engineers" }
+]
+requires-python = ">=3.13.9"
+keywords = ["mcp", "claude-code", "semantic-memory"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = [
+    "fastmcp>=2.14.1",
+    "pydantic>=2.12.5",
+    "fastapi[standard]>=0.125.0",
+    "uvicorn>=0.38.0",
+    "asyncer>=0.0.11",
+    "anyio>=4.12.0",
+    "python-dotenv>=1.2.1",
+    "dynaconf>=3.2.12",
+    "mcp>=1.24.0",
+    "standard>=1.0.3",
+    "uvloop>=0.22.1",
+    "httptools>=0.7.1",
+    "starlette>=0.50.0",
+    "langchain-core>=1.2.2",
+    "langchain>=1.2.0",
+    "openai>=2.13.0",
+    "tiktoken>=0.12.0",
+    "aiohttp>=3.13.2",
+    "aiodns>=3.6.1",
+    "httpx-aiohttp>=0.1.12",
+    "tantivy>=0.25.1",
+    "usearch>=2.21.0",
+    "libsql>=0.1.11",
+    "numba>=0.63.1",
+    "ranx>=0.3.21",
+    "httpx[http2]>=0.28.1",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.21",
+    "itsdangerous>=2.2.0",
+    "pyyaml>=6.0.3",
+    "llvmlite==0.46.0",
+    "h2>=4.3.0",
+    "hpack>=4.1.0",
+    "sentence-transformers>=5.2.0",
+    "flagembedding>=1.3.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/CCWorkforce/OpenMemoriesMCPMCP"
+Repository = "https://github.com/CCWorkforce/OpenMemoriesMCPMCP"
+Issues = "https://github.com/CCWorkforce/OpenMemoriesMCPMCP/issues"
+Documentation = "https://github.com/CCWorkforce/OpenMemoriesMCPMCP#readme"
+
+[project.scripts]
+openmemories = "openmemories.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["openmemories"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.9",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.8.0",
+    "ty>=0.0.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    # Ignore numba type safety warnings from ranx library (internal ranx issue)
+    "ignore::numba.core.errors.NumbaTypeSafetyWarning",
+]
+
+[tool.coverage.run]
+source = ["openmemories"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.ty.environment]
+# Target Python version
+python-version = "3.13"
+# Custom stub paths (equivalent to mypy_path)
+extra-paths = ["stubs"]
+
+[tool.ty.src]
+# Include project source and tests
+include = ["openmemories", "tests"]
+# Exclude common non-source directories
+exclude = [
+    "indexes/",
+    ".venv/",
+    "__pycache__/",
+]
+
+[tool.ty.rules]
+# Strict type checking rules (equivalent to mypy strict mode)
+# Core type errors
+unresolved-reference = "error"
+invalid-type-form = "error"
+call-non-callable = "warn"
+
+# Import resolution - warn for third-party libraries without stubs
+unresolved-import = "warn"
+
+# Assignment and return type errors
+invalid-assignment = "warn"
+invalid-return-type = "warn"
+invalid-argument-type = "warn"
+
+# Redundancy warnings
+redundant-cast = "warn"
+
+# Module-specific rules for third-party libraries without stubs
+possibly-missing-import = "warn"
+
+[tool.ty.terminal]
+output-format = "full"
+error-on-warning = false
