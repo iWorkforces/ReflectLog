@@ -86,7 +86,7 @@ def set_env_vars(monkeypatch):
         "PROJECT_ID": "test_project",
         "OPENROUTER_API_KEY": "test_key",
         "MCP_TRANSPORT": "stdio",
-        "MCP_PORT": "9104",
+        "MCP_PORT": "9103",
         "MCP_HOST": "127.0.0.1",
         "MCP_PATH": "/mcp",
         "SEARCH_LIMIT": "5",

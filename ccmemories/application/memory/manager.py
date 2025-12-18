@@ -137,6 +137,7 @@ class MemoryManager:
                 index_path=self.config.tantivy_index_path_template.format(
                     project_id=self.project_id
                 ).lower(),
+                normalize_scores=self.config.tantivy_normalize_scores,
             )
             self._tantivy_engine = TantivyEngine(tantivy_config, logger=self.logger)
 
@@ -1212,109 +1213,152 @@ class MemoryManager:
                 "─" * 50,
                 extra={"section": "fusion"},
             )
-            self.logger.info(
-                "🔀 STEP 2: RRF Fusion (combining results)...",
-                extra={"step": "fusion"},
-            )
-            hybrid_results = self._fusion_engine.fuse(semantic_results, tantivy_results)
 
-            # Log fusion results with source information
-            if hybrid_results:
-                top_rrf = hybrid_results[0][1] if hybrid_results else 0.0
+            # Combine results based on fusion setting
+            if self.config.enable_rrf_fusion:
+                # Use RRF fusion (current behavior)
                 self.logger.info(
-                    f"   Combined {len(hybrid_results)} unique result(s) using {self._fusion_engine.method.upper()} algorithm",
-                    extra={
-                        "project_id": self.project_id,
-                        "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
-                        "engine": "fusion",
-                        "result_count": len(hybrid_results),
-                        "method": self._fusion_engine.method,
-                        "top_rrf_score": top_rrf,
-                    },
+                    "🔀 STEP 2: RRF Fusion (combining results)...",
+                    extra={"step": "fusion", "mode": "rrf"},
                 )
-                self.logger.info(
-                    f"   Best fusion score: {top_rrf:.4f} (normalized 0-1)",
-                    extra={"top_score": top_rrf},
+                hybrid_results = self._fusion_engine.fuse(
+                    semantic_results, tantivy_results
                 )
 
-                # Show top fusion results with source info
-                for idx, (message, rrf_score) in enumerate(
-                    hybrid_results[: min(3, len(hybrid_results))], 1
-                ):
-                    # Determine source(s) of this result
-                    in_semantic = any(msg == message for msg, _ in semantic_results)
-                    in_tantivy = any(msg == message for msg, _ in tantivy_results)
-                    sources = []
-                    if in_semantic:
-                        sources.append("semantic")
-                    if in_tantivy:
-                        sources.append("full-text")
-                    source_str = " + ".join(sources) if sources else "unknown"
-
-                    preview = truncate_message(message, max_length=50)
+                # Log fusion results with source information
+                if hybrid_results:
+                    top_rrf = hybrid_results[0][1] if hybrid_results else 0.0
                     self.logger.info(
-                        f"      [{idx}] score={rrf_score:.4f} ({source_str}) → {preview}",
+                        f"   Combined {len(hybrid_results)} unique result(s) using {self._fusion_engine.method.upper()} algorithm",
                         extra={
                             "project_id": self.project_id,
-                            "engine": "rrf_fusion",
-                            "result_index": idx,
-                            "rrf_score": rrf_score,
-                            "source": source_str,
+                            "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
+                            "engine": "fusion",
+                            "result_count": len(hybrid_results),
+                            "method": self._fusion_engine.method,
+                            "top_rrf_score": top_rrf,
                         },
                     )
+                    self.logger.info(
+                        f"   Best fusion score: {top_rrf:.4f} (normalized 0-1)",
+                        extra={"top_score": top_rrf},
+                    )
+
+                    # Show top fusion results with source info
+                    for idx, (message, rrf_score) in enumerate(
+                        hybrid_results[: min(3, len(hybrid_results))], 1
+                    ):
+                        # Determine source(s) of this result
+                        in_semantic = any(msg == message for msg, _ in semantic_results)
+                        in_tantivy = any(msg == message for msg, _ in tantivy_results)
+                        sources = []
+                        if in_semantic:
+                            sources.append("semantic")
+                        if in_tantivy:
+                            sources.append("full-text")
+                        source_str = " + ".join(sources) if sources else "unknown"
+
+                        preview = truncate_message(message, max_length=50)
+                        self.logger.info(
+                            f"      [{idx}] score={rrf_score:.4f} ({source_str}) → {preview}",
+                            extra={
+                                "project_id": self.project_id,
+                                "engine": "rrf_fusion",
+                                "result_index": idx,
+                                "rrf_score": rrf_score,
+                                "source": source_str,
+                            },
+                        )
+                else:
+                    self.logger.info(
+                        "   No results to fuse",
+                        extra={"engine": "fusion", "result_count": 0},
+                    )
             else:
+                # Concatenate without fusion (RRF disabled)
                 self.logger.info(
-                    "   No results to fuse",
-                    extra={"engine": "fusion", "result_count": 0},
+                    "📋 STEP 2: Concatenate results (RRF fusion disabled)...",
+                    extra={"step": "concatenate", "mode": "concatenate"},
+                )
+                hybrid_results = self._concatenate_results(
+                    semantic_results, tantivy_results, overfetch_limit
                 )
 
-            # Apply fusion threshold filtering BEFORE reranking
-            self.logger.info(
-                "─" * 50,
-                extra={"section": "filtering"},
-            )
-            self.logger.info(
-                f"🎯 STEP 3: Filtering (threshold >= {self.config.fusion_ranking_threshold})...",
-                extra={
-                    "step": "filtering",
-                    "threshold": self.config.fusion_ranking_threshold,
-                },
-            )
-            pre_filter_count = len(hybrid_results)
-            hybrid_results = self._filter_by_fusion_threshold(
-                hybrid_results, self.config.fusion_ranking_threshold, query
-            )
+                # Log top concatenated results
+                if hybrid_results:
+                    self.logger.info(
+                        "   Semantic results prioritized, duplicates from full-text removed",
+                        extra={"dedup_strategy": "semantic_priority"},
+                    )
+                    for idx, (message, score) in enumerate(
+                        hybrid_results[: min(3, len(hybrid_results))], 1
+                    ):
+                        # Determine source of this result
+                        in_semantic = any(msg == message for msg, _ in semantic_results)
+                        source = "semantic" if in_semantic else "full-text"
+                        preview = truncate_message(message, max_length=50)
+                        self.logger.info(
+                            f"      [{idx}] score={score:.4f} ({source}) → {preview}",
+                            extra={
+                                "result_index": idx,
+                                "score": score,
+                                "source": source,
+                            },
+                        )
 
-            # Handle case where all results were filtered out
-            if not hybrid_results:
-                self.logger.info(
-                    f"   All {pre_filter_count} result(s) filtered out (below threshold {self.config.fusion_ranking_threshold})",
-                    extra={
-                        "project_id": self.project_id,
-                        "fusion_threshold": self.config.fusion_ranking_threshold,
-                        "filtered_count": pre_filter_count,
-                    },
-                )
+            # Apply fusion threshold filtering BEFORE reranking (only when RRF is enabled)
+            # Determine rerank step number: Step 4 when RRF enabled (after filtering), Step 3 when disabled
+            rerank_step_num = 4 if self.config.enable_rrf_fusion else 3
+
+            if self.config.enable_rrf_fusion:
+                # Apply threshold filtering (RRF scores are comparable)
                 self.logger.info(
                     "─" * 50,
-                    extra={"section": "complete"},
+                    extra={"section": "filtering"},
                 )
                 self.logger.info(
-                    "SEARCH COMPLETE: No results passed quality threshold",
-                    extra={"result_count": 0},
+                    f"🎯 STEP 3: Filtering (threshold >= {self.config.fusion_ranking_threshold})...",
+                    extra={
+                        "step": "filtering",
+                        "threshold": self.config.fusion_ranking_threshold,
+                    },
                 )
-                return []
+                pre_filter_count = len(hybrid_results)
+                hybrid_results = self._filter_by_fusion_threshold(
+                    hybrid_results, self.config.fusion_ranking_threshold, query
+                )
 
-            # Step 4: Reranking (LLM or CrossEncoder, based on reranker_engine config)
+                # Handle case where all results were filtered out
+                if not hybrid_results:
+                    self.logger.info(
+                        f"   All {pre_filter_count} result(s) filtered out (below threshold {self.config.fusion_ranking_threshold})",
+                        extra={
+                            "project_id": self.project_id,
+                            "fusion_threshold": self.config.fusion_ranking_threshold,
+                            "filtered_count": pre_filter_count,
+                        },
+                    )
+                    self.logger.info(
+                        "─" * 50,
+                        extra={"section": "complete"},
+                    )
+                    self.logger.info(
+                        "SEARCH COMPLETE: No results passed quality threshold",
+                        extra={"result_count": 0},
+                    )
+                    return []
+
+            # Reranking step (LLM or CrossEncoder, based on reranker_engine config)
             if self._llm_reranker is not None:
                 self.logger.info(
                     "─" * 50,
                     extra={"section": "reranking"},
                 )
                 self.logger.info(
-                    f"🤖 STEP 4: LLM Reranking ({len(hybrid_results)} candidates)...",
+                    f"🤖 STEP {rerank_step_num}: LLM Reranking ({len(hybrid_results)} candidates)...",
                     extra={
                         "step": "reranking",
+                        "step_num": rerank_step_num,
                         "engine": "llm",
                         "candidate_count": len(hybrid_results),
                     },
@@ -1382,9 +1426,10 @@ class MemoryManager:
                     extra={"section": "reranking"},
                 )
                 self.logger.info(
-                    f"🔄 STEP 4: CrossEncoder Reranking ({len(hybrid_results)} candidates)...",
+                    f"🔄 STEP {rerank_step_num}: CrossEncoder Reranking ({len(hybrid_results)} candidates)...",
                     extra={
                         "step": "reranking",
+                        "step_num": rerank_step_num,
                         "engine": "cross_encoder",
                         "candidate_count": len(hybrid_results),
                     },
@@ -1677,6 +1722,62 @@ class MemoryManager:
                 },
             )
             return False
+
+    def _concatenate_results(
+        self,
+        semantic_results: List[Tuple[str, float]],
+        tantivy_results: List[Tuple[str, float]],
+        limit: int,
+    ) -> List[Tuple[str, float]]:
+        """Concatenate semantic + tantivy results without RRF fusion.
+
+        Semantic results come first (higher priority), then tantivy results.
+        Duplicates from tantivy are skipped (semantic takes precedence).
+
+        Args:
+            semantic_results: List of (message, score) from USearch.
+            tantivy_results: List of (message, score) from Tantivy.
+            limit: Maximum total results to return.
+
+        Returns:
+            Concatenated results as (message, score) tuples.
+        """
+        seen_messages: set[str] = set()
+        combined: List[Tuple[str, float]] = []
+
+        # Add semantic results first (higher priority)
+        for msg, score in semantic_results:
+            if len(combined) >= limit:
+                break
+            if msg not in seen_messages:
+                seen_messages.add(msg)
+                combined.append((msg, score))
+
+        semantic_count = len(combined)
+
+        # Add tantivy results (skip duplicates)
+        for msg, score in tantivy_results:
+            if len(combined) >= limit:
+                break
+            if msg not in seen_messages:
+                seen_messages.add(msg)
+                combined.append((msg, score))
+
+        tantivy_added = len(combined) - semantic_count
+        duplicates_skipped = len(tantivy_results) - tantivy_added
+
+        self.logger.info(
+            f"   Combined {len(combined)} result(s): {semantic_count} semantic + {tantivy_added} tantivy ({duplicates_skipped} duplicates skipped)",
+            extra={
+                "project_id": self.project_id,
+                "semantic_count": semantic_count,
+                "tantivy_added": tantivy_added,
+                "duplicates_skipped": duplicates_skipped,
+                "total_count": len(combined),
+            },
+        )
+
+        return combined
 
     def _filter_by_fusion_threshold(
         self, results: List[Tuple[str, float]], threshold: float, query: str

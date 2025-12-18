@@ -21,7 +21,7 @@ async def test_with_infer_enabled():
         {
             "ENABLE_LLM_INFER": "true",
             "MCP_TRANSPORT": "http",
-            "MCP_PORT": "9104",  # Different port to avoid conflicts
+            "MCP_PORT": "9103",  # Different port to avoid conflicts
             "LOG_LEVEL": "INFO",
             "PROJECT_ID": "TestLLMInfer",
         }
@@ -35,7 +35,7 @@ async def test_with_infer_enabled():
             "--transport",
             "http",
             "--port",
-            "9104",
+            "9103",
         ],
         env=env,
         stdout=subprocess.PIPE,
@@ -46,7 +46,7 @@ async def test_with_infer_enabled():
     await anyio.sleep(3)
 
     try:
-        async with Client("http://127.0.0.1:9104/mcp") as client:
+        async with Client("http://127.0.0.1:9103/mcp") as client:
             print("✅ Connected to server with ENABLE_LLM_INFER=true")
 
             # Add a simple message

@@ -15,10 +15,10 @@ async def test_score_filtering_demo():
     print("=" * 70)
     print("   Scenario: 5 semantically relevant documents")
     print("   Expected: Only 2-3 documents pass score > 0.8 threshold")
-    print("   Server: http://127.0.0.1:9104/mcp")
+    print("   Server: http://127.0.0.1:9103/mcp")
     print("=" * 70)
 
-    server_url = "http://127.0.0.1:9104/mcp"
+    server_url = "http://127.0.0.1:9103/mcp"
 
     try:
         async with Client(server_url) as client:

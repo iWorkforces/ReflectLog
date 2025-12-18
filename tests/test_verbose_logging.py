@@ -11,7 +11,7 @@ async def test_verbose_logging():
     print("Testing Verbose Logging")
     print("=" * 70)
 
-    server_url = "http://127.0.0.1:9104/mcp"
+    server_url = "http://127.0.0.1:9103/mcp"
 
     async with Client(server_url) as client:
         print("\n1️⃣  Testing ADD (will log each message being added)")

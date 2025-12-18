@@ -29,6 +29,7 @@ def mock_config() -> Config:
     config.fusion_normalization = None
     config.fusion_rrf_k = 60
     config.fusion_ranking_threshold = 0.5
+    config.enable_rrf_fusion = True  # RRF fusion enabled by default
     # Concurrency settings
     config.add_max_concurrency = 4
     config.rerank_max_concurrency = 5

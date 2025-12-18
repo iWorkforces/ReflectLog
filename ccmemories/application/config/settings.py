@@ -30,7 +30,7 @@ class Config:
 
     # Transport settings
     transport: TransportMode = "stdio"
-    port: int = 9104
+    port: int = 9103
     host: str = "127.0.0.1"
     path: str = "/mcp"
 
@@ -69,6 +69,11 @@ class Config:
     tantivy_compaction_max_tombstones: int = 10000  # Force compaction above this count
     tantivy_tombstone_ttl_days: int = 7  # Days before tombstones eligible for removal
 
+    # Tantivy BM25 score normalization (batch min-max to 0-1 range)
+    tantivy_normalize_scores: bool = (
+        True  # Normalize BM25 scores for threshold filtering
+    )
+
     # USearch exact search settings
     usearch_exact_search: bool = True  # Force exact brute-force search (bypasses HNSW)
     usearch_exact_search_threshold: int = (
@@ -80,6 +85,7 @@ class Config:
     fusion_normalization: Optional[str] = None  # min-max, max, sum, zmuv, rank, borda
     fusion_rrf_k: int = 60  # RRF k parameter (lower = more weight to top ranks)
     fusion_ranking_threshold: float = 0.8  # Min normalized RRF score to keep (0-1)
+    enable_rrf_fusion: bool = True  # Enable RRF fusion (false = concatenate results)
 
     # Message validation settings
     max_message_length: int = 30720
@@ -261,7 +267,7 @@ class Config:
             openrouter_api_key=openrouter_api_key,
             # Transport
             transport=transport,
-            port=int(os.environ.get("PORT", os.environ.get("MCP_PORT", "9104"))),
+            port=int(os.environ.get("PORT", os.environ.get("MCP_PORT", "9103"))),
             host=os.environ.get("MCP_HOST", "127.0.0.1"),
             path=os.environ.get("MCP_PATH", "/mcp"),
             # API
@@ -325,6 +331,11 @@ class Config:
             tantivy_tombstone_ttl_days=max(
                 0, int(os.environ.get("TANTIVY_TOMBSTONE_TTL_DAYS", "7"))
             ),
+            # Tantivy BM25 score normalization
+            tantivy_normalize_scores=os.environ.get(
+                "TANTIVY_NORMALIZE_SCORES", "true"
+            ).lower()
+            == "true",
             # USearch exact search settings
             usearch_exact_search=os.environ.get("USEARCH_EXACT_SEARCH", "true").lower()
             == "true",
@@ -338,6 +349,8 @@ class Config:
             fusion_ranking_threshold=float(
                 os.environ.get("FUSION_RANKING_THRESHOLD", "0.8")
             ),
+            enable_rrf_fusion=os.environ.get("ENABLE_RRF_FUSION", "true").lower()
+            == "true",
             # Message validation
             max_message_length=int(os.environ.get("MAX_MESSAGE_LENGTH", "30720")),
             min_message_length=int(os.environ.get("MIN_MESSAGE_LENGTH", "1")),
