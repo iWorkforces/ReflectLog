@@ -30,7 +30,7 @@ class Config:
 
     # Transport settings
     transport: TransportMode = "stdio"
-    port: int = 9104
+    port: int = 9103
     host: str = "127.0.0.1"
     path: str = "/mcp"
 
@@ -68,6 +68,11 @@ class Config:
     )
     tantivy_compaction_max_tombstones: int = 10000  # Force compaction above this count
     tantivy_tombstone_ttl_days: int = 7  # Days before tombstones eligible for removal
+
+    # Tantivy BM25 score normalization (batch min-max to 0-1 range)
+    tantivy_normalize_scores: bool = (
+        True  # Normalize BM25 scores for threshold filtering
+    )
 
     # USearch exact search settings
     usearch_exact_search: bool = True  # Force exact brute-force search (bypasses HNSW)
@@ -261,7 +266,7 @@ class Config:
             openrouter_api_key=openrouter_api_key,
             # Transport
             transport=transport,
-            port=int(os.environ.get("PORT", os.environ.get("MCP_PORT", "9104"))),
+            port=int(os.environ.get("PORT", os.environ.get("MCP_PORT", "9103"))),
             host=os.environ.get("MCP_HOST", "127.0.0.1"),
             path=os.environ.get("MCP_PATH", "/mcp"),
             # API
@@ -325,6 +330,11 @@ class Config:
             tantivy_tombstone_ttl_days=max(
                 0, int(os.environ.get("TANTIVY_TOMBSTONE_TTL_DAYS", "7"))
             ),
+            # Tantivy BM25 score normalization
+            tantivy_normalize_scores=os.environ.get(
+                "TANTIVY_NORMALIZE_SCORES", "true"
+            ).lower()
+            == "true",
             # USearch exact search settings
             usearch_exact_search=os.environ.get("USEARCH_EXACT_SEARCH", "true").lower()
             == "true",

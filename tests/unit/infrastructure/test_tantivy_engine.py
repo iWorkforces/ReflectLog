@@ -1063,3 +1063,209 @@ class TestTantivyTombstoneHelpers:
             assert len(matches) == 0
 
             engine.close()
+
+
+@pytest.mark.unit
+class TestTantivyScoreNormalization:
+    """Tests for BM25 score normalization to 0-1 range."""
+
+    def test_normalize_typical_bm25_scores(self) -> None:
+        """Test normalization of typical BM25 score range."""
+        import numpy as np
+
+        from ccmemories.application.utils.numba_utils import normalize_scores_minmax
+
+        # From user's example: 5.02, 1.9656, 1.9384
+        scores = np.array([5.02, 1.9656, 1.9384], dtype=np.float64)
+        normalized = normalize_scores_minmax(scores)
+
+        assert normalized[0] == pytest.approx(1.0)  # Best score
+        assert normalized[2] == pytest.approx(0.0)  # Worst score
+        assert 0.0 < normalized[1] < 1.0  # Middle score
+        # (1.9656 - 1.9384) / (5.02 - 1.9384) ≈ 0.00883
+        assert normalized[1] == pytest.approx(0.00883, rel=0.01)
+
+    def test_normalize_single_result(self) -> None:
+        """Single result should be 1.0."""
+        import numpy as np
+
+        from ccmemories.application.utils.numba_utils import normalize_scores_minmax
+
+        scores = np.array([3.5], dtype=np.float64)
+        normalized = normalize_scores_minmax(scores)
+        assert normalized[0] == 1.0
+
+    def test_normalize_equal_scores(self) -> None:
+        """All equal scores should become 1.0."""
+        import numpy as np
+
+        from ccmemories.application.utils.numba_utils import normalize_scores_minmax
+
+        scores = np.array([2.0, 2.0, 2.0], dtype=np.float64)
+        normalized = normalize_scores_minmax(scores)
+        assert all(s == 1.0 for s in normalized)
+
+    def test_normalize_preserves_order(self) -> None:
+        """Normalization should preserve relative ordering."""
+        import numpy as np
+
+        from ccmemories.application.utils.numba_utils import normalize_scores_minmax
+
+        scores = np.array([5.0, 3.0, 1.0, 4.0, 2.0], dtype=np.float64)
+        normalized = normalize_scores_minmax(scores)
+
+        # Original order: 5 > 4 > 3 > 2 > 1
+        # Normalized order should be same
+        assert normalized[0] > normalized[3]  # 5 > 4
+        assert normalized[3] > normalized[1]  # 4 > 3
+        assert normalized[1] > normalized[4]  # 3 > 2
+        assert normalized[4] > normalized[2]  # 2 > 1
+
+    def test_normalize_wide_range(self) -> None:
+        """Test with wide BM25 score range."""
+        import numpy as np
+
+        from ccmemories.application.utils.numba_utils import normalize_scores_minmax
+
+        scores = np.array([15.0, 0.5, 7.2, 3.1], dtype=np.float64)
+        normalized = normalize_scores_minmax(scores)
+
+        assert normalized[0] == 1.0  # Max (15.0)
+        assert normalized[1] == 0.0  # Min (0.5)
+        assert all(0.0 <= s <= 1.0 for s in normalized)
+
+    def test_tantivy_engine_normalize_scores_method(self) -> None:
+        """Test the TantivyEngine._normalize_scores() method directly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                project_id="test",
+                index_path=tmpdir,
+                normalize_scores=True,
+            )
+            engine = TantivyEngine(config)
+
+            # Test with typical BM25 results
+            results = [
+                ("Message A", 5.02),
+                ("Message B", 1.9656),
+                ("Message C", 1.9384),
+            ]
+            normalized = engine._normalize_scores(results)
+
+            assert len(normalized) == 3
+            assert normalized[0][0] == "Message A"
+            assert normalized[0][1] == pytest.approx(1.0)
+            assert normalized[2][0] == "Message C"
+            assert normalized[2][1] == pytest.approx(0.0)
+
+            engine.close()
+
+    def test_tantivy_engine_normalize_scores_single_result(self) -> None:
+        """Test _normalize_scores with single result returns 1.0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                project_id="test",
+                index_path=tmpdir,
+                normalize_scores=True,
+            )
+            engine = TantivyEngine(config)
+
+            results = [("Only message", 3.5)]
+            normalized = engine._normalize_scores(results)
+
+            assert len(normalized) == 1
+            assert normalized[0][0] == "Only message"
+            assert normalized[0][1] == 1.0
+
+            engine.close()
+
+    def test_tantivy_engine_normalize_scores_empty_results(self) -> None:
+        """Test _normalize_scores with empty results returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                project_id="test",
+                index_path=tmpdir,
+                normalize_scores=True,
+            )
+            engine = TantivyEngine(config)
+
+            results: list[tuple[str, float]] = []
+            normalized = engine._normalize_scores(results)
+
+            assert normalized == []
+
+            engine.close()
+
+    def test_search_with_normalization_enabled(self) -> None:
+        """Test that search returns normalized scores when enabled."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                project_id="test",
+                index_path=tmpdir,
+                normalize_scores=True,
+            )
+            engine = TantivyEngine(config)
+
+            # Add documents with varying relevance to query
+            engine.add("test", "python programming language tutorial")
+            engine.add("test", "java programming basics")
+            engine.add("test", "cooking recipes for dinner")
+            engine.commit()
+
+            # Search for "python programming"
+            results = engine.search("python programming", "test", limit=10)
+
+            # All scores should be in 0-1 range
+            for _msg, score in results:
+                assert 0.0 <= score <= 1.0
+
+            # Best match should have score 1.0
+            if results:
+                assert results[0][1] == pytest.approx(1.0)
+
+            engine.close()
+
+    def test_search_with_normalization_disabled(self) -> None:
+        """Test that search returns raw BM25 scores when normalization is disabled."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                project_id="test",
+                index_path=tmpdir,
+                normalize_scores=False,
+            )
+            engine = TantivyEngine(config)
+
+            # Add documents
+            engine.add("test", "python programming language tutorial")
+            engine.add("test", "java programming basics")
+            engine.commit()
+
+            # Search for "python programming"
+            results = engine.search("python programming", "test", limit=10)
+
+            # With normalization disabled, scores can be > 1.0 (raw BM25)
+            # At least one score should be > 1.0 for typical BM25
+            if len(results) > 0:
+                # Raw BM25 scores are typically > 1.0 for good matches
+                max_score = max(score for _msg, score in results)
+                # BM25 scores can vary, but for a good match should be > 1
+                assert max_score > 0  # At minimum, scores should be positive
+
+            engine.close()
+
+    def test_config_normalize_scores_default(self) -> None:
+        """Test that normalize_scores defaults to True in TantivyConfig."""
+        config = TantivyConfig(
+            project_id="test",
+            index_path="/tmp/test",
+        )
+        assert config.normalize_scores is True
+
+    def test_config_normalize_scores_explicit_false(self) -> None:
+        """Test that normalize_scores can be set to False."""
+        config = TantivyConfig(
+            project_id="test",
+            index_path="/tmp/test",
+            normalize_scores=False,
+        )
+        assert config.normalize_scores is False

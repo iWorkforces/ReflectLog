@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, cast
 
+import numpy as np
 import tantivy
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -25,6 +26,7 @@ class TantivyConfig:
         compaction_threshold_ratio: Compact when tombstones > this ratio of docs.
         compaction_max_tombstones: Force compaction above this tombstone count.
         tombstone_ttl_days: Days before tombstones are eligible for removal.
+        normalize_scores: Normalize BM25 scores to 0-1 range (batch min-max).
     """
 
     project_id: str
@@ -33,6 +35,7 @@ class TantivyConfig:
     compaction_threshold_ratio: float = 0.2
     compaction_max_tombstones: int = 10000
     tombstone_ttl_days: int = 7
+    normalize_scores: bool = True
 
 
 # Schema version constant (V2 only - soft-delete support)
@@ -497,6 +500,36 @@ class TantivyEngine(BaseModel):
                 )
             return set()
 
+    def _normalize_scores(
+        self, results: List[Tuple[str, float]]
+    ) -> List[Tuple[str, float]]:
+        """Normalize BM25 scores to 0-1 range using batch min-max.
+
+        Uses the existing JIT-optimized normalize_scores_minmax function.
+
+        Args:
+            results: List of (message, score) tuples with raw BM25 scores.
+
+        Returns:
+            List of (message, normalized_score) tuples with scores in 0-1 range.
+            Single result returns score 1.0 (best by definition).
+            All equal scores return 1.0 (equally good).
+        """
+        if len(results) <= 1:
+            # Single result or empty: return with score 1.0
+            return [(msg, 1.0) for msg, _ in results]
+
+        # Import here to avoid circular dependency
+        from ccmemories.application.utils.numba_utils import normalize_scores_minmax
+
+        messages = [msg for msg, _ in results]
+        scores = np.array([score for _, score in results], dtype=np.float64)
+
+        # Use existing JIT-optimized normalization
+        normalized = normalize_scores_minmax(scores)
+
+        return list(zip(messages, normalized.tolist()))
+
     def search(
         self, query: str, project_id: str, limit: int
     ) -> List[Tuple[str, float]]:
@@ -558,6 +591,10 @@ class TantivyEngine(BaseModel):
                 # Stop once we have enough results
                 if len(results) >= limit:
                     break
+
+            # Normalize BM25 scores to 0-1 range if enabled
+            if self.config.normalize_scores and results:
+                results = self._normalize_scores(results)
 
             return results
 

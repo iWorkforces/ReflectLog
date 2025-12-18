@@ -137,6 +137,7 @@ class MemoryManager:
                 index_path=self.config.tantivy_index_path_template.format(
                     project_id=self.project_id
                 ).lower(),
+                normalize_scores=self.config.tantivy_normalize_scores,
             )
             self._tantivy_engine = TantivyEngine(tantivy_config, logger=self.logger)
 
