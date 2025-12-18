@@ -1,16 +1,16 @@
 __version__ = "0.1.0"
 
 # Export main components for programmatic access
-from openmemories.server import main
+from ccmemories.server import main
 
 # Export exception hierarchy for error handling
-from openmemories.application.exceptions import (
+from ccmemories.application.exceptions import (
     ConfigurationError,
     DuplicateError,
     EmbeddingError,
     InconsistentStateError,
     InitializationError,
-    OpenMemoriesError,
+    CCMemoriesError,
     RerankerError,
     SearchError,
     StorageError,
@@ -20,7 +20,7 @@ from openmemories.application.exceptions import (
 __all__ = [
     "main",
     "__version__",
-    "OpenMemoriesError",
+    "CCMemoriesError",
     "ConfigurationError",
     "ValidationError",
     "InitializationError",

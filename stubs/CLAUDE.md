@@ -199,7 +199,7 @@ The `stubs/numba/` directory provides types for the Numba JIT compiler:
 ./start-type-check.sh
 
 # Check specific file
-uv run ty check openmemories/infrastructure/usearch_engine.py
+uv run ty check ccmemories/infrastructure/usearch_engine.py
 ```
 
 ### Verify stubs match actual API

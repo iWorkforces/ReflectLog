@@ -13,10 +13,10 @@ import numpy as np
 import pytest
 from langchain_core.embeddings import Embeddings
 
-from openmemories.application.config import Config
-from openmemories.application.memory import MemoryManager
-from openmemories.application.utils import StructuredLogger
-from openmemories.application.utils.security import SecretString
+from ccmemories.application.config import Config
+from ccmemories.application.memory import MemoryManager
+from ccmemories.application.utils import StructuredLogger
+from ccmemories.application.utils.security import SecretString
 
 
 class MockEmbedder(Embeddings):
@@ -74,7 +74,7 @@ def create_memory_manager(config: Config) -> tuple[MemoryManager, MagicMock]:
     mock_logger = MagicMock(spec=StructuredLogger)
 
     with patch(
-        "openmemories.application.memory.manager.LangchainQwenEmbeddings",
+        "ccmemories.application.memory.manager.LangchainQwenEmbeddings",
         return_value=mock_embedder,
     ):
         manager = MemoryManager(config, mock_logger)
@@ -367,7 +367,7 @@ class TestUSearchPersistence:
 
             # First manager instance - add data
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings",
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings",
                 return_value=mock_embedder,
             ):
                 manager1 = MemoryManager(config, mock_logger)
@@ -381,7 +381,7 @@ class TestUSearchPersistence:
 
             # Second manager instance - should load existing data
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings",
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings",
                 return_value=mock_embedder,
             ):
                 manager2 = MemoryManager(config, mock_logger)

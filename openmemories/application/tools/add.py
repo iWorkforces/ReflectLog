@@ -1,4 +1,4 @@
-"""Add tool implementation for OpenMemoriesMCP MCP Server."""
+"""Add tool implementation for CCMemoriesMCP Server."""
 
 import time
 from typing import List

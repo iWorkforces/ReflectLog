@@ -1,6 +1,6 @@
-# openmemories/application/config/
+# ccmemories/application/config/
 
-This directory contains configuration management and system prompts for OpenMemoriesMCP.
+This directory contains configuration management and system prompts for CCMemoriesMCP.
 
 ## Structure
 
@@ -155,7 +155,7 @@ config = Config()  # Singleton instance
 Usage throughout the application:
 
 ```python
-from openmemories.application.config import config
+from ccmemories.application.config import config
 
 # Access configuration
 print(config.project_id)
@@ -170,7 +170,7 @@ Server instructions for Claude clients describing available tools:
 
 ```python
 MCP_INSTRUCTIONS = """
-OpenMemoriesMCP MCP Server - Project-based memory storage for Claude Code.
+CCMemoriesMCP Server - Project-based memory storage for Claude Code.
 
 Available Tools:
     • add(messages: list[str])
@@ -302,7 +302,7 @@ class TransportMode(str, Enum):
 ### Accessing Configuration
 
 ```python
-from openmemories.application.config import config
+from ccmemories.application.config import config
 
 # Check reranker engine settings
 if config.reranker_engine == "llm":
@@ -320,8 +320,8 @@ usearch_path = config.usearch_index_path_template.format(project_id=config.proje
 ### Generating USearch Configuration
 
 ```python
-from openmemories.application.config import config
-from openmemories.infrastructure import USearchConfig
+from ccmemories.application.config import config
+from ccmemories.infrastructure import USearchConfig
 
 def get_usearch_config() -> USearchConfig:
     """Generate USearch configuration from app config."""

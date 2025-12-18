@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-OpenMemoriesMCP is an MCP (Model Context Protocol) server that provides persistent, project-based memory storage for intelligent AI Agents with **hybrid semantic + full-text search**. It combines:
+CCMemoriesMCP is an MCP (Model Context Protocol) server that provides persistent, project-based memory storage for intelligent AI Agents with **hybrid semantic + full-text search**. It combines:
 
 - **Semantic vector search**: USearch HNSW algorithm with libSQL text storage
 - **Full-text search**: Tantivy (stemmed + exact matching via `en_stem` tokenizer)
@@ -47,14 +47,14 @@ uv run python <script>     # Run a Python script
 
 **Command-line tool** (after installation):
 ```bash
-openmemories                              # stdio transport (default)
-openmemories --transport http --port 9104 # HTTP transport
+ccmemories                              # stdio transport (default)
+ccmemories --transport http --port 9104 # HTTP transport
 ```
 
 **Direct execution** (development):
 ```bash
-uv run python openmemories/server.py --transport http
-./start-openmemories-mcp-server.sh --project_id my-project
+uv run python ccmemories/server.py --transport http
+./start-ccmemories-mcp-server.sh --project_id my-project
 ```
 
 ### Code Quality
@@ -100,8 +100,8 @@ Transport can be configured via:
 ### Project Structure
 
 ```
-OpenMemoriesMCP/
-├── openmemories/              # Main package
+CCMemoriesMCP/
+├── ccmemories/              # Main package
 │   ├── __init__.py           # Package metadata (__version__ = "0.1.0")
 │   ├── server.py             # CLI entry point
 │   ├── application/          # Application layer
@@ -160,15 +160,17 @@ OpenMemoriesMCP/
 
 ### Hybrid Memory Storage (MemoryManager)
 
-**Core Engine**: `openmemories/application/memory/manager.py`
+**Core Engine**: `ccmemories/application/memory/manager.py`
 
 **Infrastructure Layer**:
-- Uses dedicated engine classes from `openmemories/infrastructure/`
+
+- Uses dedicated engine classes from `ccmemories/infrastructure/`
 - **USearchEngine**: Semantic vector search with USearch (HNSW) + libSQL text storage
 - **TantivyEngine**: Full-text search with English stemming
 
 **Semantic Search** (USearchEngine):
-- Infrastructure: `openmemories.infrastructure.USearchEngine`
+
+- Infrastructure: `ccmemories.infrastructure.USearchEngine`
 - Backend: USearch HNSW index + libSQL `MessageStore` for text
 - Embeddings: `LangchainQwenEmbeddings` (Qwen 4096 dims) or OpenAI compatible
 - Storage: `indexes/{project_id}/usearch/` (vectors.usearch + messages.db)
@@ -179,7 +181,8 @@ OpenMemoriesMCP/
   - Configure via `USEARCH_EXACT_SEARCH` or auto-switch with `USEARCH_EXACT_SEARCH_THRESHOLD`
 
 **Full-text Search** (TantivyEngine):
-- Infrastructure: `openmemories.infrastructure.TantivyEngine`
+
+- Infrastructure: `ccmemories.infrastructure.TantivyEngine`
 - Schema: `project_id` (raw tokenizer), `message` (en_stem tokenizer)
 - Storage: `indexes/{project_id}/tantivy/`
 - Optimized for exact phrase matching and keyword search
@@ -188,21 +191,21 @@ OpenMemoriesMCP/
 
 - USearchEngine + TantivyEngine → **RanxFusionEngine** → optional **Reranker**
 - RRF formula: `RRF_score(doc) = sum(1 / (k + rank(doc)))`
-- Implementation: `openmemories/application/memory/fusion/ranx_fusion.py`
+- Implementation: `ccmemories/application/memory/fusion/ranx_fusion.py`
 - Configurable `k` parameter via `FUSION_RRF_K` (default: 60)
 
 **Pluggable Reranking** (LLMReranker or CrossEncoderReranker):
 
 - Controlled by `RERANKER_ENGINE` env var: `llm`, `cross_encoder`, or `none`
 - **LLMReranker** (`reranker_engine=llm`, default):
-  - Infrastructure: `openmemories.infrastructure.LLMReranker`
+  - Infrastructure: `ccmemories.infrastructure.LLMReranker`
   - Purpose: AI-powered relevance scoring via OpenRouter API
   - Uses `SCORING_PROMPT` template from `config/prompts.py`
   - Parallel scoring with concurrency control via `anyio.Semaphore`
   - HTTP/2 enabled via AsyncOpenAI with `DefaultAioHttpClient`
   - Graceful fallback: returns fusion score if LLM call fails
 - **CrossEncoderReranker** (`reranker_engine=cross_encoder`):
-  - Infrastructure: `openmemories.infrastructure.CrossEncoderReranker`
+  - Infrastructure: `ccmemories.infrastructure.CrossEncoderReranker`
   - Purpose: Fast local reranking using FlagEmbedding's FlagReranker
   - Default model: `BAAI/bge-reranker-v2-m3` (multilingual, high quality)
   - No API costs, runs locally on CPU/GPU/MPS
@@ -213,7 +216,7 @@ OpenMemoriesMCP/
 
 **Smart Memory Replacement** (SmartReplacer):
 
-- Infrastructure: `openmemories.infrastructure.SmartReplacer`
+- Infrastructure: `ccmemories.infrastructure.SmartReplacer`
 - Purpose: Detect when a new memory semantically replaces an existing one
 - Example: "I like cats" → "I don't like cats anymore, I like dogs"
 - Uses LLM (via `LLM_MODEL`) with structured JSON output for replacement detection
@@ -307,7 +310,7 @@ Four modular FastMCP tools backed by `MemoryManager`:
 
 ### Entry Point Flow
 
-1. `openmemories/server.py::main()`: CLI parsing, env setup
+1. `ccmemories/server.py::main()`: CLI parsing, env setup
 2. `FastMCPServer.__init__()`: Init `MemoryManager`, register tools
 3. `FastMCPServer._initialize_tools()`: Create tool instances
 4. `FastMCPServer._register_tools()`: Register with FastMCP
@@ -371,7 +374,7 @@ uv run pytest tests/unit/infrastructure/  # Infrastructure unit tests only
 
 ### Adding a New MCP Tool
 
-1. Create `openmemories/application/tools/new_tool.py`:
+1. Create `ccmemories/application/tools/new_tool.py`:
 
    ```python
    from .base import BaseTool
@@ -509,7 +512,7 @@ EMBEDDING_MODEL=qwen/qwen3-embedding-8b
 QWEN_EMBEDDING_DIMS=4096
 ```
 
-The default uses `LangchainQwenEmbeddings` from `openmemories/infrastructure/qwen3_embedding.py`.
+The default uses `LangchainQwenEmbeddings` from `ccmemories/infrastructure/qwen3_embedding.py`.
 
 ## Environment Setup
 

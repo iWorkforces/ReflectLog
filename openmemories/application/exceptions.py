@@ -1,10 +1,10 @@
-"""Custom exception hierarchy for OpenMemoriesMCP.
+"""Custom exception hierarchy for CCMemoriesMCP.
 
 This module defines a structured exception hierarchy that allows callers
 to distinguish between different types of errors and handle them appropriately.
 
 Hierarchy:
-    OpenMemoriesError (base)
+    CCMemoriesError (base)
     ├── ConfigurationError - Invalid or missing configuration
     ├── ValidationError - Input validation failures
     ├── InitializationError - Engine/client initialization failures
@@ -16,8 +16,8 @@ Hierarchy:
 """
 
 
-class OpenMemoriesError(Exception):
-    """Base exception for all OpenMemoriesMCP errors.
+class CCMemoriesError(Exception):
+    """Base exception for all CCMemoriesMCP errors.
 
     All custom exceptions in this project should inherit from this class
     to enable broad exception catching when needed.
@@ -25,15 +25,15 @@ class OpenMemoriesError(Exception):
     Example:
         try:
             memory_manager.add_messages(messages)
-        except OpenMemoriesError as e:
-            # Handle any OpenMemoriesMCP error
+        except CCMemoriesError as e:
+            # Handle any CCMemoriesMCP error
             logger.error(f"Operation failed: {e}")
     """
 
     pass
 
 
-class ConfigurationError(OpenMemoriesError):
+class ConfigurationError(CCMemoriesError):
     """Raised when configuration is invalid or missing.
 
     This includes missing required environment variables,
@@ -47,7 +47,7 @@ class ConfigurationError(OpenMemoriesError):
     pass
 
 
-class ValidationError(OpenMemoriesError):
+class ValidationError(CCMemoriesError):
     """Raised when input validation fails.
 
     This includes message length validation, format validation,
@@ -61,7 +61,7 @@ class ValidationError(OpenMemoriesError):
     pass
 
 
-class InitializationError(OpenMemoriesError):
+class InitializationError(CCMemoriesError):
     """Raised when engine or client initialization fails.
 
     This includes failures to initialize search engines, embedding clients,
@@ -75,7 +75,7 @@ class InitializationError(OpenMemoriesError):
     pass
 
 
-class StorageError(OpenMemoriesError):
+class StorageError(CCMemoriesError):
     """Raised when a storage operation fails.
 
     This is the base class for storage-related errors including
@@ -123,7 +123,7 @@ class InconsistentStateError(StorageError):
     pass
 
 
-class SearchError(OpenMemoriesError):
+class SearchError(CCMemoriesError):
     """Raised when a search operation fails.
 
     This includes semantic search failures, full-text search failures,
@@ -139,7 +139,7 @@ class SearchError(OpenMemoriesError):
     pass
 
 
-class EmbeddingError(OpenMemoriesError):
+class EmbeddingError(CCMemoriesError):
     """Raised when embedding generation fails.
 
     This includes API errors, timeout errors, and other failures
@@ -155,7 +155,7 @@ class EmbeddingError(OpenMemoriesError):
     pass
 
 
-class RerankerError(OpenMemoriesError):
+class RerankerError(CCMemoriesError):
     """Raised when LLM reranking fails.
 
     This is raised when the LLM reranker encounters an unrecoverable error.

@@ -1,6 +1,6 @@
 # Git Hooks
 
-This directory contains git hooks for the OpenMemoriesMCP project.
+This directory contains git hooks for the CCMemoriesMCP project.
 
 ## Available Hooks
 

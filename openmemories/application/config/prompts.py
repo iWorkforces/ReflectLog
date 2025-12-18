@@ -1,4 +1,4 @@
-"""Prompts and text constants for OpenMemoriesMCP MCP Server."""
+"""Prompts and text constants for CCMemoriesMCP Server."""
 
 from typing import List, Tuple
 
@@ -62,7 +62,7 @@ New Memory: "{new_memory}"
 """
 
 # Template components for dynamic MCP_INSTRUCTIONS assembly
-INSTRUCTIONS_HEADER = """OpenMemoriesMCP MCP Server - Project-based memory storage for intelligent AI Agents.
+INSTRUCTIONS_HEADER = """CCMemoriesMCP Server - Project-based memory storage for intelligent AI Agents.
 
 This server provides persistent memory storage with hybrid search (semantic + full-text)
 and RRF fusion ranking.

@@ -17,9 +17,9 @@ os.environ.setdefault("NUMBA_DEBUG", "0")
 # Enable fastmath for additional floating-point optimizations
 os.environ.setdefault("NUMBA_FASTMATH", "1")
 
-from openmemories import __version__
-from openmemories.application.mcp_server import FastMCPServer
-from openmemories.application.utils.numba_utils import warmup_numba_functions
+from ccmemories import __version__
+from ccmemories.application.mcp_server import FastMCPServer
+from ccmemories.application.utils.numba_utils import warmup_numba_functions
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,19 +29,19 @@ def parse_args() -> argparse.Namespace:
         Parsed command-line arguments
     """
     parser = argparse.ArgumentParser(
-        prog="openmemories",
+        prog="ccmemories",
         description="MCP Server For Claude Code Project Memories",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Run with default stdio transport (for MCP clients)
-  openmemories
+  ccmemories
 
   # Run as HTTP server
-  openmemories --transport http --port 9104
+  ccmemories --transport http --port 9104
 
   # Run with SSE transport
-  openmemories --transport sse --port 8080 --host 0.0.0.0
+  ccmemories --transport sse --port 8080 --host 0.0.0.0
 
 Environment Variables:
   PROJECT_ID    The unique project name
@@ -91,7 +91,7 @@ def main() -> None:
     """Main entry point for the MCP server.
 
     Supports both CLI argument parsing and environment variable configuration.
-    When run as a tool (via `openmemories` command), defaults to stdio transport.
+    When run as a tool (via `ccmemories` command), defaults to stdio transport.
 
     Graceful shutdown is handled via signal handlers for SIGINT (Ctrl+C) and SIGTERM,
     ensuring all data from TantivyEngine and USearchEngine is persisted before exit.
@@ -124,7 +124,7 @@ def main() -> None:
     output_stream = sys.stderr if transport_mode == "stdio" else sys.stdout
 
     print(
-        "Starting OpenMemoriesMCP - Project-based AI Agent Memories...",
+        "Starting CCMemoriesMCP - Project-based AI Agent Memories...",
         file=output_stream,
     )
     print(f"Version: {__version__}", file=output_stream)

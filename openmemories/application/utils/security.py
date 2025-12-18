@@ -1,4 +1,4 @@
-"""Security utilities for OpenMemoriesMCP MCP Server."""
+"""Security utilities for CCMemoriesMCP Server."""
 
 import re
 from typing import Any

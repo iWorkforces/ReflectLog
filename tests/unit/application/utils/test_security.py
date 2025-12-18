@@ -1,6 +1,6 @@
-"""Unit tests for openmemories.application.utils.security module."""
+"""Unit tests for ccmemories.application.utils.security module."""
 
-from openmemories.application.utils.security import (
+from ccmemories.application.utils.security import (
     SecretString,
     redact_dict_secrets,
     sanitize_for_logging,

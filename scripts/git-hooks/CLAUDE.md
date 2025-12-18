@@ -1,6 +1,6 @@
 # scripts/git-hooks/
 
-This directory contains version-controlled git hooks for the OpenMemoriesMCP project.
+This directory contains version-controlled git hooks for the CCMemoriesMCP project.
 
 ## Structure
 

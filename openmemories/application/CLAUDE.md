@@ -1,6 +1,6 @@
-# openmemories/application/
+# ccmemories/application/
 
-This directory contains the application layer - the core business logic for the OpenMemoriesMCP MCP server.
+This directory contains the application layer - the core business logic for the CCMemoriesMCP server.
 
 ## Structure
 
@@ -233,7 +233,7 @@ self.logger.info(
 
 ## Adding a New Tool
 
-1. Create `openmemories/application/tools/new_tool.py`:
+1. Create `ccmemories/application/tools/new_tool.py`:
    ```python
    from .base import BaseTool
 

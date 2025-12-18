@@ -5,7 +5,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
-from openmemories.infrastructure.llm_reranker import (
+from ccmemories.infrastructure.llm_reranker import (
     LLMReranker,
     LLMRerankerConfig,
     RelevanceScore,
@@ -115,7 +115,7 @@ class TestLLMRerankerInitialization:
         )
 
         with patch(
-            "openmemories.infrastructure.llm_reranker.AsyncOpenAI"
+            "ccmemories.infrastructure.llm_reranker.AsyncOpenAI"
         ) as mock_async_client:
             reranker = LLMReranker(config=config)
 
@@ -140,7 +140,7 @@ class TestScoreSingle:
             model="x-ai/grok-4.1-fast",
         )
 
-        with patch("openmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
             reranker = LLMReranker(config=config)
             return reranker
 
@@ -292,7 +292,7 @@ class TestRerank:
             batch_normalize=False,  # Disable to test raw score behavior
         )
 
-        with patch("openmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
             reranker = LLMReranker(config=config)
             return reranker
 
@@ -461,7 +461,7 @@ class TestStructuredOutputFallback:
             model="x-ai/grok-4.1-fast",
         )
 
-        with patch("openmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
             reranker = LLMReranker(config=config)
             return reranker
 
@@ -585,7 +585,7 @@ class TestLLMRerankerIntegration:
             batch_normalize=False,  # Disable to test raw score behavior
         )
 
-        with patch("openmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
             reranker = LLMReranker(config=config, logger=MagicMock())
 
             # Mock the client to return different scores

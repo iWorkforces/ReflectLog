@@ -1,8 +1,8 @@
-"""Unit tests for openmemories.application.utils.numba_utils module."""
+"""Unit tests for ccmemories.application.utils.numba_utils module."""
 
 import numpy as np
 
-from openmemories.application.utils.numba_utils import (
+from ccmemories.application.utils.numba_utils import (
     compute_rrf_scores_batch,
     distance_to_similarity_cosine,
     filter_scores_by_threshold,

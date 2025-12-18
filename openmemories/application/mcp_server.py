@@ -1,4 +1,4 @@
-"""OpenMemoriesMCP MCP Server - Refactored modular implementation."""
+"""CCMemoriesMCP Server - Refactored modular implementation."""
 
 from typing import Dict, List, Tuple, Type
 
@@ -20,7 +20,7 @@ AVAILABLE_TOOL_CLASSES: Dict[str, Type[BaseTool]] = {
 
 
 class FastMCPServer:
-    """Orchestrator for the OpenMemoriesMCP MCP Server.
+    """Orchestrator for the CCMemoriesMCP Server.
 
     This class coordinates the initialization and registration of all components:
     - Configuration management
@@ -47,7 +47,7 @@ class FastMCPServer:
 
         # Log initialization
         self.logger.info(
-            f"Initializing openmemories MCP server [project_id={self.config.project_id}, "
+            f"Initializing ccmemories MCP server [project_id={self.config.project_id}, "
             f"transport={self.config.transport}, port={self.config.port}, "
             f"log_level={self.config.log_level}, embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}]",
             extra={
@@ -68,12 +68,12 @@ class FastMCPServer:
         instructions = self._build_dynamic_instructions()
 
         # Initialize FastMCP with dynamic instructions
-        self.mcp = FastMCP(name="openmemories", instructions=instructions)
+        self.mcp = FastMCP(name="ccmemories", instructions=instructions)
 
         # Register tools with FastMCP
         self._register_tools()
 
-        self.logger.info("OpenMemoriesMCP MCP Server initialized successfully")
+        self.logger.info("CCMemoriesMCP Server initialized successfully")
 
     def _initialize_tools(self) -> None:
         """Initialize all MCP tool instances."""
@@ -261,7 +261,7 @@ class FastMCPServer:
 
 
 def main() -> None:
-    """Entry point for the OpenMemoriesMCP MCP server.
+    """Entry point for the CCMemoriesMCP server.
 
     This function:
     1. Loads configuration from environment

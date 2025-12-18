@@ -1,6 +1,6 @@
-# openmemories/application/memory/
+# ccmemories/application/memory/
 
-This directory contains the hybrid memory management system that powers OpenMemoriesMCP.
+This directory contains the hybrid memory management system that powers CCMemoriesMCP.
 
 ## Structure
 
@@ -52,7 +52,7 @@ Query → [Step 1: Parallel Search] → [Step 2: RRF Fusion] → [Step 3: Fusion
 ### Core Components
 
 1. **USearchEngine** (Semantic Search)
-   - Infrastructure: `openmemories.infrastructure.USearchEngine`
+   - Infrastructure: `ccmemories.infrastructure.USearchEngine`
    - Backend: USearch HNSW index + libSQL `MessageStore` for text
    - Configuration: `USearchConfig` (cosine metric, 4096 dims)
    - Embeddings: `LangchainQwenEmbeddings` (Qwen 4096 dims default)
@@ -60,27 +60,27 @@ Query → [Step 1: Parallel Search] → [Step 2: RRF Fusion] → [Step 3: Fusion
    - **Source of truth for `get_all()`**
 
 2. **TantivyEngine** (Full-text Search)
-   - Infrastructure: `openmemories.infrastructure.TantivyEngine`
+   - Infrastructure: `ccmemories.infrastructure.TantivyEngine`
    - Schema: `project_id`, `message`, `is_deleted`, `deleted_at` (V2 schema)
    - Storage: `indexes/{project_id}/tantivy/`
    - Optimized for exact phrase matching and keyword search
    - **O(1) soft-delete** via tombstone marking (when enabled)
 
 3. **CachedEmbeddings** (Query Embedding Cache)
-   - Infrastructure: `openmemories.infrastructure.CachedEmbeddings`
+   - Infrastructure: `ccmemories.infrastructure.CachedEmbeddings`
    - Wraps base embedder with LRU cache for `embed_query()` calls
    - MD5 hash of query text as cache key
    - Thread-safe with hit/miss statistics
    - Configurable via `EMBEDDING_CACHE_ENABLED` and `EMBEDDING_CACHE_SIZE`
 
 4. **RanxFusionEngine** (Hybrid Ranking)
-   - Implementation: `openmemories/application/memory/fusion/ranx_fusion.py`
+   - Implementation: `ccmemories/application/memory/fusion/ranx_fusion.py`
    - Formula: `RRF_score(doc) = sum over rankings of: 1 / (k + rank(doc))`
    - Configurable `k` parameter via `FUSION_RRF_K` (default: 60)
    - Normalizes scores to 0-1 range
 
 5. **LLMReranker** (AI Relevance Scoring)
-   - Infrastructure: `openmemories.infrastructure.LLMReranker`
+   - Infrastructure: `ccmemories.infrastructure.LLMReranker`
    - Purpose: Post-fusion relevance scoring using LLM
    - Uses `SCORING_PROMPT` from `config/prompts.py`
    - Parallel scoring with concurrency control (default: 10)
@@ -98,7 +98,7 @@ Query → [Step 1: Parallel Search] → [Step 2: RRF Fusion] → [Step 3: Fusion
 
 ```python
 # In MemoryManager.__init__():
-from openmemories.infrastructure import (
+from ccmemories.infrastructure import (
     USearchConfig, USearchEngine, TantivyConfig, TantivyEngine,
     LLMReranker, LLMRerankerConfig
 )
@@ -146,7 +146,7 @@ Messages → [Phase 1: Parallel Dedup] → [Phase 2: Parallel Replace] → [Phas
 
 ### Smart Replacement (SmartReplacer)
 
-**Infrastructure**: `openmemories.infrastructure.SmartReplacer`
+**Infrastructure**: `ccmemories.infrastructure.SmartReplacer`
 
 The smart replacement system detects when a new memory semantically updates or contradicts an existing one:
 
@@ -351,9 +351,9 @@ self.logger.info(
 ### Basic Storage and Retrieval
 
 ```python
-from openmemories.application.memory import MemoryManager
-from openmemories.application.config import config
-from openmemories.application.utils import create_logger
+from ccmemories.application.memory import MemoryManager
+from ccmemories.application.config import config
+from ccmemories.application.utils import create_logger
 
 logger = create_logger(__name__, config.project_id, config.log_level)
 manager = MemoryManager(config, logger)
@@ -484,7 +484,7 @@ embedder_config = {
 embedder_config = {
     "provider": "langchain",
     "config": {
-        "class": "openmemories.infrastructure.qwen3_embedding.LangchainQwenEmbeddings",
+        "class": "ccmemories.infrastructure.qwen3_embedding.LangchainQwenEmbeddings",
         "config": {
             "model": "qwen3-embedding",
             "embedding_dims": 4096,

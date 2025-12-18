@@ -14,7 +14,7 @@ utils/
 
 ## Purpose
 
-Tests for the `openmemories/application/utils/` module components:
+Tests for the `ccmemories/application/utils/` module components:
 
 - **Logging utilities** (`test_logging.py`): Tests for `StructuredLogger`, `format_fusion_score_status`
 - **Numba functions** (`test_numba_utils.py`): Tests for JIT-compiled math functions

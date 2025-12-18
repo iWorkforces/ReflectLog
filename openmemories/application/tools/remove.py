@@ -1,4 +1,4 @@
-"""Remove tool implementation for OpenMemoriesMCP MCP Server."""
+"""Remove tool implementation for CCMemoriesMCP Server."""
 
 from typing import Any, Dict, List
 

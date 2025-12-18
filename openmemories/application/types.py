@@ -1,4 +1,4 @@
-"""Type definitions for OpenMemoriesMCP MCP Server."""
+"""Type definitions for CCMemoriesMCP Server."""
 
 from typing import (
     TYPE_CHECKING,
@@ -12,7 +12,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from openmemories.infrastructure.message_store import MessageStore
+    from ccmemories.infrastructure.message_store import MessageStore
 
 # Memory operation types
 MemoryRecord: TypeAlias = Dict[str, Any]

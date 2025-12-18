@@ -8,7 +8,7 @@ import anyio
 from openai import AsyncOpenAI, DefaultAioHttpClient
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from openmemories.application.config import SCORING_PROMPT, Config
+from ccmemories.application.config import SCORING_PROMPT, Config
 
 
 class RelevanceScore(BaseModel):
@@ -275,7 +275,7 @@ class LLMReranker(BaseModel):
 
         # Apply batch normalization if enabled
         if self.config.batch_normalize and scored_results:
-            from openmemories.application.memory.reranking import (
+            from ccmemories.application.memory.reranking import (
                 normalize_reranker_scores,
             )
 
@@ -295,7 +295,7 @@ class LLMReranker(BaseModel):
         scored_results.sort(key=lambda x: x[1], reverse=True)
 
         # Apply threshold with optional safety net
-        from openmemories.application.memory.reranking import (
+        from ccmemories.application.memory.reranking import (
             apply_threshold_with_safety_net,
         )
 

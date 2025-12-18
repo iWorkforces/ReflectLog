@@ -1,6 +1,6 @@
 # scripts/
 
-This directory contains development automation scripts for the OpenMemoriesMCP project.
+This directory contains development automation scripts for the CCMemoriesMCP project.
 
 ## Structure
 
@@ -79,7 +79,7 @@ uv run python scripts/benchmark_engines.py --help
 **Example output**:
 ```
 ======================================================================
-  OpenMemoriesMCP Engine Benchmark
+  CCMemoriesMCP Engine Benchmark
 ======================================================================
 
   Configuration:
@@ -193,7 +193,7 @@ These scripts are at project root (not in `scripts/`):
 - `./start-lint.sh` - Code linting
 - `./start-type-check.sh` - Type checking
 - `./start-unittest.sh` - Unit tests
-- `./start-openmemories-mcp-server.sh` - Start MCP server
+- `./start-ccmemories-mcp-server.sh` - Start MCP server
 
 See root `CLAUDE.md` for details on these scripts.
 
@@ -202,7 +202,7 @@ See root `CLAUDE.md` for details on these scripts.
 ```bash
 # Clone repository
 git clone <repo-url>
-cd OpenMemoriesMCP
+cd CCMemoriesMCP
 
 # Install git hooks
 ./scripts/setup-git-hooks.sh

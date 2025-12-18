@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from langchain_core.embeddings import Embeddings
 
-from openmemories.infrastructure.usearch_engine import USearchConfig, USearchEngine
+from ccmemories.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 
 class MockEmbedder(Embeddings):

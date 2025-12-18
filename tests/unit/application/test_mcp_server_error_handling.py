@@ -5,7 +5,7 @@ import os
 import pytest
 from unittest.mock import MagicMock, patch
 
-from openmemories.application.exceptions import (
+from ccmemories.application.exceptions import (
     ConfigurationError,
     SearchError,
     StorageError,
@@ -30,23 +30,23 @@ def mock_usearch_engine():
 class TestServerInitializationErrors:
     """Test error handling in server initialization."""
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", None)
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", None)
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_init_without_project_id_raises_error(
         self, mock_usearch_engine_class, mock_embeddings
     ):
         """Test server initialization fails without PROJECT_ID."""
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         with pytest.raises(ConfigurationError) as exc_info:
             FastMCPServer()
 
         assert "PROJECT_ID" in str(exc_info.value)
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_init_with_memory_config_error(
         self, mock_usearch_engine_class, mock_embeddings
     ):
@@ -56,7 +56,7 @@ class TestServerInitializationErrors:
             "Memory initialization failed"
         )
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         with pytest.raises(Exception) as exc_info:
             FastMCPServer()
@@ -68,9 +68,9 @@ class TestServerInitializationErrors:
 class TestAddToolErrorHandling:
     """Test error handling in add tool."""
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_add_memory_storage_failure(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
@@ -79,7 +79,7 @@ class TestAddToolErrorHandling:
         mock_usearch_engine.add.side_effect = Exception("Storage failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
@@ -90,16 +90,16 @@ class TestAddToolErrorHandling:
         assert "Failed to add messages" in str(exc_info.value)
         assert "Storage failure" in str(exc_info.value)
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_add_validation_error_with_non_string(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
         """Test add tool validation error with non-string message."""
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
@@ -109,16 +109,16 @@ class TestAddToolErrorHandling:
 
         assert "not a string" in str(exc_info.value)
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_add_validation_error_with_empty_string(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
         """Test add tool validation error with empty string."""
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
@@ -133,9 +133,9 @@ class TestAddToolErrorHandling:
 class TestGetAllToolErrorHandling:
     """Test error handling in get_all tool."""
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_get_all_memory_retrieval_failure(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
@@ -144,7 +144,7 @@ class TestGetAllToolErrorHandling:
         mock_usearch_engine.get_all.side_effect = Exception("Retrieval failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         get_all_tool = mcp_server.mcp._tool_manager._tools["get_all"].fn
@@ -160,9 +160,9 @@ class TestGetAllToolErrorHandling:
 class TestSearchToolErrorHandling:
     """Test error handling in search tool."""
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_search_memory_failure(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
@@ -171,7 +171,7 @@ class TestSearchToolErrorHandling:
         mock_usearch_engine.search.side_effect = Exception("Search failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         search_tool = mcp_server.mcp._tool_manager._tools["search"].fn
@@ -187,16 +187,16 @@ class TestSearchToolErrorHandling:
 class TestRemoveToolErrorHandling:
     """Test error handling in remove tool."""
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_remove_with_empty_list(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
         """Test remove tool with empty list (no-op)."""
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
@@ -207,9 +207,9 @@ class TestRemoveToolErrorHandling:
         # Verify delete was never called
         mock_usearch_engine.delete.assert_not_called()
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_remove_memory_delete_failure(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
@@ -220,7 +220,7 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine.delete.side_effect = Exception("Delete failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
@@ -231,9 +231,9 @@ class TestRemoveToolErrorHandling:
         assert "Failed to remove messages" in str(exc_info.value)
         assert "Delete failure" in str(exc_info.value)
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_remove_message_not_found(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
@@ -242,7 +242,7 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine.search.return_value = []
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
@@ -258,17 +258,17 @@ class TestRemoveToolErrorHandling:
 class TestRunMethodCoverage:
     """Test coverage for run() method."""
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch.dict(os.environ, {"MCP_TRANSPORT": "http"}, clear=False)
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_http_transport(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
         """Test run() method with HTTP transport."""
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
 
@@ -281,17 +281,17 @@ class TestRunMethodCoverage:
         # Verify run was called
         mock_run.assert_called_once()
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch.dict(os.environ, {"MCP_TRANSPORT": "stdio"}, clear=False)
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_stdio_transport(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
         """Test run() method with stdio transport."""
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         mock_run = MagicMock()
@@ -301,17 +301,17 @@ class TestRunMethodCoverage:
 
         mock_run.assert_called_once()
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch.dict(os.environ, {"MCP_TRANSPORT": "sse"}, clear=False)
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_sse_transport(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
         """Test run() method with SSE transport."""
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         mock_run = MagicMock()
@@ -321,7 +321,7 @@ class TestRunMethodCoverage:
 
         mock_run.assert_called_once()
 
-    @patch("openmemories.application.mcp_server.PROJECT_ID", "test_project")
+    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch.dict(
         os.environ,
         {
@@ -332,15 +332,15 @@ class TestRunMethodCoverage:
         },
         clear=False,
     )
-    @patch("openmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("openmemories.application.memory.manager.USearchEngine")
+    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_custom_config(
         self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
     ):
         """Test run() method with custom configuration."""
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         mock_run = MagicMock()

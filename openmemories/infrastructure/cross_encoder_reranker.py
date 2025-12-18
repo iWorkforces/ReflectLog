@@ -9,7 +9,7 @@ Uses FlagEmbedding's FlagReranker which is optimized for BGE reranker models
 with built-in FP16 support and score normalization.
 
 Example:
-    >>> from openmemories.infrastructure import CrossEncoderConfig, CrossEncoderReranker
+    >>> from ccmemories.infrastructure import CrossEncoderConfig, CrossEncoderReranker
     >>> config = CrossEncoderConfig.from_app_config(app_config)
     >>> reranker = CrossEncoderReranker(config=config, logger=logger)
     >>> results = reranker.rerank("Python tutorials", candidates)
@@ -23,7 +23,7 @@ from typing import Any
 from FlagEmbedding import FlagReranker
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from openmemories.application.config import Config
+from ccmemories.application.config import Config
 
 
 @dataclass(frozen=True)
@@ -268,7 +268,7 @@ class CrossEncoderReranker(BaseModel):
 
         # Apply batch normalization if enabled
         if self.config.batch_normalize:
-            from openmemories.application.memory.reranking import (
+            from ccmemories.application.memory.reranking import (
                 normalize_reranker_scores,
             )
 
@@ -317,7 +317,7 @@ class CrossEncoderReranker(BaseModel):
         scored.sort(key=lambda x: x[1], reverse=True)
 
         # Apply threshold with optional safety net
-        from openmemories.application.memory.reranking import (
+        from ccmemories.application.memory.reranking import (
             apply_threshold_with_safety_net,
         )
 

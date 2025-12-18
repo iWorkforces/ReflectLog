@@ -1,5 +1,5 @@
 [project]
-name = "openmemories"
+name = "ccmemories"
 version = "0.1.1"
 description = "MCP Server For AI Agent Project-base Memories"
 readme = "README.md"
@@ -56,20 +56,20 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/CCWorkforce/OpenMemoriesMCPMCP"
-Repository = "https://github.com/CCWorkforce/OpenMemoriesMCPMCP"
-Issues = "https://github.com/CCWorkforce/OpenMemoriesMCPMCP/issues"
-Documentation = "https://github.com/CCWorkforce/OpenMemoriesMCPMCP#readme"
+Homepage = "https://github.com/CCWorkforce/CCMemoriesMCP"
+Repository = "https://github.com/CCWorkforce/CCMemoriesMCP"
+Issues = "https://github.com/CCWorkforce/CCMemoriesMCP/issues"
+Documentation = "https://github.com/CCWorkforce/CCMemoriesMCP#readme"
 
 [project.scripts]
-openmemories = "openmemories.server:main"
+ccmemories = "ccmemories.server:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["openmemories"]
+packages = ["ccmemories"]
 
 [dependency-groups]
 dev = [
@@ -108,7 +108,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["openmemories"]
+source = ["ccmemories"]
 omit = [
     "*/tests/*",
     "*/test_*.py",
@@ -139,7 +139,7 @@ extra-paths = ["stubs"]
 
 [tool.ty.src]
 # Include project source and tests
-include = ["openmemories", "tests"]
+include = ["ccmemories", "tests"]
 # Exclude common non-source directories
 exclude = [
     "indexes/",

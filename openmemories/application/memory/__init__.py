@@ -1,4 +1,4 @@
-"""Memory management module for OpenMemoriesMCP MCP Server."""
+"""Memory management module for CCMemoriesMCP Server."""
 
 from .manager import AddResult, MemoryManager, ReplacementInfo
 from .protocols import SearchEngine

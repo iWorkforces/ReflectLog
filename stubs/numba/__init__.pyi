@@ -1,7 +1,7 @@
 """Type stubs for numba library.
 
 This provides type hints for the numba JIT compiler decorators and functions
-used in openmemories.application.utils.numba_utils.
+used in ccmemories.application.utils.numba_utils.
 """
 
 from typing import Any, Callable, TypeVar, overload

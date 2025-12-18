@@ -4,7 +4,7 @@ This document provides guidance on configuring the cross-encoder reranker for di
 
 ## Overview
 
-When `RERANKER_ENGINE=cross_encoder`, OpenMemoriesMCP uses a local cross-encoder model (default: `BAAI/bge-reranker-v2-m3`) to rerank search results based on semantic relevance. This approach is faster and incurs no API costs compared to LLM-based reranking.
+When `RERANKER_ENGINE=cross_encoder`, CCMemoriesMCP uses a local cross-encoder model (default: `BAAI/bge-reranker-v2-m3`) to rerank search results based on semantic relevance. This approach is faster and incurs no API costs compared to LLM-based reranking.
 
 ## Configuration Options
 
@@ -55,9 +55,9 @@ Different cross-encoder models have different maximum context lengths:
 
 Setting `CROSS_ENCODER_MAX_LENGTH` higher than the model's limit will result in automatic truncation by the model.
 
-### Recommendations for OpenMemoriesMCP
+### Recommendations for CCMemoriesMCP
 
-For typical memory storage use cases in OpenMemoriesMCP:
+For typical memory storage use cases in CCMemoriesMCP:
 
 - **Default (512)**: Optimal for most use cases. Memories are typically concise (the server enforces a 30KB text limit per message).
 - **Increase to 1024**: If storing longer code snippets or technical documentation.

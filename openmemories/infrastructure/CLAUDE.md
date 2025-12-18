@@ -1,6 +1,6 @@
-# openmemories/infrastructure/
+# ccmemories/infrastructure/
 
-This directory contains infrastructure components and external integrations for OpenMemoriesMCP.
+This directory contains infrastructure components and external integrations for CCMemoriesMCP.
 
 ## Structure
 
@@ -32,7 +32,7 @@ The `infrastructure/` module provides:
 ## Exports
 
 ```python
-from openmemories.infrastructure import (
+from ccmemories.infrastructure import (
     CachedEmbeddings,         # LRU caching wrapper for query embeddings
     CrossEncoderConfig,       # CrossEncoder reranker configuration
     CrossEncoderReranker,     # Local cross-encoder based reranking
@@ -213,8 +213,8 @@ for match in matches:
 ### Usage Example
 
 ```python
-from openmemories.infrastructure import USearchConfig, USearchEngine
-from openmemories.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
+from ccmemories.infrastructure import USearchConfig, USearchEngine
+from ccmemories.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 
 # Create configuration
 config = USearchConfig(
@@ -430,7 +430,7 @@ except Exception as e:
 ### Usage Example
 
 ```python
-from openmemories.infrastructure import LLMReranker, LLMRerankerConfig
+from ccmemories.infrastructure import LLMReranker, LLMRerankerConfig
 
 # Create configuration
 config = LLMRerankerConfig(
@@ -607,7 +607,7 @@ def model(self) -> FlagReranker:
 ### Usage Example
 
 ```python
-from openmemories.infrastructure import CrossEncoderConfig, CrossEncoderReranker
+from ccmemories.infrastructure import CrossEncoderConfig, CrossEncoderReranker
 
 # Create configuration
 config = CrossEncoderConfig(
@@ -823,7 +823,7 @@ except Exception as e:
 ### Usage Example
 
 ```python
-from openmemories.infrastructure import SmartReplacer, SmartReplacerConfig
+from ccmemories.infrastructure import SmartReplacer, SmartReplacerConfig
 
 # Create configuration
 config = SmartReplacerConfig(
@@ -949,7 +949,7 @@ store = MessageStore(
 ### Usage Example
 
 ```python
-from openmemories.infrastructure.message_store import MessageStore
+from ccmemories.infrastructure.message_store import MessageStore
 
 store = MessageStore(db_path="/tmp/messages.db")
 
@@ -1271,7 +1271,7 @@ except Exception:
 ### Usage Example
 
 ```python
-from openmemories.infrastructure import TantivyConfig, TantivyEngine
+from ccmemories.infrastructure import TantivyConfig, TantivyEngine
 
 config = TantivyConfig(
     project_id="my-project",
@@ -1381,7 +1381,7 @@ cached_embedder.clear_cache()
 ### Usage Example
 
 ```python
-from openmemories.infrastructure import LangchainQwenEmbeddings, CachedEmbeddings
+from ccmemories.infrastructure import LangchainQwenEmbeddings, CachedEmbeddings
 
 # Create base embedder
 base_embedder = LangchainQwenEmbeddings({
@@ -1525,7 +1525,7 @@ if config.embedder_provider == "langchain":
     embedder_config = {
         "provider": "langchain",
         "config": {
-            "class": "openmemories.infrastructure.qwen3_embedding.LangchainQwenEmbeddings",
+            "class": "ccmemories.infrastructure.qwen3_embedding.LangchainQwenEmbeddings",
             "config": {
                 "model": config.embedding_model,
                 "embedding_dims": config.qwen_embedding_dims,
@@ -1616,7 +1616,7 @@ for i in range(0, len(cleaned_texts), batch_size):
 ### TantivyEngine Direct Usage
 
 ```python
-from openmemories.infrastructure import TantivyConfig, TantivyEngine
+from ccmemories.infrastructure import TantivyConfig, TantivyEngine
 
 config = TantivyConfig(
     project_id="test-project",
@@ -1636,7 +1636,7 @@ results = engine.search("neural networks", project_id="test-project", limit=5)
 ### LangchainQwenEmbeddings Direct Usage
 
 ```python
-from openmemories.infrastructure import LangchainQwenEmbeddings
+from ccmemories.infrastructure import LangchainQwenEmbeddings
 
 # Initialize with config
 embeddings = LangchainQwenEmbeddings({
@@ -1658,7 +1658,7 @@ async def generate_embeddings():
 
 ```python
 import os
-from openmemories.infrastructure import LangchainQwenEmbeddings
+from ccmemories.infrastructure import LangchainQwenEmbeddings
 
 # Environment variables:
 # OPENROUTER_API_KEY=sk-or-...

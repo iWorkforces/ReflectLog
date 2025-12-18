@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openmemories.application.memory.fusion import (
+from ccmemories.application.memory.fusion import (
     RanxFusionEngine,
     SUPPORTED_METHODS,
     SUPPORTED_NORMALIZATIONS,

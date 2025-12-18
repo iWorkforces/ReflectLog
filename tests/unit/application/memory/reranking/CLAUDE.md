@@ -12,7 +12,7 @@ reranking/
 
 ## Purpose
 
-Tests for the `openmemories/application/memory/reranking/` module components:
+Tests for the `ccmemories/application/memory/reranking/` module components:
 
 - **`normalize_reranker_scores()`**: Batch min-max normalization to [0, 1] range
 - **`apply_threshold_with_safety_net()`**: Threshold filtering with optional safety net
@@ -164,6 +164,6 @@ Target **95%+ coverage** for normalization utilities:
 
 ## Related Files
 
-- **Source**: `openmemories/application/memory/reranking/normalization.py`
+- **Source**: `ccmemories/application/memory/reranking/normalization.py`
 - **Parent tests**: `tests/unit/application/memory/CLAUDE.md`
 - **Integration tests**: `tests/integration/test_memory_manager_usearch.py`

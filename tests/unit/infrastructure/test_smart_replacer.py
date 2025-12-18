@@ -5,7 +5,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
-from openmemories.infrastructure.smart_replacer import (
+from ccmemories.infrastructure.smart_replacer import (
     ReplacementDecision,
     SmartReplacer,
     SmartReplacerConfig,
@@ -157,7 +157,7 @@ class TestSmartReplacerInitialization:
         )
 
         with patch(
-            "openmemories.infrastructure.smart_replacer.AsyncOpenAI"
+            "ccmemories.infrastructure.smart_replacer.AsyncOpenAI"
         ) as mock_async_client:
             replacer = SmartReplacer(config=config)
 
@@ -179,7 +179,7 @@ class TestSmartReplacerInitialization:
         )
 
         with patch(
-            "openmemories.infrastructure.smart_replacer.AsyncOpenAI"
+            "ccmemories.infrastructure.smart_replacer.AsyncOpenAI"
         ) as mock_async_client:
             replacer = SmartReplacer(config=config)
 
@@ -200,7 +200,7 @@ class TestCheckReplacement:
             threshold=0.7,
         )
 
-        with patch("openmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
             replacer = SmartReplacer(config=config)
             return replacer
 
@@ -341,7 +341,7 @@ class TestCheckReplacement:
             enabled=False,
         )
 
-        with patch("openmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
             replacer = SmartReplacer(config=config)
 
         should_replace, confidence, reason = await replacer.check_replacement(
@@ -457,7 +457,7 @@ class TestStructuredOutputFallback:
             model="x-ai/grok-4.1-fast",
         )
 
-        with patch("openmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
             replacer = SmartReplacer(config=config)
             return replacer
 
@@ -568,7 +568,7 @@ class TestSmartReplacerIntegration:
             threshold=0.7,
         )
 
-        with patch("openmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
             replacer = SmartReplacer(config=config, logger=MagicMock())
 
             mock_response = MagicMock()
@@ -605,7 +605,7 @@ class TestSmartReplacerIntegration:
             threshold=0.7,
         )
 
-        with patch("openmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
             replacer = SmartReplacer(config=config, logger=MagicMock())
 
             mock_response = MagicMock()

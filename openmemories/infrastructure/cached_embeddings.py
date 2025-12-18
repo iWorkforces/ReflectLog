@@ -23,7 +23,7 @@ class CachedEmbeddings(BaseModel, Embeddings):
 
     Example:
         ```python
-        from openmemories.infrastructure import LangchainQwenEmbeddings, CachedEmbeddings
+        from ccmemories.infrastructure import LangchainQwenEmbeddings, CachedEmbeddings
 
         base_embedder = LangchainQwenEmbeddings({...})
         cached_embedder = CachedEmbeddings(

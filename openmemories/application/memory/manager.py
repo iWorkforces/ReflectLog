@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import anyio
 from asyncer import asyncify, create_task_group
 
-from openmemories.application.types import ISemanticSearchEngine
-from openmemories.infrastructure import (
+from ccmemories.application.types import ISemanticSearchEngine
+from ccmemories.infrastructure import (
     CachedEmbeddings,
     CrossEncoderConfig,
     CrossEncoderReranker,

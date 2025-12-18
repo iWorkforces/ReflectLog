@@ -12,7 +12,7 @@ sys.path.insert(
 )
 
 # Import directly from the module file to avoid triggering config singleton
-from openmemories.application.utils.logging import (
+from ccmemories.application.utils.logging import (
     format_fusion_score_status,
 )
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# OpenMemoriesMCP - Unit Testing Script
+# CCMemoriesMCP - Unit Testing Script
 # This script uses pytest to run all unit tests in the codebase
 
 set -e
@@ -27,7 +27,7 @@ PYTEST_CONFIG_FILE="pyproject.toml"
 VENV_DIR="venv"
 COVERAGE_MIN=90  # Minimum coverage percentage
 
-echo -e "${BLUE}🧪 OpenMemoriesMCP - Unit Testing${NC}"
+echo -e "${BLUE}🧪 CCMemoriesMCP - Unit Testing${NC}"
 echo -e "${BLUE}=====================================${NC}"
 echo ""
 
@@ -169,13 +169,13 @@ run_tests_coverage() {
     echo ""
 
     # Run pytest with coverage
-    if uv run pytest "$TEST_DIR" -v --cov=openmemories --cov-report=term-missing --cov-report=html; then
+    if uv run pytest "$TEST_DIR" -v --cov=ccmemories --cov-report=term-missing --cov-report=html; then
         echo ""
         echo -e "${GREEN}✅ Tests completed with coverage report${NC}"
         echo -e "${CYAN}📁 HTML coverage report: htmlcov/index.html${NC}"
 
         # Check coverage percentage
-        COVERAGE=$(uv run pytest "$TEST_DIR" --cov=openmemories --cov-report=term | grep "TOTAL" | awk '{print $NF}' | sed 's/%//' || echo "0")
+        COVERAGE=$(uv run pytest "$TEST_DIR" --cov=ccmemories --cov-report=term | grep "TOTAL" | awk '{print $NF}' | sed 's/%//' || echo "0")
         if [ ! -z "$COVERAGE" ] && [ "$COVERAGE" != "0" ]; then
             if [ $(echo "$COVERAGE >= $COVERAGE_MIN" | bc -l 2>/dev/null || echo 0) -eq 1 ]; then
                 echo -e "${GREEN}✅ Coverage ${COVERAGE}% meets minimum requirement of ${COVERAGE_MIN}%${NC}"

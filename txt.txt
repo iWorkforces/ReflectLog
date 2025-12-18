@@ -1,4 +1,4 @@
-OpenMemoriesMCP Development Roadmap
+CCMemoriesMCP Development Roadmap
 
 Epic 1: Configuration & Security Hardening
 

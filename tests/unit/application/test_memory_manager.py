@@ -4,10 +4,10 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 
-from openmemories.application.memory.manager import MemoryManager
-from openmemories.application.config.settings import Config
-from openmemories.application.utils import StructuredLogger
-from openmemories.application.exceptions import StorageError
+from ccmemories.application.memory.manager import MemoryManager
+from ccmemories.application.config.settings import Config
+from ccmemories.application.utils import StructuredLogger
+from ccmemories.application.exceptions import StorageError
 
 
 @pytest.fixture
@@ -78,12 +78,12 @@ class TestHybridMemoryManager:
 
     def test_initialization(self, mock_config, mock_logger):
         """Test basic initialization with TantivyEngine."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy:
                     manager = MemoryManager(mock_config, mock_logger)
                     assert hasattr(manager, "_semantic_engine")
@@ -95,12 +95,12 @@ class TestHybridMemoryManager:
     def test_initialization_without_hybrid_search(self, mock_config, mock_logger):
         """Test initialization with hybrid search disabled."""
         mock_config.enable_hybrid_search = False
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy:
                     manager = MemoryManager(mock_config, mock_logger)
                     # TantivyEngine should not be initialized
@@ -110,13 +110,13 @@ class TestHybridMemoryManager:
     def test_add_messages(self, mock_config, mock_logger):
         """Test parallel indexing works with TantivyEngine."""
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     # Setup USearch engine mock
                     mock_usearch = MagicMock()
@@ -143,12 +143,12 @@ class TestHybridMemoryManager:
         Sprint 1.4 changed from O(n) get_all() + iteration to O(log n) indexed lookup.
         """
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     mock_usearch = MagicMock()
                     # Mock get_id_by_message for direct lookup (O(log n))
                     mock_usearch.get_id_by_message.return_value = 42
@@ -170,12 +170,12 @@ class TestHybridMemoryManager:
     def test_search_for_removal_not_found(self, mock_config, mock_logger):
         """Test removal search when message is not found."""
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     mock_usearch = MagicMock()
                     # Mock get_id_by_message returning None (not found)
                     mock_usearch.get_id_by_message.return_value = None
@@ -190,12 +190,12 @@ class TestHybridMemoryManager:
 
     def test_exact_match_detection(self, mock_config, mock_logger):
         """Test exact match detection uses Tantivy."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy_class.return_value = mock_tantivy
@@ -223,10 +223,10 @@ class TestHybridMemoryManager:
         mock_config.enable_hybrid_search = False  # Disable Tantivy
 
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 mock_usearch = MagicMock()
                 mock_usearch_class.return_value = mock_usearch
@@ -258,12 +258,12 @@ class TestHybridMemoryManager:
 
     def test_search_tantivy_delegates_to_engine(self, mock_config, mock_logger):
         """Test _search_tantivy delegates to TantivyEngine."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy.search.return_value = [
@@ -284,13 +284,13 @@ class TestHybridMemoryManager:
     async def test_search_uses_rrf_fusion(self, mock_config, mock_logger):
         """Test hybrid search uses RRFFusion for ranking."""
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     # Setup USearchEngine mock
                     mock_usearch = MagicMock()
@@ -322,11 +322,11 @@ class TestFusionThresholdFiltering:
         """Fusion threshold should filter results below threshold."""
         mock_config.fusion_ranking_threshold = 0.5
 
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
 
                     results = [("high score", 0.7), ("low score", 0.3)]
@@ -339,11 +339,11 @@ class TestFusionThresholdFiltering:
 
     def test_filter_by_fusion_threshold_keeps_all_above(self, mock_config, mock_logger):
         """All results above threshold should be kept."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
 
                     results = [("A", 0.9), ("B", 0.6), ("C", 0.5)]
@@ -355,11 +355,11 @@ class TestFusionThresholdFiltering:
         self, mock_config, mock_logger
     ):
         """Empty results should return empty list."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
 
                     filtered = manager._filter_by_fusion_threshold([], 0.5, "test")
@@ -367,11 +367,11 @@ class TestFusionThresholdFiltering:
 
     def test_filter_by_fusion_threshold_boundary_exact(self, mock_config, mock_logger):
         """Score exactly at threshold should be kept (>= comparison)."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
 
                     results = [("A", 0.5), ("B", 0.49)]
@@ -382,11 +382,11 @@ class TestFusionThresholdFiltering:
 
     def test_filter_by_fusion_threshold_logs_decisions(self, mock_config, mock_logger):
         """Filtering should log summary (verbose per-item logging is optional)."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
 
                     results = [("kept", 0.6), ("filtered", 0.3)]
@@ -397,11 +397,11 @@ class TestFusionThresholdFiltering:
 
     def test_filter_by_fusion_threshold_all_filtered(self, mock_config, mock_logger):
         """All results below threshold should be filtered out."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
 
                     results = [("A", 0.3), ("B", 0.2), ("C", 0.1)]
@@ -417,11 +417,11 @@ class TestParallelMessageAddition:
     @pytest.mark.asyncio
     async def test_add_messages_async_empty_list(self, mock_config, mock_logger):
         """Empty list should return AddResult with 0 stored without any operations."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
                     result = await manager.add_messages_async([])
                     assert result.stored_count == 0
@@ -431,12 +431,12 @@ class TestParallelMessageAddition:
     @pytest.mark.asyncio
     async def test_add_messages_async_single_message(self, mock_config, mock_logger):
         """Single message should skip concurrency overhead."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy_class.return_value = mock_tantivy
@@ -451,12 +451,12 @@ class TestParallelMessageAddition:
     @pytest.mark.asyncio
     async def test_add_messages_async_multiple_messages(self, mock_config, mock_logger):
         """Multiple messages should be processed in parallel."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy_class.return_value = mock_tantivy
@@ -478,12 +478,12 @@ class TestParallelMessageAddition:
         """Concurrency limit should be respected via semaphore."""
         mock_config.add_max_concurrency = 2  # Low limit for testing
 
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy_class.return_value = mock_tantivy
@@ -506,12 +506,12 @@ class TestParallelMessageAddition:
         in parallel, so we use a side_effect function instead of a list to
         handle non-deterministic call order.
         """
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
 
@@ -537,13 +537,13 @@ class TestParallelMessageAddition:
     async def test_add_messages_async_error_handling(self, mock_config, mock_logger):
         """Error during parallel addition should raise RuntimeError."""
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     # Setup USearchEngine mock to raise error
                     mock_usearch = MagicMock()
@@ -563,12 +563,12 @@ class TestParallelMessageAddition:
     @pytest.mark.asyncio
     async def test_add_message_async_delegates_to_sync(self, mock_config, mock_logger):
         """_add_message_async should delegate to sync _add_message."""
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy_class.return_value = mock_tantivy
@@ -593,12 +593,12 @@ class TestParallelMessageAddition:
         Sprint 2.2: Phase 1 includes deduplicating within the batch itself
         before checking storage, to avoid storing the same message twice.
         """
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy.search.return_value = []  # No storage duplicates
@@ -633,12 +633,12 @@ class TestConcurrencyConfiguration:
         """Low concurrency limit should still process all messages."""
         mock_config.add_max_concurrency = 1  # Sequential processing
 
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy_class.return_value = mock_tantivy
@@ -653,12 +653,12 @@ class TestConcurrencyConfiguration:
         """High concurrency limit should allow more parallel tasks."""
         mock_config.add_max_concurrency = 100  # Higher than message count
 
-        with patch("openmemories.application.memory.manager.USearchEngine"):
+        with patch("ccmemories.application.memory.manager.USearchEngine"):
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
                 with patch(
-                    "openmemories.application.memory.manager.TantivyEngine"
+                    "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     mock_tantivy = MagicMock()
                     mock_tantivy_class.return_value = mock_tantivy
@@ -683,14 +683,14 @@ class TestParallelSmartReplacement:
     ):
         """Test that multiple replacement candidates are checked in parallel."""
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     with patch(
-                        "openmemories.application.memory.manager.SmartReplacer"
+                        "ccmemories.application.memory.manager.SmartReplacer"
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
                         # Return 3 similar candidates above threshold
@@ -734,14 +734,14 @@ class TestParallelSmartReplacement:
         mock_config.rerank_max_concurrency = 2  # Only 2 concurrent calls allowed
 
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     with patch(
-                        "openmemories.application.memory.manager.SmartReplacer"
+                        "ccmemories.application.memory.manager.SmartReplacer"
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
                         # Return 5 candidates (more than concurrency limit)
@@ -773,14 +773,14 @@ class TestParallelSmartReplacement:
     ):
         """Test that error in one candidate check doesn't block others."""
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     with patch(
-                        "openmemories.application.memory.manager.SmartReplacer"
+                        "ccmemories.application.memory.manager.SmartReplacer"
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
                         mock_usearch.search.return_value = [
@@ -817,14 +817,14 @@ class TestParallelSmartReplacement:
     async def test_parallel_replacement_no_candidates(self, mock_config, mock_logger):
         """Test that no candidates returns empty list without LLM calls."""
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     with patch(
-                        "openmemories.application.memory.manager.SmartReplacer"
+                        "ccmemories.application.memory.manager.SmartReplacer"
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
                         mock_usearch.search.return_value = []  # No similar memories
@@ -850,14 +850,14 @@ class TestParallelSmartReplacement:
         mock_config.smart_replace_min_similarity = 0.6  # Filter out low similarity
 
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     with patch(
-                        "openmemories.application.memory.manager.SmartReplacer"
+                        "ccmemories.application.memory.manager.SmartReplacer"
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
                         # Only first 2 above threshold (0.8, 0.7 >= 0.6)
@@ -891,12 +891,12 @@ class TestParallelSmartReplacement:
         mock_config.enable_smart_replace = False
 
         with patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             with patch(
-                "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
             ):
-                with patch("openmemories.application.memory.manager.TantivyEngine"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
                     mock_usearch = MagicMock()
                     mock_usearch_class.return_value = mock_usearch
 

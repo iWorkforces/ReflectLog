@@ -18,7 +18,7 @@ After batch normalization:
 import numpy as np
 from numpy.typing import NDArray
 
-from openmemories.application.utils.numba_utils import normalize_scores_minmax
+from ccmemories.application.utils.numba_utils import normalize_scores_minmax
 
 
 def normalize_reranker_scores(

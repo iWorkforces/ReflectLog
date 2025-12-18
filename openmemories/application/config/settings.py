@@ -1,4 +1,4 @@
-"""Configuration management for OpenMemoriesMCP MCP Server."""
+"""Configuration management for CCMemoriesMCP Server."""
 
 import os
 import re
@@ -18,7 +18,7 @@ TransportMode: TypeAlias = Literal["stdio", "http", "sse", "streamable-http"]
 
 @dataclass(frozen=True)
 class Config:
-    """Configuration settings for OpenMemoriesMCP MCP Server.
+    """Configuration settings for CCMemoriesMCP Server.
 
     All settings are read from environment variables with sensible defaults.
     This class is immutable (frozen) to prevent accidental modifications at runtime.

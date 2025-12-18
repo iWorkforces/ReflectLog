@@ -7,7 +7,7 @@ Tests cover:
 
 import pytest
 
-from openmemories.application.memory.reranking import (
+from ccmemories.application.memory.reranking import (
     apply_threshold_with_safety_net,
     normalize_reranker_scores,
 )

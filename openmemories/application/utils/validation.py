@@ -1,4 +1,4 @@
-"""Message validation utilities for OpenMemoriesMCP MCP Server."""
+"""Message validation utilities for CCMemoriesMCP Server."""
 
 from typing import Optional
 

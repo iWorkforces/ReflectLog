@@ -1,4 +1,4 @@
-# openmemories/application/tools/
+# ccmemories/application/tools/
 
 This directory contains the modular MCP tool implementations that provide the external interface to the memory system.
 
@@ -442,7 +442,7 @@ class TestSearchTool:
 
 ## Adding a New Tool
 
-1. Create `openmemories/application/tools/new_tool.py`:
+1. Create `ccmemories/application/tools/new_tool.py`:
    ```python
    from .base import BaseTool
 

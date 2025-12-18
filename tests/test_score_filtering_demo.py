@@ -149,7 +149,7 @@ Key Insights:
         print("\nDetailed error:")
         traceback.print_exc()
         print("\nMake sure the server is running:")
-        print("  ./start-openmemories-mcp-server.sh --project_id OpenMemoriesMCPMCP")
+        print("  ./start-ccmemories-mcp-server.sh --project_id CCMemoriesMCP")
         raise
 
 

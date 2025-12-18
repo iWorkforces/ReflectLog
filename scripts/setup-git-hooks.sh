@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# OpenMemoriesMCP - Git Hooks Setup Script
+# CCMemoriesMCP - Git Hooks Setup Script
 # This script installs git hooks from scripts/git-hooks/ to .git/hooks/
 
 # Colors for output
@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🔧 OpenMemoriesMCP - Git Hooks Setup${NC}"
+echo -e "${BLUE}🔧 CCMemoriesMCP - Git Hooks Setup${NC}"
 echo -e "${BLUE}================================${NC}"
 echo ""
 

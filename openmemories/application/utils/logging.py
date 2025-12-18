@@ -1,4 +1,4 @@
-"""Structured logging utilities for OpenMemoriesMCP MCP Server."""
+"""Structured logging utilities for CCMemoriesMCP Server."""
 
 import logging
 from contextlib import contextmanager

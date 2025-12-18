@@ -1,4 +1,4 @@
-"""Utilities for OpenMemoriesMCP MCP Server."""
+"""Utilities for CCMemoriesMCP Server."""
 
 from .logging import (
     StructuredLogger,

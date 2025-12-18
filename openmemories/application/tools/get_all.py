@@ -1,4 +1,4 @@
-"""Get all tool implementation for OpenMemoriesMCP MCP Server."""
+"""Get all tool implementation for CCMemoriesMCP Server."""
 
 from typing import List
 

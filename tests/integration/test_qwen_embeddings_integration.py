@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from openmemories.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
+from ccmemories.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 
 # Skip all tests if OPENROUTER_API_KEY is not set
 pytestmark = pytest.mark.skipif(

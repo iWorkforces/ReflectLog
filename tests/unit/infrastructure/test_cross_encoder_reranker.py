@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openmemories.infrastructure.cross_encoder_reranker import (
+from ccmemories.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
@@ -116,7 +116,7 @@ class TestCrossEncoderRerankerInitialization:
         config = CrossEncoderConfig()
 
         with patch(
-            "openmemories.infrastructure.cross_encoder_reranker.FlagReranker"
+            "ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"
         ) as mock_flag_reranker:
             reranker = CrossEncoderReranker(config=config)
 
@@ -131,7 +131,7 @@ class TestCrossEncoderRerankerInitialization:
         )
 
         with patch(
-            "openmemories.infrastructure.cross_encoder_reranker.FlagReranker"
+            "ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"
         ) as mock_flag_reranker:
             mock_model = MagicMock()
             mock_flag_reranker.return_value = mock_model
@@ -152,7 +152,7 @@ class TestCrossEncoderRerankerInitialization:
         config = CrossEncoderConfig()
 
         with patch(
-            "openmemories.infrastructure.cross_encoder_reranker.FlagReranker"
+            "ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"
         ) as mock_flag_reranker:
             mock_model = MagicMock()
             mock_flag_reranker.return_value = mock_model
@@ -185,7 +185,7 @@ class TestRerank:
             batch_normalize=False,  # Disable batch normalization for raw score tests
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             # Pre-set the model to avoid lazy loading
             reranker._model = MagicMock()  # type: ignore[assignment]
@@ -200,7 +200,7 @@ class TestRerank:
         """Test that disabled reranker returns candidates unchanged."""
         config = CrossEncoderConfig(enabled=False)
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
 
             candidates = [("doc1", 0.8), ("doc2", 0.6)]
@@ -232,7 +232,7 @@ class TestRerank:
         """Test that rerank limits results to top_k."""
         config = CrossEncoderConfig(enabled=True, top_k=2, batch_normalize=False)
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             reranker._model.compute_score.return_value = [0.9, 0.8, 0.7, 0.6, 0.5]  # type: ignore[union-attr]
@@ -249,7 +249,7 @@ class TestRerank:
             enabled=True, top_k=10, score_threshold=0.5, batch_normalize=False
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             # Scores: 0.9, 0.4, 0.6 - only 0.9 and 0.6 pass threshold
@@ -290,7 +290,7 @@ class TestRerank:
             batch_normalize=False,
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             reranker._model.compute_score.return_value = [0.8]  # type: ignore[union-attr]
@@ -308,7 +308,7 @@ class TestRerank:
         """Test that reranking logs debug information when logger is provided."""
         config = CrossEncoderConfig(enabled=True, batch_normalize=False)
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             mock_logger = MagicMock()
             reranker = CrossEncoderReranker(config=config, logger=mock_logger)
             reranker._model = MagicMock()  # type: ignore[assignment]
@@ -326,7 +326,7 @@ class TestRerank:
             enabled=True, top_k=10, score_threshold=0.0, batch_normalize=False
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             # FlagReranker returns float for single pair, not list
@@ -348,7 +348,7 @@ class TestRerankAsync:
         """Create a CrossEncoderReranker with mocked FlagReranker model."""
         config = CrossEncoderConfig(enabled=True, batch_normalize=False)
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             return reranker
@@ -389,7 +389,7 @@ class TestCrossEncoderRerankerIntegration:
             batch_normalize=False,  # Test raw score behavior
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config, logger=MagicMock())
             reranker._model = MagicMock()  # type: ignore[assignment]
 
@@ -425,7 +425,7 @@ class TestCrossEncoderRerankerIntegration:
         config = CrossEncoderConfig(enabled=False)
 
         with patch(
-            "openmemories.infrastructure.cross_encoder_reranker.FlagReranker"
+            "ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"
         ) as mock_flag_reranker:
             reranker = CrossEncoderReranker(config=config)
 
@@ -452,7 +452,7 @@ class TestThreadSafety:
         config = CrossEncoderConfig()
 
         with patch(
-            "openmemories.infrastructure.cross_encoder_reranker.FlagReranker"
+            "ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"
         ) as mock_flag_reranker:
             mock_model = MagicMock()
             mock_flag_reranker.return_value = mock_model
@@ -494,7 +494,7 @@ class TestBatchNormalization:
             batch_normalize=True,
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             # CrossEncoder typical low scores (0.001-0.17)
@@ -521,7 +521,7 @@ class TestBatchNormalization:
             batch_normalize=False,
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]  # type: ignore[union-attr]
@@ -546,7 +546,7 @@ class TestBatchNormalization:
             min_results=0,
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             # After normalization: 0.17->1.0, 0.05->~0.29, 0.001->0.0
@@ -573,7 +573,7 @@ class TestMinResultsSafetyNet:
             min_results=2,  # Safety net: return at least 2
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             # After normalization: 0.6->1.0, 0.4->0.5, 0.2->0.0
@@ -598,7 +598,7 @@ class TestMinResultsSafetyNet:
             min_results=0,  # No safety net
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             # After normalization: max is 1.0, but no scores pass 0.9 threshold
@@ -622,7 +622,7 @@ class TestMinResultsSafetyNet:
             min_results=1,
         )
 
-        with patch("openmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("ccmemories.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()  # type: ignore[assignment]
             # After normalization: 0.9->1.0, 0.7->0.5, 0.5->0.0

@@ -6,7 +6,7 @@ import numpy as np
 from ranx import Run
 from ranx import fuse as ranx_fuse
 
-from openmemories.application.utils.numba_utils import normalize_scores_minmax
+from ccmemories.application.utils.numba_utils import normalize_scores_minmax
 
 # Supported fusion methods (unsupervised, no training data required)
 # Note: ranx uses 'sum', 'mnz', 'max' instead of 'combsum', 'combmnz', 'combmax'

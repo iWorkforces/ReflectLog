@@ -5,7 +5,7 @@ This module provides functions for normalizing reranker scores to a consistent
 semantics across different reranking engines (LLM, CrossEncoder).
 
 Example:
-    >>> from openmemories.application.memory.reranking import (
+    >>> from ccmemories.application.memory.reranking import (
     ...     normalize_reranker_scores,
     ...     apply_threshold_with_safety_net,
     ... )

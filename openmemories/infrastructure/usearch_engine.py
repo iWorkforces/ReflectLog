@@ -6,7 +6,7 @@ the ISemanticSearchEngine protocol for compatibility with MemoryManager.
 
 Clean Architecture Compliance:
     This module implements the ISemanticSearchEngine protocol defined in
-    the application layer (openmemories.application.types), following the
+    the application layer (ccmemories.application.types), following the
     Dependency Inversion Principle from SOLID.
 """
 
@@ -20,9 +20,9 @@ from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import Index, BatchMatches
 
-from openmemories.application.types import ISemanticSearchEngine
-from openmemories.application.utils.numba_utils import distance_to_similarity_cosine
-from openmemories.infrastructure.message_store import MessageStore
+from ccmemories.application.types import ISemanticSearchEngine
+from ccmemories.application.utils.numba_utils import distance_to_similarity_cosine
+from ccmemories.infrastructure.message_store import MessageStore
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,7 @@ class USearchEngine(BaseModel):
 
     Example:
         ```python
-        from openmemories.infrastructure import USearchConfig, USearchEngine
+        from ccmemories.infrastructure import USearchConfig, USearchEngine
         from langchain_openai import OpenAIEmbeddings
 
         config = USearchConfig(

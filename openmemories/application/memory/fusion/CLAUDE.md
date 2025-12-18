@@ -1,4 +1,4 @@
-# openmemories/application/memory/fusion/
+# ccmemories/application/memory/fusion/
 
 This directory contains the fusion engine implementations for hybrid search ranking.
 
@@ -70,7 +70,7 @@ fused = engine.fuse(
 ### Factory Function
 
 ```python
-from openmemories.application.memory.fusion import create_fusion_engine
+from ccmemories.application.memory.fusion import create_fusion_engine
 
 engine = create_fusion_engine(
     method="rrf",
@@ -179,7 +179,7 @@ Via environment variables (in `MemoryManager`):
 ## Usage in MemoryManager
 
 ```python
-from openmemories.application.memory.fusion import create_fusion_engine
+from ccmemories.application.memory.fusion import create_fusion_engine
 
 class MemoryManager:
     def __init__(self, config, logger):
@@ -198,7 +198,7 @@ class MemoryManager:
 
 ## Adding a New Fusion Engine
 
-1. Create `openmemories/application/memory/fusion/new_engine.py`:
+1. Create `ccmemories/application/memory/fusion/new_engine.py`:
    ```python
    class NewFusionEngine:
        def __init__(self, method: str = "custom", logger=None):

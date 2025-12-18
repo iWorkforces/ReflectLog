@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openmemories.infrastructure.message_store import MessageStore
+from ccmemories.infrastructure.message_store import MessageStore
 
 
 class TestMessageStoreInitialization:

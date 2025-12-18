@@ -1,4 +1,4 @@
-"""OpenMemoriesMCP application layer.
+"""CCMemoriesMCP application layer.
 
 This package contains the core business logic including:
 - MCP server orchestration
@@ -8,13 +8,13 @@ This package contains the core business logic including:
 - Custom exception hierarchy
 """
 
-from openmemories.application.exceptions import (
+from ccmemories.application.exceptions import (
     ConfigurationError,
     DuplicateError,
     EmbeddingError,
     InconsistentStateError,
     InitializationError,
-    OpenMemoriesError,
+    CCMemoriesError,
     RerankerError,
     SearchError,
     StorageError,
@@ -22,7 +22,7 @@ from openmemories.application.exceptions import (
 )
 
 __all__ = [
-    "OpenMemoriesError",
+    "CCMemoriesError",
     "ConfigurationError",
     "ValidationError",
     "InitializationError",

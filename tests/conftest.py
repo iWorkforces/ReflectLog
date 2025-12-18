@@ -67,7 +67,7 @@ def mock_memory_class(mock_usearch_engine):
     Yields:
         Patched USearchEngine class that returns mock_usearch_engine instance
     """
-    with patch("openmemories.application.memory.manager.USearchEngine") as mock_cls:
+    with patch("ccmemories.application.memory.manager.USearchEngine") as mock_cls:
         mock_cls.return_value = mock_usearch_engine
         yield mock_cls
 
@@ -131,13 +131,13 @@ def mcp_server(set_env_vars, mock_usearch_engine):
     """
     with (
         patch(
-            "openmemories.application.memory.manager.USearchEngine"
+            "ccmemories.application.memory.manager.USearchEngine"
         ) as mock_usearch_cls,
         patch(
-            "openmemories.application.memory.manager.TantivyEngine"
+            "ccmemories.application.memory.manager.TantivyEngine"
         ) as mock_tantivy_cls,
         patch(
-            "openmemories.application.memory.manager.LangchainQwenEmbeddings"
+            "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
         ) as mock_embedder_cls,
     ):
         # Configure USearchEngine mock
@@ -152,7 +152,7 @@ def mcp_server(set_env_vars, mock_usearch_engine):
         mock_embedder = MagicMock()
         mock_embedder_cls.return_value = mock_embedder
 
-        from openmemories.application.mcp_server import FastMCPServer
+        from ccmemories.application.mcp_server import FastMCPServer
 
         server = FastMCPServer()
         # Add backwards-compatible 'memory_manager' attribute for tests (accessing private attribute)

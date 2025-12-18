@@ -1,4 +1,4 @@
-# openmemories/application/memory/reranking/
+# ccmemories/application/memory/reranking/
 
 This directory contains score normalization utilities for rerankers to enable unified threshold semantics.
 
@@ -32,7 +32,7 @@ This module provides batch-level min-max normalization to transform these divers
 Transforms reranker scores to `[0, 1]` using batch min-max normalization:
 
 ```python
-from openmemories.application.memory.reranking import normalize_reranker_scores
+from ccmemories.application.memory.reranking import normalize_reranker_scores
 
 # CrossEncoder typical range (0.001-0.17)
 scored = [("doc1", 0.17), ("doc2", 0.05), ("doc3", 0.001)]
@@ -52,7 +52,7 @@ normalized = normalize_reranker_scores(scored)
 Filters results by score threshold with optional safety net:
 
 ```python
-from openmemories.application.memory.reranking import apply_threshold_with_safety_net
+from ccmemories.application.memory.reranking import apply_threshold_with_safety_net
 
 # With safety net disabled (default)
 scored = [("doc1", 0.4), ("doc2", 0.3)]  # all below 0.5
@@ -83,10 +83,10 @@ Related environment variables (via `Config`):
 
 ### Numba Acceleration
 
-The core normalization uses `normalize_scores_minmax()` from `openmemories.application.utils.numba_utils`:
+The core normalization uses `normalize_scores_minmax()` from `ccmemories.application.utils.numba_utils`:
 
 ```python
-from openmemories.application.utils.numba_utils import normalize_scores_minmax
+from ccmemories.application.utils.numba_utils import normalize_scores_minmax
 
 # Numba JIT-compiled for performance
 scores = np.array([0.17, 0.05, 0.001], dtype=np.float64)
@@ -133,4 +133,4 @@ filtered_results = apply_threshold_with_safety_net(
 ## Dependencies
 
 - `numpy`: Array operations
-- `openmemories.application.utils.numba_utils`: JIT-compiled normalization
+- `ccmemories.application.utils.numba_utils`: JIT-compiled normalization

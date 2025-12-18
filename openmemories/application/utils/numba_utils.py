@@ -5,7 +5,7 @@ that benefit from machine code compilation. These are used in fusion scoring,
 normalization, and other vectorized operations.
 
 Usage:
-    from openmemories.application.utils.numba_utils import (
+    from ccmemories.application.utils.numba_utils import (
         normalize_scores_minmax,
         filter_scores_by_threshold,
         compute_rrf_scores,
@@ -222,7 +222,7 @@ def warmup_numba_functions() -> None:
 
     Example:
         # In server startup
-        from openmemories.application.utils.numba_utils import warmup_numba_functions
+        from ccmemories.application.utils.numba_utils import warmup_numba_functions
         warmup_numba_functions()
     """
     # Small test arrays for compilation

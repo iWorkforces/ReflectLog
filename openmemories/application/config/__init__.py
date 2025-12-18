@@ -1,4 +1,4 @@
-"""Configuration module for OpenMemoriesMCP MCP Server."""
+"""Configuration module for CCMemoriesMCP Server."""
 
 from .prompts import (
     INSTRUCTIONS_HEADER,

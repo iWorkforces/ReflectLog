@@ -1,11 +1,11 @@
-# openmemories/
+# ccmemories/
 
-This directory contains the main source code for the OpenMemoriesMCP MCP server.
+This directory contains the main source code for the CCMemoriesMCP server.
 
 ## Structure
 
 ```
-openmemories/
+ccmemories/
 ├── __init__.py           # Package metadata (__version__ = "0.1.0") and exports
 ├── server.py             # CLI entry point and argument parsing
 ├── application/          # Application layer (business logic)
@@ -47,7 +47,7 @@ This is the top-level package that ties together:
 
 ## Entry Point Flow
 
-When `openmemories` command is run:
+When `ccmemories` command is run:
 1. `server.py::main()` is invoked (defined as entry point in `pyproject.toml`)
 2. CLI arguments are parsed with `argparse`
 3. Environment variables are set based on arguments (priority: CLI args > env vars > defaults)
@@ -60,7 +60,7 @@ When `openmemories` command is run:
 ### `__init__.py`
 - Exports `main` function and `__version__`
 - Version is sourced here and used throughout the application
-- Enables both CLI usage (`openmemories`) and programmatic usage (`from openmemories import main`)
+- Enables both CLI usage (`ccmemories`) and programmatic usage (`from ccmemories import main`)
 
 ### `server.py`
 - **Responsibility**: CLI argument parsing and environment configuration
@@ -111,11 +111,11 @@ When adding new modules to this package:
 
 This directory directly imports:
 - Standard library: `sys`, `os`, `argparse`
-- Internal: `openmemories.__version__`, `application.mcp_server.FastMCPServer`
+- Internal: `ccmemories.__version__`, `application.mcp_server.FastMCPServer`
 
 ## Conventions
 
-- **Imports**: Absolute imports preferred (`from openmemories.application import ...`)
+- **Imports**: Absolute imports preferred (`from ccmemories.application import ...`)
 - **Path manipulation**: `sys.path.insert()` used in `server.py:7` for direct script execution
 - **Logging**: Use stderr for stdio mode (see `server.py:110-111`)
 - **Error messages**: Include help text with examples (see `server.py:23-40`)

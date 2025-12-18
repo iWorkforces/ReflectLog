@@ -183,7 +183,7 @@ This was a complete END-TO-END test with:
         traceback.print_exc()
         print("\nMake sure the server is running:")
         print(
-            "  MCP_TRANSPORT=http MCP_PORT=9104 ./start-openmemories-mcp-server.sh --project_id OpenMemoriesMCPMCP"
+            "  MCP_TRANSPORT=http MCP_PORT=9104 ./start-ccmemories-mcp-server.sh --project_id CCMemoriesMCP"
         )
         raise
 

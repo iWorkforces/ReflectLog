@@ -8,7 +8,7 @@ from typing import Any, Tuple
 from openai import AsyncOpenAI, DefaultAioHttpClient
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from openmemories.application.config import REPLACEMENT_DETECTION_PROMPT, Config
+from ccmemories.application.config import REPLACEMENT_DETECTION_PROMPT, Config
 
 
 class ReplacementDecision(BaseModel):

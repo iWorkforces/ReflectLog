@@ -1,4 +1,4 @@
-"""MCP Tools for OpenMemoriesMCP MCP Server."""
+"""MCP Tools for CCMemoriesMCP Server."""
 
 from .add import AddTool
 from .base import BaseTool

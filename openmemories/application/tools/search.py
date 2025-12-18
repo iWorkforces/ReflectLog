@@ -1,4 +1,4 @@
-"""Search tool implementation for OpenMemoriesMCP MCP Server."""
+"""Search tool implementation for CCMemoriesMCP Server."""
 
 import time
 from typing import Annotated, List

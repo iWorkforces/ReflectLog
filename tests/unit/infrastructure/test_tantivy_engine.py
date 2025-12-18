@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openmemories.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
+from ccmemories.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
 
 
 @pytest.mark.unit

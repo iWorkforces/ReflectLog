@@ -1,4 +1,4 @@
-# openmemories/application/utils/
+# ccmemories/application/utils/
 
 This directory contains utility functions and classes that support the core memory management system.
 
@@ -138,7 +138,7 @@ def warmup_numba_functions() -> None:
 ### Usage Pattern
 
 ```python
-from openmemories.application.utils.numba_utils import (
+from ccmemories.application.utils.numba_utils import (
     normalize_scores_minmax,
     filter_scores_by_threshold,
     compute_rrf_scores_batch,
@@ -441,7 +441,7 @@ def assert_log_contains(log_mock, message: str, level: str = "info") -> None:
 
 ```python
 # In memory/manager.py
-from openmemories.application.utils import StructuredLogger, validate_message_list
+from ccmemories.application.utils import StructuredLogger, validate_message_list
 
 class MemoryManager:
     def __init__(self, config, logger):
@@ -469,7 +469,7 @@ class MemoryManager:
 
 ```python
 # In tools/add.py
-from openmemories.application.utils import validate_message_list, format_error_response
+from ccmemories.application.utils import validate_message_list, format_error_response
 
 @self.mcp.tool
 def add(self, messages: List[str]) -> None:
@@ -543,4 +543,4 @@ def test_validation_integration():
     assert validate_message_list(invalid_messages)[0] is False
 ```
 
-This utility system provides the foundation for consistent, maintainable code across the entire OpenMemoriesMCP application.
+This utility system provides the foundation for consistent, maintainable code across the entire CCMemoriesMCP application.
