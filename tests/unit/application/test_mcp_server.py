@@ -58,9 +58,7 @@ class TestFastMCPServerInitialization:
         ) as mock_usearch_cls:
             mock_usearch_cls.return_value = MagicMock()
 
-            with patch(
-                "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
-            ):
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_cls:

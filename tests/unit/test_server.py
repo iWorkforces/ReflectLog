@@ -231,9 +231,7 @@ class TestEnvironmentConfiguration:
 
         from ccmemories.server import main
 
-        with patch(
-            "sys.argv", ["ccmemories", "--transport", "http", "--port", "9104"]
-        ):
+        with patch("sys.argv", ["ccmemories", "--transport", "http", "--port", "9104"]):
             try:
                 main()
             except SystemExit:
