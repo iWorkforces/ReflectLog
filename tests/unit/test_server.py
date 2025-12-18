@@ -231,7 +231,7 @@ class TestEnvironmentConfiguration:
 
         from ccmemories.server import main
 
-        with patch("sys.argv", ["ccmemories", "--transport", "http", "--port", "9104"]):
+        with patch("sys.argv", ["ccmemories", "--transport", "http", "--port", "9103"]):
             try:
                 main()
             except SystemExit:
@@ -239,7 +239,7 @@ class TestEnvironmentConfiguration:
 
             # CLI args should override env vars
             assert os.environ.get("MCP_TRANSPORT") == "http"
-            assert os.environ.get("MCP_PORT") == "9104"
+            assert os.environ.get("MCP_PORT") == "9103"
 
 
 @pytest.mark.unit

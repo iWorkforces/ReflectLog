@@ -10,12 +10,12 @@ async def test_real_server_workflow():
     """Test real MCP server: add 10 messages, get_all, and search."""
 
     print("\n" + "=" * 70)
-    print("🌐 REAL SERVER TEST - Connecting to http://127.0.0.1:9104/mcp")
+    print("🌐 REAL SERVER TEST - Connecting to http://127.0.0.1:9103/mcp")
     print("=" * 70)
     print("   Using fastmcp.Client for HTTP/SSE transport")
     print("=" * 70)
 
-    server_url = "http://127.0.0.1:9104/mcp"
+    server_url = "http://127.0.0.1:9103/mcp"
 
     try:
         async with Client(server_url) as client:
@@ -183,7 +183,7 @@ This was a complete END-TO-END test with:
         traceback.print_exc()
         print("\nMake sure the server is running:")
         print(
-            "  MCP_TRANSPORT=http MCP_PORT=9104 ./start-ccmemories-mcp-server.sh --project_id CCMemoriesMCP"
+            "  MCP_TRANSPORT=http MCP_PORT=9103 ./start-ccmemories-mcp-server.sh --project_id CCMemoriesMCP"
         )
         raise
 

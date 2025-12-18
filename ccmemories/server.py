@@ -38,7 +38,7 @@ Examples:
   ccmemories
 
   # Run as HTTP server
-  ccmemories --transport http --port 9104
+  ccmemories --transport http --port 9103
 
   # Run with SSE transport
   ccmemories --transport sse --port 8080 --host 0.0.0.0
@@ -69,7 +69,7 @@ Environment Variables:
     parser.add_argument(
         "--port",
         type=int,
-        help="Server port for non-stdio transports (default: 9104)",
+        help="Server port for non-stdio transports (default: 9103)",
     )
 
     parser.add_argument(

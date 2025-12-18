@@ -38,7 +38,7 @@ class Config:
 
     # Transport settings
     transport: str = "stdio"
-    port: int = 9104
+    port: int = 9103
     host: str = "127.0.0.1"
     path: str = "/mcp"
 
@@ -229,7 +229,7 @@ Document: "{document}"
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `MCP_TRANSPORT` | str | `stdio` | Transport protocol |
-| `MCP_PORT` | int | `9104` | Server port |
+| `MCP_PORT` | int | `9103` | Server port |
 | `MCP_HOST` | str | `127.0.0.1` | Server host |
 | `MCP_PATH` | str | `/mcp` | Server path |
 | `LLM_MODEL` | str | `x-ai/grok-4.1-fast` | LLM for reranking/inference |

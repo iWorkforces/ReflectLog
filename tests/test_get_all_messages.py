@@ -7,7 +7,7 @@ from fastmcp.client.client import CallToolResult
 
 async def main():
     # Connect via stdio to a local script
-    async with Client("http://127.0.0.1:9104/mcp") as client:
+    async with Client("http://127.0.0.1:9103/mcp") as client:
         tools = await client.list_tools()
         print(f"Available tools: {tools}")
         result: CallToolResult = await client.call_tool(

@@ -13,7 +13,7 @@ async def test_real_server_with_mcp_client():
     print("🌐 REAL SERVER TEST - Using fastmcp.Client")
     print("=" * 70)
 
-    server_url = "http://127.0.0.1:9104/mcp"
+    server_url = "http://127.0.0.1:9103/mcp"
 
     print(f"\n📡 Connecting to MCP server at {server_url}...")
 
@@ -178,7 +178,7 @@ This was a complete END-TO-END test with:
         traceback.print_exc()
         print("\nMake sure the server is running:")
         print(
-            "  MCP_TRANSPORT=http MCP_PORT=9104 ./start-ccmemories-mcp-server.sh --project_id CCMemoriesMCP"
+            "  MCP_TRANSPORT=http MCP_PORT=9103 ./start-ccmemories-mcp-server.sh --project_id CCMemoriesMCP"
         )
         raise
 

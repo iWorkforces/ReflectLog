@@ -16,10 +16,10 @@ async def test_real_server_with_fastmcp_client():
     print("🌐 REAL SERVER TEST - Using fastmcp.Client")
     print("=" * 70)
     print("   Transport: HTTP (via fastmcp.Client)")
-    print("   Server: http://127.0.0.1:9104/mcp")
+    print("   Server: http://127.0.0.1:9103/mcp")
     print("=" * 70)
 
-    server_url = "http://127.0.0.1:9104/mcp"
+    server_url = "http://127.0.0.1:9103/mcp"
 
     try:
         async with Client(server_url) as client:

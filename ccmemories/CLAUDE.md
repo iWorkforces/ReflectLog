@@ -72,7 +72,7 @@ When `ccmemories` command is run:
 ```
 --version           Show version and exit
 --transport         Transport protocol (stdio, http, sse, streamable-http)
---port              Server port for non-stdio transports (default: 9104)
+--port              Server port for non-stdio transports (default: 9103)
 --host              Server host (default: 127.0.0.1)
 --path              Server path (default: /mcp)
 ```
@@ -129,7 +129,7 @@ Key variables used by the package:
 | `PROJECT_ID` | Yes | - | Unique project identifier |
 | `OPENROUTER_API_KEY` | Yes | - | OpenRouter API key |
 | `MCP_TRANSPORT` | No | `stdio` | Transport protocol |
-| `MCP_PORT` | No | `9104` | Server port |
+| `MCP_PORT` | No | `9103` | Server port |
 | `MCP_HOST` | No | `127.0.0.1` | Server host |
 | `MCP_PATH` | No | `/mcp` | Server path |
 | `LOG_LEVEL` | No | `INFO` | Logging level |

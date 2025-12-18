@@ -48,7 +48,7 @@ uv run python <script>     # Run a Python script
 **Command-line tool** (after installation):
 ```bash
 ccmemories                              # stdio transport (default)
-ccmemories --transport http --port 9104 # HTTP transport
+ccmemories --transport http --port 9103 # HTTP transport
 ```
 
 **Direct execution** (development):
@@ -95,7 +95,7 @@ The server supports multiple transport protocols:
 Transport can be configured via:
 1. CLI args: `--transport`, `--port`, `--host`, `--path`
 2. Environment variables: `MCP_TRANSPORT`, `MCP_PORT`, `MCP_HOST`, `MCP_PATH`
-3. Defaults: stdio transport, port 9104, host 127.0.0.1
+3. Defaults: stdio transport, port 9103, host 127.0.0.1
 
 ### Project Structure
 

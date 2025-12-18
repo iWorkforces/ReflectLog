@@ -12,11 +12,11 @@ async def test_infer_disabled():
     print("\n" + "=" * 70)
     print("🔬 TEST: With LLM Inference DISABLED (default)")
     print("=" * 70)
-    print("   Server: http://127.0.0.1:9104/mcp")
+    print("   Server: http://127.0.0.1:9103/mcp")
     print("   ENABLE_LLM_INFER: false (messages stored exactly as provided)")
     print("=" * 70)
 
-    server_url = "http://127.0.0.1:9104/mcp"
+    server_url = "http://127.0.0.1:9103/mcp"
 
     try:
         async with Client(server_url) as client:
