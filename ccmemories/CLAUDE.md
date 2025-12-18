@@ -132,6 +132,7 @@ Key variables used by the package:
 | `MCP_PORT` | No | `9103` | Server port |
 | `MCP_HOST` | No | `127.0.0.1` | Server host |
 | `MCP_PATH` | No | `/mcp` | Server path |
+| `ENABLE_RRF_FUSION` | No | `true` | Enable RRF fusion for hybrid search |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
 
 See `application/config/settings.py` for the complete configuration reference.

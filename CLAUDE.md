@@ -239,8 +239,9 @@ CCMemoriesMCP/
 - `SMART_REPLACE_MAX_RETRIES`: Max LLM call retries with exponential backoff (default: 3)
 - `SMART_REPLACE_RETRY_DELAY`: Base delay in seconds for exponential backoff (default: 1.0)
 - `SEARCH_LIMIT`: Max results returned (default: 5)
+- `ENABLE_RRF_FUSION`: Enable RRF fusion for hybrid search (default: true)
 - `FUSION_RRF_K`: RRF constant (default: 60)
-- `FUSION_RANKING_THRESHOLD`: Min normalized RRF score to keep (default: 0.8)
+- `FUSION_RANKING_THRESHOLD`: Min normalized RRF score to keep, only when RRF enabled (default: 0.8)
 - `RERANKER_ENGINE`: Reranking engine: `llm`, `cross_encoder`, or `none` (default: llm)
 - `SEARCH_SCORE_THRESHOLD`: Min LLM relevance score to keep (default: 0.5)
 - `RERANK_MAX_CONCURRENCY`: Max parallel LLM calls for reranking (default: 10)
@@ -411,9 +412,22 @@ uv run pytest tests/unit/infrastructure/  # Infrastructure unit tests only
 
 ### Tuning Hybrid Search
 
-- Disable hybrid: `ENABLE_HYBRID_SEARCH=false`
-- Adjust RRF: `FUSION_RRF_K=30` (lower = more weight to top ranks)
+- Disable hybrid search entirely: `ENABLE_HYBRID_SEARCH=false`
+- Disable RRF fusion (concatenate instead): `ENABLE_RRF_FUSION=false`
+- Adjust RRF k parameter: `FUSION_RRF_K=30` (lower = more weight to top ranks)
 - Adjust fusion threshold: `FUSION_RANKING_THRESHOLD=0.3` (permissive) or `0.7` (strict)
+
+**RRF Fusion vs Concatenation**:
+
+| Setting | Behavior | Use Case |
+|---------|----------|----------|
+| `ENABLE_RRF_FUSION=true` | Combines semantic + full-text using RRF algorithm | Best quality ranking |
+| `ENABLE_RRF_FUSION=false` | Concatenates results (semantic first, then full-text deduped) | Faster, simpler |
+
+When RRF is disabled:
+- Step 2 concatenates results with semantic priority
+- Step 3 (filtering) is skipped (scores from different engines aren't comparable)
+- Reranking becomes Step 3 instead of Step 4
 
 **Reranker Engine Selection**:
 

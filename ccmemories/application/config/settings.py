@@ -85,6 +85,7 @@ class Config:
     fusion_normalization: Optional[str] = None  # min-max, max, sum, zmuv, rank, borda
     fusion_rrf_k: int = 60  # RRF k parameter (lower = more weight to top ranks)
     fusion_ranking_threshold: float = 0.8  # Min normalized RRF score to keep (0-1)
+    enable_rrf_fusion: bool = True  # Enable RRF fusion (false = concatenate results)
 
     # Message validation settings
     max_message_length: int = 30720
@@ -348,6 +349,8 @@ class Config:
             fusion_ranking_threshold=float(
                 os.environ.get("FUSION_RANKING_THRESHOLD", "0.8")
             ),
+            enable_rrf_fusion=os.environ.get("ENABLE_RRF_FUSION", "true").lower()
+            == "true",
             # Message validation
             max_message_length=int(os.environ.get("MAX_MESSAGE_LENGTH", "30720")),
             min_message_length=int(os.environ.get("MIN_MESSAGE_LENGTH", "1")),

@@ -33,19 +33,28 @@ The `memory/` module implements the core hybrid storage engine:
 - **Persistence**: Both engines persist data across server restarts
 - **Consistent API**: Unified interface for all memory operations
 
-### Search Pipeline (4 Steps)
+### Search Pipeline (3-4 Steps)
 
+When `ENABLE_RRF_FUSION=true` (default):
 ```
-Query → [Step 1: Parallel Search] → [Step 2: RRF Fusion] → [Step 3: Fusion Filter] → [Step 4: LLM Rerank] → Results
-         USearch + Tantivy           RanxFusionEngine       threshold >= 0.5        LLMReranker
+Query → [Step 1: Parallel Search] → [Step 2: RRF Fusion] → [Step 3: Fusion Filter] → [Step 4: Rerank] → Results
+         USearch + Tantivy           RanxFusionEngine       threshold >= 0.8        LLMReranker
+```
+
+When `ENABLE_RRF_FUSION=false`:
+```
+Query → [Step 1: Parallel Search] → [Step 2: Concatenate] → [Step 3: Rerank] → Results
+         USearch + Tantivy           Semantic priority       LLMReranker
 ```
 
 | Step | Component | Purpose | Configurable |
 |------|-----------|---------|--------------|
 | 1 | USearchEngine + TantivyEngine | Parallel semantic + full-text search | `ENABLE_HYBRID_SEARCH` |
-| 2 | RanxFusionEngine | Combine results using RRF | `FUSION_RRF_K` |
-| 3 | Fusion threshold | Filter low-confidence matches | `FUSION_RANKING_THRESHOLD` |
-| 4 | LLMReranker | AI relevance scoring | `RERANKER_ENGINE`, `SEARCH_SCORE_THRESHOLD` |
+| 2 | RanxFusionEngine or Concatenation | Combine results using RRF or concatenation | `ENABLE_RRF_FUSION`, `FUSION_RRF_K` |
+| 3 | Fusion threshold (RRF only) | Filter low-confidence matches | `FUSION_RANKING_THRESHOLD` |
+| 3/4 | Reranker | AI/CrossEncoder relevance scoring | `RERANKER_ENGINE`, `SEARCH_SCORE_THRESHOLD` |
+
+**Note**: When RRF fusion is disabled, Step 3 (fusion threshold) is skipped because scores from different engines aren't comparable. Reranking becomes Step 3 instead of Step 4.
 
 ## MemoryManager Architecture
 
@@ -205,10 +214,12 @@ class AddResult:
 #### `search(query: str, limit: int) -> List[str]`
 
 - **Step 1**: Executes both semantic (USearchEngine) and full-text (TantivyEngine) search in parallel
-- **Step 2**: Combines results using RanxFusionEngine (RRF fusion)
-- **Step 3**: Applies fusion threshold filtering (`FUSION_RANKING_THRESHOLD`, default: 0.5)
-- **Step 4**: Reranks with LLMReranker (when `RERANKER_ENGINE=llm`)
+- **Step 2**: Combines results using RRF fusion or concatenation (based on `ENABLE_RRF_FUSION`)
+- **Step 3**: When RRF enabled: applies fusion threshold filtering (`FUSION_RANKING_THRESHOLD`, default: 0.8)
+- **Step 3/4**: Reranks with LLMReranker/CrossEncoder (when `RERANKER_ENGINE` is `llm` or `cross_encoder`)
 - **Processing**: Returns list of message strings
+
+**Note**: When `ENABLE_RRF_FUSION=false`, Step 2 concatenates results with semantic priority, Step 3 (fusion threshold) is skipped, and reranking becomes Step 3.
 
 #### `search_for_removal(message: str) -> List[dict]`
 - Specialized search for `remove` tool
@@ -267,10 +278,11 @@ Key environment variables (via `Config`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENABLE_HYBRID_SEARCH` | true | Enable Tantivy full-text search |
+| `ENABLE_RRF_FUSION` | true | Enable RRF fusion (false = concatenate results) |
 | `FUSION_RRF_K` | 60 | RRF constant (lower = more weight to top ranks) |
-| `FUSION_RANKING_THRESHOLD` | 0.8 | Min RRF score to keep after fusion (Step 3) |
-| `RERANKER_ENGINE` | llm | Reranking engine: `llm`, `cross_encoder`, or `none` (Step 4) |
-| `SEARCH_SCORE_THRESHOLD` | 0.5 | Min LLM relevance score to keep (Step 4) |
+| `FUSION_RANKING_THRESHOLD` | 0.8 | Min RRF score to keep after fusion (Step 3, RRF only) |
+| `RERANKER_ENGINE` | llm | Reranking engine: `llm`, `cross_encoder`, or `none` (Step 3/4) |
+| `SEARCH_SCORE_THRESHOLD` | 0.5 | Min LLM relevance score to keep (Step 3/4) |
 | `RERANK_MAX_CONCURRENCY` | 10 | Max parallel LLM calls for reranking |
 | `LLM_MODEL` | `x-ai/grok-4.1-fast` | LLM model for reranking |
 | `TANTIVY_INDEX_PATH_TEMPLATE` | `indexes/{project_id}/tantivy` | Tantivy index path |
