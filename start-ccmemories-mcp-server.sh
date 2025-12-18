@@ -248,7 +248,7 @@ if [ ! -z "$MCP_TRANSPORT" ]; then
 else
     echo -e "${CYAN}Transport: stdio (default)${NC}"
 fi
-echo -e "${CYAN}Command: uv run python ccmemories/server.py${NC}"
+echo -e "${CYAN}Command: uv run ccmemories${NC}"
 echo ""
 
 # Start the server
@@ -257,7 +257,7 @@ echo ""
 
 # Start the server in the background and capture its PID
 # Let server.py read MCP_* environment variables from .env
-uv run python ccmemories/server.py &
+uv run ccmemories &
 SERVER_PID=$!
 
 # Wait for the server process to complete
