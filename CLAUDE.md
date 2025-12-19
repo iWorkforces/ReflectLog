@@ -233,11 +233,12 @@ CCMemoriesMCP/
 - `DEDUPLICATE_MESSAGES`: Skip exact duplicates on add (default: true)
 - `ENABLE_SMART_REPLACE`: Enable smart memory replacement detection (default: true)
 - `SMART_REPLACE_THRESHOLD`: Min LLM confidence to trigger replacement (default: 0.7)
-- `SMART_REPLACE_MIN_SIMILARITY`: Min embedding similarity to trigger LLM check (default: 0.5)
+- `SMART_REPLACE_MIN_SIMILARITY`: Min embedding similarity to trigger LLM check (default: 0.9)
 - `SMART_REPLACE_CANDIDATE_LIMIT`: Max candidates to check for replacement (default: 3)
 - `SMART_REPLACE_ARCHIVE_TTL_DAYS`: Days to keep archived memories, 0=permanent (default: 30)
 - `SMART_REPLACE_MAX_RETRIES`: Max LLM call retries with exponential backoff (default: 3)
 - `SMART_REPLACE_RETRY_DELAY`: Base delay in seconds for exponential backoff (default: 1.0)
+- `LLM_PROVIDER`: LLM provider for SmartReplacer and LLMReranker: `openai` or `anthropic` (default: anthropic)
 - `SEARCH_LIMIT`: Max results returned (default: 5)
 - `ENABLE_RRF_FUSION`: Enable RRF fusion for hybrid search (default: true)
 - `FUSION_RRF_K`: RRF constant (default: 60)
@@ -454,11 +455,12 @@ When RRF is disabled:
 
 - Disable feature: `ENABLE_SMART_REPLACE=false`
 - Adjust confidence threshold: `SMART_REPLACE_THRESHOLD=0.8` (stricter) or `0.5` (permissive)
-- Adjust similarity pre-filter: `SMART_REPLACE_MIN_SIMILARITY=0.7` (only check very similar)
+- Adjust similarity pre-filter: `SMART_REPLACE_MIN_SIMILARITY=0.5` (check more candidates)
 - Increase candidates: `SMART_REPLACE_CANDIDATE_LIMIT=5` (check more memories)
 - Adjust archive retention: `SMART_REPLACE_ARCHIVE_TTL_DAYS=90` (keep longer) or `0` (permanent)
 - Configure retry behavior: `SMART_REPLACE_MAX_RETRIES=5`, `SMART_REPLACE_RETRY_DELAY=2.0`
 - Change LLM model: `LLM_MODEL=openai/gpt-4o-mini` (shared with reranking)
+- Change LLM provider: `LLM_PROVIDER=openai` (uses OpenRouter API)
 
 **Smart Replacement Flow** (on add):
 ```
@@ -541,6 +543,7 @@ SEARCH_LIMIT=10
 RERANKER_ENGINE=llm  # or "cross_encoder" or "none"
 ENABLE_SMART_REPLACE=true  # Smart memory replacement (default: true)
 SMART_REPLACE_THRESHOLD=0.7  # Min confidence for replacement (default: 0.7)
+LLM_PROVIDER=anthropic  # or "openai" (uses OpenRouter API)
 LOG_LEVEL=INFO
 ```
 

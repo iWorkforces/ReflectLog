@@ -328,7 +328,7 @@ Key environment variables (via `Config`):
 |----------|---------|-------------|
 | `ENABLE_SMART_REPLACE` | true | Enable smart memory replacement detection |
 | `SMART_REPLACE_THRESHOLD` | 0.7 | Min LLM confidence to trigger replacement (0.0-1.0) |
-| `SMART_REPLACE_MIN_SIMILARITY` | 0.5 | Min embedding similarity to trigger LLM check |
+| `SMART_REPLACE_MIN_SIMILARITY` | 0.9 | Min embedding similarity to trigger LLM check |
 | `SMART_REPLACE_CANDIDATE_LIMIT` | 3 | Max candidates to check for replacement |
 | `SMART_REPLACE_ARCHIVE_TTL_DAYS` | 30 | Days to keep archived memories (0 = permanent) |
 | `SMART_REPLACE_MAX_RETRIES` | 3 | Max LLM call retries with exponential backoff |

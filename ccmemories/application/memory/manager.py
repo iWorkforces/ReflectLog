@@ -1348,8 +1348,27 @@ class MemoryManager:
                     )
                     return []
 
+            # Skip reranking when only 0-1 results (nothing to reorder)
+            # This saves 15-25s of LLM API latency for single-result queries
+            if len(hybrid_results) <= 1:
+                if len(hybrid_results) == 1:
+                    self.logger.info(
+                        "─" * 50,
+                        extra={"section": "reranking_skip"},
+                    )
+                    self.logger.info(
+                        f"⏭️  STEP {rerank_step_num}: Reranking skipped (single result - reranking unnecessary)",
+                        extra={
+                            "step": "reranking_skip",
+                            "step_num": rerank_step_num,
+                            "result_count": 1,
+                            "reason": "single result - reranking unnecessary",
+                        },
+                    )
+                # Fall through to final summary (0 results handled by fusion threshold above)
+
             # Reranking step (LLM or CrossEncoder, based on reranker_engine config)
-            if self._llm_reranker is not None:
+            elif self._llm_reranker is not None:
                 self.logger.info(
                     "─" * 50,
                     extra={"section": "reranking"},

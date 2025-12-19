@@ -7,16 +7,27 @@ This directory contains unit tests - fast, isolated tests that verify individual
 ```
 unit/
 ├── application/              # Application layer unit tests
+│   ├── memory/
+│   │   └── reranking/
+│   │       └── test_normalization.py  # Batch normalization tests
+│   ├── utils/
+│   │   ├── test_logging.py        # StructuredLogger tests
+│   │   ├── test_numba_utils.py    # Numba JIT function tests
+│   │   └── test_security.py       # Security utility tests
 │   ├── test_mcp_server.py
+│   ├── test_mcp_server_error_handling.py
 │   ├── test_memory_manager.py
 │   ├── test_ranx_fusion.py
+│   ├── test_rrf_fusion_toggle.py  # RRF fusion toggle tests
 │   ├── test_validation.py
 │   ├── test_logging_utils.py
-│   ├── test_dynamic_instructions.py
-│   └── test_mcp_server_error_handling.py
+│   └── test_dynamic_instructions.py
 ├── infrastructure/           # Infrastructure layer unit tests
+│   ├── test_cross_encoder_reranker.py  # CrossEncoderReranker tests
+│   ├── test_llm_reranker.py            # LLMReranker tests
 │   ├── test_message_store.py
 │   ├── test_qwen3_embedding.py
+│   ├── test_smart_replacer.py          # SmartReplacer tests
 │   ├── test_tantivy_engine.py
 │   └── test_usearch_engine.py
 └── test_server.py            # Server entry point tests

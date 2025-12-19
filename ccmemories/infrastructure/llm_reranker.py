@@ -1,8 +1,9 @@
 """LLM-based document reranker for search results."""
 
 import json
+import re
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Protocol, Tuple
 
 import anyio
 from openai import AsyncOpenAI, DefaultAioHttpClient
@@ -40,6 +41,9 @@ class LLMRerankerConfig:
         score_threshold: Minimum relevance score to keep results (0.0-1.0).
         max_concurrency: Maximum parallel LLM calls.
         timeout: HTTP request timeout in seconds.
+        min_results: Safety net: min results to return (0 = disabled).
+        batch_normalize: Enable batch min-max normalization.
+        provider: LLM provider ('openai' or 'anthropic').
     """
 
     api_key: str
@@ -50,6 +54,7 @@ class LLMRerankerConfig:
     timeout: float = 30.0  # 30 seconds default for reranking requests
     min_results: int = 0  # Safety net: min results to return (0 = disabled)
     batch_normalize: bool = True  # Enable batch min-max normalization
+    provider: str = "anthropic"  # Provider: "openai" or "anthropic"
 
     @classmethod
     def from_app_config(cls, config: Config) -> "LLMRerankerConfig":
@@ -69,44 +74,67 @@ class LLMRerankerConfig:
             max_concurrency=config.rerank_max_concurrency,
             min_results=config.reranker_min_results,
             batch_normalize=config.reranker_batch_normalize,
+            provider=config.llm_provider,
         )
 
 
-class LLMReranker(BaseModel):
-    """LLM-based document reranker using OpenRouter API.
+class IRerankerProvider(Protocol):
+    """Protocol for reranker LLM providers.
 
-    This class scores search result relevance using an LLM and reranks
-    candidates based on their relevance scores. It supports parallel
-    scoring with concurrency control and graceful fallback on errors.
-
-    Attributes:
-        config: LLMRerankerConfig with API credentials and settings.
-        logger: Optional structured logger for debug/info messages.
-
-    Example:
-        >>> config = LLMRerankerConfig.from_app_config(app_config)
-        >>> reranker = LLMReranker(config=config, logger=logger)
-        >>> results = await reranker.rerank("Python tutorials", candidates)
+    Defines the interface for LLM providers used in document reranking.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    async def score_document(
+        self,
+        query: str,
+        document: str,
+        fallback_score: float,
+    ) -> Tuple[str, float]:
+        """Score a document's relevance to the query.
 
-    config: LLMRerankerConfig
-    logger: Any = None
+        Args:
+            query: Search query string.
+            document: Document text to score.
+            fallback_score: Score to use if LLM call fails.
 
-    _client: AsyncOpenAI | None = PrivateAttr(default=None)
+        Returns:
+            Tuple of (document, score) where score is LLM relevance or fallback.
+        """
+        ...
 
-    def __init__(self, **data: Any):
-        """Initialize LLMReranker with AsyncOpenAI client."""
-        super().__init__(**data)
 
-        # Initialize async OpenAI client with HTTP/2 support and timeout
+class OpenAIRerankerProvider:
+    """OpenAI/OpenRouter-based reranking provider.
+
+    Uses AsyncOpenAI client with structured JSON output for reliable parsing.
+    Supports fallback to json_object mode for models without structured output.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model: str,
+        timeout: float = 30.0,
+        logger: Any = None,
+    ):
+        """Initialize OpenAI reranker provider.
+
+        Args:
+            api_key: OpenRouter/OpenAI API key.
+            base_url: API base URL.
+            model: LLM model identifier.
+            timeout: HTTP request timeout in seconds.
+            logger: Optional structured logger.
+        """
         self._client = AsyncOpenAI(
-            api_key=self.config.api_key,
-            base_url=self.config.base_url,
+            api_key=api_key,
+            base_url=base_url,
             http_client=DefaultAioHttpClient(),
-            timeout=self.config.timeout,
+            timeout=timeout,
         )
+        self._model = model
+        self._logger = logger
 
     async def _call_llm_with_structured_output(
         self,
@@ -123,9 +151,6 @@ class LLMReranker(BaseModel):
         Raises:
             Exception: If both structured output and fallback fail.
         """
-        if self._client is None:
-            raise RuntimeError("LLM reranker client is not initialized.")
-
         # Build structured output response format using Pydantic schema
         structured_response_format: dict[str, Any] = {
             "type": "json_schema",
@@ -139,7 +164,7 @@ class LLMReranker(BaseModel):
         try:
             # Try structured outputs first (guaranteed schema compliance)
             return await self._client.chat.completions.create(
-                model=self.config.model,
+                model=self._model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,  # Deterministic scoring
                 max_tokens=50,  # Only need short JSON response
@@ -149,13 +174,14 @@ class LLMReranker(BaseModel):
             error_msg = str(e).lower()
             # Fallback to simple json_object mode for unsupported models
             if "json_schema" in error_msg or "structured" in error_msg:
-                if self.logger:
-                    self.logger.warning(
-                        "Model doesn't support structured outputs, falling back to json_object",
-                        extra={"model": self.config.model, "error": str(e)},
+                if self._logger:
+                    self._logger.warning(
+                        "Model doesn't support structured outputs, "
+                        "falling back to json_object",
+                        extra={"model": self._model, "error": str(e)},
                     )
                 return await self._client.chat.completions.create(
-                    model=self.config.model,
+                    model=self._model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0,
                     max_tokens=50,
@@ -163,17 +189,13 @@ class LLMReranker(BaseModel):
                 )
             raise
 
-    async def _score_single(
+    async def score_document(
         self,
         query: str,
         document: str,
         fallback_score: float,
     ) -> Tuple[str, float]:
-        """Score a single document's relevance to the query.
-
-        Uses OpenAI Structured Outputs with a Pydantic schema to guarantee
-        valid JSON responses. Falls back to json_object mode if the model
-        doesn't support structured outputs.
+        """Score a document's relevance using OpenAI API.
 
         Args:
             query: Search query string.
@@ -181,7 +203,7 @@ class LLMReranker(BaseModel):
             fallback_score: Score to use if LLM call fails.
 
         Returns:
-            Tuple of (document, score) where score is LLM relevance or fallback.
+            Tuple of (document, score).
         """
         try:
             # Format the scoring prompt
@@ -201,33 +223,267 @@ class LLMReranker(BaseModel):
             # Clamp score to valid range (defensive, schema already constrains)
             score = max(0.0, min(1.0, score))
 
-            if self.logger:
-                self.logger.debug(
+            if self._logger:
+                self._logger.debug(
                     f"LLM scored document: {score:.2f}",
                     extra={
                         "query": query[:50],
                         "document_preview": document[:50],
                         "llm_score": score,
+                        "provider": "openai",
                     },
                 )
 
             return (document, score)
 
         except json.JSONDecodeError as e:
-            if self.logger:
-                self.logger.warning(
+            if self._logger:
+                self._logger.warning(
                     f"Invalid JSON from LLM, using fallback score: {e}",
                     extra={"error": str(e), "fallback_score": fallback_score},
                 )
             return (document, fallback_score)
 
         except Exception as e:
-            if self.logger:
-                self.logger.warning(
+            if self._logger:
+                self._logger.warning(
                     f"LLM scoring failed, using fallback score: {e}",
                     extra={"error": str(e), "fallback_score": fallback_score},
                 )
             return (document, fallback_score)
+
+
+class AnthropicRerankerProvider:
+    """Anthropic Claude-based reranking provider.
+
+    Uses Claude Agent SDK via utility module for LLM calls.
+    Parses JSON from plain text responses with multiple fallback strategies.
+    """
+
+    def __init__(
+        self,
+        model: str | None = None,
+        logger: Any = None,
+    ):
+        """Initialize Anthropic reranker provider.
+
+        Calls init_credentials() to set up OAuth credentials.
+
+        Args:
+            model: LLM model identifier (passed to generate_content).
+            logger: Optional structured logger.
+        """
+        # Lazy import to avoid dependency issues
+        from ccmemories.utility import init_credentials
+
+        init_credentials(verbose=False)
+        self._model = model
+        self._logger = logger
+
+    def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
+        """Extract JSON from plain text response.
+
+        Handles multiple response formats:
+        1. Pure JSON
+        2. Markdown code blocks (```json ... ```)
+        3. Embedded JSON in text
+
+        Args:
+            response_text: Raw response text from LLM.
+
+        Returns:
+            Parsed JSON dictionary.
+
+        Raises:
+            ValueError: If JSON extraction fails.
+        """
+        text = response_text.strip()
+
+        # Strategy 1: Direct JSON parse
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: Markdown code block
+        code_block_pattern = r"```(?:json)?\s*\n?([\s\S]*?)\n?```"
+        match = re.search(code_block_pattern, text)
+        if match:
+            try:
+                return json.loads(match.group(1).strip())
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 3: Find embedded JSON object
+        json_pattern = r"\{[\s\S]*?\}"
+        matches = list(re.finditer(json_pattern, text))
+        for match in matches:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                continue
+
+        raise ValueError(f"Could not extract JSON from response: {text[:200]}")
+
+    async def score_document(
+        self,
+        query: str,
+        document: str,
+        fallback_score: float,
+    ) -> Tuple[str, float]:
+        """Score a document's relevance using Anthropic Claude.
+
+        Args:
+            query: Search query string.
+            document: Document text to score.
+            fallback_score: Score to use if LLM call fails.
+
+        Returns:
+            Tuple of (document, score).
+        """
+        # Lazy import to avoid dependency issues
+        from ccmemories.utility import generate_content
+
+        try:
+            # Format the scoring prompt
+            prompt = SCORING_PROMPT.format(query=query, document=document)
+
+            # Call generate_content with model parameter
+            response_text = await generate_content(
+                prompt=prompt,
+                model=self._model,
+                allowed_tools=[],
+            )
+
+            # Parse JSON from response
+            result = self._extract_json_from_response(response_text)
+            score = float(result.get("score", fallback_score))
+
+            # Clamp score to valid range
+            score = max(0.0, min(1.0, score))
+
+            if self._logger:
+                self._logger.debug(
+                    f"LLM scored document: {score:.2f}",
+                    extra={
+                        "query": query[:50],
+                        "document_preview": document[:50],
+                        "llm_score": score,
+                        "provider": "anthropic",
+                    },
+                )
+
+            return (document, score)
+
+        except Exception as e:
+            if self._logger:
+                self._logger.warning(
+                    f"Anthropic LLM scoring failed, using fallback score: {e}",
+                    extra={
+                        "error": str(e),
+                        "fallback_score": fallback_score,
+                        "provider": "anthropic",
+                    },
+                )
+            return (document, fallback_score)
+
+
+def create_reranker_provider(
+    config: LLMRerankerConfig,
+    logger: Any = None,
+) -> IRerankerProvider:
+    """Create a reranker provider based on configuration.
+
+    Factory function that returns the appropriate provider implementation
+    based on the provider setting in config.
+
+    Args:
+        config: LLMRerankerConfig with provider selection.
+        logger: Optional structured logger.
+
+    Returns:
+        An IRerankerProvider implementation.
+
+    Raises:
+        ValueError: If provider is not supported.
+    """
+    if config.provider == "openai":
+        return OpenAIRerankerProvider(
+            api_key=config.api_key,
+            base_url=config.base_url,
+            model=config.model,
+            timeout=config.timeout,
+            logger=logger,
+        )
+    elif config.provider == "anthropic":
+        return AnthropicRerankerProvider(
+            model=config.model,
+            logger=logger,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported provider: '{config.provider}'. "
+            f"Valid options: 'openai', 'anthropic'"
+        )
+
+
+class LLMReranker(BaseModel):
+    """LLM-based document reranker using configurable LLM providers.
+
+    This class scores search result relevance using an LLM and reranks
+    candidates based on their relevance scores. It supports parallel
+    scoring with concurrency control and graceful fallback on errors.
+
+    Supports multiple LLM providers via the provider abstraction:
+    - 'openai': OpenRouter/OpenAI API with structured JSON output
+    - 'anthropic': Claude Agent SDK via utility module
+
+    Attributes:
+        config: LLMRerankerConfig with API credentials and settings.
+        logger: Optional structured logger for debug/info messages.
+
+    Example:
+        >>> config = LLMRerankerConfig.from_app_config(app_config)
+        >>> reranker = LLMReranker(config=config, logger=logger)
+        >>> results = await reranker.rerank("Python tutorials", candidates)
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    config: LLMRerankerConfig
+    logger: Any = None
+
+    _provider: IRerankerProvider | None = PrivateAttr(default=None)
+
+    def __init__(self, **data: Any):
+        """Initialize LLMReranker with appropriate provider."""
+        super().__init__(**data)
+
+        # Initialize provider based on configuration
+        self._provider = create_reranker_provider(self.config, self.logger)
+
+    async def _score_single(
+        self,
+        query: str,
+        document: str,
+        fallback_score: float,
+    ) -> Tuple[str, float]:
+        """Score a single document's relevance to the query.
+
+        Delegates to the configured provider for actual scoring.
+
+        Args:
+            query: Search query string.
+            document: Document text to score.
+            fallback_score: Score to use if LLM call fails.
+
+        Returns:
+            Tuple of (document, score) where score is LLM relevance or fallback.
+        """
+        if self._provider is None:
+            return (document, fallback_score)
+
+        return await self._provider.score_document(query, document, fallback_score)
 
     async def rerank(
         self,
@@ -283,7 +539,8 @@ class LLMReranker(BaseModel):
             scored_results = normalize_reranker_scores(scored_results)
             if self.logger:
                 self.logger.debug(
-                    f"Batch normalization: enabled (raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} -> normalized: 0.0-1.0)",
+                    f"Batch normalization: enabled (raw range: "
+                    f"{min(raw_scores):.4f}-{max(raw_scores):.4f} -> normalized: 0.0-1.0)",
                     extra={
                         "batch_normalize": True,
                         "raw_min": min(raw_scores),
@@ -308,7 +565,8 @@ class LLMReranker(BaseModel):
 
         if self.logger:
             self.logger.debug(
-                f"Reranking complete: {len(scored_results)}/{pre_filter_count} passed threshold",
+                f"Reranking complete: {len(scored_results)}/{pre_filter_count} "
+                f"passed threshold",
                 extra={
                     "query": query[:50],
                     "input_count": len(candidates),
@@ -316,6 +574,7 @@ class LLMReranker(BaseModel):
                     "threshold": self.config.score_threshold,
                     "min_results": self.config.min_results,
                     "batch_normalize": self.config.batch_normalize,
+                    "provider": self.config.provider,
                 },
             )
 

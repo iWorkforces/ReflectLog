@@ -23,6 +23,10 @@ stubs/
 │       └── errors.pyi
 ├── ranx/                  # Type stubs for ranx library
 │   └── __init__.pyi
+├── sentence_transformers/ # Type stubs for sentence-transformers library
+│   └── __init__.pyi       # CrossEncoder, util functions
+├── tantivy/               # Type stubs for tantivy-py library
+│   └── __init__.pyi       # Index, SchemaBuilder, Document, Searcher
 └── usearch/               # Type stubs for usearch library
     ├── __init__.pyi
     └── index.pyi          # Index, Match, Matches classes
@@ -53,6 +57,8 @@ Without stubs, ty would report errors about missing type information for externa
 - `fastmcp`: MCP server framework
 - `libsql`: High-performance SQLite fork with MVCC
 - `numba`: JIT compiler for Python numerical code
+- `sentence_transformers`: Sentence embeddings and cross-encoders
+- `tantivy`: Full-text search engine (Python bindings)
 
 ## Configuring ty
 
@@ -190,6 +196,57 @@ The `stubs/numba/` directory provides types for the Numba JIT compiler:
 3. **core.errors** (`core/errors.pyi`):
    - `TypingError`: Type inference errors
    - `NumbaError`: Base Numba exception
+
+## sentence_transformers Stubs
+
+The `stubs/sentence_transformers/__init__.pyi` file provides types for the sentence-transformers library:
+
+1. **CrossEncoder class**: Cross-encoder model for relevance scoring
+   - `__init__(model_name: str, max_length: int, device: str)`: Initialize model
+   - `predict(sentences: list[tuple[str, str]], batch_size: int) -> ndarray`: Score query-document pairs
+   - `predict(sentences: tuple[str, str]) -> float`: Score single pair (returns float)
+
+2. **SentenceTransformer class**: Sentence embedding model
+   - `__init__(model_name: str, device: str)`: Initialize model
+   - `encode(sentences: list[str]) -> ndarray`: Encode sentences to embeddings
+
+3. **util module**: Utility functions
+   - `cos_sim(a: Tensor, b: Tensor) -> Tensor`: Compute cosine similarity
+
+## tantivy Stubs
+
+The `stubs/tantivy/__init__.pyi` file provides types for the tantivy-py library:
+
+1. **SchemaBuilder class**: Build index schema
+   - `add_text_field(name: str, stored: bool, tokenizer_name: str) -> FieldEntry`
+   - `add_integer_field(name: str, stored: bool, indexed: bool, fast: bool) -> FieldEntry`
+   - `build() -> Schema`: Build the schema
+
+2. **Index class**: Full-text search index
+   - `__init__(schema: Schema, path: str, reuse: bool)`: Create or open index
+   - `open(path: str) -> Index`: Open existing index
+   - `writer(heap_size: int) -> IndexWriter`: Get index writer
+   - `searcher() -> Searcher`: Get index searcher
+   - `reload() -> None`: Reload index from disk
+
+3. **IndexWriter class**: Write documents to index
+   - `add_document(doc: Document) -> int`: Add document
+   - `delete_documents(field: str, term: str) -> int`: Delete by term
+   - `commit() -> int`: Commit pending changes
+   - `wait_merging_threads() -> None`: Wait for background merging
+
+4. **Searcher class**: Search the index
+   - `search(query: Query, limit: int) -> SearchResult`: Execute search
+   - `doc(doc_address: DocAddress) -> Document`: Get document by address
+
+5. **Document class**: Represents a document
+   - `from_dict(data: dict) -> Document`: Create from dictionary
+   - `to_dict() -> dict`: Convert to dictionary
+   - `get_first(field: str) -> Any`: Get first value of field
+   - `get_all(field: str) -> list`: Get all values of field
+
+6. **Query class**: Search query
+   - Constructed via `Index.parse_query(query: str, fields: list[str]) -> Query`
 
 ## Testing Stubs
 

@@ -337,7 +337,7 @@ Tools read configuration from `Config`:
 | `MIN_MESSAGE_LENGTH` | 1 | Min chars per message |
 | `ENABLE_SMART_REPLACE` | true | Enable smart memory replacement |
 | `SMART_REPLACE_THRESHOLD` | 0.7 | Min LLM confidence for replacement |
-| `SMART_REPLACE_MIN_SIMILARITY` | 0.5 | Min embedding similarity for LLM check |
+| `SMART_REPLACE_MIN_SIMILARITY` | 0.9 | Min embedding similarity for LLM check |
 | `SMART_REPLACE_CANDIDATE_LIMIT` | 3 | Max candidates to check |
 | `SMART_REPLACE_ARCHIVE_TTL_DAYS` | 30 | Days to keep archived memories |
 

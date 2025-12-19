@@ -1,0 +1,115 @@
+# ccmemories/utility/platforms
+
+Platform-specific credential retrieval implementations.
+
+## Purpose
+
+This subpackage provides OS-specific implementations for retrieving Claude Code credentials from secure system credential stores. Each platform has its own retrieval mechanism.
+
+## Files
+
+| File | Class | Platform |
+|------|-------|----------|
+| `base.py` | `CredentialRetriever` | Abstract base class |
+| `darwin.py` | `DarwinCredentialRetriever` | macOS |
+| `linux.py` | `LinuxCredentialRetriever` | Linux |
+| `windows.py` | `WindowsCredentialRetriever` | Windows |
+| `__init__.py` | `get_platform_retriever()` | Factory function |
+
+## Base Class (`base.py`)
+
+```python
+class CredentialRetriever(ABC):
+    service_name: str = "Claude Code-credentials"
+    token_prefix: str = "sk-ant-"
+
+    @abstractmethod
+    def get_credential(self) -> str | None: ...
+
+    def parse_credential(self, raw: str) -> str | None: ...
+```
+
+**`parse_credential()`** handles three formats:
+1. OAuth JSON: `{"claudeAiOauth": {"accessToken": "sk-ant-..."}}`
+2. Legacy JSON: `{"apiKey": "sk-ant-..."}`
+3. Raw token: `"sk-ant-..."`
+
+## Platform Implementations
+
+### macOS (`darwin.py`)
+
+Uses the `security` command-line tool:
+
+```bash
+security find-generic-password -s "Claude Code-credentials" -w
+```
+
+- Timeout: 10 seconds
+- Returns `None` on non-zero exit or exception
+
+### Windows (`windows.py`)
+
+Uses PowerShell `Get-StoredCredential`:
+
+```powershell
+$cred = Get-StoredCredential -Target "Claude Code-credentials" -ErrorAction SilentlyContinue
+if ($cred) { $cred.GetNetworkCredential().Password }
+```
+
+- Timeout: 30 seconds (PowerShell startup is slower)
+- Returns `None` on non-zero exit or exception
+
+### Linux (`linux.py`)
+
+Two-stage retrieval:
+
+1. **Config files** (checked in order):
+   - `~/.claude/credentials`
+   - `~/.config/claude-code/credentials`
+   - `$XDG_CONFIG_HOME/claude-code/credentials`
+
+2. **GNOME Keyring fallback** via `secret-tool`:
+   ```bash
+   secret-tool lookup service "Claude Code-credentials"
+   ```
+
+Config files can contain raw tokens or JSON formats.
+
+## Factory Function (`__init__.py`)
+
+```python
+def get_platform_retriever() -> CredentialRetriever | None:
+    match platform.system():
+        case "Darwin": return DarwinCredentialRetriever()
+        case "Windows": return WindowsCredentialRetriever()
+        case "Linux": return LinuxCredentialRetriever()
+        case _: return None
+```
+
+## Adding a New Platform
+
+1. Create `ccmemories/utility/platforms/newplatform.py`:
+   ```python
+   from .base import CredentialRetriever
+
+   class NewPlatformCredentialRetriever(CredentialRetriever):
+       def get_credential(self) -> str | None:
+           # Platform-specific retrieval logic
+           raw = ...  # Get raw credential
+           return self.parse_credential(raw)
+   ```
+
+2. Register in `__init__.py`:
+   ```python
+   case "NewPlatform":
+       from .newplatform import NewPlatformCredentialRetriever
+       return NewPlatformCredentialRetriever()
+   ```
+
+## Error Handling
+
+All implementations:
+- Return `None` on any error (never raise exceptions)
+- Use timeouts to prevent hanging
+- Catch `subprocess.SubprocessError`, `OSError`, `FileNotFoundError`
+- Match TypeScript Claude Code silent-failure behavior

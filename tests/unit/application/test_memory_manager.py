@@ -41,6 +41,7 @@ def mock_config() -> Config:
     config.smart_replace_archive_ttl_days = 30
     config.smart_replace_max_retries = 3
     config.smart_replace_retry_delay = 1.0
+    config.llm_provider = "openai"
     # Reranker settings
     config.reranker_engine = "llm"
     config.reranker_min_results = 0
@@ -845,6 +846,218 @@ class TestParallelSmartReplacement:
                     # No search or LLM calls when disabled
                     mock_usearch.search.assert_not_called()
                     assert len(replacements) == 0
+
+
+@pytest.mark.unit
+class TestSingleResultRerankingSkip:
+    """Tests for skipping reranking when only 0-1 results after fusion (Sprint optimization).
+
+    When fusion filtering produces <= 1 result, reranking is unnecessary because:
+    - 0 results: Nothing to rerank
+    - 1 result: No ordering to optimize
+    This saves 15-25s of LLM API latency for single-result queries.
+    """
+
+    @pytest.mark.asyncio
+    async def test_single_result_skips_llm_reranking(self, mock_config, mock_logger):
+        """Single result after fusion should skip LLM reranking step."""
+        mock_config.reranker_engine = "llm"
+        mock_config.enable_rrf_fusion = True
+        mock_config.fusion_ranking_threshold = 0.5
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch(
+                    "ccmemories.application.memory.manager.TantivyEngine"
+                ) as mock_tantivy_class:
+                    with patch(
+                        "ccmemories.application.memory.manager.LLMReranker"
+                    ) as mock_reranker_class:
+                        # Setup USearchEngine mock - return 1 result
+                        mock_usearch = MagicMock()
+                        mock_usearch.search.return_value = [("single result", 0.9)]
+                        mock_usearch.count.return_value = 10
+                        mock_usearch_class.return_value = mock_usearch
+
+                        # Setup Tantivy mock - return same result
+                        mock_tantivy = MagicMock()
+                        mock_tantivy.search.return_value = [("single result", 0.9)]
+                        mock_tantivy_class.return_value = mock_tantivy
+
+                        # Setup LLMReranker mock
+                        mock_reranker = MagicMock()
+                        mock_reranker.rerank = AsyncMock(
+                            return_value=[("single result", 0.95)]
+                        )
+                        mock_reranker_class.return_value = mock_reranker
+
+                        manager = MemoryManager(mock_config, mock_logger)
+                        results = await manager.search("test query")
+
+                        # LLM reranker should NOT be called (skipped for single result)
+                        mock_reranker.rerank.assert_not_called()
+
+                        # Result should still be returned
+                        assert len(results) == 1
+                        assert results[0] == "single result"
+
+                        # Verify skip was logged
+                        skip_logged = any(
+                            "Reranking skipped" in str(call)
+                            or "reranking_skip" in str(call)
+                            for call in mock_logger.info.call_args_list
+                        )
+                        assert skip_logged, "Expected reranking skip to be logged"
+
+    @pytest.mark.asyncio
+    async def test_single_result_skips_cross_encoder_reranking(
+        self, mock_config, mock_logger
+    ):
+        """Single result after fusion should skip CrossEncoder reranking step."""
+        mock_config.reranker_engine = "cross_encoder"
+        mock_config.enable_rrf_fusion = True
+        mock_config.fusion_ranking_threshold = 0.5
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch(
+                    "ccmemories.application.memory.manager.TantivyEngine"
+                ) as mock_tantivy_class:
+                    with patch(
+                        "ccmemories.application.memory.manager.CrossEncoderReranker"
+                    ) as mock_reranker_class:
+                        # Setup USearchEngine mock - return 1 result
+                        mock_usearch = MagicMock()
+                        mock_usearch.search.return_value = [("single result", 0.9)]
+                        mock_usearch.count.return_value = 10
+                        mock_usearch_class.return_value = mock_usearch
+
+                        # Setup Tantivy mock - return same result
+                        mock_tantivy = MagicMock()
+                        mock_tantivy.search.return_value = [("single result", 0.9)]
+                        mock_tantivy_class.return_value = mock_tantivy
+
+                        # Setup CrossEncoderReranker mock
+                        mock_reranker = MagicMock()
+                        mock_reranker.rerank_async = AsyncMock(
+                            return_value=[("single result", 0.95)]
+                        )
+                        mock_reranker_class.return_value = mock_reranker
+
+                        manager = MemoryManager(mock_config, mock_logger)
+                        results = await manager.search("test query")
+
+                        # CrossEncoder reranker should NOT be called (skipped for single result)
+                        mock_reranker.rerank_async.assert_not_called()
+
+                        # Result should still be returned
+                        assert len(results) == 1
+                        assert results[0] == "single result"
+
+    @pytest.mark.asyncio
+    async def test_zero_results_skips_reranking_implicitly(
+        self, mock_config, mock_logger
+    ):
+        """Zero results after fusion should skip reranking (implicit - no candidates)."""
+        mock_config.reranker_engine = "llm"
+        mock_config.enable_rrf_fusion = True
+        mock_config.fusion_ranking_threshold = 0.5
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch(
+                    "ccmemories.application.memory.manager.TantivyEngine"
+                ) as mock_tantivy_class:
+                    with patch(
+                        "ccmemories.application.memory.manager.LLMReranker"
+                    ) as mock_reranker_class:
+                        # Setup USearchEngine mock - return empty results
+                        mock_usearch = MagicMock()
+                        mock_usearch.search.return_value = []  # No semantic results
+                        mock_usearch.count.return_value = 10
+                        mock_usearch_class.return_value = mock_usearch
+
+                        # Setup Tantivy mock - return empty results
+                        mock_tantivy = MagicMock()
+                        mock_tantivy.search.return_value = []  # No full-text results
+                        mock_tantivy_class.return_value = mock_tantivy
+
+                        # Setup LLMReranker mock
+                        mock_reranker = MagicMock()
+                        mock_reranker.rerank = AsyncMock(return_value=[])
+                        mock_reranker_class.return_value = mock_reranker
+
+                        manager = MemoryManager(mock_config, mock_logger)
+                        results = await manager.search("test query")
+
+                        # LLM reranker should NOT be called (no results to rerank)
+                        mock_reranker.rerank.assert_not_called()
+
+                        # Empty results expected (no results from either engine)
+                        assert len(results) == 0
+
+    @pytest.mark.asyncio
+    async def test_multiple_results_proceed_to_reranking(
+        self, mock_config, mock_logger
+    ):
+        """Multiple results after fusion should proceed to reranking normally."""
+        mock_config.reranker_engine = "llm"
+        mock_config.enable_rrf_fusion = True
+        mock_config.fusion_ranking_threshold = 0.3  # Low threshold to keep results
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch(
+                    "ccmemories.application.memory.manager.TantivyEngine"
+                ) as mock_tantivy_class:
+                    with patch(
+                        "ccmemories.application.memory.manager.LLMReranker"
+                    ) as mock_reranker_class:
+                        # Setup USearchEngine mock - return multiple results
+                        mock_usearch = MagicMock()
+                        mock_usearch.search.return_value = [
+                            ("result 1", 0.9),
+                            ("result 2", 0.8),
+                            ("result 3", 0.7),
+                        ]
+                        mock_usearch.count.return_value = 10
+                        mock_usearch_class.return_value = mock_usearch
+
+                        # Setup Tantivy mock - return multiple results
+                        mock_tantivy = MagicMock()
+                        mock_tantivy.search.return_value = [
+                            ("result 1", 0.85),
+                            ("result 2", 0.75),
+                        ]
+                        mock_tantivy_class.return_value = mock_tantivy
+
+                        # Setup LLMReranker mock
+                        mock_reranker = MagicMock()
+                        mock_reranker.rerank = AsyncMock(
+                            return_value=[
+                                ("result 1", 0.95),
+                                ("result 2", 0.85),
+                                ("result 3", 0.75),
+                            ]
+                        )
+                        mock_reranker_class.return_value = mock_reranker
+
+                        manager = MemoryManager(mock_config, mock_logger)
+                        results = await manager.search("test query")
+
+                        # LLM reranker SHOULD be called (multiple results to rerank)
+                        mock_reranker.rerank.assert_called_once()
+
+                        # Results should be from reranker
+                        assert len(results) >= 1
 
 
 if __name__ == "__main__":

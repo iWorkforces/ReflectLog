@@ -33,22 +33,39 @@ The `infrastructure/` module provides:
 
 ```python
 from ccmemories.infrastructure import (
-    CachedEmbeddings,         # LRU caching wrapper for query embeddings
-    CrossEncoderConfig,       # CrossEncoder reranker configuration
-    CrossEncoderReranker,     # Local cross-encoder based reranking
-    LangchainQwenEmbeddings,  # OpenRouter embedding provider
-    LLMReranker,              # LLM-based relevance scoring for search results
-    LLMRerankerConfig,        # LLMReranker configuration dataclass
-    MessageRecord,            # Message record dataclass for MessageStore
-    MessageStore,             # libSQL message storage (for USearch)
-    RelevanceScore,           # Relevance score dataclass for LLMReranker
-    ReplacementDecision,      # Replacement decision from SmartReplacer
-    SmartReplacer,            # LLM-based memory replacement detection
-    SmartReplacerConfig,      # SmartReplacer configuration dataclass
-    TantivyConfig,            # Tantivy configuration dataclass (includes soft-delete options)
-    TantivyEngine,            # Full-text search engine with soft-delete support
-    USearchConfig,            # USearch engine configuration dataclass
-    USearchEngine,            # USearch vector search engine (primary semantic backend)
+    # Embedding providers
+    CachedEmbeddings,              # LRU caching wrapper for query embeddings
+    LangchainQwenEmbeddings,       # OpenRouter embedding provider
+
+    # Search engines
+    MessageRecord,                  # Message record dataclass for MessageStore
+    MessageStore,                   # libSQL message storage (for USearch)
+    TantivyConfig,                  # Tantivy configuration dataclass (includes soft-delete options)
+    TantivyEngine,                  # Full-text search engine with soft-delete support
+    USearchConfig,                  # USearch engine configuration dataclass
+    USearchEngine,                  # USearch vector search engine (primary semantic backend)
+
+    # LLM Reranker
+    LLMReranker,                    # LLM-based relevance scoring for search results
+    LLMRerankerConfig,              # LLMReranker configuration dataclass
+    RelevanceScore,                 # Relevance score dataclass for LLMReranker
+    IRerankerProvider,              # Protocol for reranker providers
+    AnthropicRerankerProvider,      # Anthropic-based reranker provider (Claude SDK)
+    OpenAIRerankerProvider,         # OpenAI-compatible reranker provider (OpenRouter)
+    create_reranker_provider,       # Factory function for reranker providers
+
+    # Cross-Encoder Reranker
+    CrossEncoderConfig,             # CrossEncoder reranker configuration
+    CrossEncoderReranker,           # Local cross-encoder based reranking (FlagReranker)
+
+    # Smart Replacer
+    SmartReplacer,                  # LLM-based memory replacement detection
+    SmartReplacerConfig,            # SmartReplacer configuration dataclass
+    ReplacementDecision,            # Replacement decision from SmartReplacer
+    IReplacementProvider,           # Protocol for replacement providers
+    AnthropicReplacementProvider,   # Anthropic-based replacement provider (Claude SDK)
+    OpenAIReplacementProvider,      # OpenAI-compatible replacement provider (OpenRouter)
+    create_replacement_provider,    # Factory function for replacement providers
 )
 ```
 
@@ -718,14 +735,15 @@ LLM-based memory replacement detection for intelligent memory management:
 ```python
 @dataclass(frozen=True)
 class SmartReplacerConfig:
-    api_key: str                    # OpenRouter API key
-    base_url: str                   # OpenRouter API base URL
+    api_key: str                    # OpenRouter API key (OpenAI provider only)
+    base_url: str                   # OpenRouter API base URL (OpenAI provider only)
     model: str                      # LLM model identifier
     threshold: float = 0.7          # Min confidence to trigger replacement (0.0-1.0)
     enabled: bool = True            # Whether smart replacement is enabled
     timeout: float = 30.0           # HTTP request timeout in seconds
     max_retries: int = 3            # Max LLM call retries with exponential backoff
     retry_delay: float = 1.0        # Base delay (seconds) for exponential backoff
+    provider: str = "openai"        # LLM provider: "openai" or "anthropic"
 ```
 
 **Factory Method:**
@@ -881,9 +899,14 @@ async def add_messages_async(self, messages: List[str]) -> int:
 |----------|---------|-------------|
 | `ENABLE_SMART_REPLACE` | `true` | Enable smart memory replacement detection |
 | `SMART_REPLACE_THRESHOLD` | `0.7` | Min LLM confidence to trigger replacement (0.0-1.0) |
+| `LLM_PROVIDER` | `anthropic` | LLM provider for SmartReplacer and LLMReranker: `openai` or `anthropic` |
 | `LLM_MODEL` | `x-ai/grok-4.1-fast` | LLM model (shared with reranking) |
-| `OPENROUTER_API_KEY` | - | API key for OpenRouter |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | API endpoint |
+| `OPENROUTER_API_KEY` | - | API key for OpenRouter (OpenAI provider only) |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | API endpoint (OpenAI provider only) |
+
+**Provider Selection:**
+- `openai` (default): Uses OpenAI-compatible API via OpenRouter with structured JSON output
+- `anthropic`: Uses Claude Agent SDK via `ccmemories.utility.generate_content()` with OAuth credentials
 
 ### Design Rationale
 

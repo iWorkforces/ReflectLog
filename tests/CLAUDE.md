@@ -7,18 +7,40 @@ This directory contains all test suites for the CCMemoriesMCP server.
 ```
 tests/
 ├── conftest.py               # Shared pytest fixtures
+├── demo_test.py              # Demo/example tests
+├── test_enhanced_scoring.py  # Enhanced scoring tests
+├── test_get_all_messages.py  # Get all messages tests
+├── test_llm_infer.py         # LLM inference tests
+├── test_llm_infer_simple.py  # Simple LLM inference tests
+├── test_real_server.py       # Real server tests
+├── test_real_server_fastmcp.py  # FastMCP server tests
+├── test_real_server_mcp.py   # MCP protocol server tests
+├── test_real_tools_direct.py # Direct tool invocation tests
+├── test_score_filtering_demo.py  # Score filtering demo tests
+├── test_verbose_logging.py   # Verbose logging tests
 ├── unit/                     # Unit tests (isolated, fast)
 │   ├── application/          # Application layer unit tests
+│   │   ├── memory/
+│   │   │   └── reranking/
+│   │   │       └── test_normalization.py  # Batch normalization tests
+│   │   ├── utils/
+│   │   │   ├── test_logging.py        # StructuredLogger tests
+│   │   │   ├── test_numba_utils.py    # Numba JIT function tests
+│   │   │   └── test_security.py       # Security utility tests
 │   │   ├── test_mcp_server.py
+│   │   ├── test_mcp_server_error_handling.py
 │   │   ├── test_memory_manager.py
 │   │   ├── test_ranx_fusion.py
+│   │   ├── test_rrf_fusion_toggle.py  # RRF fusion toggle tests
 │   │   ├── test_validation.py
 │   │   ├── test_logging_utils.py
-│   │   ├── test_dynamic_instructions.py
-│   │   └── test_mcp_server_error_handling.py
+│   │   └── test_dynamic_instructions.py
 │   ├── infrastructure/       # Infrastructure layer unit tests
+│   │   ├── test_cross_encoder_reranker.py  # CrossEncoderReranker tests
+│   │   ├── test_llm_reranker.py            # LLMReranker tests
 │   │   ├── test_message_store.py
 │   │   ├── test_qwen3_embedding.py
+│   │   ├── test_smart_replacer.py          # SmartReplacer tests
 │   │   ├── test_tantivy_engine.py
 │   │   └── test_usearch_engine.py
 │   └── test_server.py        # Server entry point tests

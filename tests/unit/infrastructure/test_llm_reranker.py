@@ -1,14 +1,17 @@
 """Unit tests for LLMReranker."""
 
 import json
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 from ccmemories.infrastructure.llm_reranker import (
+    AnthropicRerankerProvider,
     LLMReranker,
     LLMRerankerConfig,
+    OpenAIRerankerProvider,
     RelevanceScore,
+    create_reranker_provider,
 )
 
 
@@ -68,6 +71,7 @@ class TestLLMRerankerConfig:
         assert config.score_threshold == 0.5
         assert config.max_concurrency == 5
         assert config.timeout == 30.0
+        assert config.provider == "anthropic"  # Default provider
 
     def test_custom_values(self) -> None:
         """Test configuration with custom values."""
@@ -77,6 +81,7 @@ class TestLLMRerankerConfig:
             model="custom/model",
             score_threshold=0.7,
             max_concurrency=10,
+            provider="openai",
         )
 
         assert config.api_key == "test-key"
@@ -84,6 +89,7 @@ class TestLLMRerankerConfig:
         assert config.model == "custom/model"
         assert config.score_threshold == 0.7
         assert config.max_concurrency == 10
+        assert config.provider == "openai"
 
     def test_from_app_config(self) -> None:
         """Test factory method from application config."""
@@ -93,6 +99,9 @@ class TestLLMRerankerConfig:
         mock_app_config.llm_model = "x-ai/grok-4.1-fast"
         mock_app_config.search_score_threshold = 0.6
         mock_app_config.rerank_max_concurrency = 8
+        mock_app_config.reranker_min_results = 0
+        mock_app_config.reranker_batch_normalize = True
+        mock_app_config.llm_provider = "openai"
 
         config = LLMRerankerConfig.from_app_config(mock_app_config)
 
@@ -101,17 +110,379 @@ class TestLLMRerankerConfig:
         assert config.model == "x-ai/grok-4.1-fast"
         assert config.score_threshold == 0.6
         assert config.max_concurrency == 8
+        assert config.provider == "openai"
+
+
+class TestCreateRerankerProvider:
+    """Test create_reranker_provider factory function."""
+
+    def test_create_openai_provider(self) -> None:
+        """Test creating OpenAI provider."""
+        config = LLMRerankerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="x-ai/grok-4.1-fast",
+            provider="openai",
+        )
+
+        with patch(
+            "ccmemories.infrastructure.llm_reranker.AsyncOpenAI"
+        ) as mock_client_class:
+            provider = create_reranker_provider(config)
+
+            assert isinstance(provider, OpenAIRerankerProvider)
+            mock_client_class.assert_called_once()
+
+    def test_create_anthropic_provider(self) -> None:
+        """Test creating Anthropic provider."""
+        config = LLMRerankerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="claude-3-sonnet",
+            provider="anthropic",
+        )
+
+        with patch("ccmemories.utility.init_credentials") as mock_init:
+            provider = create_reranker_provider(config)
+
+            assert isinstance(provider, AnthropicRerankerProvider)
+            mock_init.assert_called_once_with(verbose=False)
+
+    def test_create_unsupported_provider_raises(self) -> None:
+        """Test that unsupported provider raises ValueError."""
+        config = LLMRerankerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="test-model",
+            provider="unsupported",
+        )
+
+        with pytest.raises(ValueError, match="Unsupported provider"):
+            create_reranker_provider(config)
+
+
+class TestOpenAIRerankerProvider:
+    """Test OpenAIRerankerProvider class."""
+
+    @pytest.fixture
+    def mock_provider(self) -> OpenAIRerankerProvider:
+        """Create a mocked OpenAIRerankerProvider instance."""
+        with patch(
+            "ccmemories.infrastructure.llm_reranker.AsyncOpenAI"
+        ) as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            provider = OpenAIRerankerProvider(
+                api_key="test-key",
+                base_url="https://openrouter.ai/api/v1",
+                model="x-ai/grok-4.1-fast",
+            )
+            # Replace the client with our mock for testing
+            provider._client = mock_client
+            return provider
+
+    @pytest.mark.asyncio
+    async def test_score_document_success(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test successful document scoring."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"score": 0.85}'
+
+        mock_provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        doc, score = await mock_provider.score_document(
+            query="Python tutorials",
+            document="Learn Python programming basics",
+            fallback_score=0.5,
+        )
+
+        assert doc == "Learn Python programming basics"
+        assert score == 0.85
+
+    @pytest.mark.asyncio
+    async def test_score_document_clamps_out_of_range(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test that out-of-range scores are clamped to 0-1."""
+        # Test score > 1.0
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"score": 1.5}'
+
+        mock_provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        doc, score = await mock_provider.score_document(
+            query="test", document="test doc", fallback_score=0.5
+        )
+        assert score == 1.0
+
+        # Test score < 0.0
+        mock_response.choices[0].message.content = '{"score": -0.5}'
+        doc, score = await mock_provider.score_document(
+            query="test", document="test doc", fallback_score=0.5
+        )
+        assert score == 0.0
+
+    @pytest.mark.asyncio
+    async def test_score_document_invalid_json_uses_fallback(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test that invalid JSON response uses fallback score."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "not valid json"
+
+        mock_provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        mock_logger = MagicMock()
+        mock_provider._logger = mock_logger
+
+        doc, score = await mock_provider.score_document(
+            query="test", document="test doc", fallback_score=0.7
+        )
+
+        assert score == 0.7
+        mock_logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_score_document_empty_response_uses_fallback(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test that empty response uses fallback score."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = None
+
+        mock_provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        mock_logger = MagicMock()
+        mock_provider._logger = mock_logger
+
+        doc, score = await mock_provider.score_document(
+            query="test", document="test doc", fallback_score=0.6
+        )
+
+        assert score == 0.6
+
+    @pytest.mark.asyncio
+    async def test_score_document_api_error_uses_fallback(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test that API error uses fallback score."""
+        mock_provider._client.chat.completions.create = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+
+        mock_logger = MagicMock()
+        mock_provider._logger = mock_logger
+
+        doc, score = await mock_provider.score_document(
+            query="test", document="test doc", fallback_score=0.8
+        )
+
+        assert score == 0.8
+        mock_logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_call_llm_with_structured_output_success(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test that structured output call succeeds."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"score": 0.85}'
+
+        mock_provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        await mock_provider._call_llm_with_structured_output("test prompt")
+
+        # Verify structured output format was used
+        mock_provider._client.chat.completions.create.assert_called_once()
+        call_kwargs = mock_provider._client.chat.completions.create.call_args[1]
+        assert call_kwargs["response_format"]["type"] == "json_schema"
+        assert "json_schema" in call_kwargs["response_format"]
+        assert call_kwargs["response_format"]["json_schema"]["strict"] is True
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_json_schema_not_supported(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test fallback to json_object mode when structured outputs not supported."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"score": 0.75}'
+
+        # First call fails with json_schema error, second succeeds
+        mock_provider._client.chat.completions.create = AsyncMock(
+            side_effect=[
+                Exception("json_schema is not supported for this model"),
+                mock_response,
+            ]
+        )
+
+        mock_logger = MagicMock()
+        mock_provider._logger = mock_logger
+
+        await mock_provider._call_llm_with_structured_output("test prompt")
+
+        # Verify fallback was called
+        assert mock_provider._client.chat.completions.create.call_count == 2
+
+        # Verify second call used json_object mode
+        second_call_kwargs = (
+            mock_provider._client.chat.completions.create.call_args_list[1][1]
+        )
+        assert second_call_kwargs["response_format"]["type"] == "json_object"
+
+        # Verify warning was logged
+        mock_logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_structured_output_error(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test fallback when error mentions 'structured'."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"score": 0.8}'
+
+        mock_provider._client.chat.completions.create = AsyncMock(
+            side_effect=[
+                Exception("structured outputs are not available"),
+                mock_response,
+            ]
+        )
+
+        mock_logger = MagicMock()
+        mock_provider._logger = mock_logger
+
+        await mock_provider._call_llm_with_structured_output("test prompt")
+
+        # Verify fallback occurred
+        assert mock_provider._client.chat.completions.create.call_count == 2
+        mock_logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_fallback_on_unrelated_error(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test that unrelated errors are not caught for fallback."""
+        mock_provider._client.chat.completions.create = AsyncMock(
+            side_effect=Exception("Network timeout error")
+        )
+
+        with pytest.raises(Exception, match="Network timeout"):
+            await mock_provider._call_llm_with_structured_output("test prompt")
+
+
+class TestAnthropicRerankerProvider:
+    """Test AnthropicRerankerProvider class."""
+
+    @pytest.fixture
+    def mock_provider(self) -> AnthropicRerankerProvider:
+        """Create a mocked AnthropicRerankerProvider instance."""
+        with patch("ccmemories.utility.init_credentials") as mock_init:
+            provider = AnthropicRerankerProvider(
+                model="claude-3-sonnet",
+                logger=MagicMock(),
+            )
+            mock_init.assert_called_once_with(verbose=False)
+            return provider
+
+    def test_extract_json_from_response_pure_json(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test extracting JSON from pure JSON response."""
+        response = '{"score": 0.85}'
+        result = mock_provider._extract_json_from_response(response)
+        assert result["score"] == 0.85
+
+    def test_extract_json_from_response_markdown_block(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test extracting JSON from markdown code block."""
+        response = """Here is the score:
+```json
+{"score": 0.75}
+```
+"""
+        result = mock_provider._extract_json_from_response(response)
+        assert result["score"] == 0.75
+
+    def test_extract_json_from_response_embedded(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test extracting embedded JSON from text."""
+        response = 'The relevance score is {"score": 0.9} based on analysis.'
+        result = mock_provider._extract_json_from_response(response)
+        assert result["score"] == 0.9
+
+    def test_extract_json_from_response_failure(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test that extraction fails on non-JSON text."""
+        response = "This is just plain text with no JSON"
+        with pytest.raises(ValueError, match="Could not extract JSON"):
+            mock_provider._extract_json_from_response(response)
+
+    @pytest.mark.asyncio
+    async def test_score_document_success(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test successful document scoring with Anthropic."""
+        with patch("ccmemories.utility.generate_content") as mock_generate:
+            mock_generate.return_value = '{"score": 0.85}'
+
+            doc, score = await mock_provider.score_document(
+                query="Python tutorials",
+                document="Learn Python programming basics",
+                fallback_score=0.5,
+            )
+
+            assert doc == "Learn Python programming basics"
+            assert score == 0.85
+            mock_generate.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_score_document_error_uses_fallback(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test that errors use fallback score."""
+        with patch("ccmemories.utility.generate_content") as mock_generate:
+            mock_generate.side_effect = Exception("API Error")
+
+            doc, score = await mock_provider.score_document(
+                query="test",
+                document="test doc",
+                fallback_score=0.6,
+            )
+
+            assert score == 0.6
+            mock_provider._logger.warning.assert_called_once()
 
 
 class TestLLMRerankerInitialization:
     """Test LLMReranker initialization."""
 
-    def test_initialization_creates_async_client(self) -> None:
-        """Test that initialization creates AsyncOpenAI client."""
+    def test_initialization_creates_openai_provider(self) -> None:
+        """Test that initialization creates OpenAI provider when configured."""
         config = LLMRerankerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
             model="x-ai/grok-4.1-fast",
+            provider="openai",
         )
 
         with patch(
@@ -125,7 +496,24 @@ class TestLLMRerankerInitialization:
                 http_client=ANY,
                 timeout=30.0,
             )
-            assert reranker._client is not None
+            assert reranker._provider is not None
+            assert isinstance(reranker._provider, OpenAIRerankerProvider)
+
+    def test_initialization_creates_anthropic_provider(self) -> None:
+        """Test that initialization creates Anthropic provider when configured."""
+        config = LLMRerankerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="claude-3-sonnet",
+            provider="anthropic",
+        )
+
+        with patch("ccmemories.utility.init_credentials") as mock_init:
+            reranker = LLMReranker(config=config)
+
+            mock_init.assert_called_once_with(verbose=False)
+            assert reranker._provider is not None
+            assert isinstance(reranker._provider, AnthropicRerankerProvider)
 
 
 class TestScoreSingle:
@@ -138,6 +526,7 @@ class TestScoreSingle:
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
             model="x-ai/grok-4.1-fast",
+            provider="openai",
         )
 
         with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
@@ -147,13 +536,10 @@ class TestScoreSingle:
     @pytest.mark.asyncio
     async def test_score_single_success(self, mock_reranker: LLMReranker) -> None:
         """Test successful single document scoring."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"score": 0.85}'
-
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
+        # Mock the provider's score_document method
+        mock_reranker._provider = Mock()
+        mock_reranker._provider.score_document = AsyncMock(
+            return_value=("Learn Python programming basics", 0.85)
         )
 
         doc, score = await mock_reranker._score_single(
@@ -166,114 +552,17 @@ class TestScoreSingle:
         assert score == 0.85
 
     @pytest.mark.asyncio
-    async def test_score_single_clamps_out_of_range(
+    async def test_score_single_provider_not_initialized(
         self, mock_reranker: LLMReranker
     ) -> None:
-        """Test that out-of-range scores are clamped to 0-1."""
-        # Test score > 1.0
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"score": 1.5}'
-
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        doc, score = await mock_reranker._score_single(
-            query="test", document="test doc", fallback_score=0.5
-        )
-        assert score == 1.0
-
-        # Test score < 0.0
-        mock_response.choices[0].message.content = '{"score": -0.5}'
-        doc, score = await mock_reranker._score_single(
-            query="test", document="test doc", fallback_score=0.5
-        )
-        assert score == 0.0
-
-    @pytest.mark.asyncio
-    async def test_score_single_invalid_json_uses_fallback(
-        self, mock_reranker: LLMReranker
-    ) -> None:
-        """Test that invalid JSON response uses fallback score."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "not valid json"
-
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        mock_logger = MagicMock()
-        mock_reranker.logger = mock_logger
-
-        doc, score = await mock_reranker._score_single(
-            query="test", document="test doc", fallback_score=0.7
-        )
-
-        assert score == 0.7
-        mock_logger.warning.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_score_single_empty_response_uses_fallback(
-        self, mock_reranker: LLMReranker
-    ) -> None:
-        """Test that empty response uses fallback score."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = None
-
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        mock_logger = MagicMock()
-        mock_reranker.logger = mock_logger
-
-        doc, score = await mock_reranker._score_single(
-            query="test", document="test doc", fallback_score=0.6
-        )
-
-        assert score == 0.6
-
-    @pytest.mark.asyncio
-    async def test_score_single_api_error_uses_fallback(
-        self, mock_reranker: LLMReranker
-    ) -> None:
-        """Test that API error uses fallback score."""
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            side_effect=Exception("API Error")
-        )
-
-        mock_logger = MagicMock()
-        mock_reranker.logger = mock_logger
-
-        doc, score = await mock_reranker._score_single(
-            query="test", document="test doc", fallback_score=0.8
-        )
-
-        assert score == 0.8
-        mock_logger.warning.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_score_single_client_not_initialized(
-        self, mock_reranker: LLMReranker
-    ) -> None:
-        """Test error when client is not initialized."""
-        mock_reranker._client = None
-
-        mock_logger = MagicMock()
-        mock_reranker.logger = mock_logger
+        """Test fallback when provider is not initialized."""
+        mock_reranker._provider = None
 
         doc, score = await mock_reranker._score_single(
             query="test", document="test doc", fallback_score=0.5
         )
 
-        # Should use fallback when client not initialized
+        # Should use fallback when provider not initialized
         assert score == 0.5
 
 
@@ -290,6 +579,7 @@ class TestRerank:
             score_threshold=0.5,
             max_concurrency=5,
             batch_normalize=False,  # Disable to test raw score behavior
+            provider="openai",
         )
 
         with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
@@ -340,6 +630,7 @@ class TestRerank:
             score_threshold=0.7,
             max_concurrency=5,
             batch_normalize=False,  # Disable to test raw score threshold behavior
+            provider="openai",
         )
 
         async def mock_score_single(query, document, fallback_score):
@@ -421,6 +712,7 @@ class TestRerank:
             score_threshold=0.5,
             max_concurrency=3,  # Limit to 3
             batch_normalize=False,  # Disable to test raw score behavior
+            provider="openai",
         )
 
         candidates = [(f"doc{i}", 0.5) for i in range(10)]
@@ -449,160 +741,35 @@ class TestRerank:
         mock_logger.debug.assert_called()
 
 
-class TestStructuredOutputFallback:
-    """Test structured output with fallback to json_object mode."""
-
-    @pytest.fixture
-    def mock_reranker(self) -> LLMReranker:
-        """Create a mocked LLMReranker instance."""
-        config = LLMRerankerConfig(
-            api_key="test-key",
-            base_url="https://openrouter.ai/api/v1",
-            model="x-ai/grok-4.1-fast",
-        )
-
-        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
-            reranker = LLMReranker(config=config)
-            return reranker
-
-    @pytest.mark.asyncio
-    async def test_structured_output_success(self, mock_reranker: LLMReranker) -> None:
-        """Test that structured output call succeeds."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"score": 0.85}'
-
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        await mock_reranker._call_llm_with_structured_output("test prompt")
-
-        # Verify structured output format was used
-        mock_reranker._client.chat.completions.create.assert_called_once()
-        call_kwargs = mock_reranker._client.chat.completions.create.call_args[1]
-        assert call_kwargs["response_format"]["type"] == "json_schema"
-        assert "json_schema" in call_kwargs["response_format"]
-        assert call_kwargs["response_format"]["json_schema"]["strict"] is True
-
-    @pytest.mark.asyncio
-    async def test_fallback_on_json_schema_not_supported(
-        self, mock_reranker: LLMReranker
-    ) -> None:
-        """Test fallback to json_object mode when structured outputs not supported."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"score": 0.75}'
-
-        # First call fails with json_schema error, second succeeds
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            side_effect=[
-                Exception("json_schema is not supported for this model"),
-                mock_response,
-            ]
-        )
-
-        mock_logger = MagicMock()
-        mock_reranker.logger = mock_logger
-
-        await mock_reranker._call_llm_with_structured_output("test prompt")
-
-        # Verify fallback was called
-        assert mock_reranker._client.chat.completions.create.call_count == 2
-
-        # Verify second call used json_object mode
-        second_call_kwargs = (
-            mock_reranker._client.chat.completions.create.call_args_list[1][1]
-        )
-        assert second_call_kwargs["response_format"]["type"] == "json_object"
-
-        # Verify warning was logged
-        mock_logger.warning.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_fallback_on_structured_output_error(
-        self, mock_reranker: LLMReranker
-    ) -> None:
-        """Test fallback when error mentions 'structured'."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"score": 0.8}'
-
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            side_effect=[
-                Exception("structured outputs are not available"),
-                mock_response,
-            ]
-        )
-
-        mock_logger = MagicMock()
-        mock_reranker.logger = mock_logger
-
-        await mock_reranker._call_llm_with_structured_output("test prompt")
-
-        # Verify fallback occurred
-        assert mock_reranker._client.chat.completions.create.call_count == 2
-        mock_logger.warning.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_no_fallback_on_unrelated_error(
-        self, mock_reranker: LLMReranker
-    ) -> None:
-        """Test that unrelated errors are not caught for fallback."""
-        mock_reranker._client = AsyncMock()
-        mock_reranker._client.chat.completions.create = AsyncMock(
-            side_effect=Exception("Network timeout error")
-        )
-
-        with pytest.raises(Exception, match="Network timeout"):
-            await mock_reranker._call_llm_with_structured_output("test prompt")
-
-    @pytest.mark.asyncio
-    async def test_client_not_initialized_raises_error(
-        self, mock_reranker: LLMReranker
-    ) -> None:
-        """Test that RuntimeError is raised when client is not initialized."""
-        mock_reranker._client = None
-
-        with pytest.raises(RuntimeError, match="not initialized"):
-            await mock_reranker._call_llm_with_structured_output("test prompt")
-
-
 class TestLLMRerankerIntegration:
     """Integration-style tests for full reranking flow."""
 
     @pytest.mark.asyncio
     async def test_full_reranking_flow(self) -> None:
-        """Test complete reranking flow with mocked LLM."""
+        """Test complete reranking flow with mocked provider."""
         config = LLMRerankerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
             model="x-ai/grok-4.1-fast",
             score_threshold=0.5,
             batch_normalize=False,  # Disable to test raw score behavior
+            provider="openai",
         )
 
         with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
             reranker = LLMReranker(config=config, logger=MagicMock())
 
-            # Mock the client to return different scores
+            # Mock the provider's score_document method
             call_count = 0
+            scores = [0.9, 0.4, 0.7, 0.3]  # Only 0.9 and 0.7 pass threshold
 
-            async def mock_create(*args, **kwargs):
+            async def mock_score_document(query, document, fallback_score):
                 nonlocal call_count
+                score = scores[call_count % len(scores)]
                 call_count += 1
-                scores = [0.9, 0.4, 0.7, 0.3]  # Only 0.9 and 0.7 pass threshold
-                score = scores[(call_count - 1) % len(scores)]
-                mock_response = MagicMock()
-                mock_response.choices = [MagicMock()]
-                mock_response.choices[0].message.content = json.dumps({"score": score})
-                return mock_response
+                return (document, score)
 
-            reranker._client = AsyncMock()
-            reranker._client.chat.completions.create = mock_create
+            reranker._provider.score_document = mock_score_document  # type: ignore[method-assign]
 
             candidates = [
                 ("High relevance doc", 0.8),
