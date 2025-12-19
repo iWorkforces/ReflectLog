@@ -6,12 +6,13 @@ import os
 import shutil
 import sys
 
+from dotenv import load_dotenv
+
 # Add the project root to the path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 # Load .env file if it exists
-from dotenv import load_dotenv
 load_dotenv(os.path.join(project_root, ".env"))
 
 
@@ -26,7 +27,7 @@ async def main():
 
     # Set environment variables
     os.environ["PROJECT_ID"] = project_id
-    os.environ["SMART_REPLACE_PROVIDER"] = "anthropic"
+    os.environ["LLM_PROVIDER"] = "anthropic"
     os.environ["LLM_MODEL"] = "claude-sonnet-4-5"
     os.environ["ENABLE_SMART_REPLACE"] = "true"
     os.environ["SMART_REPLACE_THRESHOLD"] = "0.7"
@@ -44,7 +45,7 @@ async def main():
     config = Config.from_environment()
     logger = create_logger(config.project_id, config.log_level)
 
-    print(f"smart_replace_provider: {config.smart_replace_provider}")
+    print(f"llm_provider: {config.llm_provider}")
     print(f"smart_replace_threshold: {config.smart_replace_threshold}")
     print(f"smart_replace_min_similarity: {config.smart_replace_min_similarity}")
     print()

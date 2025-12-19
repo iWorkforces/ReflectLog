@@ -16,12 +16,13 @@ import os
 import shutil
 import sys
 
+from dotenv import load_dotenv
+
 # Add the project root to the path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 # Load .env file if it exists
-from dotenv import load_dotenv
 load_dotenv(os.path.join(project_root, ".env"))
 
 
@@ -38,11 +39,13 @@ async def main():
 
     # Set environment variables for the test
     os.environ["PROJECT_ID"] = project_id
-    os.environ["SMART_REPLACE_PROVIDER"] = "anthropic"
+    os.environ["LLM_PROVIDER"] = "anthropic"
     os.environ["LLM_MODEL"] = "claude-sonnet-4-5"
     os.environ["ENABLE_SMART_REPLACE"] = "true"
     os.environ["SMART_REPLACE_THRESHOLD"] = "0.7"
-    os.environ["SMART_REPLACE_MIN_SIMILARITY"] = "0.3"  # Lower threshold to catch the match
+    os.environ["SMART_REPLACE_MIN_SIMILARITY"] = (
+        "0.3"  # Lower threshold to catch the match
+    )
     # Note: OPENROUTER_API_KEY must be set for embeddings (via .env or environment)
     os.environ["LOG_LEVEL"] = "INFO"
 
@@ -50,7 +53,7 @@ async def main():
     print("Testing AnthropicReplacementProvider - Add Tool Flow")
     print("=" * 70)
     print(f"Project ID: {project_id}")
-    print(f"Provider: {os.environ.get('SMART_REPLACE_PROVIDER')}")
+    print(f"Provider: {os.environ.get('LLM_PROVIDER')}")
     print(f"Model: {os.environ.get('LLM_MODEL')}")
     print()
 
@@ -63,7 +66,7 @@ async def main():
     config = Config.from_environment()
     logger = create_logger(config.project_id, config.log_level)
 
-    print(f"Config smart_replace_provider: {config.smart_replace_provider}")
+    print(f"Config llm_provider: {config.llm_provider}")
     print()
 
     # Create MemoryManager
@@ -121,7 +124,9 @@ async def main():
             print(f"   Only message remaining: {all_messages_after[0]}")
             result = 0
         elif len(all_messages_after) == 2:
-            print("⚠️  PARTIAL: Both messages exist (replacement may not have triggered)")
+            print(
+                "⚠️  PARTIAL: Both messages exist (replacement may not have triggered)"
+            )
             print("   This could happen if similarity threshold wasn't met")
             result = 1
         else:
@@ -131,6 +136,7 @@ async def main():
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         result = 1
 

@@ -428,7 +428,7 @@ class TestSearchPipelineWithRRFToggle:
                     manager = MemoryManager(mock_config_rrf_disabled, mock_logger)
 
                     # Mock the _concatenate_results method
-                    manager._concatenate_results = Mock(
+                    manager._concatenate_results = Mock(  # type: ignore[method-assign]
                         return_value=[("msg1", 0.9), ("msg2", 0.8)]
                     )
 

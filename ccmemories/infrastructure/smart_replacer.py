@@ -84,7 +84,7 @@ class SmartReplacerConfig:
             enabled=config.enable_smart_replace,
             max_retries=config.smart_replace_max_retries,
             retry_delay=config.smart_replace_retry_delay,
-            provider=config.smart_replace_provider,
+            provider=config.llm_provider,
         )
 
 

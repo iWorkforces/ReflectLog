@@ -238,7 +238,7 @@ CCMemoriesMCP/
 - `SMART_REPLACE_ARCHIVE_TTL_DAYS`: Days to keep archived memories, 0=permanent (default: 30)
 - `SMART_REPLACE_MAX_RETRIES`: Max LLM call retries with exponential backoff (default: 3)
 - `SMART_REPLACE_RETRY_DELAY`: Base delay in seconds for exponential backoff (default: 1.0)
-- `SMART_REPLACE_PROVIDER`: LLM provider for smart replacement: `openai` or `anthropic` (default: openai)
+- `LLM_PROVIDER`: LLM provider for SmartReplacer and LLMReranker: `openai` or `anthropic` (default: anthropic)
 - `SEARCH_LIMIT`: Max results returned (default: 5)
 - `ENABLE_RRF_FUSION`: Enable RRF fusion for hybrid search (default: true)
 - `FUSION_RRF_K`: RRF constant (default: 60)
@@ -460,7 +460,7 @@ When RRF is disabled:
 - Adjust archive retention: `SMART_REPLACE_ARCHIVE_TTL_DAYS=90` (keep longer) or `0` (permanent)
 - Configure retry behavior: `SMART_REPLACE_MAX_RETRIES=5`, `SMART_REPLACE_RETRY_DELAY=2.0`
 - Change LLM model: `LLM_MODEL=openai/gpt-4o-mini` (shared with reranking)
-- Change LLM provider: `SMART_REPLACE_PROVIDER=anthropic` (uses claude-agent-sdk)
+- Change LLM provider: `LLM_PROVIDER=openai` (uses OpenRouter API)
 
 **Smart Replacement Flow** (on add):
 ```
@@ -543,7 +543,7 @@ SEARCH_LIMIT=10
 RERANKER_ENGINE=llm  # or "cross_encoder" or "none"
 ENABLE_SMART_REPLACE=true  # Smart memory replacement (default: true)
 SMART_REPLACE_THRESHOLD=0.7  # Min confidence for replacement (default: 0.7)
-SMART_REPLACE_PROVIDER=openai  # or "anthropic" (uses claude-agent-sdk)
+LLM_PROVIDER=anthropic  # or "openai" (uses OpenRouter API)
 LOG_LEVEL=INFO
 ```
 

@@ -22,13 +22,13 @@ async def main():
     """Test the AnthropicReplacementProvider."""
     # Set environment variables for the test
     os.environ.setdefault("PROJECT_ID", "test-project")
-    os.environ["SMART_REPLACE_PROVIDER"] = "anthropic"
+    os.environ["LLM_PROVIDER"] = "anthropic"
     os.environ["LLM_MODEL"] = "claude-sonnet-4-5"
 
     print("=" * 60)
     print("Testing AnthropicReplacementProvider")
     print("=" * 60)
-    print(f"Provider: {os.environ.get('SMART_REPLACE_PROVIDER')}")
+    print(f"Provider: {os.environ.get('LLM_PROVIDER')}")
     print(f"Model: {os.environ.get('LLM_MODEL')}")
     print()
 
@@ -69,7 +69,7 @@ async def main():
             new_memory=new_memory,
             existing_memory=existing_memory,
         )
-        print(f"Result:")
+        print("Result:")
         print(f"  should_replace: {should_replace}")
         print(f"  confidence: {confidence:.2f}")
         print(f"  reason: {reason}")
@@ -77,6 +77,7 @@ async def main():
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -95,7 +96,7 @@ async def main():
             new_memory=new_memory2,
             existing_memory=existing_memory2,
         )
-        print(f"Result:")
+        print("Result:")
         print(f"  should_replace: {should_replace2}")
         print(f"  confidence: {confidence2:.2f}")
         print(f"  reason: {reason2}")
@@ -103,6 +104,7 @@ async def main():
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -121,7 +123,7 @@ async def main():
             new_memory=new_memory3,
             existing_memory=existing_memory3,
         )
-        print(f"Result:")
+        print("Result:")
         print(f"  should_replace: {should_replace3}")
         print(f"  confidence: {confidence3:.2f}")
         print(f"  reason: {reason3}")
@@ -129,6 +131,7 @@ async def main():
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

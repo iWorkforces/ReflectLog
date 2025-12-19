@@ -143,7 +143,7 @@ class TestSmartReplacerConfig:
         mock_app_config.enable_smart_replace = True
         mock_app_config.smart_replace_max_retries = 3
         mock_app_config.smart_replace_retry_delay = 1.0
-        mock_app_config.smart_replace_provider = "openai"
+        mock_app_config.llm_provider = "openai"
 
         config = SmartReplacerConfig.from_app_config(mock_app_config)
 
@@ -164,7 +164,7 @@ class TestSmartReplacerConfig:
         mock_app_config.enable_smart_replace = True
         mock_app_config.smart_replace_max_retries = 3
         mock_app_config.smart_replace_retry_delay = 1.0
-        mock_app_config.smart_replace_provider = "anthropic"
+        mock_app_config.llm_provider = "anthropic"
 
         config = SmartReplacerConfig.from_app_config(mock_app_config)
 
@@ -206,9 +206,7 @@ class TestCreateReplacementProvider:
             provider="anthropic",
         )
 
-        with patch(
-            "ccmemories.utility.init_credentials"
-        ) as mock_init:
+        with patch("ccmemories.utility.init_credentials") as mock_init:
             provider = create_replacement_provider(config)
 
             assert isinstance(provider, AnthropicReplacementProvider)
@@ -455,9 +453,7 @@ That's my assessment."""
         with patch("ccmemories.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch(
-            "ccmemories.utility.generate_content"
-        ) as mock_generate:
+        with patch("ccmemories.utility.generate_content") as mock_generate:
             mock_generate.return_value = json.dumps(
                 {
                     "should_replace": True,
@@ -487,9 +483,7 @@ That's my assessment."""
         with patch("ccmemories.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch(
-            "ccmemories.utility.generate_content"
-        ) as mock_generate:
+        with patch("ccmemories.utility.generate_content") as mock_generate:
             mock_generate.return_value = """Analysis complete:
 
 ```json
@@ -511,9 +505,7 @@ That's my assessment."""
         with patch("ccmemories.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch(
-            "ccmemories.utility.generate_content"
-        ) as mock_generate:
+        with patch("ccmemories.utility.generate_content") as mock_generate:
             mock_generate.side_effect = Exception("API Error")
 
             mock_logger = MagicMock()
@@ -562,9 +554,7 @@ class TestSmartReplacerInitialization:
             provider="anthropic",
         )
 
-        with patch(
-            "ccmemories.utility.init_credentials"
-        ) as mock_init:
+        with patch("ccmemories.utility.init_credentials") as mock_init:
             replacer = SmartReplacer(config=config)
 
             mock_init.assert_called_once_with(verbose=False)
@@ -808,9 +798,7 @@ class TestSmartReplacerIntegration:
         with patch("ccmemories.utility.init_credentials"):
             replacer = SmartReplacer(config=config, logger=MagicMock())
 
-            with patch(
-                "ccmemories.utility.generate_content"
-            ) as mock_generate:
+            with patch("ccmemories.utility.generate_content") as mock_generate:
                 mock_generate.return_value = json.dumps(
                     {
                         "should_replace": True,

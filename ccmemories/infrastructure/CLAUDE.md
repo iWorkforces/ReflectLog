@@ -882,7 +882,7 @@ async def add_messages_async(self, messages: List[str]) -> int:
 |----------|---------|-------------|
 | `ENABLE_SMART_REPLACE` | `true` | Enable smart memory replacement detection |
 | `SMART_REPLACE_THRESHOLD` | `0.7` | Min LLM confidence to trigger replacement (0.0-1.0) |
-| `SMART_REPLACE_PROVIDER` | `openai` | LLM provider: `openai` or `anthropic` |
+| `LLM_PROVIDER` | `anthropic` | LLM provider for SmartReplacer and LLMReranker: `openai` or `anthropic` |
 | `LLM_MODEL` | `x-ai/grok-4.1-fast` | LLM model (shared with reranking) |
 | `OPENROUTER_API_KEY` | - | API key for OpenRouter (OpenAI provider only) |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | API endpoint (OpenAI provider only) |

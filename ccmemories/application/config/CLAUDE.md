@@ -271,7 +271,7 @@ Document: "{document}"
 | `SMART_REPLACE_ARCHIVE_TTL_DAYS` | int | `30` | Days to keep archived memories |
 | `SMART_REPLACE_MAX_RETRIES` | int | `3` | Max LLM call retries |
 | `SMART_REPLACE_RETRY_DELAY` | float | `1.0` | Base retry delay in seconds |
-| `SMART_REPLACE_PROVIDER` | str | `openai` | LLM provider: `openai` or `anthropic` |
+| `LLM_PROVIDER` | str | `anthropic` | LLM provider for SmartReplacer and LLMReranker: `openai` or `anthropic` |
 | `EMBEDDING_BATCH_SIZE` | int | `512` | Texts per API request for async batching |
 | `EMBEDDING_MAX_CONCURRENT_BATCHES` | int | `4` | Max parallel batch requests |
 | `EMBEDDING_CACHE_ENABLED` | bool | `true` | Enable LRU cache for query embeddings |

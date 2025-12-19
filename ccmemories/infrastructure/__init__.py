@@ -13,7 +13,15 @@ This module provides:
 
 from .cached_embeddings import CachedEmbeddings
 from .cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
-from .llm_reranker import LLMReranker, LLMRerankerConfig, RelevanceScore
+from .llm_reranker import (
+    AnthropicRerankerProvider,
+    IRerankerProvider,
+    LLMReranker,
+    LLMRerankerConfig,
+    OpenAIRerankerProvider,
+    RelevanceScore,
+    create_reranker_provider,
+)
 from .message_store import MessageRecord, MessageStore
 from .qwen3_embedding import LangchainQwenEmbeddings
 from .smart_replacer import (
@@ -29,17 +37,21 @@ from .tantivy_engine import TantivyConfig, TantivyEngine
 from .usearch_engine import USearchConfig, USearchEngine
 
 __all__ = [
+    "AnthropicRerankerProvider",
     "AnthropicReplacementProvider",
     "CachedEmbeddings",
+    "create_reranker_provider",
     "create_replacement_provider",
     "CrossEncoderConfig",
     "CrossEncoderReranker",
+    "IRerankerProvider",
     "IReplacementProvider",
     "LangchainQwenEmbeddings",
     "LLMReranker",
     "LLMRerankerConfig",
     "MessageRecord",
     "MessageStore",
+    "OpenAIRerankerProvider",
     "OpenAIReplacementProvider",
     "RelevanceScore",
     "ReplacementDecision",

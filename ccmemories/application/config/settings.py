@@ -136,7 +136,7 @@ class Config:
     smart_replace_retry_delay: float = (
         1.0  # Base delay (seconds) for exponential backoff
     )
-    smart_replace_provider: str = "openai"  # Provider: "openai" or "anthropic"
+    llm_provider: str = "anthropic"  # LLM provider: "openai" or "anthropic"
 
     # Concurrency settings
     add_max_concurrency: int = 4  # Max concurrent message additions
@@ -262,14 +262,14 @@ class Config:
                 f"Valid options: {', '.join(valid_engines)}"
             )
 
-        # Determine smart replace provider
-        smart_replace_provider_raw = os.environ.get("SMART_REPLACE_PROVIDER", "openai")
-        smart_replace_provider = smart_replace_provider_raw.lower()
-        valid_smart_replace_providers = ("openai", "anthropic")
-        if smart_replace_provider not in valid_smart_replace_providers:
+        # Determine LLM provider (used by SmartReplacer and LLMReranker)
+        llm_provider_raw = os.environ.get("LLM_PROVIDER", "anthropic")
+        llm_provider = llm_provider_raw.lower()
+        valid_llm_providers = ("openai", "anthropic")
+        if llm_provider not in valid_llm_providers:
             raise ConfigurationError(
-                f"Invalid SMART_REPLACE_PROVIDER: '{smart_replace_provider}'. "
-                f"Valid options: {', '.join(valid_smart_replace_providers)}"
+                f"Invalid LLM_PROVIDER: '{llm_provider}'. "
+                f"Valid options: {', '.join(valid_llm_providers)}"
             )
 
         return cls(
@@ -433,7 +433,7 @@ class Config:
             smart_replace_retry_delay=max(
                 0.1, float(os.environ.get("SMART_REPLACE_RETRY_DELAY", "1.0"))
             ),
-            smart_replace_provider=smart_replace_provider,
+            llm_provider=llm_provider,
             # Concurrency settings
             add_max_concurrency=max(1, int(os.environ.get("ADD_MAX_CONCURRENCY", "4"))),
             # Initialization settings
