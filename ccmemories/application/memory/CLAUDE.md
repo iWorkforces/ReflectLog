@@ -25,6 +25,7 @@ The `memory/` module implements the core hybrid storage engine:
 - **Dual Storage**: USearch/libSQL for semantic search + Tantivy for full-text search
 - **RRF Fusion**: Reciprocal Rank Fusion via ranx library for intelligent result ranking
 - **LLM Reranking**: Optional AI-powered relevance scoring for post-fusion refinement
+- **Temporal-Aware Scoring**: Recency decay for handling contradictory memories (newer memories prioritized)
 - **Deduplication**: Exact match checking before storage (via Tantivy or MessageStore)
 - **Smart Replacement**: LLM-based detection when new memories update/replace existing ones
 - **Parallel Processing**: 3-phase add operation with concurrent duplicate detection and smart replacement
@@ -38,14 +39,20 @@ The `memory/` module implements the core hybrid storage engine:
 When `ENABLE_RRF_FUSION=true` (default):
 ```
 Query → [Step 1: Parallel Search] → [Step 2: RRF Fusion] → [Step 3: Fusion Filter] → [Step 4: Rerank] → Results
-         USearch + Tantivy           RanxFusionEngine       threshold >= 0.8        LLMReranker
+         USearch + Tantivy           RanxFusionEngine       threshold >= 0.8        LLM/CrossEncoder
+              ↓                                                                          ↓
+         timestamp_map ───────────────────────────────────────────────────────────→ Recency Decay
 ```
 
 When `ENABLE_RRF_FUSION=false`:
 ```
 Query → [Step 1: Parallel Search] → [Step 2: Concatenate] → [Step 3: Rerank] → Results
-         USearch + Tantivy           Semantic priority       LLMReranker
+         USearch + Tantivy           Semantic priority       LLM/CrossEncoder
+              ↓                                                    ↓
+         timestamp_map ─────────────────────────────────────→ Recency Decay
 ```
+
+**Timestamp Map Flow**: USearch returns `(message, score, created_at)` tuples. The `created_at` values are collected into `timestamp_map: Dict[str, str]` and passed to rerankers for recency decay calculation.
 
 | Step | Component | Purpose | Configurable |
 |------|-----------|---------|--------------|
@@ -91,15 +98,26 @@ Query → [Step 1: Parallel Search] → [Step 2: Concatenate] → [Step 3: Reran
 5. **LLMReranker** (AI Relevance Scoring)
    - Infrastructure: `ccmemories.infrastructure.LLMReranker`
    - Purpose: Post-fusion relevance scoring using LLM
-   - Uses `SCORING_PROMPT` from `config/prompts.py`
+   - Uses `SCORING_PROMPT` or `SCORING_PROMPT_WITH_AGE` from `config/prompts.py`
+   - **Temporal-Aware**: When `ENABLE_RECENCY_BOOST=true`, includes memory age in prompt
    - Parallel scoring with concurrency control (default: 10)
    - Graceful fallback to fusion score on LLM errors
+   - **Provider Abstraction**: Uses `IRerankerProvider` protocol (OpenAI or Anthropic)
 
-6. **Score Normalization** (`reranking/normalization.py`)
+6. **CrossEncoderReranker** (Local Reranking)
+   - Infrastructure: `ccmemories.infrastructure.CrossEncoderReranker`
+   - Purpose: Fast local reranking using FlagReranker model
+   - Default model: `BAAI/bge-reranker-v2-m3` (multilingual)
+   - **Temporal-Aware**: Supports recency decay via `timestamp_map` parameter
+   - No API costs, runs locally on CPU/GPU/MPS
+   - Built-in score normalization (sigmoid to 0-1 range)
+
+7. **Score Normalization** (`reranking/normalization.py`)
    - Purpose: Batch min-max normalization for unified threshold semantics
    - Transforms diverse reranker score ranges to [0, 1]
    - LLMReranker scores (0.7-0.9) and CrossEncoder scores (0.001-0.17) become comparable
    - Safety net: `apply_threshold_with_safety_net()` guarantees min results
+   - **Recency Decay**: `apply_recency_decay()` multiplies scores by `exp(-rate * hours_old)`
 
 ### Infrastructure Layer Abstraction
 
@@ -126,6 +144,11 @@ if config.enable_hybrid_search:
 if config.reranker_engine == "llm":
     reranker_config = LLMRerankerConfig.from_app_config(config)
     self._llm_reranker = LLMReranker(config=reranker_config, logger=self.logger)
+
+# CrossEncoder Reranker (optional, when RERANKER_ENGINE=cross_encoder)
+if config.reranker_engine == "cross_encoder":
+    ce_config = CrossEncoderConfig.from_app_config(config)
+    self._cross_encoder_reranker = CrossEncoderReranker(config=ce_config, logger=self.logger)
 ```
 
 This architecture provides:
@@ -214,12 +237,22 @@ class AddResult:
 #### `search(query: str, limit: int) -> List[str]`
 
 - **Step 1**: Executes both semantic (USearchEngine) and full-text (TantivyEngine) search in parallel
+  - USearch returns `(message, score, created_at)` tuples
+  - Builds `timestamp_map: Dict[str, str]` from `created_at` values
 - **Step 2**: Combines results using RRF fusion or concatenation (based on `ENABLE_RRF_FUSION`)
 - **Step 3**: When RRF enabled: applies fusion threshold filtering (`FUSION_RANKING_THRESHOLD`, default: 0.8)
 - **Step 3/4**: Reranks with LLMReranker/CrossEncoder (when `RERANKER_ENGINE` is `llm` or `cross_encoder`)
+  - Passes `timestamp_map` to reranker for recency decay
+  - Reranker applies `normalize_reranker_scores()` then `apply_recency_decay()`
 - **Processing**: Returns list of message strings
 
 **Note**: When `ENABLE_RRF_FUSION=false`, Step 2 concatenates results with semantic priority, Step 3 (fusion threshold) is skipped, and reranking becomes Step 3.
+
+**Recency Decay Flow** (in rerankers):
+```
+Reranker Score → [Batch Normalize] → [Apply Decay] → [Re-sort] → [Threshold Filter] → Results
+                  0-1 range          score * exp(-rate * hours)   by decayed score
+```
 
 #### `search_for_removal(message: str) -> List[dict]`
 - Specialized search for `remove` tool
@@ -285,9 +318,28 @@ Key environment variables (via `Config`):
 | `SEARCH_SCORE_THRESHOLD` | 0.5 | Min LLM relevance score to keep (Step 3/4) |
 | `RERANK_MAX_CONCURRENCY` | 10 | Max parallel LLM calls for reranking |
 | `LLM_MODEL` | `x-ai/grok-4.1-fast` | LLM model for reranking |
+| `LLM_PROVIDER` | `anthropic` | LLM provider: `openai` or `anthropic` |
 | `TANTIVY_INDEX_PATH_TEMPLATE` | `indexes/{project_id}/tantivy` | Tantivy index path |
 | `USEARCH_INDEX_PATH_TEMPLATE` | `indexes/{project_id}/usearch` | USearch index path |
 | `DEDUPLICATE_MESSAGES` | true | Skip exact duplicates on add |
+
+**Recency Decay Configuration**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_RECENCY_BOOST` | true | Include memory age in reranking context |
+| `RECENCY_DECAY_RATE` | 0.01 | Exponential decay per hour: `exp(-rate * hours_old)` |
+| `RERANKER_BATCH_NORMALIZE` | true | Enable batch min-max normalization before decay |
+| `RERANKER_MIN_RESULTS` | 0 | Safety net: min results to return (0 = disabled) |
+
+**Decay Rate Examples**:
+
+| Rate | Half-life (hours) | Use Case |
+|------|-------------------|----------|
+| 0.001 | ~693 | Long-term preferences |
+| 0.01 (default) | ~69 | General memories |
+| 0.05 | ~14 | Fast-changing context |
+| 0.1 | ~7 | Session-specific data |
 
 **Embedding Cache Configuration**:
 

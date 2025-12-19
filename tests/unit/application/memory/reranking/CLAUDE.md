@@ -1,13 +1,13 @@
 # tests/unit/application/memory/reranking/
 
-This directory contains unit tests for the reranker score normalization utilities.
+This directory contains unit tests for the reranker score normalization and recency decay utilities.
 
 ## Structure
 
 ```
 reranking/
 ├── __init__.py              # Package marker
-└── test_normalization.py    # Score normalization tests
+└── test_normalization.py    # Score normalization and recency decay tests
 ```
 
 ## Purpose
@@ -16,6 +16,8 @@ Tests for the `ccmemories/application/memory/reranking/` module components:
 
 - **`normalize_reranker_scores()`**: Batch min-max normalization to [0, 1] range
 - **`apply_threshold_with_safety_net()`**: Threshold filtering with optional safety net
+- **`calculate_recency_factor()`**: Exponential decay factor based on memory age
+- **`apply_recency_decay()`**: Apply recency decay to scored results and re-sort
 
 ## Test File: `test_normalization.py`
 
@@ -62,6 +64,35 @@ Integration tests combining normalization and threshold filtering:
 |------|---------|
 | `test_cross_encoder_workflow` | Simulates CrossEncoder reranking workflow |
 | `test_llm_reranker_workflow` | Simulates LLM reranking workflow |
+
+#### `TestCalculateRecencyFactor`
+
+Tests for the exponential decay calculation:
+
+| Test | Purpose |
+|------|---------|
+| `test_very_recent_memory` | Brand new memory gets factor ≈ 1.0 |
+| `test_one_hour_old` | 1 hour old with rate=0.01 ≈ 0.99 |
+| `test_half_life_decay` | At half-life (69h for rate=0.01), factor ≈ 0.5 |
+| `test_very_old_memory` | Very old memory gets factor near 0 |
+| `test_zero_decay_rate` | Zero rate always returns 1.0 (no decay) |
+| `test_higher_decay_rate` | Rate=0.1 decays faster |
+| `test_invalid_timestamp` | Invalid timestamp returns 1.0 gracefully |
+| `test_future_timestamp` | Future timestamps clamped to 1.0 |
+
+#### `TestApplyRecencyDecay`
+
+Tests for applying decay to scored results:
+
+| Test | Purpose |
+|------|---------|
+| `test_empty_input` | Empty list returns empty list |
+| `test_no_timestamps` | Missing timestamps, results unchanged |
+| `test_all_timestamps_present` | Decay applied and re-sorted |
+| `test_partial_timestamps` | Some missing, only apply to available |
+| `test_reordering_by_decay` | Old high-score beaten by new low-score |
+| `test_zero_decay_rate` | Rate=0, no changes to scores |
+| `test_preserves_message_content` | Messages not mutated |
 
 ## Running Tests
 
@@ -124,6 +155,30 @@ def test_safety_net_behavior():
     result_with_safety = apply_threshold_with_safety_net(scored, 0.5, min_results=1)
     assert len(result_with_safety) == 1
     assert result_with_safety[0][0] == "doc1"  # Top result returned
+```
+
+### Recency Decay Testing Pattern
+
+```python
+from datetime import datetime, timedelta
+
+def test_recency_decay_reorders():
+    """Newer memory with lower base score can beat older higher score."""
+    now = datetime.now()
+
+    scored = [
+        ("old_memory", 0.9),  # Higher base score
+        ("new_memory", 0.8),  # Lower base score but newer
+    ]
+    timestamp_map = {
+        "old_memory": (now - timedelta(hours=100)).isoformat(),  # Old
+        "new_memory": (now - timedelta(hours=1)).isoformat(),    # Recent
+    }
+
+    decayed = apply_recency_decay(scored, timestamp_map, decay_rate=0.01)
+
+    # New memory should now rank higher after decay applied
+    assert decayed[0][0] == "new_memory"
 ```
 
 ## Test Data Patterns

@@ -25,11 +25,13 @@ class MessageRecord:
         id: libSQL auto-increment ID (used as USearch key).
         project_id: Project identifier for filtering.
         message: The message text content.
+        created_at: Timestamp when the message was created (ISO format string).
     """
 
     id: int
     project_id: str
     message: str
+    created_at: str = ""  # Default empty for backward compatibility
 
 
 @dataclass(frozen=True)
@@ -235,7 +237,7 @@ class MessageStore(BaseModel):
         try:
             cursor = self.connection.cursor()
             cursor.execute(
-                "SELECT id, project_id, message FROM messages WHERE id = ?",
+                "SELECT id, project_id, message, created_at FROM messages WHERE id = ?",
                 (message_id,),
             )
             row = cursor.fetchone()
@@ -244,7 +246,12 @@ class MessageStore(BaseModel):
             if row is None:
                 return None
 
-            return MessageRecord(id=row[0], project_id=row[1], message=row[2])
+            return MessageRecord(
+                id=row[0],
+                project_id=row[1],
+                message=row[2],
+                created_at=row[3] if row[3] else "",
+            )
 
         except Exception as e:
             if self.logger:
@@ -274,14 +281,19 @@ class MessageStore(BaseModel):
             cursor = self.connection.cursor()
             placeholders = ",".join("?" * len(message_ids))
             cursor.execute(
-                f"SELECT id, project_id, message FROM messages WHERE id IN ({placeholders})",
+                f"SELECT id, project_id, message, created_at FROM messages WHERE id IN ({placeholders})",
                 message_ids,
             )
             rows = cursor.fetchall()
             cursor.close()
 
             return {
-                row[0]: MessageRecord(id=row[0], project_id=row[1], message=row[2])
+                row[0]: MessageRecord(
+                    id=row[0],
+                    project_id=row[1],
+                    message=row[2],
+                    created_at=row[3] if row[3] else "",
+                )
                 for row in rows
             }
 

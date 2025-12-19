@@ -54,6 +54,8 @@ class CrossEncoderConfig:
     max_length: int = 512
     min_results: int = 0  # Safety net: min results to return (0 = disabled)
     batch_normalize: bool = True  # Enable batch min-max normalization
+    enable_recency_boost: bool = True  # Include memory age in recency decay calculation
+    recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
     def from_app_config(cls, config: Config) -> "CrossEncoderConfig":
@@ -77,6 +79,8 @@ class CrossEncoderConfig:
             max_length=config.cross_encoder_max_length,
             min_results=config.reranker_min_results,
             batch_normalize=config.reranker_batch_normalize,
+            enable_recency_boost=config.enable_recency_boost,
+            recency_decay_rate=config.recency_decay_rate,
         )
 
 
@@ -210,17 +214,20 @@ class CrossEncoderReranker(BaseModel):
         self,
         query: str,
         candidates: list[tuple[str, float]],
+        timestamp_map: dict[str, str] | None = None,
     ) -> list[tuple[str, float]]:
-        """Rerank candidates using FlagReranker scores.
+        """Rerank candidates using FlagReranker scores with optional recency decay.
 
         Scores each candidate document against the query using FlagReranker,
-        applies score threshold filtering, sorts by score descending, and returns
-        the top-k results.
+        applies score threshold filtering, optional recency decay, sorts by score
+        descending, and returns the top-k results.
 
         Args:
             query: Search query string.
             candidates: List of (document, fusion_score) tuples from RRF fusion.
                 The fusion_score is preserved as metadata but not used for ranking.
+            timestamp_map: Optional mapping of document text to ISO 8601 created_at
+                timestamps. Used for recency decay calculation when enabled.
 
         Returns:
             List of (document, cross_encoder_score) tuples, sorted by score
@@ -233,6 +240,7 @@ class CrossEncoderReranker(BaseModel):
             - If candidates is empty, returns empty list
             - With normalize=True, scores are in [0, 1] range (sigmoid applied)
             - With normalize=False, scores can be any real number
+            - Recency decay is applied after normalization when enable_recency_boost=True
         """
         if not candidates:
             return []
@@ -281,6 +289,37 @@ class CrossEncoderReranker(BaseModel):
                         "batch_normalize": True,
                         "raw_min": min(raw_scores),
                         "raw_max": max(raw_scores),
+                    },
+                )
+
+        # Apply recency decay if enabled and timestamps are available
+        # This multiplies each score by exp(-decay_rate * hours_old)
+        if (
+            self.config.enable_recency_boost
+            and self.config.recency_decay_rate > 0
+            and timestamp_map
+            and scored
+        ):
+            from ccmemories.application.memory.reranking import apply_recency_decay
+
+            pre_decay_scores = [s for _, s in scored]
+            scored = apply_recency_decay(
+                scored,
+                timestamp_map,
+                self.config.recency_decay_rate,
+            )
+            post_decay_scores = [s for _, s in scored]
+
+            if self.logger:
+                self.logger.debug(
+                    f"Recency decay: applied (rate={self.config.recency_decay_rate}, "
+                    f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
+                    f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
+                    extra={
+                        "recency_decay": True,
+                        "decay_rate": self.config.recency_decay_rate,
+                        "pre_decay_max": max(pre_decay_scores),
+                        "post_decay_max": max(post_decay_scores),
                     },
                 )
 
@@ -351,6 +390,7 @@ class CrossEncoderReranker(BaseModel):
         self,
         query: str,
         candidates: list[tuple[str, float]],
+        timestamp_map: dict[str, str] | None = None,
     ) -> list[tuple[str, float]]:
         """Async wrapper for cross-encoder reranking.
 
@@ -360,6 +400,8 @@ class CrossEncoderReranker(BaseModel):
         Args:
             query: Search query string.
             candidates: List of (document, fusion_score) tuples from RRF fusion.
+            timestamp_map: Optional mapping of document text to ISO 8601 created_at
+                timestamps. Used for recency decay calculation when enabled.
 
         Returns:
             List of (document, cross_encoder_score) tuples, sorted by score
@@ -367,4 +409,4 @@ class CrossEncoderReranker(BaseModel):
         """
         from asyncer import asyncify
 
-        return await asyncify(self.rerank)(query, candidates)
+        return await asyncify(self.rerank)(query, candidates, timestamp_map)

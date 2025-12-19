@@ -21,6 +21,7 @@ from .llm_reranker import (
     OpenAIRerankerProvider,
     RelevanceScore,
     create_reranker_provider,
+    format_memory_age,
 )
 from .message_store import MessageRecord, MessageStore
 from .qwen3_embedding import LangchainQwenEmbeddings
@@ -44,6 +45,7 @@ __all__ = [
     "create_replacement_provider",
     "CrossEncoderConfig",
     "CrossEncoderReranker",
+    "format_memory_age",
     "IRerankerProvider",
     "IReplacementProvider",
     "LangchainQwenEmbeddings",

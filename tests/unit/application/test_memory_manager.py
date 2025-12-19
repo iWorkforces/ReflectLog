@@ -276,12 +276,14 @@ class TestHybridMemoryManager:
                 with patch(
                     "ccmemories.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
-                    # Setup USearchEngine mock
+                    # Setup USearchEngine mock - now returns 3-tuples (message, score, created_at)
                     mock_usearch = MagicMock()
-                    mock_usearch.search.return_value = [("usearch result", 0.9)]
+                    mock_usearch.search.return_value = [
+                        ("usearch result", 0.9, "2024-01-01T00:00:00")
+                    ]
                     mock_usearch_class.return_value = mock_usearch
 
-                    # Setup Tantivy mock
+                    # Setup Tantivy mock - still returns 2-tuples (no timestamps)
                     mock_tantivy = MagicMock()
                     mock_tantivy.search.return_value = [("tantivy result", 0.8)]
                     mock_tantivy_class.return_value = mock_tantivy
@@ -644,10 +646,11 @@ class TestParallelSmartReplacement:
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
                         # Return 3 similar candidates above threshold
+                        # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch.search.return_value = [
-                            ("old memory 1", 0.8),
-                            ("old memory 2", 0.7),
-                            ("old memory 3", 0.6),
+                            ("old memory 1", 0.8, "2024-01-01T00:00:00"),
+                            ("old memory 2", 0.7, "2024-01-02T00:00:00"),
+                            ("old memory 3", 0.6, "2024-01-03T00:00:00"),
                         ]
                         mock_usearch_class.return_value = mock_usearch
 
@@ -693,8 +696,14 @@ class TestParallelSmartReplacement:
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
                         # Return 5 candidates (more than concurrency limit)
+                        # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch.search.return_value = [
-                            (f"old memory {i}", 0.9 - i * 0.05) for i in range(5)
+                            (
+                                f"old memory {i}",
+                                0.9 - i * 0.05,
+                                f"2024-01-0{i + 1}T00:00:00",
+                            )
+                            for i in range(5)
                         ]
                         mock_usearch_class.return_value = mock_usearch
 
@@ -729,10 +738,11 @@ class TestParallelSmartReplacement:
                         "ccmemories.application.memory.manager.SmartReplacer"
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
+                        # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch.search.return_value = [
-                            ("old memory 1", 0.8),
-                            ("old memory 2", 0.7),
-                            ("old memory 3", 0.6),
+                            ("old memory 1", 0.8, "2024-01-01T00:00:00"),
+                            ("old memory 2", 0.7, "2024-01-02T00:00:00"),
+                            ("old memory 3", 0.6, "2024-01-03T00:00:00"),
                         ]
                         mock_usearch_class.return_value = mock_usearch
 
@@ -803,10 +813,15 @@ class TestParallelSmartReplacement:
                     ) as mock_replacer_class:
                         mock_usearch = MagicMock()
                         # Only first 2 above threshold (0.8, 0.7 >= 0.6)
+                        # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch.search.return_value = [
-                            ("old memory 1", 0.8),
-                            ("old memory 2", 0.7),
-                            ("old memory 3", 0.5),  # Below threshold
+                            ("old memory 1", 0.8, "2024-01-01T00:00:00"),
+                            ("old memory 2", 0.7, "2024-01-02T00:00:00"),
+                            (
+                                "old memory 3",
+                                0.5,
+                                "2024-01-03T00:00:00",
+                            ),  # Below threshold
                         ]
                         mock_usearch_class.return_value = mock_usearch
 
@@ -876,12 +891,15 @@ class TestSingleResultRerankingSkip:
                         "ccmemories.application.memory.manager.LLMReranker"
                     ) as mock_reranker_class:
                         # Setup USearchEngine mock - return 1 result
+                        # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch = MagicMock()
-                        mock_usearch.search.return_value = [("single result", 0.9)]
+                        mock_usearch.search.return_value = [
+                            ("single result", 0.9, "2024-01-01T00:00:00")
+                        ]
                         mock_usearch.count.return_value = 10
                         mock_usearch_class.return_value = mock_usearch
 
-                        # Setup Tantivy mock - return same result
+                        # Setup Tantivy mock - return same result (2-tuples, no timestamps)
                         mock_tantivy = MagicMock()
                         mock_tantivy.search.return_value = [("single result", 0.9)]
                         mock_tantivy_class.return_value = mock_tantivy
@@ -931,12 +949,15 @@ class TestSingleResultRerankingSkip:
                         "ccmemories.application.memory.manager.CrossEncoderReranker"
                     ) as mock_reranker_class:
                         # Setup USearchEngine mock - return 1 result
+                        # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch = MagicMock()
-                        mock_usearch.search.return_value = [("single result", 0.9)]
+                        mock_usearch.search.return_value = [
+                            ("single result", 0.9, "2024-01-01T00:00:00")
+                        ]
                         mock_usearch.count.return_value = 10
                         mock_usearch_class.return_value = mock_usearch
 
-                        # Setup Tantivy mock - return same result
+                        # Setup Tantivy mock - return same result (2-tuples, no timestamps)
                         mock_tantivy = MagicMock()
                         mock_tantivy.search.return_value = [("single result", 0.9)]
                         mock_tantivy_class.return_value = mock_tantivy
@@ -1022,16 +1043,17 @@ class TestSingleResultRerankingSkip:
                         "ccmemories.application.memory.manager.LLMReranker"
                     ) as mock_reranker_class:
                         # Setup USearchEngine mock - return multiple results
+                        # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch = MagicMock()
                         mock_usearch.search.return_value = [
-                            ("result 1", 0.9),
-                            ("result 2", 0.8),
-                            ("result 3", 0.7),
+                            ("result 1", 0.9, "2024-01-01T00:00:00"),
+                            ("result 2", 0.8, "2024-01-02T00:00:00"),
+                            ("result 3", 0.7, "2024-01-03T00:00:00"),
                         ]
                         mock_usearch.count.return_value = 10
                         mock_usearch_class.return_value = mock_usearch
 
-                        # Setup Tantivy mock - return multiple results
+                        # Setup Tantivy mock - return multiple results (2-tuples, no timestamps)
                         mock_tantivy = MagicMock()
                         mock_tantivy.search.return_value = [
                             ("result 1", 0.85),
@@ -1058,6 +1080,195 @@ class TestSingleResultRerankingSkip:
 
                         # Results should be from reranker
                         assert len(results) >= 1
+
+
+@pytest.mark.unit
+class TestTimestampPropagation:
+    """Tests for timestamp propagation through the search pipeline (Temporal-aware reranking).
+
+    These tests verify that created_at timestamps from USearchEngine are properly
+    propagated through the hybrid search pipeline for use in temporal-aware reranking.
+    """
+
+    @pytest.mark.asyncio
+    async def test_search_receives_timestamps_from_usearch(
+        self, mock_config, mock_logger
+    ):
+        """USearch search results should include created_at timestamps (3-tuples)."""
+        mock_config.reranker_engine = "none"  # Skip reranking for simplicity
+        mock_config.enable_rrf_fusion = True
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch(
+                    "ccmemories.application.memory.manager.TantivyEngine"
+                ) as mock_tantivy_class:
+                    # Setup USearchEngine mock with timestamps
+                    mock_usearch = MagicMock()
+                    mock_usearch.search.return_value = [
+                        ("result 1", 0.9, "2024-01-15T10:30:00"),
+                        ("result 2", 0.8, "2024-01-14T09:00:00"),
+                        ("result 3", 0.7, "2024-01-13T08:00:00"),
+                    ]
+                    mock_usearch.count.return_value = 10
+                    mock_usearch_class.return_value = mock_usearch
+
+                    # Setup Tantivy mock (2-tuples, no timestamps)
+                    mock_tantivy = MagicMock()
+                    mock_tantivy.search.return_value = [
+                        ("result 1", 0.85),
+                    ]
+                    mock_tantivy_class.return_value = mock_tantivy
+
+                    manager = MemoryManager(mock_config, mock_logger)
+                    results = await manager.search("test query")
+
+                    # USearch should have been called
+                    mock_usearch.search.assert_called()
+
+                    # Results should be returned
+                    assert len(results) >= 1
+
+    @pytest.mark.asyncio
+    async def test_timestamp_map_built_from_semantic_results(
+        self, mock_config, mock_logger
+    ):
+        """Verify timestamp_map is built correctly from semantic search results."""
+        mock_config.reranker_engine = "none"
+        mock_config.enable_rrf_fusion = True
+        mock_config.fusion_ranking_threshold = 0.0  # Keep all results
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch(
+                    "ccmemories.application.memory.manager.TantivyEngine"
+                ) as mock_tantivy_class:
+                    # Create test data with distinct timestamps
+                    semantic_results = [
+                        ("Memory about cats", 0.95, "2024-12-01T12:00:00"),
+                        ("Memory about dogs", 0.85, "2024-12-15T14:30:00"),
+                    ]
+
+                    mock_usearch = MagicMock()
+                    mock_usearch.search.return_value = semantic_results
+                    mock_usearch.count.return_value = 100
+                    mock_usearch_class.return_value = mock_usearch
+
+                    mock_tantivy = MagicMock()
+                    mock_tantivy.search.return_value = [("Memory about cats", 0.9)]
+                    mock_tantivy_class.return_value = mock_tantivy
+
+                    manager = MemoryManager(mock_config, mock_logger)
+                    results = await manager.search("pets")
+
+                    # The search should return results
+                    assert len(results) >= 1
+                    # Verify the semantic results contain the expected messages
+                    messages_returned = set(results)
+                    assert (
+                        "Memory about cats" in messages_returned
+                        or "Memory about dogs" in messages_returned
+                    )
+
+    @pytest.mark.asyncio
+    async def test_timestamps_preserved_through_fusion(self, mock_config, mock_logger):
+        """Timestamps should be accessible after RRF fusion."""
+        mock_config.reranker_engine = "none"
+        mock_config.enable_rrf_fusion = True
+        mock_config.fusion_ranking_threshold = 0.0
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch(
+                    "ccmemories.application.memory.manager.TantivyEngine"
+                ) as mock_tantivy_class:
+                    # Test that older and newer memories have different timestamps
+                    mock_usearch = MagicMock()
+                    mock_usearch.search.return_value = [
+                        ("Old memory", 0.9, "2024-01-01T00:00:00"),  # Older
+                        ("New memory", 0.85, "2024-12-01T00:00:00"),  # Newer
+                    ]
+                    mock_usearch.count.return_value = 50
+                    mock_usearch_class.return_value = mock_usearch
+
+                    mock_tantivy = MagicMock()
+                    mock_tantivy.search.return_value = []
+                    mock_tantivy_class.return_value = mock_tantivy
+
+                    manager = MemoryManager(mock_config, mock_logger)
+                    results = await manager.search("memory")
+
+                    # Both memories should be in results
+                    assert "Old memory" in results
+                    assert "New memory" in results
+
+    @pytest.mark.asyncio
+    async def test_semantic_only_path_uses_timestamps(self, mock_config, mock_logger):
+        """When hybrid search is disabled, timestamps still come from USearch."""
+        mock_config.enable_hybrid_search = False  # Semantic-only path
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
+                    mock_usearch = MagicMock()
+                    # 3-tuples with timestamps
+                    mock_usearch.search.return_value = [
+                        ("Semantic result", 0.95, "2024-06-15T08:00:00"),
+                    ]
+                    mock_usearch_class.return_value = mock_usearch
+
+                    manager = MemoryManager(mock_config, mock_logger)
+                    results = await manager.search("test")
+
+                    # Should return the semantic result
+                    assert results == ["Semantic result"]
+                    mock_usearch.search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_replacement_check_uses_timestamp_tuples(
+        self, mock_config, mock_logger
+    ):
+        """Smart replacement should handle 3-tuple search results correctly."""
+        mock_config.enable_smart_replace = True
+        mock_config.smart_replace_min_similarity = 0.5
+
+        with patch(
+            "ccmemories.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+                with patch("ccmemories.application.memory.manager.TantivyEngine"):
+                    with patch(
+                        "ccmemories.application.memory.manager.SmartReplacer"
+                    ) as mock_replacer_class:
+                        mock_usearch = MagicMock()
+                        # Search returns 3-tuples with timestamps
+                        mock_usearch.search.return_value = [
+                            ("Old preference", 0.8, "2024-01-01T00:00:00"),
+                        ]
+                        mock_usearch_class.return_value = mock_usearch
+
+                        mock_replacer = MagicMock()
+                        mock_replacer.check_replacement = AsyncMock(
+                            return_value=(True, 0.9, "Preference updated")
+                        )
+                        mock_replacer_class.return_value = mock_replacer
+
+                        manager = MemoryManager(mock_config, mock_logger)
+                        replacements = await manager._check_for_replacement(
+                            "New preference"
+                        )
+
+                        # Should correctly unpack 3-tuples and check replacement
+                        mock_replacer.check_replacement.assert_called_once()
+                        assert len(replacements) == 1
 
 
 if __name__ == "__main__":

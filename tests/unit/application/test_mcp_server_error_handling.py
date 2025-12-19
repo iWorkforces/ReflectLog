@@ -30,21 +30,23 @@ def mock_usearch_engine():
 class TestServerInitializationErrors:
     """Test error handling in server initialization."""
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", None)
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_init_without_project_id_raises_error(
-        self, mock_usearch_engine_class, mock_embeddings
-    ):
+    def test_init_without_project_id_raises_error(self):
         """Test server initialization fails without PROJECT_ID."""
-        from ccmemories.application.mcp_server import FastMCPServer
+        # Clear both PROJECT_ID and OPENROUTER_API_KEY to trigger config error
+        # Reset config singleton first
+        import ccmemories.application.config.settings as settings_module
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            FastMCPServer()
+        settings_module._config = None
 
-        assert "PROJECT_ID" in str(exc_info.value)
+        with patch.dict(os.environ, {}, clear=True):
+            # The config validation requires PROJECT_ID
+            with pytest.raises(ConfigurationError) as exc_info:
+                from ccmemories.application.config.settings import Config
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
+                Config.from_environment()
+
+            assert "PROJECT_ID" in str(exc_info.value)
+
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_init_with_memory_config_error(
@@ -68,7 +70,6 @@ class TestServerInitializationErrors:
 class TestAddToolErrorHandling:
     """Test error handling in add tool."""
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_add_memory_storage_failure(
@@ -90,7 +91,6 @@ class TestAddToolErrorHandling:
         assert "Failed to add messages" in str(exc_info.value)
         assert "Storage failure" in str(exc_info.value)
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_add_validation_error_with_non_string(
@@ -109,7 +109,6 @@ class TestAddToolErrorHandling:
 
         assert "not a string" in str(exc_info.value)
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_add_validation_error_with_empty_string(
@@ -133,7 +132,6 @@ class TestAddToolErrorHandling:
 class TestGetAllToolErrorHandling:
     """Test error handling in get_all tool."""
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_get_all_memory_retrieval_failure(
@@ -160,7 +158,6 @@ class TestGetAllToolErrorHandling:
 class TestSearchToolErrorHandling:
     """Test error handling in search tool."""
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_search_memory_failure(
@@ -187,7 +184,6 @@ class TestSearchToolErrorHandling:
 class TestRemoveToolErrorHandling:
     """Test error handling in remove tool."""
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_remove_with_empty_list(
@@ -207,7 +203,6 @@ class TestRemoveToolErrorHandling:
         # Verify delete was never called
         mock_usearch_engine.delete.assert_not_called()
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_remove_memory_delete_failure(
@@ -231,7 +226,6 @@ class TestRemoveToolErrorHandling:
         assert "Failed to remove messages" in str(exc_info.value)
         assert "Delete failure" in str(exc_info.value)
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_remove_message_not_found(

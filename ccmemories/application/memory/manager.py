@@ -418,10 +418,11 @@ class MemoryManager:
                 return []
 
             # Step 2: Filter candidates by similarity threshold (pre-filter)
+            # Note: similar_results are 3-tuples (message, score, created_at)
             min_similarity = self.config.smart_replace_min_similarity
             filtered_candidates = [
                 (mem, score)
-                for mem, score in similar_results
+                for mem, score, _ in similar_results
                 if score >= min_similarity and mem != new_memory
             ]
 
@@ -961,8 +962,13 @@ class MemoryManager:
             except Exception as e:
                 raise StorageError(f"Failed to retrieve messages: {e}") from e
 
-    def _search_semantic(self, query: str, limit: int) -> List[Tuple[str, float]]:
-        """Execute semantic search on USearchEngine."""
+    def _search_semantic(self, query: str, limit: int) -> List[Tuple[str, float, str]]:
+        """Execute semantic search on USearchEngine.
+
+        Returns:
+            List of (message, score, created_at) tuples. created_at is an ISO
+            format timestamp string (may be empty for backward compatibility).
+        """
         try:
             results = self._semantic_engine.search(
                 query=query,
@@ -1075,12 +1081,13 @@ class MemoryManager:
                     extra={"mode": "semantic"},
                 )
                 # Pure semantic search via USearchEngine
+                # Results are 3-tuples: (message, score, created_at)
                 results = self._semantic_engine.search(
                     query=query,
                     project_id=self.project_id,
                     limit=limit,
                 )
-                return [msg for msg, _ in results]
+                return [msg for msg, _, _ in results]
 
             # HYBRID SEARCH: USearch semantic + Tantivy full-text → fusion ranking
             self.logger.info(
@@ -1136,6 +1143,12 @@ class MemoryManager:
                 },
             )
 
+            # Build timestamp map from semantic results (Tantivy doesn't have timestamps)
+            # This map will be used to attach timestamps to fused results for reranking
+            timestamp_map: Dict[str, str] = {
+                msg: created_at for msg, _, created_at in semantic_results
+            }
+
             # Log USearch (semantic) results
             self.logger.info("")
             self.logger.info(
@@ -1153,8 +1166,8 @@ class MemoryManager:
                         "top_score": top_score,
                     },
                 )
-                # Show top results preview
-                for idx, (message, score) in enumerate(
+                # Show top results preview (semantic_results are 3-tuples)
+                for idx, (message, score, _) in enumerate(
                     semantic_results[: min(3, len(semantic_results))], 1
                 ):
                     preview = truncate_message(message, max_length=60)
@@ -1215,6 +1228,11 @@ class MemoryManager:
             )
 
             # Combine results based on fusion setting
+            # Convert semantic_results from 3-tuples to 2-tuples for fusion
+            semantic_results_2tuple = [
+                (msg, score) for msg, score, _ in semantic_results
+            ]
+
             if self.config.enable_rrf_fusion:
                 # Use RRF fusion (current behavior)
                 self.logger.info(
@@ -1222,7 +1240,7 @@ class MemoryManager:
                     extra={"step": "fusion", "mode": "rrf"},
                 )
                 hybrid_results = self._fusion_engine.fuse(
-                    semantic_results, tantivy_results
+                    semantic_results_2tuple, tantivy_results
                 )
 
                 # Log fusion results with source information
@@ -1249,7 +1267,9 @@ class MemoryManager:
                         hybrid_results[: min(3, len(hybrid_results))], 1
                     ):
                         # Determine source(s) of this result
-                        in_semantic = any(msg == message for msg, _ in semantic_results)
+                        in_semantic = any(
+                            msg == message for msg, _ in semantic_results_2tuple
+                        )
                         in_tantivy = any(msg == message for msg, _ in tantivy_results)
                         sources = []
                         if in_semantic:
@@ -1281,7 +1301,7 @@ class MemoryManager:
                     extra={"step": "concatenate", "mode": "concatenate"},
                 )
                 hybrid_results = self._concatenate_results(
-                    semantic_results, tantivy_results, overfetch_limit
+                    semantic_results_2tuple, tantivy_results, overfetch_limit
                 )
 
                 # Log top concatenated results
@@ -1294,7 +1314,9 @@ class MemoryManager:
                         hybrid_results[: min(3, len(hybrid_results))], 1
                     ):
                         # Determine source of this result
-                        in_semantic = any(msg == message for msg, _ in semantic_results)
+                        in_semantic = any(
+                            msg == message for msg, _ in semantic_results_2tuple
+                        )
                         source = "semantic" if in_semantic else "full-text"
                         preview = truncate_message(message, max_length=50)
                         self.logger.info(
@@ -1386,8 +1408,10 @@ class MemoryManager:
                 rerank_start = time.time()
                 pre_rerank_count = len(hybrid_results)
 
-                # Rerank using LLM relevance scores
-                hybrid_results = await self._llm_reranker.rerank(query, hybrid_results)
+                # Rerank using LLM relevance scores with temporal context
+                hybrid_results = await self._llm_reranker.rerank(
+                    query, hybrid_results, timestamp_map
+                )
 
                 rerank_duration = (time.time() - rerank_start) * 1000  # ms
 

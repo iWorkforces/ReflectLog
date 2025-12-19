@@ -351,7 +351,7 @@ class USearchEngine(BaseModel):
         query: str,
         project_id: str,
         limit: int,
-    ) -> List[Tuple[str, float]]:
+    ) -> List[Tuple[str, float, str]]:
         """Execute semantic search.
 
         Supports both exact (brute-force) and approximate (HNSW) search modes:
@@ -373,7 +373,9 @@ class USearchEngine(BaseModel):
             limit: Maximum number of results.
 
         Returns:
-            List of (message, score) tuples sorted by relevance.
+            List of (message, score, created_at) tuples sorted by relevance.
+            created_at is an ISO format timestamp string (may be empty for
+            backward compatibility with older data).
         """
         try:
             # Check if index is empty
@@ -436,9 +438,9 @@ class USearchEngine(BaseModel):
                 )
                 similarities = distance_to_similarity_cosine(distances)
 
-                # Build results with converted scores
-                results: List[Tuple[str, float]] = [
-                    (record.message, float(similarities[i]))
+                # Build results with converted scores and created_at timestamps
+                results: List[Tuple[str, float, str]] = [
+                    (record.message, float(similarities[i]), record.created_at)
                     for i, (record, _) in enumerate(filtered_matches)
                 ]
             else:

@@ -109,7 +109,7 @@ CCMemoriesMCP/
 │   │   ├── types.py          # Type definitions (ISemanticSearchEngine protocol)
 │   │   ├── config/           # Configuration management
 │   │   │   ├── settings.py   # Config dataclass from env vars
-│   │   │   └── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT
+│   │   │   └── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
 │   │   ├── memory/           # Memory management
 │   │   │   ├── manager.py    # MemoryManager (USearch + Tantivy)
 │   │   │   ├── protocols.py  # Search engine protocols
@@ -200,7 +200,8 @@ CCMemoriesMCP/
 - **LLMReranker** (`reranker_engine=llm`, default):
   - Infrastructure: `ccmemories.infrastructure.LLMReranker`
   - Purpose: AI-powered relevance scoring via OpenRouter API
-  - Uses `SCORING_PROMPT` template from `config/prompts.py`
+  - Uses `SCORING_PROMPT` or `SCORING_PROMPT_WITH_AGE` from `config/prompts.py` (based on `ENABLE_RECENCY_BOOST`)
+  - **Provider abstraction**: Uses `IRerankerProvider` protocol with OpenAI or Anthropic backends (via `LLM_PROVIDER`)
   - Parallel scoring with concurrency control via `anyio.Semaphore`
   - HTTP/2 enabled via AsyncOpenAI with `DefaultAioHttpClient`
   - Graceful fallback: returns fusion score if LLM call fails
@@ -208,11 +209,22 @@ CCMemoriesMCP/
   - Infrastructure: `ccmemories.infrastructure.CrossEncoderReranker`
   - Purpose: Fast local reranking using FlagEmbedding's FlagReranker
   - Default model: `BAAI/bge-reranker-v2-m3` (multilingual, high quality)
+  - **Recency decay support**: Accepts `timestamp_map` for temporal-aware scoring
   - No API costs, runs locally on CPU/GPU/MPS
   - Built-in FP16 support for faster inference
   - Built-in score normalization (sigmoid to 0-1 range)
   - Lazy model loading with thread-safe initialization
   - Score threshold filtering before returning results
+
+**Temporal-Aware Reranking**:
+
+Both rerankers support temporal context for handling contradictory memories (e.g., "I like cats" vs "I don't like cats anymore"):
+
+- **Memory age in LLM prompts**: When `ENABLE_RECENCY_BOOST=true`, each memory's age is included in the LLM reranker prompt (e.g., "created: 2 hours ago")
+- **Recency decay**: Scores are multiplied by an exponential decay factor: `score * exp(-decay_rate * hours_old)`
+- **Default decay rate**: 0.01 (~50% decay at 69 hours, ~10% remaining at 230 hours)
+- **Timestamp propagation**: `created_at` timestamps flow from MessageStore → USearchEngine → MemoryManager → Rerankers
+- **Backward compatible**: Decay only applied when `enable_recency_boost=true` AND timestamps exist
 
 **Smart Memory Replacement** (SmartReplacer):
 
@@ -257,6 +269,8 @@ CCMemoriesMCP/
 - `CROSS_ENCODER_MAX_LENGTH`: Max token length for query-doc pairs (default: 512)
 - `RERANKER_MIN_RESULTS`: Safety net: min results to return, 0 = disabled (default: 0)
 - `RERANKER_BATCH_NORMALIZE`: Enable batch min-max normalization for both rerankers (default: true)
+- `ENABLE_RECENCY_BOOST`: Include memory age in reranking context (default: true)
+- `RECENCY_DECAY_RATE`: Exponential decay rate per hour: exp(-rate * hours_old) (default: 0.01)
 - `REMOVE_SCORE_THRESHOLD`: Min score for remove candidates (default: 0.9)
 - `EMBEDDING_MODEL`: Embedding model (default: `qwen/qwen3-embedding-8b`)
 - `QWEN_EMBEDDING_DIMS`: Embedding dimensions (default: 4096)
@@ -450,6 +464,27 @@ When RRF is disabled:
 - Adjust threshold: `CROSS_ENCODER_SCORE_THRESHOLD=0.5`
 - Disable FP16: `CROSS_ENCODER_USE_FP16=false` (for full precision)
 - Disable normalization: `CROSS_ENCODER_NORMALIZE=false` (raw scores)
+
+**Temporal-Aware Reranking Tuning**:
+
+- Disable temporal context: `ENABLE_RECENCY_BOOST=false`
+- Adjust decay rate: `RECENCY_DECAY_RATE=0.02` (faster decay) or `0.005` (slower decay)
+- Disable decay entirely: `RECENCY_DECAY_RATE=0` (no score adjustment, age still shown in LLM prompt)
+
+**Decay Rate Examples**:
+
+| Rate | Half-life (hours) | 10% remaining (hours) | Use Case |
+|------|-------------------|----------------------|----------|
+| 0.001 | ~693 | ~2302 | Long-term preferences |
+| 0.01 (default) | ~69 | ~230 | General memories |
+| 0.05 | ~14 | ~46 | Fast-changing context |
+| 0.1 | ~7 | ~23 | Session-specific data |
+
+**Recency Decay Flow**:
+```
+Reranker Score → [Batch Normalize] → [Apply Decay] → [Re-sort] → [Threshold Filter] → Results
+                  0-1 range          score * exp(-rate * hours)   by decayed score
+```
 
 **Smart Memory Replacement Tuning**:
 

@@ -2,7 +2,7 @@
 
 from typing import List, Tuple
 
-# Scoring prompt for LLM reranking
+# Scoring prompt for LLM reranking (without temporal context)
 # Used by LLMReranker to score document relevance to a query
 # Note: Uses OpenAI Structured Outputs with json_schema for guaranteed JSON format
 SCORING_PROMPT = """You are a relevance scoring system. Score how relevant a document is to a query.
@@ -18,6 +18,33 @@ SCORING SCALE:
 - 0.5  = Moderate match - Same domain, different focus
 - 0.3  = Weak match - Minimal overlap with query
 - 0.0  = No match - Completely unrelated
+
+Query: "{query}"
+Document: "{document}"
+"""
+
+# Scoring prompt with temporal context for LLM reranking
+# Used when recency boost is enabled to help LLM consider memory age
+# More recent memories may reflect updated preferences/information
+SCORING_PROMPT_WITH_AGE = """You are a relevance scoring system. Score how relevant a document is to a query.
+
+OUTPUT FORMAT:
+Return a JSON object with a "score" field containing a float between 0.0 and 1.0.
+Example: {{"score": 0.85}}
+
+SCORING SCALE:
+- 1.0  = Perfect match - Document directly answers the query
+- 0.9  = Very good match - Has the specific information needed
+- 0.7  = Good match - Related with partial coverage
+- 0.5  = Moderate match - Same domain, different focus
+- 0.3  = Weak match - Minimal overlap with query
+- 0.0  = No match - Completely unrelated
+
+TEMPORAL CONTEXT:
+- The document was stored {memory_age}
+- More recent memories may reflect updated preferences or information
+- When documents contain contradictory information, prefer the more recent one
+- Consider recency as a tiebreaker when relevance is similar
 
 Query: "{query}"
 Document: "{document}"
