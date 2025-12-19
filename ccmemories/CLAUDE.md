@@ -6,9 +6,11 @@ This directory contains the main source code for the CCMemoriesMCP server.
 
 ```
 ccmemories/
-├── __init__.py           # Package metadata (__version__ = "0.1.0") and exports
+├── __init__.py           # Package metadata (__version__) and exception exports
 ├── server.py             # CLI entry point and argument parsing
 ├── application/          # Application layer (business logic)
+│   ├── __init__.py       # Application exports
+│   ├── exceptions.py     # Custom exception hierarchy (CCMemoriesError, etc.)
 │   ├── mcp_server.py     # FastMCPServer orchestrator
 │   ├── types.py          # Type definitions (ISemanticSearchEngine protocol)
 │   ├── config/           # Configuration management
@@ -17,9 +19,11 @@ ccmemories/
 │   ├── memory/           # Memory management
 │   │   ├── manager.py    # MemoryManager (USearch + Tantivy)
 │   │   ├── protocols.py  # Search engine protocols
-│   │   └── fusion/       # Hybrid ranking
-│   │       ├── base.py   # FusionEngine protocol
-│   │       └── ranx_fusion.py # RanxFusionEngine (RRF)
+│   │   ├── fusion/       # Hybrid ranking
+│   │   │   ├── base.py   # FusionEngine protocol
+│   │   │   └── ranx_fusion.py # RanxFusionEngine (RRF)
+│   │   └── reranking/    # Score normalization utilities
+│   │       └── normalization.py # Min-max batch normalization
 │   ├── tools/            # Modular MCP tool implementations
 │   │   ├── base.py       # BaseTool abstract class
 │   │   ├── add.py        # AddTool
@@ -31,11 +35,24 @@ ccmemories/
 │       ├── numba_utils.py # Numba JIT functions (normalization, distance)
 │       ├── security.py   # SecretString, redact_dict_secrets
 │       └── validation.py # Message validation helpers
-└── infrastructure/       # External integrations
-    ├── message_store.py   # MessageStore (libSQL for USearch)
-    ├── qwen3_embedding.py # LangchainQwenEmbeddings
-    ├── tantivy_engine.py  # TantivyEngine (full-text search)
-    └── usearch_engine.py  # USearchEngine (semantic search)
+├── infrastructure/       # External integrations
+│   ├── cached_embeddings.py   # CachedEmbeddings (LRU query cache)
+│   ├── cross_encoder_reranker.py # CrossEncoderReranker (local FlagReranker)
+│   ├── llm_reranker.py        # LLMReranker (AI relevance scoring)
+│   ├── message_store.py       # MessageStore (libSQL for USearch)
+│   ├── qwen3_embedding.py     # LangchainQwenEmbeddings
+│   ├── smart_replacer.py      # SmartReplacer (LLM memory replacement)
+│   ├── tantivy_engine.py      # TantivyEngine (full-text search)
+│   └── usearch_engine.py      # USearchEngine (semantic search)
+└── utility/              # Cross-platform credential retrieval
+    ├── __init__.py       # Package exports
+    ├── types.py          # Token prefix constants and types
+    ├── utility.py        # Core credential retrieval functions
+    └── platforms/        # Platform-specific implementations
+        ├── base.py       # Abstract CredentialRetriever
+        ├── darwin.py     # macOS Keychain retrieval
+        ├── linux.py      # Linux config/secret-tool
+        └── windows.py    # Windows Credential Manager
 ```
 
 ## Purpose
@@ -43,7 +60,8 @@ ccmemories/
 This is the top-level package that ties together:
 1. **CLI interface** (`server.py`) - Handles command-line arguments, environment setup, and stdio/stderr routing
 2. **Application logic** (`application/`) - Contains the FastMCPServer, MemoryManager, and modular MCP tools
-3. **Infrastructure** (`infrastructure/`) - External service integrations (embedding providers)
+3. **Infrastructure** (`infrastructure/`) - External service integrations (embedding providers, rerankers, search engines)
+4. **Utility** (`utility/`) - Cross-platform Anthropic API key retrieval for Claude Code credentials
 
 ## Entry Point Flow
 
@@ -59,7 +77,11 @@ When `ccmemories` command is run:
 
 ### `__init__.py`
 - Exports `main` function and `__version__`
-- Version is sourced here and used throughout the application
+- **Exports exception hierarchy** for structured error handling:
+  - `CCMemoriesError` (base exception)
+  - `ConfigurationError`, `ValidationError`, `InitializationError`
+  - `StorageError`, `DuplicateError`, `InconsistentStateError`
+  - `SearchError`, `EmbeddingError`, `RerankerError`
 - Enables both CLI usage (`ccmemories`) and programmatic usage (`from ccmemories import main`)
 
 ### `server.py`
@@ -80,22 +102,33 @@ When `ccmemories` command is run:
 ## Module Responsibilities
 
 ### application/
+- **exceptions.py**: Structured exception hierarchy (`CCMemoriesError` and subclasses)
 - **mcp_server.py**: `FastMCPServer` class that orchestrates initialization
 - **types.py**: Core type definitions and `ISemanticSearchEngine` protocol
 - **config/**: Centralized configuration from environment variables
 - **memory/**: `MemoryManager` with hybrid USearch + Tantivy engines
 - **memory/fusion/**: `RanxFusionEngine` for RRF hybrid ranking
+- **memory/reranking/**: Score normalization utilities for rerankers
 - **tools/**: Modular tool implementations following `BaseTool` pattern
 - **utils/**: Logging, validation, and security utilities
 
 ### infrastructure/
 - **usearch_engine.py**: `USearchEngine` class for semantic vector search (HNSW)
-- **tantivy_engine.py**: `TantivyEngine` class for full-text search
+- **tantivy_engine.py**: `TantivyEngine` class for full-text search with soft-delete
 - **message_store.py**: `MessageStore` libSQL storage for message text
 - **qwen3_embedding.py**: `LangchainQwenEmbeddings` class for custom embeddings
+- **cached_embeddings.py**: LRU caching wrapper for query embeddings
+- **llm_reranker.py**: `LLMReranker` for AI-powered relevance scoring
+- **cross_encoder_reranker.py**: `CrossEncoderReranker` for local FlagReranker-based scoring
+- **smart_replacer.py**: `SmartReplacer` for LLM-based memory replacement detection
 - Supports both sync and async operations
 - HTTP/2 enabled via `DefaultAioHttpClient`
 - Concurrency control with `anyio.Semaphore`
+
+### utility/
+- **utility.py**: Core credential retrieval functions (`get_anthropic_api_key`, etc.)
+- **types.py**: Token prefix constants (`TOKEN_PREFIX`, `OAUTH_TOKEN_PREFIX`)
+- **platforms/**: Platform-specific credential retrievers (macOS, Windows, Linux)
 
 ## Adding New Modules
 

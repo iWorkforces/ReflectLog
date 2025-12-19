@@ -15,8 +15,6 @@ It enables CCMemoriesMCP and other tools to authenticate with Anthropic APIs usi
 ```
 utility/
 ├── __init__.py       # Package exports
-├── __main__.py       # Entry point for `python -m ccmemories.utility`
-├── cli.py            # CLI interface (ccoauth2 command)
 ├── types.py          # Type definitions and token prefix constants
 ├── utility.py        # Core credential retrieval functions
 └── platforms/        # Platform-specific implementations
@@ -72,25 +70,6 @@ utility/
 "sk-ant-..."
 ```
 
-## CLI Usage
-
-```bash
-# Get API key (checks env first, then keychain)
-python -m ccmemories.utility
-
-# Show detailed info
-python -m ccmemories.utility --info
-
-# Print source only (env or claude-code)
-python -m ccmemories.utility --source-only
-
-# Only check keychain (ignore env vars)
-python -m ccmemories.utility --keychain-only
-
-# Export to environment
-export ANTHROPIC_API_KEY=$(python -m ccmemories.utility)
-```
-
 ## Programmatic Usage
 
 ```python
@@ -135,7 +114,7 @@ Request → get_anthropic_api_key()
 ## Dependencies
 
 - `claude_agent_sdk` - For OAuth authentication and `generate_content()`
-- Standard library: `subprocess`, `json`, `platform`, `os`, `argparse`
+- Standard library: `subprocess`, `json`, `platform`, `os`
 
 ## Constants (`types.py`)
 

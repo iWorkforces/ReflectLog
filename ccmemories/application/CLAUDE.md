@@ -7,6 +7,7 @@ This directory contains the application layer - the core business logic for the 
 ```
 application/
 ├── __init__.py           # Package exports
+├── exceptions.py         # Custom exception hierarchy (CCMemoriesError, etc.)
 ├── mcp_server.py         # FastMCPServer orchestrator
 ├── types.py              # Type definitions (ISemanticSearchEngine protocol)
 ├── config/               # Configuration management
@@ -42,12 +43,46 @@ application/
 ## Purpose
 
 This layer implements the MCP server using the FastMCP framework, including:
+- **Exception hierarchy** (`exceptions.py`) for structured error handling
 - Server initialization and configuration
 - Memory storage setup with hybrid USearch + Tantivy engines
 - Four modular MCP tools: `add`, `get_all`, `search`, `remove`
 - Message validation logic
 - Structured logging with context
 - Security utilities for API key redaction
+
+## Exception Hierarchy
+
+The `exceptions.py` module provides a structured exception hierarchy:
+
+```
+CCMemoriesError (base)
+├── ConfigurationError     - Invalid or missing configuration
+├── ValidationError        - Input validation failures
+├── InitializationError    - Engine/client initialization failures
+├── StorageError           - Storage operation failures
+│   ├── DuplicateError     - Duplicate entry detected
+│   └── InconsistentStateError - Dual-engine state mismatch
+├── SearchError            - Search operation failures
+├── EmbeddingError         - Embedding generation failures
+└── RerankerError          - LLM reranking failures
+```
+
+Usage:
+```python
+from ccmemories.application.exceptions import (
+    CCMemoriesError,
+    ConfigurationError,
+    StorageError,
+)
+
+try:
+    memory_manager.add_messages(messages)
+except StorageError as e:
+    # Handle storage-specific error
+except CCMemoriesError as e:
+    # Handle any CCMemoriesMCP error
+```
 
 ## Key Architecture Decisions
 

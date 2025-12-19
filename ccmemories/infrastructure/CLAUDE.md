@@ -33,22 +33,39 @@ The `infrastructure/` module provides:
 
 ```python
 from ccmemories.infrastructure import (
-    CachedEmbeddings,         # LRU caching wrapper for query embeddings
-    CrossEncoderConfig,       # CrossEncoder reranker configuration
-    CrossEncoderReranker,     # Local cross-encoder based reranking
-    LangchainQwenEmbeddings,  # OpenRouter embedding provider
-    LLMReranker,              # LLM-based relevance scoring for search results
-    LLMRerankerConfig,        # LLMReranker configuration dataclass
-    MessageRecord,            # Message record dataclass for MessageStore
-    MessageStore,             # libSQL message storage (for USearch)
-    RelevanceScore,           # Relevance score dataclass for LLMReranker
-    ReplacementDecision,      # Replacement decision from SmartReplacer
-    SmartReplacer,            # LLM-based memory replacement detection
-    SmartReplacerConfig,      # SmartReplacer configuration dataclass
-    TantivyConfig,            # Tantivy configuration dataclass (includes soft-delete options)
-    TantivyEngine,            # Full-text search engine with soft-delete support
-    USearchConfig,            # USearch engine configuration dataclass
-    USearchEngine,            # USearch vector search engine (primary semantic backend)
+    # Embedding providers
+    CachedEmbeddings,              # LRU caching wrapper for query embeddings
+    LangchainQwenEmbeddings,       # OpenRouter embedding provider
+
+    # Search engines
+    MessageRecord,                  # Message record dataclass for MessageStore
+    MessageStore,                   # libSQL message storage (for USearch)
+    TantivyConfig,                  # Tantivy configuration dataclass (includes soft-delete options)
+    TantivyEngine,                  # Full-text search engine with soft-delete support
+    USearchConfig,                  # USearch engine configuration dataclass
+    USearchEngine,                  # USearch vector search engine (primary semantic backend)
+
+    # LLM Reranker
+    LLMReranker,                    # LLM-based relevance scoring for search results
+    LLMRerankerConfig,              # LLMReranker configuration dataclass
+    RelevanceScore,                 # Relevance score dataclass for LLMReranker
+    IRerankerProvider,              # Protocol for reranker providers
+    AnthropicRerankerProvider,      # Anthropic-based reranker provider (Claude SDK)
+    OpenAIRerankerProvider,         # OpenAI-compatible reranker provider (OpenRouter)
+    create_reranker_provider,       # Factory function for reranker providers
+
+    # Cross-Encoder Reranker
+    CrossEncoderConfig,             # CrossEncoder reranker configuration
+    CrossEncoderReranker,           # Local cross-encoder based reranking (FlagReranker)
+
+    # Smart Replacer
+    SmartReplacer,                  # LLM-based memory replacement detection
+    SmartReplacerConfig,            # SmartReplacer configuration dataclass
+    ReplacementDecision,            # Replacement decision from SmartReplacer
+    IReplacementProvider,           # Protocol for replacement providers
+    AnthropicReplacementProvider,   # Anthropic-based replacement provider (Claude SDK)
+    OpenAIReplacementProvider,      # OpenAI-compatible replacement provider (OpenRouter)
+    create_replacement_provider,    # Factory function for replacement providers
 )
 ```
 

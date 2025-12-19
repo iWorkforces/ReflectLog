@@ -6,11 +6,13 @@ This directory contains development automation scripts for the CCMemoriesMCP pro
 
 ```
 scripts/
-├── benchmark_engines.py      # Performance benchmark for semantic engines
-├── setup-git-hooks.sh        # Install git hooks from git-hooks/
-└── git-hooks/                 # Version-controlled git hooks
+├── setup-git-hooks.sh          # Install git hooks from git-hooks/
+├── test_anthropic_add_flow.py  # Test Anthropic provider add workflow
+├── test_anthropic_provider.py  # Test Anthropic provider implementation
+├── test_cats_dogs.py           # Test cats/dogs memory scenario
+└── git-hooks/                  # Version-controlled git hooks
     ├── README.md
-    └── pre-push               # Pre-push validation hook
+    └── pre-push                # Pre-push validation hook
 ```
 
 ## Purpose
@@ -45,69 +47,51 @@ Provides reusable scripts for:
 
 **Read the implementation**: `scripts/setup-git-hooks.sh` for details
 
-## benchmark_engines.py
+## Test Scripts
 
-**Purpose**: Benchmark the `USearchEngine` (USearch/SQLite) performance.
+These Python scripts are used for testing specific features and providers.
 
-**Metrics measured**:
-- **Indexing speed**: Messages per second during add operations
-- **Search latency**: Milliseconds per query (average, P95, min, max)
-- **Memory usage**: Peak memory in MB during operations
+### test_anthropic_add_flow.py
+
+**Purpose**: Test the add workflow using the Anthropic provider.
 
 **Usage**:
 ```bash
-# Default benchmark (100 messages, 20 queries)
-uv run python scripts/benchmark_engines.py
-
-# Larger benchmark
-uv run python scripts/benchmark_engines.py --messages 1000 --queries 100
-
-# Quick test
-uv run python scripts/benchmark_engines.py --messages 50 --queries 10
-
-# Show help
-uv run python scripts/benchmark_engines.py --help
+uv run python scripts/test_anthropic_add_flow.py
 ```
 
-**Options**:
-- `--messages N`: Number of messages to index (default: 100)
-- `--queries N`: Number of search queries (default: 20)
-- `--dims N`: Embedding dimensions (default: 128)
+**What it tests**:
+- Memory add operations with Anthropic provider
+- Smart replacement detection flow
+- Provider-specific configuration
 
-**Note**: The benchmark uses mock embeddings for consistent testing.
+### test_anthropic_provider.py
 
-**Example output**:
-```
-======================================================================
-  CCMemoriesMCP Engine Benchmark
-======================================================================
+**Purpose**: Test the Anthropic provider implementation directly.
 
-  Configuration:
-    Messages to index:   100
-    Search queries:      20
-    Embedding dims:      128
-
-  Generating test data...
-
-  USearchEngine
-  ----------------------------------------
-  Messages indexed:    100
-  Queries executed:    20
-
-  Indexing:
-    Total time:        0.05 seconds
-    Rate:              2,000.0 messages/second
-
-  Search Latency:
-    Average:           0.35 ms
-    P95:               0.45 ms
-    Min:               0.30 ms
-    Max:               0.50 ms
-
-  Peak Memory:         0.15 MB
+**Usage**:
+```bash
+uv run python scripts/test_anthropic_provider.py
 ```
 
-**Read the implementation**: `scripts/benchmark_engines.py` for details
+**What it tests**:
+- `AnthropicRerankerProvider` functionality
+- `AnthropicReplacementProvider` functionality
+- Claude SDK integration
+
+### test_cats_dogs.py
+
+**Purpose**: Test a realistic memory replacement scenario.
+
+**Usage**:
+```bash
+uv run python scripts/test_cats_dogs.py
+```
+
+**What it tests**:
+- Smart replacement with contradicting memories (e.g., "I like cats" → "I like dogs now")
+- Memory archival behavior
+- Confidence threshold handling
 
 ## git-hooks/
 

@@ -6,8 +6,8 @@ This directory contains unit tests for the infrastructure layer components.
 
 ```
 infrastructure/
-├── test_cached_embeddings.py      # CachedEmbeddings (LRU cache) tests
 ├── test_cross_encoder_reranker.py # CrossEncoderReranker (FlagReranker) tests
+├── test_llm_reranker.py           # LLMReranker tests
 ├── test_message_store.py          # MessageStore (libSQL) tests
 ├── test_qwen3_embedding.py        # LangchainQwenEmbeddings tests
 ├── test_smart_replacer.py         # SmartReplacer (LLM replacement) tests
@@ -32,8 +32,8 @@ Test the `ccmemories/infrastructure/` module in isolation:
 
 | File | Tests For |
 |------|-----------|
-| `test_cached_embeddings.py` | `ccmemories/infrastructure/cached_embeddings.py` |
 | `test_cross_encoder_reranker.py` | `ccmemories/infrastructure/cross_encoder_reranker.py` |
+| `test_llm_reranker.py` | `ccmemories/infrastructure/llm_reranker.py` |
 | `test_smart_replacer.py` | `ccmemories/infrastructure/smart_replacer.py` |
 | `test_usearch_engine.py` | `ccmemories/infrastructure/usearch_engine.py` |
 | `test_tantivy_engine.py` | `ccmemories/infrastructure/tantivy_engine.py` |
@@ -41,37 +41,6 @@ Test the `ccmemories/infrastructure/` module in isolation:
 | `test_qwen3_embedding.py` | `ccmemories/infrastructure/qwen3_embedding.py` |
 
 ## Test Scenarios
-
-### CachedEmbeddings Tests (`test_cached_embeddings.py`)
-
-```python
-class TestCachedEmbeddingsInitialization:
-    """Tests for CachedEmbeddings.__init__()"""
-    # - Initialization with embedder and cache_size
-    # - Cache disabled mode (enabled=False)
-    # - Logger assignment
-
-class TestCachedEmbeddingsQueryCaching:
-    """Tests for embed_query() and aembed_query() caching"""
-    # - Cache miss: calls underlying embedder
-    # - Cache hit: returns cached result without calling embedder
-    # - MD5 hash collision handling
-    # - LRU eviction when cache is full
-    # - Disabled cache bypasses caching
-
-class TestCachedEmbeddingsDocumentPassthrough:
-    """Tests for embed_documents() and aembed_documents()"""
-    # - Documents are NOT cached (pass-through)
-    # - Calls underlying embedder directly
-    # - No cache statistics updated
-
-class TestCachedEmbeddingsStats:
-    """Tests for get_cache_stats() and clear_cache()"""
-    # - Hit count increments on cache hit
-    # - Miss count increments on cache miss
-    # - Clear removes all cached entries
-    # - Stats reset on clear
-```
 
 ### CrossEncoderReranker Tests (`test_cross_encoder_reranker.py`)
 
@@ -102,6 +71,45 @@ class TestCrossEncoderRerankerAsync:
     """Tests for rerank_async() method"""
     # - Async wrapper using asyncify
     # - Non-blocking behavior in event loop
+```
+
+### LLMReranker Tests (`test_llm_reranker.py`)
+
+```python
+class TestLLMRerankerConfig:
+    """Tests for LLMRerankerConfig dataclass"""
+    # - Default configuration values
+    # - from_app_config factory method
+    # - Configuration with custom values
+
+class TestLLMRerankerInitialization:
+    """Tests for LLMReranker.__init__()"""
+    # - Lazy client initialization
+    # - HTTP/2 client configuration
+    # - Configuration storage
+    # - Logger assignment
+
+class TestLLMRerankerRerank:
+    """Tests for rerank() method"""
+    # - Parallel LLM scoring with concurrency control
+    # - Score threshold filtering
+    # - Results sorted by score descending
+    # - Empty candidates list
+    # - Graceful fallback on LLM error
+
+class TestLLMRerankerScoreSingle:
+    """Tests for _score_single() method"""
+    # - Successful LLM scoring
+    # - JSON parsing from LLM response
+    # - Invalid JSON handling (uses fallback score)
+    # - API error handling (uses fallback score)
+    # - Score clamping to 0.0-1.0 range
+
+class TestProviderAbstraction:
+    """Tests for IRerankerProvider and implementations"""
+    # - OpenAIRerankerProvider using OpenRouter
+    # - AnthropicRerankerProvider using Claude SDK
+    # - create_reranker_provider factory function
 ```
 
 ### SmartReplacer Tests (`test_smart_replacer.py`)
