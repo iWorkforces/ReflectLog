@@ -8,7 +8,7 @@ This directory contains configuration management and system prompts for CCMemori
 config/
 ├── __init__.py          # Configuration exports
 ├── settings.py          # Config dataclass from environment variables
-└── prompts.py           # MCP_INSTRUCTIONS, SCORING_PROMPT
+└── prompts.py           # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
 ```
 
 ## Purpose
@@ -16,7 +16,7 @@ config/
 The `config/` module centralizes:
 - Environment variable management via dataclass
 - Configuration validation and defaults
-- LLM prompt templates (MCP instructions, scoring)
+- LLM prompt templates (MCP instructions, scoring, temporal-aware scoring, smart replacement)
 - Transport mode enumeration
 
 ## Configuration Architecture
@@ -80,6 +80,11 @@ class Config:
     # Unified reranker settings (apply to both LLM and CrossEncoder)
     reranker_min_results: int = 0            # Safety net: min results to return (0 = disabled)
     reranker_batch_normalize: bool = True    # Enable batch min-max normalization
+
+    # Temporal-aware reranking settings (recency boost for memories)
+    enable_recency_boost: bool = True        # Include memory age in reranking context
+    recency_decay_rate: float = 0.01         # Decay rate per hour: exp(-rate * hours_old)
+    recency_max_boost: float = 0.2           # Maximum recency boost (added to base score)
 
     remove_score_threshold: float = 0.9
 
@@ -192,26 +197,75 @@ Note: Data persists in USearch index until manually cleared.
 
 ### SCORING_PROMPT
 
-The scoring prompt is used for AI reranking during search:
+The base scoring prompt for AI reranking (without temporal context):
 
 ```python
 SCORING_PROMPT = """You are a relevance scoring system. Score how relevant a document is to a query.
 
-CRITICAL OUTPUT REQUIREMENTS:
-Your output MUST be a SINGLE NUMBER between 0.0 and 1.0 (inclusive).
-• VALID range: 0.0 ≤ score ≤ 1.0
-• Output ONLY the number, NO other text
+OUTPUT FORMAT:
+Return a JSON object with a "score" field containing a float between 0.0 and 1.0.
+Example: {{"score": 0.85}}
 
 SCORING SCALE:
-• 1.0   = Perfect match - Document directly answers the query
-• 0.9   = Very good match - Has the specific information needed
-• 0.7   = Good match - Related with partial coverage
-• 0.5   = Moderate match - Same domain, different focus
-• 0.3   = Weak match - Minimal overlap with query
-• 0.0   = No match - Completely unrelated
+- 1.0  = Perfect match - Document directly answers the query
+- 0.9  = Very good match - Has the specific information needed
+- 0.7  = Good match - Related with partial coverage
+- 0.5  = Moderate match - Same domain, different focus
+- 0.3  = Weak match - Minimal overlap with query
+- 0.0  = No match - Completely unrelated
 
 Query: "{query}"
 Document: "{document}"
+"""
+```
+
+### SCORING_PROMPT_WITH_AGE
+
+Temporal-aware scoring prompt used when `ENABLE_RECENCY_BOOST=true`:
+
+```python
+SCORING_PROMPT_WITH_AGE = """You are a relevance scoring system. Score how relevant a document is to a query.
+
+OUTPUT FORMAT:
+Return a JSON object with a "score" field containing a float between 0.0 and 1.0.
+Example: {{"score": 0.85}}
+
+SCORING SCALE:
+- 1.0  = Perfect match - Document directly answers the query
+...
+
+TEMPORAL CONTEXT:
+- The document was stored {memory_age}
+- More recent memories may reflect updated preferences or information
+- When documents contain contradictory information, prefer the more recent one
+- Consider recency as a tiebreaker when relevance is similar
+
+Query: "{query}"
+Document: "{document}"
+"""
+```
+
+### REPLACEMENT_DETECTION_PROMPT
+
+Used by SmartReplacer to detect when a new memory should replace an existing one:
+
+```python
+REPLACEMENT_DETECTION_PROMPT = """You are a memory replacement detection system. Determine if a new memory should replace an existing one.
+
+OUTPUT FORMAT:
+Return a JSON object with the following fields:
+- "should_replace": boolean (true if new memory replaces old, false otherwise)
+- "confidence": float between 0.0 and 1.0 (confidence in the decision)
+- "reason": string (brief explanation, max 50 words)
+
+REPLACEMENT CRITERIA (should_replace = true):
+- Same topic/subject with updated information or stance
+- Contradictory statements about the same thing
+- New preference replacing old preference
+...
+
+Existing Memory: "{old_memory}"
+New Memory: "{new_memory}"
 """
 ```
 
@@ -251,6 +305,9 @@ Document: "{document}"
 | `CROSS_ENCODER_MAX_LENGTH` | int | `512` | Max token length for pairs |
 | `RERANKER_MIN_RESULTS` | int | `0` | Safety net: min results (0 = disabled) |
 | `RERANKER_BATCH_NORMALIZE` | bool | `true` | Enable batch min-max normalization |
+| `ENABLE_RECENCY_BOOST` | bool | `true` | Include memory age in reranking context |
+| `RECENCY_DECAY_RATE` | float | `0.01` | Decay rate per hour: exp(-rate * hours_old) |
+| `RECENCY_MAX_BOOST` | float | `0.2` | Maximum recency boost (added to base score) |
 | `REMOVE_SEARCH_LIMIT` | int | `5` | Candidates for removal |
 | `REMOVE_SCORE_THRESHOLD` | float | `0.9` | Min score for remove candidates |
 | `ENABLE_HYBRID_SEARCH` | bool | `true` | Enable Tantivy full-text |

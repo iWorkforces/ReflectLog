@@ -13,7 +13,7 @@ application/
 ├── config/               # Configuration management
 │   ├── __init__.py       # Config exports
 │   ├── settings.py       # Config dataclass from environment
-│   └── prompts.py        # MCP_INSTRUCTIONS, SCORING_PROMPT
+│   └── prompts.py        # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
 ├── memory/               # Memory management
 │   ├── __init__.py       # Memory exports
 │   ├── manager.py        # MemoryManager (USearch + Tantivy)
@@ -22,9 +22,9 @@ application/
 │   │   ├── __init__.py   # Fusion exports
 │   │   ├── base.py       # FusionEngine protocol
 │   │   └── ranx_fusion.py # RanxFusionEngine (RRF)
-│   └── reranking/        # Score normalization utilities
+│   └── reranking/        # Score normalization and recency decay utilities
 │       ├── __init__.py   # Reranking exports
-│       └── normalization.py # Min-max batch normalization
+│       └── normalization.py # Min-max batch normalization and recency decay
 ├── tools/                # Modular MCP tool implementations
 │   ├── __init__.py       # Tool exports
 │   ├── base.py           # BaseTool abstract class
@@ -244,7 +244,12 @@ def remove(messages: List[str]) -> None
 | `LOG_LEVEL` | INFO | Logging level |
 | `ALLOWED_TOOLS` | all | Comma-separated tool list |
 | `ENABLE_HYBRID_SEARCH` | true | Enable Tantivy full-text |
-| `HYBRID_FUSION_K` | 60 | RRF fusion constant |
+| `FUSION_RRF_K` | 60 | RRF fusion constant |
+| `LLM_PROVIDER` | anthropic | LLM provider: `openai` or `anthropic` |
+| `ENABLE_RECENCY_BOOST` | true | Include memory age in reranking context |
+| `RECENCY_DECAY_RATE` | 0.01 | Exponential decay per hour: `exp(-rate * hours_old)` |
+| `RERANKER_BATCH_NORMALIZE` | true | Enable batch min-max normalization |
+| `RERANKER_MIN_RESULTS` | 0 | Safety net: min results to return (0 = disabled) |
 
 ## Logging Strategy
 

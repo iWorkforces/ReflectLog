@@ -15,7 +15,7 @@ ccmemories/
 │   ├── types.py          # Type definitions (ISemanticSearchEngine protocol)
 │   ├── config/           # Configuration management
 │   │   ├── settings.py   # Config dataclass from environment
-│   │   └── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT
+│   │   └── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
 │   ├── memory/           # Memory management
 │   │   ├── manager.py    # MemoryManager (USearch + Tantivy)
 │   │   ├── protocols.py  # Search engine protocols
@@ -108,7 +108,7 @@ When `ccmemories` command is run:
 - **config/**: Centralized configuration from environment variables
 - **memory/**: `MemoryManager` with hybrid USearch + Tantivy engines
 - **memory/fusion/**: `RanxFusionEngine` for RRF hybrid ranking
-- **memory/reranking/**: Score normalization utilities for rerankers
+- **memory/reranking/**: Score normalization and recency decay utilities for rerankers
 - **tools/**: Modular tool implementations following `BaseTool` pattern
 - **utils/**: Logging, validation, and security utilities
 
@@ -118,8 +118,8 @@ When `ccmemories` command is run:
 - **message_store.py**: `MessageStore` libSQL storage for message text
 - **qwen3_embedding.py**: `LangchainQwenEmbeddings` class for custom embeddings
 - **cached_embeddings.py**: LRU caching wrapper for query embeddings
-- **llm_reranker.py**: `LLMReranker` for AI-powered relevance scoring
-- **cross_encoder_reranker.py**: `CrossEncoderReranker` for local FlagReranker-based scoring
+- **llm_reranker.py**: `LLMReranker` for AI-powered relevance scoring (with provider abstraction via `IRerankerProvider`)
+- **cross_encoder_reranker.py**: `CrossEncoderReranker` for local FlagReranker-based scoring (with recency decay support)
 - **smart_replacer.py**: `SmartReplacer` for LLM-based memory replacement detection
 - Supports both sync and async operations
 - HTTP/2 enabled via `DefaultAioHttpClient`
@@ -166,6 +166,10 @@ Key variables used by the package:
 | `MCP_HOST` | No | `127.0.0.1` | Server host |
 | `MCP_PATH` | No | `/mcp` | Server path |
 | `ENABLE_RRF_FUSION` | No | `true` | Enable RRF fusion for hybrid search |
+| `RERANKER_ENGINE` | No | `llm` | Reranking engine: `llm`, `cross_encoder`, `none` |
+| `LLM_PROVIDER` | No | `anthropic` | LLM provider: `openai` or `anthropic` |
+| `ENABLE_RECENCY_BOOST` | No | `true` | Include memory age in reranking context |
+| `RECENCY_DECAY_RATE` | No | `0.01` | Exponential decay rate per hour |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
 
 See `application/config/settings.py` for the complete configuration reference.

@@ -596,7 +596,7 @@ class TestRerank:
     async def test_rerank_successful_scoring(self, mock_reranker: LLMReranker) -> None:
         """Test successful reranking with multiple candidates."""
 
-        async def mock_score_single(query, document, fallback_score):
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
             scores = {
                 "doc1": 0.9,
                 "doc2": 0.3,  # Below threshold
@@ -633,7 +633,7 @@ class TestRerank:
             provider="openai",
         )
 
-        async def mock_score_single(query, document, fallback_score):
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
             return (document, 0.5)  # All scores below threshold
 
         mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
@@ -647,7 +647,7 @@ class TestRerank:
     async def test_rerank_preserves_documents(self, mock_reranker: LLMReranker) -> None:
         """Test that document content is preserved through reranking."""
 
-        async def mock_score_single(query, document, fallback_score):
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
             return (document, 0.8)
 
         mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
@@ -669,7 +669,7 @@ class TestRerank:
 
         call_times = []
 
-        async def mock_score_single(query, document, fallback_score):
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
             import anyio
 
             call_times.append(time.time())
@@ -696,7 +696,7 @@ class TestRerank:
         max_concurrent = 0
         current_concurrent = 0
 
-        async def mock_score_single(query, document, fallback_score):
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
             nonlocal max_concurrent, current_concurrent
             current_concurrent += 1
             max_concurrent = max(max_concurrent, current_concurrent)
@@ -726,7 +726,7 @@ class TestRerank:
     async def test_rerank_with_logger(self, mock_reranker: LLMReranker) -> None:
         """Test that reranking logs appropriately."""
 
-        async def mock_score_single(query, document, fallback_score):
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
             return (document, 0.8)
 
         mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
@@ -763,7 +763,9 @@ class TestLLMRerankerIntegration:
             call_count = 0
             scores = [0.9, 0.4, 0.7, 0.3]  # Only 0.9 and 0.7 pass threshold
 
-            async def mock_score_document(query, document, fallback_score):
+            async def mock_score_document(
+                query, document, fallback_score, memory_age=None
+            ):
                 nonlocal call_count
                 score = scores[call_count % len(scores)]
                 call_count += 1
@@ -785,3 +787,251 @@ class TestLLMRerankerIntegration:
             # Should be sorted by score descending
             assert result[0][1] == 0.9
             assert result[1][1] == 0.7
+
+
+class TestFormatMemoryAge:
+    """Tests for the format_memory_age() helper function."""
+
+    def test_format_memory_age_none_input(self) -> None:
+        """Test that None input returns None."""
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        assert format_memory_age(None) is None
+
+    def test_format_memory_age_empty_string(self) -> None:
+        """Test that empty string returns None."""
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        assert format_memory_age("") is None
+
+    def test_format_memory_age_invalid_format(self) -> None:
+        """Test that invalid timestamp format returns None."""
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        assert format_memory_age("not-a-timestamp") is None
+
+    def test_format_memory_age_just_now(self) -> None:
+        """Test formatting for very recent timestamps."""
+        from datetime import datetime, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp from 30 seconds ago
+        now = datetime.now(timezone.utc)
+        recent = now.isoformat()
+
+        result = format_memory_age(recent)
+        assert result == "just now"
+
+    def test_format_memory_age_minutes(self) -> None:
+        """Test formatting for minutes ago."""
+        from datetime import datetime, timedelta, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp from 5 minutes ago
+        past = datetime.now(timezone.utc) - timedelta(minutes=5)
+        timestamp = past.isoformat()
+
+        result = format_memory_age(timestamp)
+        assert result == "5 minutes ago"
+
+    def test_format_memory_age_singular_minute(self) -> None:
+        """Test formatting for 1 minute ago."""
+        from datetime import datetime, timedelta, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp from 1 minute ago
+        past = datetime.now(timezone.utc) - timedelta(minutes=1, seconds=30)
+        timestamp = past.isoformat()
+
+        result = format_memory_age(timestamp)
+        assert result == "1 minute ago"
+
+    def test_format_memory_age_hours(self) -> None:
+        """Test formatting for hours ago."""
+        from datetime import datetime, timedelta, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp from 3 hours ago
+        past = datetime.now(timezone.utc) - timedelta(hours=3)
+        timestamp = past.isoformat()
+
+        result = format_memory_age(timestamp)
+        assert result == "3 hours ago"
+
+    def test_format_memory_age_singular_hour(self) -> None:
+        """Test formatting for 1 hour ago."""
+        from datetime import datetime, timedelta, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp from 1 hour ago
+        past = datetime.now(timezone.utc) - timedelta(hours=1, minutes=30)
+        timestamp = past.isoformat()
+
+        result = format_memory_age(timestamp)
+        assert result == "1 hour ago"
+
+    def test_format_memory_age_days(self) -> None:
+        """Test formatting for days ago."""
+        from datetime import datetime, timedelta, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp from 5 days ago
+        past = datetime.now(timezone.utc) - timedelta(days=5)
+        timestamp = past.isoformat()
+
+        result = format_memory_age(timestamp)
+        assert result == "5 days ago"
+
+    def test_format_memory_age_weeks(self) -> None:
+        """Test formatting for weeks ago."""
+        from datetime import datetime, timedelta, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp from 2 weeks ago
+        past = datetime.now(timezone.utc) - timedelta(weeks=2)
+        timestamp = past.isoformat()
+
+        result = format_memory_age(timestamp)
+        assert result == "2 weeks ago"
+
+    def test_format_memory_age_months(self) -> None:
+        """Test formatting for months ago."""
+        from datetime import datetime, timedelta, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp from 45 days ago (about 1.5 months)
+        past = datetime.now(timezone.utc) - timedelta(days=45)
+        timestamp = past.isoformat()
+
+        result = format_memory_age(timestamp)
+        assert result == "1 month ago"
+
+    def test_format_memory_age_with_z_suffix(self) -> None:
+        """Test formatting with Z suffix timezone."""
+        from datetime import datetime, timedelta, timezone
+
+        from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+        # Create a timestamp with Z suffix
+        past = datetime.now(timezone.utc) - timedelta(hours=2)
+        timestamp = past.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        result = format_memory_age(timestamp)
+        assert result == "2 hours ago"
+
+
+class TestRerankWithTimestampMap:
+    """Tests for rerank() with timestamp_map parameter."""
+
+    @pytest.fixture
+    def mock_reranker(self) -> LLMReranker:
+        """Create a mock LLMReranker instance."""
+        config = LLMRerankerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="test-model",
+            score_threshold=0.5,
+            max_concurrency=5,
+            batch_normalize=False,
+            provider="openai",
+            enable_recency_boost=True,
+        )
+        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+            reranker = LLMReranker(config=config, logger=MagicMock())
+            return reranker
+
+    @pytest.mark.asyncio
+    async def test_rerank_passes_memory_age_to_score_single(
+        self, mock_reranker: LLMReranker
+    ) -> None:
+        """Test that timestamp_map is used to pass memory_age to _score_single."""
+        from datetime import datetime, timedelta, timezone
+
+        captured_ages: list[str | None] = []
+
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
+            captured_ages.append(memory_age)
+            return (document, 0.8)
+
+        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+
+        # Create timestamp_map with ISO timestamps
+        past_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        timestamp_map = {
+            "doc1": past_time.isoformat(),
+        }
+
+        candidates = [("doc1", 0.5), ("doc2", 0.5)]
+        await mock_reranker.rerank("test query", candidates, timestamp_map)
+
+        # Should have captured 2 ages
+        assert len(captured_ages) == 2
+        # doc1 should have formatted age
+        assert captured_ages[0] == "2 hours ago"
+        # doc2 has no timestamp, should be None
+        assert captured_ages[1] is None
+
+    @pytest.mark.asyncio
+    async def test_rerank_without_timestamp_map(
+        self, mock_reranker: LLMReranker
+    ) -> None:
+        """Test that rerank works correctly without timestamp_map."""
+        captured_ages: list[str | None] = []
+
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
+            captured_ages.append(memory_age)
+            return (document, 0.8)
+
+        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+
+        candidates = [("doc1", 0.5), ("doc2", 0.5)]
+        await mock_reranker.rerank("test query", candidates)
+
+        # All ages should be None when no timestamp_map provided
+        assert all(age is None for age in captured_ages)
+
+    @pytest.mark.asyncio
+    async def test_rerank_with_recency_boost_disabled(self) -> None:
+        """Test that memory_age is not passed when enable_recency_boost is False."""
+        config = LLMRerankerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="test-model",
+            score_threshold=0.5,
+            max_concurrency=5,
+            batch_normalize=False,
+            provider="openai",
+            enable_recency_boost=False,  # Disabled
+        )
+
+        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+            reranker = LLMReranker(config=config, logger=MagicMock())
+
+            captured_ages: list[str | None] = []
+
+            async def mock_score_single(
+                query, document, fallback_score, memory_age=None
+            ):
+                captured_ages.append(memory_age)
+                return (document, 0.8)
+
+            reranker._score_single = mock_score_single  # type: ignore[method-assign]
+
+            from datetime import datetime, timedelta, timezone
+
+            past_time = datetime.now(timezone.utc) - timedelta(hours=2)
+            timestamp_map = {"doc1": past_time.isoformat()}
+
+            candidates = [("doc1", 0.5)]
+            await reranker.rerank("test query", candidates, timestamp_map)
+
+            # Even with timestamp_map, age should be None when recency boost disabled
+            assert captured_ages[0] is None

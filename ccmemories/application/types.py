@@ -130,7 +130,7 @@ class ISemanticSearchEngine(Protocol):
         query: str,
         project_id: str,
         limit: int,
-    ) -> List[tuple[str, float]]:
+    ) -> List[tuple[str, float, str]]:
         """Execute semantic search.
 
         Args:
@@ -139,7 +139,9 @@ class ISemanticSearchEngine(Protocol):
             limit: Maximum number of results.
 
         Returns:
-            List of (message, score) tuples sorted by relevance.
+            List of (message, score, created_at) tuples sorted by relevance.
+            created_at is an ISO format timestamp string (may be empty for
+            backward compatibility with older data).
 
         Raises:
             RuntimeError: If search operation fails.

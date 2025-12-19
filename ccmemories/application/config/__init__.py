@@ -5,6 +5,7 @@ from .prompts import (
     MCP_INSTRUCTIONS,
     REPLACEMENT_DETECTION_PROMPT,
     SCORING_PROMPT,
+    SCORING_PROMPT_WITH_AGE,
     TOOL_ORDER,
     build_instructions,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "INSTRUCTIONS_HEADER",
     "REPLACEMENT_DETECTION_PROMPT",
     "SCORING_PROMPT",
+    "SCORING_PROMPT_WITH_AGE",
     "TOOL_ORDER",
     "build_instructions",
 ]

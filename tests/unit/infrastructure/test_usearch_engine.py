@@ -203,9 +203,9 @@ class TestUSearchEngineSearch:
             results = engine.search("Hello", "user1", limit=5)
 
             assert len(results) > 0
-            # Results should be (message, score) tuples
+            # Results should be (message, score, created_at) tuples
             assert all(
-                isinstance(r, tuple) and len(r) == 2
+                isinstance(r, tuple) and len(r) == 3
                 for r in results  # type: ignore[misc]
             )
         finally:
@@ -509,9 +509,9 @@ class TestUSearchEngineExactSearch:
 
             results = engine.search("Hello", "user1", limit=5)
 
-            # Should return valid results
+            # Should return valid results (3-tuples: message, score, created_at)
             assert len(results) > 0
-            assert all(isinstance(r, tuple) and len(r) == 2 for r in results)
+            assert all(isinstance(r, tuple) and len(r) == 3 for r in results)
         finally:
             engine.close()
 

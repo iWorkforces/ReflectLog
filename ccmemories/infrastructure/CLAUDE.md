@@ -316,25 +316,72 @@ self._semantic_engine = USearchEngine(
 ### Overview
 
 LLM-based document reranker for post-fusion relevance scoring:
-- Uses OpenRouter API for LLM inference (compatible with any OpenAI-compatible endpoint)
+- **Provider abstraction**: Supports OpenRouter/OpenAI API or Claude Agent SDK via `IRerankerProvider`
 - Parallel scoring with concurrency control via `anyio.Semaphore`
 - HTTP/2 enabled via `DefaultAioHttpClient` for better performance
 - Graceful fallback: returns fusion score if LLM call fails
 - JSON output format for deterministic score parsing
+- **Temporal-aware scoring**: Includes memory age in prompts when enabled
+
+### Provider Abstraction
+
+LLMReranker supports multiple LLM providers via the `IRerankerProvider` protocol:
+
+```python
+class IRerankerProvider(Protocol):
+    """Protocol for reranker LLM providers."""
+    async def score_document(
+        self,
+        query: str,
+        document: str,
+        fallback_score: float,
+        memory_age: str | None = None,
+    ) -> Tuple[str, float]: ...
+```
+
+**Available Providers:**
+
+| Provider | Class | Usage |
+|----------|-------|-------|
+| `openai` | `OpenAIRerankerProvider` | OpenRouter/OpenAI API with structured JSON output |
+| `anthropic` | `AnthropicRerankerProvider` | Claude Agent SDK via `ccmemories.utility.generate_content()` |
+
+**Factory Function:**
+```python
+from ccmemories.infrastructure import create_reranker_provider
+
+provider = create_reranker_provider(config, logger)  # Returns IRerankerProvider
+```
+
+### Utility Functions
+
+#### `format_memory_age(created_at: str | None) -> str | None`
+Format timestamp into human-readable age string:
+```python
+from ccmemories.infrastructure.llm_reranker import format_memory_age
+
+age = format_memory_age("2024-01-15T10:30:00")
+# Returns: "2 hours ago", "3 days ago", "1 week ago", etc.
+```
+
+Used to provide temporal context to the LLM when `enable_recency_boost=True`.
 
 ### Configuration
 
 ```python
 @dataclass(frozen=True)
 class LLMRerankerConfig:
-    api_key: str                    # OpenRouter API key for authentication
-    base_url: str                   # OpenRouter API base URL
-    model: str                      # LLM model identifier (e.g., 'x-ai/grok-4.1-fast')
-    score_threshold: float = 0.5   # Minimum relevance score to keep results (0.0-1.0)
-    max_concurrency: int = 5       # Maximum parallel LLM calls
-    timeout: float = 30.0          # HTTP request timeout in seconds
-    min_results: int = 0           # Safety net: min results to return (0 = disabled)
-    batch_normalize: bool = True   # Enable batch min-max normalization
+    api_key: str                       # OpenRouter API key for authentication
+    base_url: str                      # OpenRouter API base URL
+    model: str                         # LLM model identifier (e.g., 'x-ai/grok-4.1-fast')
+    score_threshold: float = 0.5       # Minimum relevance score to keep results (0.0-1.0)
+    max_concurrency: int = 5           # Maximum parallel LLM calls
+    timeout: float = 30.0              # HTTP request timeout in seconds
+    min_results: int = 0               # Safety net: min results to return (0 = disabled)
+    batch_normalize: bool = True       # Enable batch min-max normalization
+    provider: str = "anthropic"        # LLM provider: "openai" or "anthropic"
+    enable_recency_boost: bool = True  # Include memory age in reranking context
+    recency_decay_rate: float = 0.01   # Decay rate per hour: exp(-rate * hours_old)
 ```
 
 **Factory Method:**
@@ -342,41 +389,46 @@ class LLMRerankerConfig:
 config = LLMRerankerConfig.from_app_config(app_config)
 ```
 
-This factory method creates an `LLMRerankerConfig` from the application's `Config` object, extracting `openrouter_api_key`, `openrouter_base_url`, `llm_model`, `search_score_threshold`, and `rerank_max_concurrency`.
+This factory method creates an `LLMRerankerConfig` from the application's `Config` object, extracting `openrouter_api_key`, `openrouter_base_url`, `llm_model`, `search_score_threshold`, `rerank_max_concurrency`, `llm_provider`, `enable_recency_boost`, and `recency_decay_rate`.
 
 ### Class Definition
 
 ```python
 class LLMReranker(BaseModel):
-    """LLM-based document reranker using OpenRouter API."""
+    """LLM-based document reranker using configurable LLM providers."""
 
     config: LLMRerankerConfig
     logger: Any = None  # StructuredLogger
 
-    _client: AsyncOpenAI | None = PrivateAttr(default=None)
+    _provider: IRerankerProvider | None = PrivateAttr(default=None)
 ```
 
 ### Key Methods
 
-#### `rerank(query: str, candidates: List[Tuple[str, float]]) -> List[Tuple[str, float]]`
-Rerank candidates by LLM relevance scores:
+#### `rerank(query: str, candidates: List[Tuple[str, float]], timestamp_map: Dict[str, str] | None = None) -> List[Tuple[str, float]]`
+Rerank candidates by LLM relevance scores with optional temporal context:
 ```python
 # candidates from RRF fusion: [(message, fusion_score), ...]
+# timestamp_map: mapping from message text to ISO timestamp
 reranked = await reranker.rerank(
     query="Python tutorials",
     candidates=[("Python basics guide", 0.8), ("JavaScript intro", 0.6)],
+    timestamp_map={"Python basics guide": "2024-01-15T10:00:00"},
 )
 # Returns: [("Python basics guide", 0.95), ...] - sorted by LLM score descending
 ```
 
 **Behavior:**
-- Scores each candidate document against the query using the LLM
-- Uses `SCORING_PROMPT` template from `config/prompts.py`
+- Scores each candidate document against the query using the configured LLM provider
+- Uses `SCORING_PROMPT` or `SCORING_PROMPT_WITH_AGE` template based on recency boost setting
+- When `enable_recency_boost=True` and `timestamp_map` provided, includes memory age in prompt
+- Applies batch min-max normalization when `batch_normalize=True`
+- Applies recency decay: `score * exp(-decay_rate * hours_old)` when enabled
 - Filters by `score_threshold` (default: 0.5)
 - Returns results sorted by relevance score descending
 - Falls back to fusion score if LLM scoring fails for a document
 
-#### `_score_single(query: str, document: str, fallback_score: float) -> Tuple[str, float]`
+#### `_score_single(query: str, document: str, fallback_score: float, memory_age: str | None = None) -> Tuple[str, float]`
 Score a single document's relevance (internal method):
 ```python
 # Called internally by rerank() with concurrency control
@@ -384,23 +436,29 @@ result = await reranker._score_single(
     query="Python",
     document="Python is a programming language",
     fallback_score=0.7,  # fusion score used if LLM fails
+    memory_age="2 hours ago",  # Optional temporal context
 )
 # Returns: ("Python is a programming language", 0.95)
 ```
 
-### Scoring Prompt
+### Scoring Prompts
 
-The LLMReranker uses `SCORING_PROMPT` from `config/prompts.py`:
+The LLMReranker uses two prompts from `config/prompts.py`:
 
+**Basic prompt** (`SCORING_PROMPT`):
 ```python
-SCORING_PROMPT = """You are a relevance scoring system. Score how relevant a document is to a query.
-
-⚠️ CRITICAL OUTPUT REQUIREMENTS ⚠️
-Your output MUST be a SINGLE NUMBER between 0.0 and 1.0 (inclusive).
-...
-
+SCORING_PROMPT = """You are a relevance scoring system...
 Query: "{query}"
 Document: "{document}"
+"""
+```
+
+**Temporal-aware prompt** (`SCORING_PROMPT_WITH_AGE`):
+```python
+SCORING_PROMPT_WITH_AGE = """You are a relevance scoring system...
+Query: "{query}"
+Document: "{document}"
+Memory created: {memory_age}
 """
 ```
 
@@ -409,6 +467,7 @@ The prompt:
 - Uses `temperature=0` for deterministic scoring
 - Limits response to 50 tokens (only need short JSON)
 - Clamps scores to valid 0.0-1.0 range
+- When temporal context is provided, LLM can factor in recency for contradictory memories
 
 ### Concurrency Control
 
@@ -531,6 +590,7 @@ Local cross-encoder reranker using FlagEmbedding's FlagReranker for fast, cost-f
 - Thread-safe lazy model loading
 - Score threshold filtering
 - Async wrapper for non-blocking execution in async contexts
+- **Temporal-aware scoring**: Recency decay via exponential function when timestamps provided
 
 ### Configuration
 
@@ -548,6 +608,8 @@ class CrossEncoderConfig:
     max_length: int = 512                        # Max token length for query-doc pairs
     min_results: int = 0                         # Safety net: min results to return (0 = disabled)
     batch_normalize: bool = True                 # Enable batch min-max normalization
+    enable_recency_boost: bool = True            # Enable temporal decay for recency-aware scoring
+    recency_decay_rate: float = 0.01             # Decay rate per hour: exp(-rate * hours_old)
 ```
 
 **Factory Method:**
@@ -555,7 +617,7 @@ class CrossEncoderConfig:
 config = CrossEncoderConfig.from_app_config(app_config)
 ```
 
-This factory method creates a `CrossEncoderConfig` from the application's `Config` object when `reranker_engine == "cross_encoder"`.
+This factory method creates a `CrossEncoderConfig` from the application's `Config` object when `reranker_engine == "cross_encoder"`, extracting `cross_encoder_model`, `cross_encoder_top_k`, `cross_encoder_device`, `enable_recency_boost`, and `recency_decay_rate`.
 
 ### Class Definition
 
@@ -574,13 +636,15 @@ class CrossEncoderReranker(BaseModel):
 
 ### Key Methods
 
-#### `rerank(query: str, candidates: List[Tuple[str, float]]) -> List[Tuple[str, float]]`
-Rerank candidates by FlagReranker scores (synchronous):
+#### `rerank(query: str, candidates: List[Tuple[str, float]], timestamp_map: Dict[str, str] | None = None) -> List[Tuple[str, float]]`
+Rerank candidates by FlagReranker scores with optional recency decay (synchronous):
 ```python
 # candidates from RRF fusion: [(message, fusion_score), ...]
+# timestamp_map: mapping from message text to ISO timestamp
 reranked = reranker.rerank(
     query="Python tutorials",
     candidates=[("Python basics guide", 0.8), ("JavaScript intro", 0.6)],
+    timestamp_map={"Python basics guide": "2024-01-15T10:00:00"},
 )
 # Returns: [("Python basics guide", 0.95), ...] - sorted by cross-encoder score descending
 ```
@@ -588,15 +652,22 @@ reranked = reranker.rerank(
 **Behavior:**
 - Scores each candidate document against the query using FlagReranker
 - With `normalize=True`, scores are in [0, 1] range (sigmoid applied)
+- Applies batch min-max normalization when `batch_normalize=True`
+- Applies recency decay: `score * exp(-decay_rate * hours_old)` when `enable_recency_boost=True` and `timestamp_map` provided
+- Re-sorts results by decayed score after applying recency decay
 - Filters by `score_threshold` (default: 0.0 = keep all)
 - Returns top_k results sorted by relevance score descending
 - If disabled, returns candidates unchanged (pass-through)
 
-#### `rerank_async(query: str, candidates: List[Tuple[str, float]]) -> List[Tuple[str, float]]`
-Async wrapper for cross-encoder reranking:
+#### `rerank_async(query: str, candidates: List[Tuple[str, float]], timestamp_map: Dict[str, str] | None = None) -> List[Tuple[str, float]]`
+Async wrapper for cross-encoder reranking with optional recency decay:
 ```python
 # Non-blocking version using asyncer.asyncify
-reranked = await reranker.rerank_async("Python tutorials", candidates)
+reranked = await reranker.rerank_async(
+    "Python tutorials",
+    candidates,
+    timestamp_map={"Python basics guide": "2024-01-15T10:00:00"},
+)
 ```
 
 Uses `asyncify()` from asyncer to run CPU/GPU-intensive inference in a thread pool without blocking the event loop.
@@ -665,7 +736,10 @@ if self.config.reranker_engine == "cross_encoder":
 
 # In MemoryManager.search():
 if self._cross_encoder_reranker is not None:
-    hybrid_results = await self._cross_encoder_reranker.rerank_async(query, hybrid_results)
+    # timestamp_map propagated from MessageStore for recency decay
+    hybrid_results = await self._cross_encoder_reranker.rerank_async(
+        query, hybrid_results, timestamp_map
+    )
 ```
 
 ### Environment Variables
@@ -683,6 +757,8 @@ if self._cross_encoder_reranker is not None:
 | `CROSS_ENCODER_MAX_LENGTH` | `512` | Max token length for query-doc pairs |
 | `RERANKER_MIN_RESULTS` | `0` | Safety net: min results to return (0 = disabled) |
 | `RERANKER_BATCH_NORMALIZE` | `true` | Enable batch min-max normalization |
+| `ENABLE_RECENCY_BOOST` | `true` | Enable temporal decay for recency-aware scoring |
+| `RECENCY_DECAY_RATE` | `0.01` | Decay rate per hour: exp(-rate * hours_old) |
 
 ### Design Rationale
 
@@ -715,6 +791,15 @@ if self._cross_encoder_reranker is not None:
 | Quality | High (specialized models) | Very high (LLM understanding) |
 | Privacy | Data stays local | Data sent to API |
 | Scalability | CPU/GPU bound | API rate limited |
+| Recency Decay | Score × exp(-rate × hours) | Score × exp(-rate × hours) + age in prompt |
+
+**Recency Decay Processing:**
+Both rerankers support temporal-aware scoring via the same decay formula:
+```
+decayed_score = score * exp(-decay_rate * hours_old)
+```
+
+The key difference is that LLMReranker also includes memory age in the prompt ("created: 2 hours ago"), allowing the LLM to factor in recency when scoring contradictory memories. CrossEncoderReranker applies decay purely as a mathematical adjustment after scoring.
 
 ---
 

@@ -3,13 +3,67 @@
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional, Protocol, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 import anyio
 from openai import AsyncOpenAI, DefaultAioHttpClient
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from ccmemories.application.config import SCORING_PROMPT, Config
+from ccmemories.application.config import (
+    SCORING_PROMPT,
+    SCORING_PROMPT_WITH_AGE,
+    Config,
+)
+
+
+def format_memory_age(created_at: str | None) -> str | None:
+    """Format a timestamp into a human-readable age string.
+
+    Args:
+        created_at: ISO 8601 timestamp string (e.g., "2024-01-15T10:30:00").
+                   If None or invalid, returns None.
+
+    Returns:
+        Human-readable age string like "2 hours ago", "3 days ago", etc.
+        Returns None if timestamp is invalid or not provided.
+    """
+    if not created_at:
+        return None
+
+    try:
+        # Parse ISO 8601 timestamp
+        created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        now = datetime.now(created_dt.tzinfo) if created_dt.tzinfo else datetime.now()
+
+        delta = now - created_dt
+        total_seconds = delta.total_seconds()
+
+        # Handle negative deltas (future timestamps)
+        if total_seconds < 0:
+            return "just now"
+
+        # Convert to appropriate unit
+        if total_seconds < 60:
+            return "just now"
+        elif total_seconds < 3600:
+            minutes = int(total_seconds / 60)
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        elif total_seconds < 86400:
+            hours = int(total_seconds / 3600)
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif total_seconds < 604800:
+            days = int(total_seconds / 86400)
+            return f"{days} day{'s' if days != 1 else ''} ago"
+        elif total_seconds < 2592000:
+            weeks = int(total_seconds / 604800)
+            return f"{weeks} week{'s' if weeks != 1 else ''} ago"
+        else:
+            months = int(total_seconds / 2592000)
+            return f"{months} month{'s' if months != 1 else ''} ago"
+
+    except (ValueError, TypeError):
+        return None
 
 
 class RelevanceScore(BaseModel):
@@ -44,6 +98,7 @@ class LLMRerankerConfig:
         min_results: Safety net: min results to return (0 = disabled).
         batch_normalize: Enable batch min-max normalization.
         provider: LLM provider ('openai' or 'anthropic').
+        enable_recency_boost: Include memory age in reranking context.
     """
 
     api_key: str
@@ -55,6 +110,8 @@ class LLMRerankerConfig:
     min_results: int = 0  # Safety net: min results to return (0 = disabled)
     batch_normalize: bool = True  # Enable batch min-max normalization
     provider: str = "anthropic"  # Provider: "openai" or "anthropic"
+    enable_recency_boost: bool = True  # Include memory age in reranking context
+    recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
     def from_app_config(cls, config: Config) -> "LLMRerankerConfig":
@@ -75,6 +132,8 @@ class LLMRerankerConfig:
             min_results=config.reranker_min_results,
             batch_normalize=config.reranker_batch_normalize,
             provider=config.llm_provider,
+            enable_recency_boost=config.enable_recency_boost,
+            recency_decay_rate=config.recency_decay_rate,
         )
 
 
@@ -89,6 +148,7 @@ class IRerankerProvider(Protocol):
         query: str,
         document: str,
         fallback_score: float,
+        memory_age: str | None = None,
     ) -> Tuple[str, float]:
         """Score a document's relevance to the query.
 
@@ -96,6 +156,8 @@ class IRerankerProvider(Protocol):
             query: Search query string.
             document: Document text to score.
             fallback_score: Score to use if LLM call fails.
+            memory_age: Human-readable age string (e.g., "2 hours ago").
+                       If provided, temporal context is included in the prompt.
 
         Returns:
             Tuple of (document, score) where score is LLM relevance or fallback.
@@ -194,6 +256,7 @@ class OpenAIRerankerProvider:
         query: str,
         document: str,
         fallback_score: float,
+        memory_age: str | None = None,
     ) -> Tuple[str, float]:
         """Score a document's relevance using OpenAI API.
 
@@ -201,13 +264,20 @@ class OpenAIRerankerProvider:
             query: Search query string.
             document: Document text to score.
             fallback_score: Score to use if LLM call fails.
+            memory_age: Human-readable age string (e.g., "2 hours ago").
+                       If provided, temporal context is included in the prompt.
 
         Returns:
             Tuple of (document, score).
         """
         try:
-            # Format the scoring prompt
-            prompt = SCORING_PROMPT.format(query=query, document=document)
+            # Format the scoring prompt with or without temporal context
+            if memory_age:
+                prompt = SCORING_PROMPT_WITH_AGE.format(
+                    query=query, document=document, memory_age=memory_age
+                )
+            else:
+                prompt = SCORING_PROMPT.format(query=query, document=document)
 
             # Call LLM with structured output (or fallback)
             response = await self._call_llm_with_structured_output(prompt)
@@ -231,6 +301,7 @@ class OpenAIRerankerProvider:
                         "document_preview": document[:50],
                         "llm_score": score,
                         "provider": "openai",
+                        "memory_age": memory_age,
                     },
                 )
 
@@ -330,6 +401,7 @@ class AnthropicRerankerProvider:
         query: str,
         document: str,
         fallback_score: float,
+        memory_age: str | None = None,
     ) -> Tuple[str, float]:
         """Score a document's relevance using Anthropic Claude.
 
@@ -337,6 +409,8 @@ class AnthropicRerankerProvider:
             query: Search query string.
             document: Document text to score.
             fallback_score: Score to use if LLM call fails.
+            memory_age: Human-readable age string (e.g., "2 hours ago").
+                       If provided, temporal context is included in the prompt.
 
         Returns:
             Tuple of (document, score).
@@ -345,8 +419,13 @@ class AnthropicRerankerProvider:
         from ccmemories.utility import generate_content
 
         try:
-            # Format the scoring prompt
-            prompt = SCORING_PROMPT.format(query=query, document=document)
+            # Format the scoring prompt with or without temporal context
+            if memory_age:
+                prompt = SCORING_PROMPT_WITH_AGE.format(
+                    query=query, document=document, memory_age=memory_age
+                )
+            else:
+                prompt = SCORING_PROMPT.format(query=query, document=document)
 
             # Call generate_content with model parameter
             response_text = await generate_content(
@@ -370,6 +449,7 @@ class AnthropicRerankerProvider:
                         "document_preview": document[:50],
                         "llm_score": score,
                         "provider": "anthropic",
+                        "memory_age": memory_age,
                     },
                 )
 
@@ -467,6 +547,7 @@ class LLMReranker(BaseModel):
         query: str,
         document: str,
         fallback_score: float,
+        memory_age: str | None = None,
     ) -> Tuple[str, float]:
         """Score a single document's relevance to the query.
 
@@ -476,6 +557,9 @@ class LLMReranker(BaseModel):
             query: Search query string.
             document: Document text to score.
             fallback_score: Score to use if LLM call fails.
+            memory_age: Human-readable age string (e.g., "2 hours ago").
+                       If provided and recency boost is enabled, temporal
+                       context is included in the prompt.
 
         Returns:
             Tuple of (document, score) where score is LLM relevance or fallback.
@@ -483,12 +567,17 @@ class LLMReranker(BaseModel):
         if self._provider is None:
             return (document, fallback_score)
 
-        return await self._provider.score_document(query, document, fallback_score)
+        # Only pass memory_age if recency boost is enabled
+        effective_age = memory_age if self.config.enable_recency_boost else None
+        return await self._provider.score_document(
+            query, document, fallback_score, effective_age
+        )
 
     async def rerank(
         self,
         query: str,
         candidates: List[Tuple[str, float]],
+        timestamp_map: Dict[str, str] | None = None,
     ) -> List[Tuple[str, float]]:
         """Rerank candidates by LLM relevance scores.
 
@@ -501,6 +590,9 @@ class LLMReranker(BaseModel):
             candidates: List of (message, fusion_score) tuples from
                 RRF fusion. The fusion_score is used as fallback if
                 LLM scoring fails for a document.
+            timestamp_map: Optional mapping from message text to ISO 8601
+                timestamp string. Used to provide temporal context to the
+                LLM when enable_recency_boost is True.
 
         Returns:
             Reranked list of (message, llm_score) tuples, filtered by
@@ -513,15 +605,29 @@ class LLMReranker(BaseModel):
         semaphore = anyio.Semaphore(self.config.max_concurrency)
         results: List[Optional[Tuple[str, float]]] = [None] * len(candidates)
 
-        async def score_with_semaphore(idx: int, doc: str, fallback: float) -> None:
+        async def score_with_semaphore(
+            idx: int, doc: str, fallback: float, memory_age: str | None
+        ) -> None:
             """Score document with semaphore for concurrency control."""
             async with semaphore:
-                results[idx] = await self._score_single(query, doc, fallback)
+                results[idx] = await self._score_single(
+                    query, doc, fallback, memory_age
+                )
 
         # Score all candidates in parallel with concurrency limit
         async with anyio.create_task_group() as tg:
             for idx, (document, fusion_score) in enumerate(candidates):
-                tg.start_soon(score_with_semaphore, idx, document, fusion_score)
+                # Get memory age from timestamp_map if available and recency boost is enabled
+                memory_age = None
+                if (
+                    self.config.enable_recency_boost
+                    and timestamp_map
+                    and document in timestamp_map
+                ):
+                    memory_age = format_memory_age(timestamp_map[document])
+                tg.start_soon(
+                    score_with_semaphore, idx, document, fusion_score, memory_age
+                )
 
         # Collect all scored results (filter out None results)
         scored_results: List[Tuple[str, float]] = []
@@ -548,8 +654,39 @@ class LLMReranker(BaseModel):
                     },
                 )
 
-        # Sort by score descending
-        scored_results.sort(key=lambda x: x[1], reverse=True)
+        # Apply recency decay if enabled and timestamps are available
+        # This multiplies each score by exp(-decay_rate * hours_old)
+        if (
+            self.config.enable_recency_boost
+            and self.config.recency_decay_rate > 0
+            and timestamp_map
+            and scored_results
+        ):
+            from ccmemories.application.memory.reranking import apply_recency_decay
+
+            pre_decay_scores = [s for _, s in scored_results]
+            scored_results = apply_recency_decay(
+                scored_results,
+                timestamp_map,
+                self.config.recency_decay_rate,
+            )
+            post_decay_scores = [s for _, s in scored_results]
+
+            if self.logger:
+                self.logger.debug(
+                    f"Recency decay: applied (rate={self.config.recency_decay_rate}, "
+                    f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
+                    f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
+                    extra={
+                        "recency_decay": True,
+                        "decay_rate": self.config.recency_decay_rate,
+                        "pre_decay_max": max(pre_decay_scores),
+                        "post_decay_max": max(post_decay_scores),
+                    },
+                )
+        else:
+            # Sort by score descending (apply_recency_decay already sorts)
+            scored_results.sort(key=lambda x: x[1], reverse=True)
 
         # Apply threshold with optional safety net
         from ccmemories.application.memory.reranking import (
