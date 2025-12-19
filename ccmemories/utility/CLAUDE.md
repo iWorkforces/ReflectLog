@@ -1,0 +1,158 @@
+# ccmemories/utility
+
+Cross-platform Anthropic API key retrieval utility for Claude Code credentials.
+
+## Purpose
+
+This module provides secure retrieval of Anthropic API keys and OAuth tokens from:
+1. Environment variables (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`)
+2. Platform-specific credential stores (macOS Keychain, Windows Credential Manager, Linux GNOME Keyring)
+
+It enables CCMemoriesMCP and other tools to authenticate with Anthropic APIs using credentials stored by Claude Code.
+
+## Directory Structure
+
+```
+utility/
+├── __init__.py       # Package exports
+├── __main__.py       # Entry point for `python -m ccmemories.utility`
+├── cli.py            # CLI interface (ccoauth2 command)
+├── types.py          # Type definitions and token prefix constants
+├── utility.py        # Core credential retrieval functions
+└── platforms/        # Platform-specific implementations
+    ├── __init__.py   # Platform detector + factory
+    ├── base.py       # Abstract CredentialRetriever base class
+    ├── darwin.py     # macOS Keychain retrieval
+    ├── linux.py      # Linux config files + secret-tool
+    └── windows.py    # Windows Credential Manager (PowerShell)
+```
+
+## Key Components
+
+### Token Types
+
+| Prefix | Type | Usage |
+|--------|------|-------|
+| `sk-ant-oat01-` | OAuth Token | Claude Agent SDK only (Pro/Max subscriptions) |
+| `sk-ant-api` | API Key | Standard Anthropic API |
+| `sk-ant-` | Generic | Base prefix for all tokens |
+
+### Core Functions (`utility.py`)
+
+| Function | Purpose |
+|----------|---------|
+| `get_anthropic_api_key()` | Get API key from env or keychain (returns `ApiKeyResult`) |
+| `get_claude_code_api_key()` | Get key directly from platform credential store |
+| `init_credentials()` | Initialize OAuth token in environment for SDK use |
+| `generate_content()` | Async content generation via Claude Agent SDK |
+
+### Platform Retrievers (`platforms/`)
+
+| Platform | Class | Method |
+|----------|-------|--------|
+| macOS | `DarwinCredentialRetriever` | `security find-generic-password` |
+| Windows | `WindowsCredentialRetriever` | PowerShell `Get-StoredCredential` |
+| Linux | `LinuxCredentialRetriever` | Config files → `secret-tool` fallback |
+
+**Linux config file locations** (checked in order):
+- `~/.claude/credentials`
+- `~/.config/claude-code/credentials`
+- `$XDG_CONFIG_HOME/claude-code/credentials`
+
+### Credential Formats Supported
+
+```python
+# 1. OAuth JSON (current Claude Code format)
+{"claudeAiOauth": {"accessToken": "sk-ant-oat01-..."}}
+
+# 2. Legacy JSON format
+{"apiKey": "sk-ant-api..."}
+
+# 3. Raw token string
+"sk-ant-..."
+```
+
+## CLI Usage
+
+```bash
+# Get API key (checks env first, then keychain)
+python -m ccmemories.utility
+
+# Show detailed info
+python -m ccmemories.utility --info
+
+# Print source only (env or claude-code)
+python -m ccmemories.utility --source-only
+
+# Only check keychain (ignore env vars)
+python -m ccmemories.utility --keychain-only
+
+# Export to environment
+export ANTHROPIC_API_KEY=$(python -m ccmemories.utility)
+```
+
+## Programmatic Usage
+
+```python
+from ccmemories.utility import (
+    get_anthropic_api_key,
+    get_claude_code_api_key,
+    init_credentials,
+    generate_content,
+)
+
+# Get API key with source info
+result = get_anthropic_api_key()
+if result:
+    print(f"Key from {result['source']}: {result['api_key'][:20]}...")
+
+# Initialize OAuth for Claude Agent SDK
+token = init_credentials(verbose=True)
+
+# Generate content using SDK (async)
+import asyncio
+response = asyncio.run(generate_content("Hello, Claude!"))
+```
+
+## Architecture
+
+```
+Request → get_anthropic_api_key()
+              ↓
+         Check ANTHROPIC_API_KEY env
+              ↓ (if not set)
+         get_claude_code_api_key()
+              ↓
+         get_platform_retriever() → Platform match
+              ↓
+         DarwinCredentialRetriever | LinuxCredentialRetriever | WindowsCredentialRetriever
+              ↓
+         parse_credential() → Validate token prefix
+              ↓
+         Return ApiKeyResult
+```
+
+## Dependencies
+
+- `claude_agent_sdk` - For OAuth authentication and `generate_content()`
+- Standard library: `subprocess`, `json`, `platform`, `os`, `argparse`
+
+## Constants (`types.py`)
+
+```python
+TOKEN_PREFIX = "sk-ant-"           # Base prefix for all tokens
+OAUTH_TOKEN_PREFIX = "sk-ant-oat01-"  # OAuth-specific prefix
+API_KEY_PREFIX = "sk-ant-api"      # API key prefix
+SERVICE_NAME = "Claude Code-credentials"  # Keychain service name
+```
+
+## Error Handling
+
+All retrieval functions return `None` silently on any error (matching TypeScript Claude Code behavior). Errors are never raised - this ensures graceful degradation when credentials are unavailable.
+
+## Security Notes
+
+- Credentials are retrieved from secure OS credential stores
+- No credentials are logged or cached in memory beyond immediate use
+- Subprocess calls have 10-30 second timeouts
+- OAuth tokens only work with Claude Agent SDK (not raw API calls)
