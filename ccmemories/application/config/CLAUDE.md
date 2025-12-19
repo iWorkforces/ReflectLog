@@ -114,7 +114,7 @@ class Config:
     # Smart replacement configuration
     enable_smart_replace: bool = True         # Enable smart memory replacement
     smart_replace_threshold: float = 0.7      # Min LLM confidence to trigger replacement
-    smart_replace_min_similarity: float = 0.5 # Min embedding similarity to trigger LLM check
+    smart_replace_min_similarity: float = 0.9 # Min embedding similarity to trigger LLM check
     smart_replace_candidate_limit: int = 3    # Max candidates to check for replacement
     smart_replace_archive_ttl_days: int = 30  # Days to keep archived memories (0 = permanent)
     smart_replace_max_retries: int = 3        # Max LLM call retries with exponential backoff
@@ -266,11 +266,12 @@ Document: "{document}"
 | `LOG_LEVEL` | str | `INFO` | Logging verbosity |
 | `ENABLE_SMART_REPLACE` | bool | `true` | Enable smart memory replacement |
 | `SMART_REPLACE_THRESHOLD` | float | `0.7` | Min LLM confidence for replacement |
-| `SMART_REPLACE_MIN_SIMILARITY` | float | `0.5` | Min embedding similarity for LLM check |
+| `SMART_REPLACE_MIN_SIMILARITY` | float | `0.9` | Min embedding similarity for LLM check |
 | `SMART_REPLACE_CANDIDATE_LIMIT` | int | `3` | Max candidates to check |
 | `SMART_REPLACE_ARCHIVE_TTL_DAYS` | int | `30` | Days to keep archived memories |
 | `SMART_REPLACE_MAX_RETRIES` | int | `3` | Max LLM call retries |
 | `SMART_REPLACE_RETRY_DELAY` | float | `1.0` | Base retry delay in seconds |
+| `SMART_REPLACE_PROVIDER` | str | `openai` | LLM provider: `openai` or `anthropic` |
 | `EMBEDDING_BATCH_SIZE` | int | `512` | Texts per API request for async batching |
 | `EMBEDDING_MAX_CONCURRENT_BATCHES` | int | `4` | Max parallel batch requests |
 | `EMBEDDING_CACHE_ENABLED` | bool | `true` | Enable LRU cache for query embeddings |

@@ -16,19 +16,31 @@ from .cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
 from .llm_reranker import LLMReranker, LLMRerankerConfig, RelevanceScore
 from .message_store import MessageRecord, MessageStore
 from .qwen3_embedding import LangchainQwenEmbeddings
-from .smart_replacer import ReplacementDecision, SmartReplacer, SmartReplacerConfig
+from .smart_replacer import (
+    AnthropicReplacementProvider,
+    IReplacementProvider,
+    OpenAIReplacementProvider,
+    ReplacementDecision,
+    SmartReplacer,
+    SmartReplacerConfig,
+    create_replacement_provider,
+)
 from .tantivy_engine import TantivyConfig, TantivyEngine
 from .usearch_engine import USearchConfig, USearchEngine
 
 __all__ = [
+    "AnthropicReplacementProvider",
     "CachedEmbeddings",
+    "create_replacement_provider",
     "CrossEncoderConfig",
     "CrossEncoderReranker",
+    "IReplacementProvider",
     "LangchainQwenEmbeddings",
     "LLMReranker",
     "LLMRerankerConfig",
     "MessageRecord",
     "MessageStore",
+    "OpenAIReplacementProvider",
     "RelevanceScore",
     "ReplacementDecision",
     "SmartReplacer",

@@ -57,7 +57,9 @@ class LinuxCredentialRetriever(CredentialRetriever):
                         oauth_data = parsed.get("claudeAiOauth")
                         if isinstance(oauth_data, dict):
                             oauth_token = oauth_data.get("accessToken")
-                            if oauth_token and oauth_token.startswith(self.token_prefix):
+                            if oauth_token and oauth_token.startswith(
+                                self.token_prefix
+                            ):
                                 return oauth_token
 
                         # Legacy apiKey format

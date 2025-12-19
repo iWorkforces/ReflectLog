@@ -41,6 +41,7 @@ def mock_config() -> Config:
     config.smart_replace_archive_ttl_days = 30
     config.smart_replace_max_retries = 3
     config.smart_replace_retry_delay = 1.0
+    config.smart_replace_provider = "openai"
     # Reranker settings
     config.reranker_engine = "llm"
     config.reranker_min_results = 0

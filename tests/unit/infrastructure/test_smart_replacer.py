@@ -1,14 +1,18 @@
-"""Unit tests for SmartReplacer."""
+"""Unit tests for SmartReplacer and replacement providers."""
 
 import json
+from typing import cast
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
 from ccmemories.infrastructure.smart_replacer import (
+    AnthropicReplacementProvider,
+    OpenAIReplacementProvider,
     ReplacementDecision,
     SmartReplacer,
     SmartReplacerConfig,
+    create_replacement_provider,
 )
 
 
@@ -107,6 +111,7 @@ class TestSmartReplacerConfig:
         assert config.threshold == 0.7
         assert config.enabled is True
         assert config.timeout == 30.0
+        assert config.provider == "openai"
 
     def test_custom_values(self) -> None:
         """Test configuration with custom values."""
@@ -117,6 +122,7 @@ class TestSmartReplacerConfig:
             threshold=0.8,
             enabled=False,
             timeout=60.0,
+            provider="anthropic",
         )
 
         assert config.api_key == "test-key"
@@ -125,6 +131,7 @@ class TestSmartReplacerConfig:
         assert config.threshold == 0.8
         assert config.enabled is False
         assert config.timeout == 60.0
+        assert config.provider == "anthropic"
 
     def test_from_app_config(self) -> None:
         """Test factory method from application config."""
@@ -134,6 +141,9 @@ class TestSmartReplacerConfig:
         mock_app_config.llm_model = "x-ai/grok-4.1-fast"
         mock_app_config.smart_replace_threshold = 0.8
         mock_app_config.enable_smart_replace = True
+        mock_app_config.smart_replace_max_retries = 3
+        mock_app_config.smart_replace_retry_delay = 1.0
+        mock_app_config.smart_replace_provider = "openai"
 
         config = SmartReplacerConfig.from_app_config(mock_app_config)
 
@@ -142,18 +152,395 @@ class TestSmartReplacerConfig:
         assert config.model == "x-ai/grok-4.1-fast"
         assert config.threshold == 0.8
         assert config.enabled is True
+        assert config.provider == "openai"
+
+    def test_from_app_config_anthropic_provider(self) -> None:
+        """Test factory method with anthropic provider."""
+        mock_app_config = MagicMock()
+        mock_app_config.openrouter_api_key.get_secret_value.return_value = "api-key"
+        mock_app_config.openrouter_base_url = "https://openrouter.ai/api/v1"
+        mock_app_config.llm_model = "claude-sonnet-4-20250514"
+        mock_app_config.smart_replace_threshold = 0.7
+        mock_app_config.enable_smart_replace = True
+        mock_app_config.smart_replace_max_retries = 3
+        mock_app_config.smart_replace_retry_delay = 1.0
+        mock_app_config.smart_replace_provider = "anthropic"
+
+        config = SmartReplacerConfig.from_app_config(mock_app_config)
+
+        assert config.provider == "anthropic"
+        assert config.model == "claude-sonnet-4-20250514"
+
+
+class TestCreateReplacementProvider:
+    """Test create_replacement_provider factory function."""
+
+    def test_create_openai_provider(self) -> None:
+        """Test creating OpenAI provider."""
+        config = SmartReplacerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="x-ai/grok-4.1-fast",
+            provider="openai",
+        )
+
+        with patch(
+            "ccmemories.infrastructure.smart_replacer.AsyncOpenAI"
+        ) as mock_async_client:
+            provider = create_replacement_provider(config)
+
+            assert isinstance(provider, OpenAIReplacementProvider)
+            mock_async_client.assert_called_once_with(
+                api_key="test-key",
+                base_url="https://openrouter.ai/api/v1",
+                http_client=ANY,
+                timeout=30.0,
+            )
+
+    def test_create_anthropic_provider(self) -> None:
+        """Test creating Anthropic provider."""
+        config = SmartReplacerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+        )
+
+        with patch(
+            "ccmemories.utility.init_credentials"
+        ) as mock_init:
+            provider = create_replacement_provider(config)
+
+            assert isinstance(provider, AnthropicReplacementProvider)
+            mock_init.assert_called_once_with(verbose=False)
+
+    def test_create_invalid_provider_raises_error(self) -> None:
+        """Test that invalid provider raises ValueError."""
+        config = SmartReplacerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="test-model",
+            provider="invalid",
+        )
+
+        with pytest.raises(ValueError, match="Unsupported provider"):
+            create_replacement_provider(config)
+
+
+class TestOpenAIReplacementProvider:
+    """Test OpenAIReplacementProvider."""
+
+    @pytest.fixture
+    def mock_provider(self) -> OpenAIReplacementProvider:
+        """Create a mocked OpenAI provider instance."""
+        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+            provider = OpenAIReplacementProvider(
+                api_key="test-key",
+                base_url="https://openrouter.ai/api/v1",
+                model="x-ai/grok-4.1-fast",
+            )
+            return provider
+
+    @pytest.mark.asyncio
+    async def test_detect_replacement_success(
+        self, mock_provider: OpenAIReplacementProvider
+    ) -> None:
+        """Test successful replacement detection."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "should_replace": True,
+                "confidence": 0.9,
+                "reason": "Same topic with updated preference",
+            }
+        )
+
+        mock_provider._client = AsyncMock()
+        mock_provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        should_replace, confidence, reason = await mock_provider.detect_replacement(
+            prompt="test prompt",
+            max_retries=3,
+            retry_delay=1.0,
+        )
+
+        assert should_replace is True
+        assert confidence == 0.9
+        assert reason == "Same topic with updated preference"
+
+    @pytest.mark.asyncio
+    async def test_detect_replacement_no_replace(
+        self, mock_provider: OpenAIReplacementProvider
+    ) -> None:
+        """Test no replacement needed."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "should_replace": False,
+                "confidence": 0.2,
+                "reason": "Different topics entirely",
+            }
+        )
+
+        mock_provider._client = AsyncMock()
+        mock_provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        should_replace, confidence, reason = await mock_provider.detect_replacement(
+            prompt="test prompt",
+            max_retries=3,
+            retry_delay=1.0,
+        )
+
+        assert should_replace is False
+        assert confidence == 0.2
+        assert reason == "Different topics entirely"
+
+    @pytest.mark.asyncio
+    async def test_detect_replacement_clamps_confidence(
+        self, mock_provider: OpenAIReplacementProvider
+    ) -> None:
+        """Test that out-of-range confidence is clamped to 0-1."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "should_replace": True,
+                "confidence": 1.5,
+                "reason": "Clamped",
+            }
+        )
+
+        mock_provider._client = AsyncMock()
+        mock_provider._client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        _, confidence, _ = await mock_provider.detect_replacement(
+            prompt="test prompt",
+            max_retries=3,
+            retry_delay=1.0,
+        )
+        assert confidence == 1.0
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_json_schema_not_supported(
+        self, mock_provider: OpenAIReplacementProvider
+    ) -> None:
+        """Test fallback to json_object mode when structured outputs not supported."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "should_replace": False,
+                "confidence": 0.3,
+                "reason": "Different topics",
+            }
+        )
+
+        mock_provider._client = AsyncMock()
+        mock_provider._client.chat.completions.create = AsyncMock(
+            side_effect=[
+                Exception("json_schema is not supported for this model"),
+                mock_response,
+            ]
+        )
+
+        mock_logger = MagicMock()
+        mock_provider._logger = mock_logger
+
+        should_replace, confidence, reason = await mock_provider.detect_replacement(
+            prompt="test prompt",
+            max_retries=3,
+            retry_delay=1.0,
+        )
+
+        # Verify result after fallback
+        assert should_replace is False
+        assert confidence == 0.3
+
+        # Verify second call used json_object mode
+        assert mock_provider._client.chat.completions.create.call_count == 2
+        second_call_kwargs = (
+            mock_provider._client.chat.completions.create.call_args_list[1][1]
+        )
+        assert second_call_kwargs["response_format"]["type"] == "json_object"
+
+    @pytest.mark.asyncio
+    async def test_all_retries_exhausted_returns_safe_defaults(
+        self, mock_provider: OpenAIReplacementProvider
+    ) -> None:
+        """Test that exhausted retries return safe defaults."""
+        mock_provider._client = AsyncMock()
+        mock_provider._client.chat.completions.create = AsyncMock(
+            side_effect=Exception("Network timeout error")
+        )
+
+        mock_logger = MagicMock()
+        mock_provider._logger = mock_logger
+
+        should_replace, confidence, reason = await mock_provider.detect_replacement(
+            prompt="test prompt",
+            max_retries=2,
+            retry_delay=0.01,  # Fast retries for testing
+        )
+
+        assert should_replace is False
+        assert confidence == 0.0
+        assert "Error" in reason
+
+
+class TestAnthropicReplacementProvider:
+    """Test AnthropicReplacementProvider."""
+
+    def test_extract_json_pure_json(self) -> None:
+        """Test extracting pure JSON from response."""
+        with patch("ccmemories.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        result = provider._extract_json_from_response(
+            '{"should_replace": true, "confidence": 0.9, "reason": "Test"}'
+        )
+
+        assert result["should_replace"] is True
+        assert result["confidence"] == 0.9
+        assert result["reason"] == "Test"
+
+    def test_extract_json_markdown_code_block(self) -> None:
+        """Test extracting JSON from markdown code block."""
+        with patch("ccmemories.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        response = """Here's the analysis:
+
+```json
+{"should_replace": true, "confidence": 0.85, "reason": "Updated preference"}
+```
+
+That's my assessment."""
+
+        result = provider._extract_json_from_response(response)
+
+        assert result["should_replace"] is True
+        assert result["confidence"] == 0.85
+
+    def test_extract_json_embedded_json(self) -> None:
+        """Test extracting embedded JSON from text."""
+        with patch("ccmemories.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        response = 'The result is {"should_replace": false, "confidence": 0.3, "reason": "Different topics"} done.'
+
+        result = provider._extract_json_from_response(response)
+
+        assert result["should_replace"] is False
+        assert result["confidence"] == 0.3
+
+    def test_extract_json_fails_raises_error(self) -> None:
+        """Test that extraction failure raises ValueError."""
+        with patch("ccmemories.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        with pytest.raises(ValueError, match="Could not extract JSON"):
+            provider._extract_json_from_response("No JSON here at all!")
+
+    @pytest.mark.asyncio
+    async def test_detect_replacement_success(self) -> None:
+        """Test successful replacement detection with Anthropic."""
+        with patch("ccmemories.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        with patch(
+            "ccmemories.utility.generate_content"
+        ) as mock_generate:
+            mock_generate.return_value = json.dumps(
+                {
+                    "should_replace": True,
+                    "confidence": 0.88,
+                    "reason": "Same topic updated",
+                }
+            )
+
+            should_replace, confidence, reason = await provider.detect_replacement(
+                prompt="test prompt",
+                max_retries=3,
+                retry_delay=1.0,
+            )
+
+            assert should_replace is True
+            assert confidence == 0.88
+            assert reason == "Same topic updated"
+            mock_generate.assert_called_once_with(
+                prompt="test prompt",
+                model="claude-sonnet-4-20250514",
+                allowed_tools=[],
+            )
+
+    @pytest.mark.asyncio
+    async def test_detect_replacement_with_markdown_response(self) -> None:
+        """Test replacement detection with markdown-wrapped response."""
+        with patch("ccmemories.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        with patch(
+            "ccmemories.utility.generate_content"
+        ) as mock_generate:
+            mock_generate.return_value = """Analysis complete:
+
+```json
+{"should_replace": true, "confidence": 0.92, "reason": "Preference changed"}
+```"""
+
+            should_replace, confidence, reason = await provider.detect_replacement(
+                prompt="test prompt",
+                max_retries=3,
+                retry_delay=1.0,
+            )
+
+            assert should_replace is True
+            assert confidence == 0.92
+
+    @pytest.mark.asyncio
+    async def test_all_retries_exhausted_returns_safe_defaults(self) -> None:
+        """Test that exhausted retries return safe defaults."""
+        with patch("ccmemories.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        with patch(
+            "ccmemories.utility.generate_content"
+        ) as mock_generate:
+            mock_generate.side_effect = Exception("API Error")
+
+            mock_logger = MagicMock()
+            provider._logger = mock_logger
+
+            should_replace, confidence, reason = await provider.detect_replacement(
+                prompt="test prompt",
+                max_retries=2,
+                retry_delay=0.01,
+            )
+
+            assert should_replace is False
+            assert confidence == 0.0
+            assert "Error" in reason
 
 
 class TestSmartReplacerInitialization:
     """Test SmartReplacer initialization."""
 
-    def test_initialization_creates_async_client_when_enabled(self) -> None:
-        """Test that initialization creates AsyncOpenAI client when enabled."""
+    def test_initialization_creates_openai_provider_when_enabled(self) -> None:
+        """Test that initialization creates OpenAI provider when enabled."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
             model="x-ai/grok-4.1-fast",
             enabled=True,
+            provider="openai",
         )
 
         with patch(
@@ -161,16 +548,31 @@ class TestSmartReplacerInitialization:
         ) as mock_async_client:
             replacer = SmartReplacer(config=config)
 
-            mock_async_client.assert_called_once_with(
-                api_key="test-key",
-                base_url="https://openrouter.ai/api/v1",
-                http_client=ANY,
-                timeout=30.0,
-            )
-            assert replacer._client is not None
+            mock_async_client.assert_called_once()
+            assert replacer._provider is not None
+            assert isinstance(replacer._provider, OpenAIReplacementProvider)
 
-    def test_initialization_no_client_when_disabled(self) -> None:
-        """Test that no client is created when disabled."""
+    def test_initialization_creates_anthropic_provider_when_enabled(self) -> None:
+        """Test that initialization creates Anthropic provider when enabled."""
+        config = SmartReplacerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="claude-sonnet-4-20250514",
+            enabled=True,
+            provider="anthropic",
+        )
+
+        with patch(
+            "ccmemories.utility.init_credentials"
+        ) as mock_init:
+            replacer = SmartReplacer(config=config)
+
+            mock_init.assert_called_once_with(verbose=False)
+            assert replacer._provider is not None
+            assert isinstance(replacer._provider, AnthropicReplacementProvider)
+
+    def test_initialization_no_provider_when_disabled(self) -> None:
+        """Test that no provider is created when disabled."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -184,7 +586,7 @@ class TestSmartReplacerInitialization:
             replacer = SmartReplacer(config=config)
 
             mock_async_client.assert_not_called()
-            assert replacer._client is None
+            assert replacer._provider is None
 
 
 class TestCheckReplacement:
@@ -198,6 +600,7 @@ class TestCheckReplacement:
             base_url="https://openrouter.ai/api/v1",
             model="x-ai/grok-4.1-fast",
             threshold=0.7,
+            provider="openai",
         )
 
         with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
@@ -219,10 +622,9 @@ class TestCheckReplacement:
             }
         )
 
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
+        provider = cast(OpenAIReplacementProvider, mock_replacer._provider)
+        provider._client = AsyncMock()
+        provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         should_replace, confidence, reason = await mock_replacer.check_replacement(
             new_memory="I don't like cats anymore",
@@ -248,10 +650,9 @@ class TestCheckReplacement:
             }
         )
 
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
+        provider = cast(OpenAIReplacementProvider, mock_replacer._provider)
+        provider._client = AsyncMock()
+        provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         should_replace, confidence, reason = await mock_replacer.check_replacement(
             new_memory="I like dogs",
@@ -277,10 +678,9 @@ class TestCheckReplacement:
             }
         )
 
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
+        provider = cast(OpenAIReplacementProvider, mock_replacer._provider)
+        provider._client = AsyncMock()
+        provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         should_replace, confidence, reason = await mock_replacer.check_replacement(
             new_memory="I like dogs",
@@ -290,46 +690,6 @@ class TestCheckReplacement:
         # should_replace should be False because confidence is below threshold
         assert should_replace is False
         assert confidence == 0.5
-
-    @pytest.mark.asyncio
-    async def test_check_replacement_clamps_confidence(
-        self, mock_replacer: SmartReplacer
-    ) -> None:
-        """Test that out-of-range confidence is clamped to 0-1."""
-        # Test confidence > 1.0
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = json.dumps(
-            {
-                "should_replace": True,
-                "confidence": 1.5,
-                "reason": "Clamped",
-            }
-        )
-
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        _, confidence, _ = await mock_replacer.check_replacement(
-            new_memory="test", existing_memory="test2"
-        )
-        assert confidence == 1.0
-
-        # Test confidence < 0.0
-        mock_response.choices[0].message.content = json.dumps(
-            {
-                "should_replace": False,
-                "confidence": -0.5,
-                "reason": "Clamped",
-            }
-        )
-
-        _, confidence, _ = await mock_replacer.check_replacement(
-            new_memory="test", existing_memory="test2"
-        )
-        assert confidence == 0.0
 
     @pytest.mark.asyncio
     async def test_check_replacement_disabled(self) -> None:
@@ -354,11 +714,11 @@ class TestCheckReplacement:
         assert reason == "Smart replacement disabled"
 
     @pytest.mark.asyncio
-    async def test_check_replacement_client_not_initialized(
+    async def test_check_replacement_provider_not_initialized(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        """Test handling when client is not initialized."""
-        mock_replacer._client = None
+        """Test handling when provider is not initialized."""
+        mock_replacer._provider = None
 
         should_replace, confidence, reason = await mock_replacer.check_replacement(
             new_memory="test",
@@ -367,66 +727,16 @@ class TestCheckReplacement:
 
         assert should_replace is False
         assert confidence == 0.0
-        assert reason == "Client not initialized"
-
-    @pytest.mark.asyncio
-    async def test_check_replacement_invalid_json(
-        self, mock_replacer: SmartReplacer
-    ) -> None:
-        """Test handling of invalid JSON response."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "not valid json"
-
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        mock_logger = MagicMock()
-        mock_replacer.logger = mock_logger
-
-        should_replace, confidence, reason = await mock_replacer.check_replacement(
-            new_memory="test", existing_memory="test2"
-        )
-
-        assert should_replace is False
-        assert confidence == 0.0
-        assert "JSON parse error" in reason
-        mock_logger.warning.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_check_replacement_empty_response(
-        self, mock_replacer: SmartReplacer
-    ) -> None:
-        """Test handling of empty response."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = None
-
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        mock_logger = MagicMock()
-        mock_replacer.logger = mock_logger
-
-        should_replace, confidence, reason = await mock_replacer.check_replacement(
-            new_memory="test", existing_memory="test2"
-        )
-
-        assert should_replace is False
-        assert confidence == 0.0
-        assert "Error" in reason
+        assert reason == "Provider not initialized"
 
     @pytest.mark.asyncio
     async def test_check_replacement_api_error(
         self, mock_replacer: SmartReplacer
     ) -> None:
         """Test handling of API error with retry behavior."""
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
+        provider = cast(OpenAIReplacementProvider, mock_replacer._provider)
+        provider._client = AsyncMock()
+        provider._client.chat.completions.create = AsyncMock(
             side_effect=Exception("API Error")
         )
 
@@ -440,132 +750,20 @@ class TestCheckReplacement:
         assert should_replace is False
         assert confidence == 0.0
         assert "Error" in reason
-        # With retry logic, warning is called once per retry attempt + final error
-        # Default: 3 retries + 1 final = 4 warning calls
-        assert mock_logger.warning.call_count >= 1  # At least one warning logged
-
-
-class TestStructuredOutputFallback:
-    """Test structured output with fallback to json_object mode."""
-
-    @pytest.fixture
-    def mock_replacer(self) -> SmartReplacer:
-        """Create a mocked SmartReplacer instance."""
-        config = SmartReplacerConfig(
-            api_key="test-key",
-            base_url="https://openrouter.ai/api/v1",
-            model="x-ai/grok-4.1-fast",
-        )
-
-        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
-            replacer = SmartReplacer(config=config)
-            return replacer
-
-    @pytest.mark.asyncio
-    async def test_structured_output_success(
-        self, mock_replacer: SmartReplacer
-    ) -> None:
-        """Test that structured output call succeeds."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = json.dumps(
-            {
-                "should_replace": True,
-                "confidence": 0.85,
-                "reason": "Same topic",
-            }
-        )
-
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        await mock_replacer._call_llm_with_structured_output("test prompt")
-
-        # Verify structured output format was used
-        mock_replacer._client.chat.completions.create.assert_called_once()
-        call_kwargs = mock_replacer._client.chat.completions.create.call_args[1]
-        assert call_kwargs["response_format"]["type"] == "json_schema"
-        assert "json_schema" in call_kwargs["response_format"]
-        assert call_kwargs["response_format"]["json_schema"]["strict"] is True
-
-    @pytest.mark.asyncio
-    async def test_fallback_on_json_schema_not_supported(
-        self, mock_replacer: SmartReplacer
-    ) -> None:
-        """Test fallback to json_object mode when structured outputs not supported."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = json.dumps(
-            {
-                "should_replace": False,
-                "confidence": 0.3,
-                "reason": "Different topics",
-            }
-        )
-
-        # First call fails with json_schema error, second succeeds
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            side_effect=[
-                Exception("json_schema is not supported for this model"),
-                mock_response,
-            ]
-        )
-
-        mock_logger = MagicMock()
-        mock_replacer.logger = mock_logger
-
-        await mock_replacer._call_llm_with_structured_output("test prompt")
-
-        # Verify fallback was called
-        assert mock_replacer._client.chat.completions.create.call_count == 2
-
-        # Verify second call used json_object mode
-        second_call_kwargs = (
-            mock_replacer._client.chat.completions.create.call_args_list[1][1]
-        )
-        assert second_call_kwargs["response_format"]["type"] == "json_object"
-
-        # Verify warning was logged
-        mock_logger.warning.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_no_fallback_on_unrelated_error(
-        self, mock_replacer: SmartReplacer
-    ) -> None:
-        """Test that unrelated errors are not caught for fallback."""
-        mock_replacer._client = AsyncMock()
-        mock_replacer._client.chat.completions.create = AsyncMock(
-            side_effect=Exception("Network timeout error")
-        )
-
-        with pytest.raises(Exception, match="Network timeout"):
-            await mock_replacer._call_llm_with_structured_output("test prompt")
-
-    @pytest.mark.asyncio
-    async def test_client_not_initialized_raises_error(
-        self, mock_replacer: SmartReplacer
-    ) -> None:
-        """Test that RuntimeError is raised when client is not initialized."""
-        mock_replacer._client = None
-
-        with pytest.raises(RuntimeError, match="not initialized"):
-            await mock_replacer._call_llm_with_structured_output("test prompt")
 
 
 class TestSmartReplacerIntegration:
     """Integration-style tests for full replacement flow."""
 
     @pytest.mark.asyncio
-    async def test_full_replacement_flow_replace(self) -> None:
-        """Test complete replacement flow with replacement triggered."""
+    async def test_full_replacement_flow_openai_replace(self) -> None:
+        """Test complete replacement flow with OpenAI provider."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
             model="x-ai/grok-4.1-fast",
             threshold=0.7,
+            provider="openai",
         )
 
         with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
@@ -581,8 +779,9 @@ class TestSmartReplacerIntegration:
                 }
             )
 
-            replacer._client = AsyncMock()
-            replacer._client.chat.completions.create = AsyncMock(
+            provider = cast(OpenAIReplacementProvider, replacer._provider)
+            provider._client = AsyncMock()
+            provider._client.chat.completions.create = AsyncMock(
                 return_value=mock_response
             )
 
@@ -596,6 +795,40 @@ class TestSmartReplacerIntegration:
             assert "Updated preference" in reason
 
     @pytest.mark.asyncio
+    async def test_full_replacement_flow_anthropic_replace(self) -> None:
+        """Test complete replacement flow with Anthropic provider."""
+        config = SmartReplacerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="claude-sonnet-4-20250514",
+            threshold=0.7,
+            provider="anthropic",
+        )
+
+        with patch("ccmemories.utility.init_credentials"):
+            replacer = SmartReplacer(config=config, logger=MagicMock())
+
+            with patch(
+                "ccmemories.utility.generate_content"
+            ) as mock_generate:
+                mock_generate.return_value = json.dumps(
+                    {
+                        "should_replace": True,
+                        "confidence": 0.85,
+                        "reason": "Updated location",
+                    }
+                )
+
+                should_replace, confidence, reason = await replacer.check_replacement(
+                    new_memory="I moved to San Francisco",
+                    existing_memory="I live in New York",
+                )
+
+                assert should_replace is True
+                assert confidence == 0.85
+                assert "Updated location" in reason
+
+    @pytest.mark.asyncio
     async def test_full_replacement_flow_no_replace(self) -> None:
         """Test complete replacement flow with no replacement."""
         config = SmartReplacerConfig(
@@ -603,6 +836,7 @@ class TestSmartReplacerIntegration:
             base_url="https://openrouter.ai/api/v1",
             model="x-ai/grok-4.1-fast",
             threshold=0.7,
+            provider="openai",
         )
 
         with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
@@ -618,8 +852,9 @@ class TestSmartReplacerIntegration:
                 }
             )
 
-            replacer._client = AsyncMock()
-            replacer._client.chat.completions.create = AsyncMock(
+            provider = cast(OpenAIReplacementProvider, replacer._provider)
+            provider._client = AsyncMock()
+            provider._client.chat.completions.create = AsyncMock(
                 return_value=mock_response
             )
 

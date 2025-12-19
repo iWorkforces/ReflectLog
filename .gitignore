@@ -209,3 +209,4 @@ __marimo__/
 
 # Numba JIT cache
 .numba_cache/
+*indexes/

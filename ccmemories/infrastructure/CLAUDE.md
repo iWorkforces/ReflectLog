@@ -718,14 +718,15 @@ LLM-based memory replacement detection for intelligent memory management:
 ```python
 @dataclass(frozen=True)
 class SmartReplacerConfig:
-    api_key: str                    # OpenRouter API key
-    base_url: str                   # OpenRouter API base URL
+    api_key: str                    # OpenRouter API key (OpenAI provider only)
+    base_url: str                   # OpenRouter API base URL (OpenAI provider only)
     model: str                      # LLM model identifier
     threshold: float = 0.7          # Min confidence to trigger replacement (0.0-1.0)
     enabled: bool = True            # Whether smart replacement is enabled
     timeout: float = 30.0           # HTTP request timeout in seconds
     max_retries: int = 3            # Max LLM call retries with exponential backoff
     retry_delay: float = 1.0        # Base delay (seconds) for exponential backoff
+    provider: str = "openai"        # LLM provider: "openai" or "anthropic"
 ```
 
 **Factory Method:**
@@ -881,9 +882,14 @@ async def add_messages_async(self, messages: List[str]) -> int:
 |----------|---------|-------------|
 | `ENABLE_SMART_REPLACE` | `true` | Enable smart memory replacement detection |
 | `SMART_REPLACE_THRESHOLD` | `0.7` | Min LLM confidence to trigger replacement (0.0-1.0) |
+| `SMART_REPLACE_PROVIDER` | `openai` | LLM provider: `openai` or `anthropic` |
 | `LLM_MODEL` | `x-ai/grok-4.1-fast` | LLM model (shared with reranking) |
-| `OPENROUTER_API_KEY` | - | API key for OpenRouter |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | API endpoint |
+| `OPENROUTER_API_KEY` | - | API key for OpenRouter (OpenAI provider only) |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | API endpoint (OpenAI provider only) |
+
+**Provider Selection:**
+- `openai` (default): Uses OpenAI-compatible API via OpenRouter with structured JSON output
+- `anthropic`: Uses Claude Agent SDK via `ccmemories.utility.generate_content()` with OAuth credentials
 
 ### Design Rationale
 

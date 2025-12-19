@@ -126,7 +126,7 @@ class Config:
     enable_smart_replace: bool = True  # Enable smart memory replacement detection
     smart_replace_threshold: float = 0.7  # Min LLM confidence to trigger replacement
     smart_replace_min_similarity: float = (
-        0.5  # Min embedding similarity to trigger LLM check
+        0.9  # Min embedding similarity to trigger LLM check
     )
     smart_replace_candidate_limit: int = 3  # Max candidates to check for replacement
     smart_replace_archive_ttl_days: int = (
@@ -136,6 +136,7 @@ class Config:
     smart_replace_retry_delay: float = (
         1.0  # Base delay (seconds) for exponential backoff
     )
+    smart_replace_provider: str = "openai"  # Provider: "openai" or "anthropic"
 
     # Concurrency settings
     add_max_concurrency: int = 4  # Max concurrent message additions
@@ -259,6 +260,16 @@ class Config:
             raise ConfigurationError(
                 f"Invalid RERANKER_ENGINE: '{reranker_engine}'. "
                 f"Valid options: {', '.join(valid_engines)}"
+            )
+
+        # Determine smart replace provider
+        smart_replace_provider_raw = os.environ.get("SMART_REPLACE_PROVIDER", "openai")
+        smart_replace_provider = smart_replace_provider_raw.lower()
+        valid_smart_replace_providers = ("openai", "anthropic")
+        if smart_replace_provider not in valid_smart_replace_providers:
+            raise ConfigurationError(
+                f"Invalid SMART_REPLACE_PROVIDER: '{smart_replace_provider}'. "
+                f"Valid options: {', '.join(valid_smart_replace_providers)}"
             )
 
         return cls(
@@ -408,7 +419,7 @@ class Config:
                 os.environ.get("SMART_REPLACE_THRESHOLD", "0.7")
             ),
             smart_replace_min_similarity=float(
-                os.environ.get("SMART_REPLACE_MIN_SIMILARITY", "0.5")
+                os.environ.get("SMART_REPLACE_MIN_SIMILARITY", "0.9")
             ),
             smart_replace_candidate_limit=max(
                 1, int(os.environ.get("SMART_REPLACE_CANDIDATE_LIMIT", "3"))
@@ -422,6 +433,7 @@ class Config:
             smart_replace_retry_delay=max(
                 0.1, float(os.environ.get("SMART_REPLACE_RETRY_DELAY", "1.0"))
             ),
+            smart_replace_provider=smart_replace_provider,
             # Concurrency settings
             add_max_concurrency=max(1, int(os.environ.get("ADD_MAX_CONCURRENCY", "4"))),
             # Initialization settings

@@ -108,16 +108,24 @@ def init_credentials(verbose: bool = True) -> str | None:
             oauth_token = keychain_token
             os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
             if verbose:
-                print(f"CLAUDE_CODE_OAUTH_TOKEN: {oauth_token[:20]}... (retrieved from keychain)")
+                print(
+                    f"CLAUDE_CODE_OAUTH_TOKEN: {oauth_token[:20]}... (retrieved from keychain)"
+                )
         elif keychain_token:
             # It's a regular API key, not an OAuth token
             if verbose:
-                print("Found API key in keychain, but it is not an OAuth token (sk-ant-oat01-*).")
-                print("OAuth tokens are only available with Claude Pro/Max subscriptions.")
+                print(
+                    "Found API key in keychain, but it is not an OAuth token (sk-ant-oat01-*)."
+                )
+                print(
+                    "OAuth tokens are only available with Claude Pro/Max subscriptions."
+                )
                 print("SDK will use stored credentials.\n")
         else:
             if verbose:
-                print("CLAUDE_CODE_OAUTH_TOKEN: <not set> (SDK will use stored credentials)")
+                print(
+                    "CLAUDE_CODE_OAUTH_TOKEN: <not set> (SDK will use stored credentials)"
+                )
     else:
         if verbose:
             print(f"CLAUDE_CODE_OAUTH_TOKEN: {oauth_token[:20]}...")
