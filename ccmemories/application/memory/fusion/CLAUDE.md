@@ -174,7 +174,7 @@ Via environment variables (in `MemoryManager`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FUSION_RRF_K` | 60 | RRF constant |
-| `FUSION_RANKING_THRESHOLD` | 0.5 | Min normalized score to keep |
+| `FUSION_RANKING_THRESHOLD` | 0.8 | Min normalized score to keep |
 
 ## Usage in MemoryManager
 
