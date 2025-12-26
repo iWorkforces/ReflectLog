@@ -12,7 +12,6 @@ from ccmemories.application.config import REPLACEMENT_DETECTION_PROMPT, Config
 from ccmemories.application.utils.retry import async_retry_with_backoff
 from ccmemories.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
-    IStructuredOutputSchema,
 )
 
 
@@ -156,9 +155,13 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
             max_tokens=150,
         )
 
-        should_replace = self._extract_bool_field(result, "should_replace", default=False)
+        should_replace = self._extract_bool_field(
+            result, "should_replace", default=False
+        )
         confidence = self._extract_float_field(result, "confidence", default=0.0)
-        reason = self._extract_string_field(result, "reason", default="No reason provided")
+        reason = self._extract_string_field(
+            result, "reason", default="No reason provided"
+        )
 
         return (should_replace, confidence, reason)
 

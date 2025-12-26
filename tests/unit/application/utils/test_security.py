@@ -287,4 +287,3 @@ class TestValidateProjectId:
         """Test special characters are not allowed."""
         with pytest.raises(ValidationError, match="contains invalid characters"):
             validate_project_id("project$id")
-

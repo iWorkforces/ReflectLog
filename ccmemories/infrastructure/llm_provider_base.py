@@ -139,7 +139,9 @@ class BaseOpenAIProvider:
         result = json.loads(content)
         return result
 
-    def _clamp_float(self, value: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
+    def _clamp_float(
+        self, value: float, min_value: float = 0.0, max_value: float = 1.0
+    ) -> float:
         """Clamp a float value to a specified range.
 
         Args:

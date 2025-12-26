@@ -75,7 +75,9 @@ class TantivyEngine(BaseModel):
     # Bounded in-memory tombstone cache for O(1) lookup after first search
     # Uses OrderedDict for LRU eviction when size exceeds tombstone_cache_max_size
     # Key: project_id, Value: set of tombstoned message contents
-    _tombstone_cache: OrderedDict[str, set[str]] = PrivateAttr(default_factory=OrderedDict)
+    _tombstone_cache: OrderedDict[str, set[str]] = PrivateAttr(
+        default_factory=OrderedDict
+    )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def __init__(

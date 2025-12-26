@@ -118,7 +118,9 @@ class MessageStore(BaseModel):
                     self._conn.execute("PRAGMA journal_mode=WAL")
                     self._conn.execute("PRAGMA synchronous=NORMAL")
                     # Set busy timeout to handle concurrent access gracefully
-                    self._conn.execute(f"PRAGMA busy_timeout = {int(self.timeout * 1000)}")
+                    self._conn.execute(
+                        f"PRAGMA busy_timeout = {int(self.timeout * 1000)}"
+                    )
                     self._create_schema()
                     self._conn.commit()
 

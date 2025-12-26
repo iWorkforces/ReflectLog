@@ -4,14 +4,14 @@ These tests verify that the system degrades gracefully when external
 dependencies (LLM providers, APIs) fail or are unavailable.
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+import asyncio
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from ccmemories.infrastructure.llm_reranker import OpenAIRerankerProvider
 from ccmemories.infrastructure.smart_replacer import (
     OpenAIReplacementProvider,
-    ReplacementDecision,
 )
 
 
@@ -30,7 +30,9 @@ class TestLLMRerankerDegradation:
 
         # Mock the LLM client to raise an exception
         provider._client = AsyncMock()
-        provider._client.chat.completions.create = AsyncMock(side_effect=Exception("API unavailable"))
+        provider._client.chat.completions.create = AsyncMock(
+            side_effect=Exception("API unavailable")
+        )
 
         # Mock logger
         provider._logger = Mock()
@@ -189,7 +191,9 @@ class TestLLMRerankerDegradation:
             mock_response.choices[0].message.content = json_response
 
             provider._client = AsyncMock()
-            provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
+            provider._client.chat.completions.create = AsyncMock(
+                return_value=mock_response
+            )
 
             # Mock logger
             provider._logger = Mock()
@@ -220,13 +224,17 @@ class TestSmartReplacerDegradation:
 
         # Mock the LLM client to raise an exception
         provider._client = AsyncMock()
-        provider._client.chat.completions.create = AsyncMock(side_effect=Exception("API unavailable"))
+        provider._client.chat.completions.create = AsyncMock(
+            side_effect=Exception("API unavailable")
+        )
 
         # Mock logger
         provider._logger = Mock()
 
         # Call replacement detection - should gracefully fallback to "no replacement"
-        prompt = "Should 'I don't like cats anymore, I like dogs' replace 'I like cats'?"
+        prompt = (
+            "Should 'I don't like cats anymore, I like dogs' replace 'I like cats'?"
+        )
         result = await provider.detect_replacement(
             prompt=prompt,
             max_retries=3,
@@ -262,7 +270,9 @@ class TestSmartReplacerDegradation:
             # Return valid response on third attempt
             mock_response = Mock()
             mock_response.choices = [Mock()]
-            mock_response.choices[0].message.content = '{"should_replace": true, "confidence": 0.9, "reason": "User changed preference"}'
+            mock_response.choices[
+                0
+            ].message.content = '{"should_replace": true, "confidence": 0.9, "reason": "User changed preference"}'
             return mock_response
 
         provider._client = AsyncMock()
@@ -272,7 +282,9 @@ class TestSmartReplacerDegradation:
         provider._logger = Mock()
 
         # Call replacement detection - should retry and succeed
-        prompt = "Should 'I don't like cats anymore, I like dogs' replace 'I like cats'?"
+        prompt = (
+            "Should 'I don't like cats anymore, I like dogs' replace 'I like cats'?"
+        )
         result = await provider.detect_replacement(
             prompt=prompt,
             max_retries=3,
@@ -332,10 +344,22 @@ class TestSmartReplacerDegradation:
 
         # Test cases for missing fields with expected results
         test_cases = [
-            ('{"should_replace": true}', True, 0.0),  # Missing confidence and reason - should_replace is True
-            ('{"confidence": 0.9}', False, 0.9),  # Missing should_replace - defaults to False
-            ('{"reason": "User changed mind"}', False, 0.0),  # Missing should_replace and confidence
-            ('{}', False, 0.0),  # Empty JSON - all defaults
+            (
+                '{"should_replace": true}',
+                True,
+                0.0,
+            ),  # Missing confidence and reason - should_replace is True
+            (
+                '{"confidence": 0.9}',
+                False,
+                0.9,
+            ),  # Missing should_replace - defaults to False
+            (
+                '{"reason": "User changed mind"}',
+                False,
+                0.0,
+            ),  # Missing should_replace and confidence
+            ("{}", False, 0.0),  # Empty JSON - all defaults
         ]
 
         for json_response, expected_should_replace, expected_confidence in test_cases:
@@ -345,7 +369,9 @@ class TestSmartReplacerDegradation:
             mock_response.choices[0].message.content = json_response
 
             provider._client = AsyncMock()
-            provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
+            provider._client.chat.completions.create = AsyncMock(
+                return_value=mock_response
+            )
 
             # Mock logger
             provider._logger = Mock()
@@ -360,8 +386,12 @@ class TestSmartReplacerDegradation:
 
             # Should return expected values
             should_replace, confidence, reason = result
-            assert should_replace == expected_should_replace, f"For JSON '{json_response}': expected {expected_should_replace}, got {should_replace}"
-            assert confidence == expected_confidence, f"For JSON '{json_response}': expected confidence {expected_confidence}, got {confidence}"
+            assert should_replace == expected_should_replace, (
+                f"For JSON '{json_response}': expected {expected_should_replace}, got {should_replace}"
+            )
+            assert confidence == expected_confidence, (
+                f"For JSON '{json_response}': expected confidence {expected_confidence}, got {confidence}"
+            )
 
     @pytest.mark.asyncio
     async def test_replacer_confidence_clamping(self):
@@ -386,7 +416,9 @@ class TestSmartReplacerDegradation:
             mock_response.choices[0].message.content = json_response
 
             provider._client = AsyncMock()
-            provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
+            provider._client.chat.completions.create = AsyncMock(
+                return_value=mock_response
+            )
 
             # Mock logger
             provider._logger = Mock()
@@ -437,7 +469,3 @@ class TestSmartReplacerDegradation:
         should_replace, confidence, reason = result
         # Should default to False on error
         assert should_replace is False
-
-
-# Import asyncio for timeout test
-import asyncio

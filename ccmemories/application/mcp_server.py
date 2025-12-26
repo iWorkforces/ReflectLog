@@ -7,7 +7,14 @@ from fastmcp.utilities.logging import get_logger
 
 from .config import Config, build_instructions, config
 from .memory import MemoryManager
-from .tools import AddTool, BaseTool, GetAllTool, HealthCheckTool, RemoveTool, SearchTool
+from .tools import (
+    AddTool,
+    BaseTool,
+    GetAllTool,
+    HealthCheckTool,
+    RemoveTool,
+    SearchTool,
+)
 from .utils import create_logger
 
 # Canonical registry of available MCP tool implementations.

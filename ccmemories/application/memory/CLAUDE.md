@@ -9,6 +9,8 @@ memory/
 ├── __init__.py          # Package exports
 ├── manager.py           # MemoryManager (USearch + Tantivy hybrid engine)
 ├── protocols.py         # Search engine protocols (ISemanticSearchEngine)
+├── search_strategies.py # SearchPipeline, SearchContext, SearchResult
+├── add_phases.py        # AddPipeline, DuplicateDetectionPhase, SmartReplacementPhase, StoragePhase
 ├── fusion/              # Hybrid ranking
 │   ├── __init__.py      # Fusion exports
 │   ├── base.py          # FusionEngine protocol
@@ -156,6 +158,29 @@ This architecture provides:
 - **Testability**: Engines can be easily mocked in unit tests
 - **Consistency**: Both engines follow the same Pydantic BaseModel pattern
 - **Error handling**: Centralized exception wrapping at the infrastructure layer
+
+### Pipeline Architecture (Phase 9 Refactoring)
+
+**SearchPipeline** (`search_strategies.py`):
+- Extracts the 4-step search logic from manager.py into a focused, testable module
+- Implements: Parallel Search → RRF Fusion/Concatenation → Fusion Filter → Reranking
+- Classes: `SearchContext` (input parameters), `SearchResult` (output with metadata)
+- Functions: `calculate_adaptive_overfetch()`, `escape_tantivy_query()`
+
+**AddPipeline** (`add_phases.py`):
+- Extracts the 3-phase add logic from manager.py into modular phase classes
+- Classes:
+  - `DuplicateDetectionPhase`: Parallel duplicate checking (batch + storage)
+  - `SmartReplacementPhase`: Parallel LLM replacement detection
+  - `StoragePhase`: Sequential database writes
+  - `AddPipeline`: Orchestrates all three phases
+- Dataclasses: `Phase1Result`, `Phase2Result`, `Phase3Result`, `ReplacementInfo`, `AddResult`
+
+**Benefits**:
+- **Reduced manager.py**: From ~1,010 lines to ~776 lines (~230 lines extracted)
+- **Better testability**: Each pipeline/phase can be tested independently
+- **Clearer separation of concerns**: Manager orchestrates, pipelines execute
+- **Reusability**: Pipelines can be reused or extended without modifying manager.py
 
 ### Phased Parallel Add Processing
 

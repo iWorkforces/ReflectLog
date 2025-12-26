@@ -16,7 +16,6 @@ from ccmemories.application.config import (
 )
 from ccmemories.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
-    IStructuredOutputSchema,
 )
 
 

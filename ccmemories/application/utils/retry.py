@@ -13,7 +13,9 @@ def async_retry_with_backoff(
     max_retries: int = 3,
     base_delay: float = 1.0,
     exceptions: tuple[type[Exception], ...] = (Exception,),
-) -> Callable[[Callable[P, Coroutine[Any, Any, T]]], Callable[P, Coroutine[Any, Any, T]]]:
+) -> Callable[
+    [Callable[P, Coroutine[Any, Any, T]]], Callable[P, Coroutine[Any, Any, T]]
+]:
     """Decorator for async functions with exponential backoff retry logic.
 
     Args:
@@ -35,7 +37,10 @@ def async_retry_with_backoff(
                 return await response.json()
         ```
     """
-    def decorator(func: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, Coroutine[Any, Any, T]]:
+
+    def decorator(
+        func: Callable[P, Coroutine[Any, Any, T]],
+    ) -> Callable[P, Coroutine[Any, Any, T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             last_exception: Exception | None = None
