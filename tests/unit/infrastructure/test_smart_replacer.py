@@ -185,7 +185,7 @@ class TestCreateReplacementProvider:
         )
 
         with patch(
-            "ccmemories.infrastructure.smart_replacer.AsyncOpenAI"
+            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_async_client:
             provider = create_replacement_provider(config)
 
@@ -231,7 +231,7 @@ class TestOpenAIReplacementProvider:
     @pytest.fixture
     def mock_provider(self) -> OpenAIReplacementProvider:
         """Create a mocked OpenAI provider instance."""
-        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             provider = OpenAIReplacementProvider(
                 api_key="test-key",
                 base_url="https://openrouter.ai/api/v1",
@@ -536,7 +536,7 @@ class TestSmartReplacerInitialization:
         )
 
         with patch(
-            "ccmemories.infrastructure.smart_replacer.AsyncOpenAI"
+            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_async_client:
             replacer = SmartReplacer(config=config)
 
@@ -571,7 +571,7 @@ class TestSmartReplacerInitialization:
         )
 
         with patch(
-            "ccmemories.infrastructure.smart_replacer.AsyncOpenAI"
+            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_async_client:
             replacer = SmartReplacer(config=config)
 
@@ -593,7 +593,7 @@ class TestCheckReplacement:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             replacer = SmartReplacer(config=config)
             return replacer
 
@@ -691,7 +691,7 @@ class TestCheckReplacement:
             enabled=False,
         )
 
-        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             replacer = SmartReplacer(config=config)
 
         should_replace, confidence, reason = await replacer.check_replacement(
@@ -756,7 +756,7 @@ class TestSmartReplacerIntegration:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             replacer = SmartReplacer(config=config, logger=MagicMock())
 
             mock_response = MagicMock()
@@ -827,7 +827,7 @@ class TestSmartReplacerIntegration:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.smart_replacer.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             replacer = SmartReplacer(config=config, logger=MagicMock())
 
             mock_response = MagicMock()

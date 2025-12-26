@@ -7,13 +7,16 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 import anyio
-from openai import AsyncOpenAI, DefaultAioHttpClient
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from ccmemories.application.config import (
     SCORING_PROMPT,
     SCORING_PROMPT_WITH_AGE,
     Config,
+)
+from ccmemories.infrastructure.llm_provider_base import (
+    BaseOpenAIProvider,
+    IStructuredOutputSchema,
 )
 
 
@@ -165,91 +168,17 @@ class IRerankerProvider(Protocol):
         ...
 
 
-class OpenAIRerankerProvider:
+class OpenAIRerankerProvider(BaseOpenAIProvider):
     """OpenAI/OpenRouter-based reranking provider.
 
     Uses AsyncOpenAI client with structured JSON output for reliable parsing.
     Supports fallback to json_object mode for models without structured output.
+
+    Inherits common functionality from BaseOpenAIProvider:
+    - AsyncOpenAI client initialization with HTTP/2 support
+    - Structured output with fallback to json_object
+    - Safe JSON parsing with clamping
     """
-
-    def __init__(
-        self,
-        api_key: str,
-        base_url: str,
-        model: str,
-        timeout: float = 30.0,
-        logger: Any = None,
-    ):
-        """Initialize OpenAI reranker provider.
-
-        Args:
-            api_key: OpenRouter/OpenAI API key.
-            base_url: API base URL.
-            model: LLM model identifier.
-            timeout: HTTP request timeout in seconds.
-            logger: Optional structured logger.
-        """
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            http_client=DefaultAioHttpClient(),
-            timeout=timeout,
-        )
-        self._model = model
-        self._logger = logger
-
-    async def _call_llm_with_structured_output(
-        self,
-        prompt: str,
-    ) -> Any:
-        """Call LLM with structured output, falling back to json_object if unsupported.
-
-        Args:
-            prompt: The formatted scoring prompt.
-
-        Returns:
-            The API response object.
-
-        Raises:
-            Exception: If both structured output and fallback fail.
-        """
-        # Build structured output response format using Pydantic schema
-        structured_response_format: dict[str, Any] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "relevance_score",
-                "strict": True,
-                "schema": RelevanceScore.model_json_schema(),
-            },
-        }
-
-        try:
-            # Try structured outputs first (guaranteed schema compliance)
-            return await self._client.chat.completions.create(
-                model=self._model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,  # Deterministic scoring
-                max_tokens=50,  # Only need short JSON response
-                response_format=structured_response_format,
-            )
-        except Exception as e:
-            error_msg = str(e).lower()
-            # Fallback to simple json_object mode for unsupported models
-            if "json_schema" in error_msg or "structured" in error_msg:
-                if self._logger:
-                    self._logger.warning(
-                        "Model doesn't support structured outputs, "
-                        "falling back to json_object",
-                        extra={"model": self._model, "error": str(e)},
-                    )
-                return await self._client.chat.completions.create(
-                    model=self._model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0,
-                    max_tokens=50,
-                    response_format={"type": "json_object"},
-                )
-            raise
 
     async def score_document(
         self,
@@ -280,18 +209,14 @@ class OpenAIRerankerProvider:
                 prompt = SCORING_PROMPT.format(query=query, document=document)
 
             # Call LLM with structured output (or fallback)
-            response = await self._call_llm_with_structured_output(prompt)
+            result = await self._call_llm_with_structured_output(
+                prompt=prompt,
+                response_schema=RelevanceScore,
+                max_tokens=50,  # Only need short JSON response
+            )
 
-            # Parse JSON response - schema guarantees valid JSON with score field
-            content = response.choices[0].message.content
-            if content is None:
-                raise ValueError("Empty response from LLM")
-
-            result = json.loads(content)
-            score = float(result.get("score", fallback_score))
-
-            # Clamp score to valid range (defensive, schema already constrains)
-            score = max(0.0, min(1.0, score))
+            # Extract and clamp score using base class helper
+            score = self._extract_float_field(result, "score", default=fallback_score)
 
             if self._logger:
                 self._logger.debug(
