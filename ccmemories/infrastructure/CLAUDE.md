@@ -9,6 +9,7 @@ infrastructure/
 ├── __init__.py              # Package exports
 ├── cached_embeddings.py     # CachedEmbeddings LRU cache wrapper
 ├── cross_encoder_reranker.py # CrossEncoderReranker for local reranking
+├── llm_provider_base.py     # BaseOpenAIProvider for OpenAI-compatible providers
 ├── llm_reranker.py          # LLMReranker for AI relevance scoring
 ├── message_store.py         # MessageStore libSQL storage (for USearch)
 ├── qwen3_embedding.py       # LangchainQwenEmbeddings implementation
@@ -33,6 +34,10 @@ The `infrastructure/` module provides:
 
 ```python
 from ccmemories.infrastructure import (
+    # Base LLM Provider
+    BaseOpenAIProvider,            # Base class for OpenAI-compatible LLM providers
+    IStructuredOutputSchema,       # Protocol for Pydantic schemas used in structured output
+
     # Embedding providers
     CachedEmbeddings,              # LRU caching wrapper for query embeddings
     LangchainQwenEmbeddings,       # OpenRouter embedding provider
@@ -51,7 +56,7 @@ from ccmemories.infrastructure import (
     RelevanceScore,                 # Relevance score dataclass for LLMReranker
     IRerankerProvider,              # Protocol for reranker providers
     AnthropicRerankerProvider,      # Anthropic-based reranker provider (Claude SDK)
-    OpenAIRerankerProvider,         # OpenAI-compatible reranker provider (OpenRouter)
+    OpenAIRerankerProvider,         # OpenAI-compatible reranker provider (extends BaseOpenAIProvider)
     create_reranker_provider,       # Factory function for reranker providers
 
     # Cross-Encoder Reranker
@@ -64,10 +69,165 @@ from ccmemories.infrastructure import (
     ReplacementDecision,            # Replacement decision from SmartReplacer
     IReplacementProvider,           # Protocol for replacement providers
     AnthropicReplacementProvider,   # Anthropic-based replacement provider (Claude SDK)
-    OpenAIReplacementProvider,      # OpenAI-compatible replacement provider (OpenRouter)
+    OpenAIReplacementProvider,      # OpenAI-compatible replacement provider (extends BaseOpenAIProvider)
     create_replacement_provider,    # Factory function for replacement providers
 )
 ```
+
+---
+
+## BaseOpenAIProvider (`llm_provider_base.py`)
+
+### Overview
+
+Base class for OpenAI-compatible LLM providers that extracts common functionality shared between `OpenAIRerankerProvider` and `OpenAIReplacementProvider`.
+
+**Provides:**
+- AsyncOpenAI client initialization with HTTP/2 support (via `DefaultAioHttpClient`)
+- Structured output with json_schema fallback to json_object mode
+- Safe JSON parsing with field extraction and value clamping
+- Retry decorator support for exponential backoff on transient errors
+
+**Used by:**
+- `OpenAIRerankerProvider` - LLM-based document reranking for search results
+- `OpenAIReplacementProvider` - LLM-based memory replacement detection
+
+### Class Definition
+
+```python
+class BaseOpenAIProvider:
+    """Base class for OpenAI-compatible LLM providers.
+
+    Provides common infrastructure for LLM API calls:
+    - AsyncOpenAI client with HTTP/2 support
+    - Structured output with fallback to json_object
+    - Safe JSON parsing with clamping
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model: str,
+        timeout: float = 30.0,
+        logger: Any = None,
+    ):
+        """Initialize OpenAI-compatible provider.
+
+        Args:
+            api_key: OpenRouter/OpenAI API key.
+            base_url: API base URL.
+            model: LLM model identifier.
+            timeout: HTTP request timeout in seconds.
+            logger: Optional structured logger.
+        """
+```
+
+### Key Methods
+
+#### `_call_llm_with_structured_output()`
+
+Call LLM with structured output, falling back to json_object if unsupported:
+
+```python
+async def _call_llm_with_structured_output(
+    self,
+    prompt: str,
+    response_schema: type[IStructuredOutputSchema],
+    max_tokens: int = 150,
+) -> dict[str, Any]:
+    """Call LLM with structured output, falling back to json_object if unsupported.
+
+    Args:
+        prompt: The formatted prompt for the LLM.
+        response_schema: Pydantic schema class for structured output.
+        max_tokens: Maximum tokens in response (default: 150).
+
+    Returns:
+        Parsed JSON dictionary from LLM response.
+
+    Raises:
+        Exception: If both structured output and json_object fallback fail.
+    """
+```
+
+**Behavior:**
+1. Attempts `json_schema` mode first (guaranteed schema compliance)
+2. Falls back to `json_object` mode if model doesn't support structured outputs
+3. Logs warning when fallback occurs
+4. Parses JSON response from LLM
+
+#### Helper Methods
+
+```python
+def _clamp_float(
+    self,
+    value: float,
+    min_value: float = 0.0,
+    max_value: float = 1.0,
+) -> float:
+    """Clamp a float value to a specified range."""
+
+def _extract_string_field(
+    self,
+    data: dict[str, Any],
+    field: str,
+    default: str = "",
+) -> str:
+    """Extract a string field from JSON data with default fallback."""
+
+def _extract_float_field(
+    self,
+    data: dict[str, Any],
+    field: str,
+    default: float = 0.0,
+    clamp: bool = True,
+) -> float:
+    """Extract a float field from JSON data with optional clamping."""
+
+def _extract_bool_field(
+    self,
+    data: dict[str, Any],
+    field: str,
+    default: bool = False,
+) -> bool:
+    """Extract a boolean field from JSON data with default fallback."""
+```
+
+### Usage Example
+
+```python
+from ccmemories.infrastructure import BaseOpenAIProvider, RelevanceScore
+
+class MyRerankerProvider(BaseOpenAIProvider):
+    """Custom reranker using BaseOpenAIProvider."""
+
+    async def score_document(self, query: str, document: str) -> float:
+        prompt = SCORING_PROMPT.format(query=query, document=document)
+
+        result = await self._call_llm_with_structured_output(
+            prompt=prompt,
+            response_schema=RelevanceScore,
+            max_tokens=50,
+        )
+
+        score = self._extract_float_field(result, "score", default=0.0)
+        return score
+```
+
+### Design Rationale
+
+**Why BaseOpenAIProvider?**
+
+1. **Code reuse**: Both `OpenAIRerankerProvider` and `OpenAIReplacementProvider` had identical initialization and structured output handling
+2. **Consistency**: Single source of truth for OpenAI API interaction patterns
+3. **Maintainability**: Changes to structured output logic only need to be made in one place
+4. **Type safety**: Helper methods ensure consistent field extraction and clamping
+
+**Architecture Benefits:**
+- Subclasses only need to implement protocol-specific methods (`score_document`, `detect_replacement`)
+- Retry logic can be applied via decorator (`@async_retry_with_backoff`)
+- JSON parsing failures are handled consistently with safe defaults
 
 ---
 

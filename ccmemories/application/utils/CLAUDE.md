@@ -9,6 +9,7 @@ utils/
 ├── __init__.py          # Package exports
 ├── logging.py           # Structured logging utilities
 ├── numba_utils.py       # Numba JIT-compiled numerical utilities
+├── retry.py             # Retry decorator with exponential backoff
 ├── security.py          # Secret redaction and secure logging
 └── validation.py        # Input validation helpers
 ```
@@ -21,6 +22,7 @@ Utility modules provide:
 - Security utilities for API key protection
 - Type conversion helpers
 - Error handling utilities
+- Retry logic with exponential backoff
 
 ## Logging Utilities (`logging.py`)
 
@@ -352,6 +354,99 @@ def safe_bool(value: Any, default: bool = False) -> bool:
         return value != 0
     return default
 ```
+
+## Retry Utilities (`retry.py`)
+
+### `async_retry_with_backoff()` Decorator
+
+Decorator for async functions with exponential backoff retry logic:
+
+```python
+def async_retry_with_backoff(
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+) -> Callable[[Callable[P, Coroutine[Any, Any, T]]], Callable[P, Coroutine[Any, Any, T]]]:
+    """Decorator for async functions with exponential backoff retry logic.
+
+    Args:
+        max_retries: Maximum number of retry attempts (including initial attempt).
+        base_delay: Base delay in seconds between retries.
+        exceptions: Tuple of exception types to catch and retry on.
+
+    Returns:
+        Decorated async function with retry logic.
+
+    Raises:
+        Last exception encountered after all retries are exhausted.
+    """
+```
+
+### Retry Behavior
+
+The decorator implements exponential backoff with the following delay formula:
+
+```
+delay = base_delay * (2 ** (attempt - 1))
+```
+
+**Example** (with `max_retries=3`, `base_delay=1.0`):
+- Attempt 1: Execute immediately
+- Attempt 2 (if 1 fails): Wait `1.0 * 2^0 = 1.0s`, then retry
+- Attempt 3 (if 2 fails): Wait `1.0 * 2^1 = 2.0s`, then retry
+- Raise last exception if all 3 attempts fail
+
+### Usage Example
+
+```python
+from ccmemories.application.utils.retry import async_retry_with_backoff
+from ccmemories.infrastructure import BaseOpenAIProvider
+
+class MyLLMProvider(BaseOpenAIProvider):
+    @async_retry_with_backoff(max_retries=3, base_delay=1.0)
+    async def call_llm_with_retry(self, prompt: str) -> dict:
+        """Call LLM with automatic retry on transient errors."""
+        return await self._call_llm_with_structured_output(
+            prompt=prompt,
+            response_schema=MySchema,
+        )
+```
+
+### Configuration Examples
+
+**Default retries (3 attempts, 1s base delay):**
+```python
+@async_retry_with_backoff()
+async def my_function():
+    ...
+```
+
+**More retries with longer delays:**
+```python
+@async_retry_with_backoff(max_retries=5, base_delay=2.0)
+async def my_function():
+    ...
+```
+
+**Specific exceptions only:**
+```python
+@async_retry_with_backoff(max_retries=3, exceptions=(TimeoutError, ConnectionError))
+async def my_function():
+    ...
+```
+
+### Design Rationale
+
+**Why exponential backoff?**
+- **Network resilience**: Temporary issues (rate limits, hiccups) often resolve quickly
+- **Server-friendly**: Exponential delay avoids overwhelming struggling services
+- **Balance**: 3 retries with exponential delay provides reasonable recovery without excessive wait times
+
+**When to use:**
+- LLM API calls (can have transient failures)
+- Network requests to external services
+- Database operations with connection errors
+- Any operation that may fail transiently
 
 ## Testing Utilities
 
