@@ -48,7 +48,7 @@ unit/
 - `MemoryManager` initialization (USearch + Tantivy)
 - Hybrid search with RRF fusion
 - Message storage (deduplication, dual engine)
-- Tool implementations (`add_messages`, `get_all`, `search`, `remove`)
+- Tool implementations (`add_messages`, `get_all`, `search`, `remove`, `health_check`)
 - Message validation logic
 - Error handling and exception cases
 - Edge cases (empty lists, max length, unicode, etc.)

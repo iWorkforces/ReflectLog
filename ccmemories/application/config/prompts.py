@@ -97,7 +97,7 @@ and RRF fusion ranking.
 Available Tools:"""
 
 # Canonical ordering for consistent instruction generation
-TOOL_ORDER: List[str] = ["add", "get_all", "search", "remove"]
+TOOL_ORDER: List[str] = ["add", "get_all", "search", "remove", "health_check"]
 
 
 def build_instructions(tool_snippets: List[Tuple[str, str]]) -> str:
@@ -163,6 +163,12 @@ MCP_INSTRUCTIONS = build_instructions(
             "      Remove messages using exact string matching (case-sensitive).\n"
             "      Uses semantic search to find candidates, then exact match filter.\n"
             "      Removes all occurrences of each message. Silently ignores non-existent messages.",
+        ),
+        (
+            "health_check",
+            "    • health_check() -> HealthCheckResult\n"
+            "      Returns server health status and configuration. No parameters required.\n"
+            "      Provides overall_status, project_id, engine states, and feature flags.",
         ),
     ]
 )

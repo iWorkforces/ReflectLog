@@ -102,7 +102,7 @@ Transport can be configured via:
 ```
 CCMemoriesMCP/
 ├── ccmemories/              # Main package
-│   ├── __init__.py           # Package metadata (__version__ = "0.1.0")
+│   ├── __init__.py           # Package metadata (__version__ = "0.1.2")
 │   ├── server.py             # CLI entry point
 │   ├── application/          # Application layer
 │   │   ├── mcp_server.py     # FastMCPServer orchestrator
@@ -122,6 +122,7 @@ CCMemoriesMCP/
 │   │   │   ├── base.py       # BaseTool abstract class
 │   │   │   ├── add.py        # AddTool
 │   │   │   ├── get_all.py    # GetAllTool
+│   │   │   ├── health_check.py # HealthCheckTool
 │   │   │   ├── search.py     # SearchTool
 │   │   │   └── remove.py     # RemoveTool
 │   │   └── utils/            # Utilities
@@ -131,6 +132,7 @@ CCMemoriesMCP/
 │   │       ├── security.py   # SecretString, redact_dict_secrets
 │   │       └── validation.py # Message validation
 │   └── infrastructure/       # External integrations
+│       ├── cached_embeddings.py   # CachedEmbeddings (LRU query embedding cache)
 │       ├── cross_encoder_reranker.py # CrossEncoderReranker (FlagReranker-based local reranking)
 │       ├── llm_provider_base.py # BaseOpenAIProvider (shared LLM provider base class)
 │       ├── llm_reranker.py    # LLMReranker (AI relevance scoring)
@@ -268,7 +270,7 @@ Both rerankers support temporal context for handling contradictory memories (e.g
 - `CROSS_ENCODER_TOP_K`: Max results after cross-encoder reranking (default: 20)
 - `CROSS_ENCODER_DEVICE`: Inference device: `cpu`, `cuda`, `mps` (default: cpu)
 - `CROSS_ENCODER_BATCH_SIZE`: Batch size for inference (default: 32)
-- `CROSS_ENCODER_SCORE_THRESHOLD`: Min cross-encoder score to keep (default: 0.0)
+- `CROSS_ENCODER_SCORE_THRESHOLD`: Min cross-encoder score to keep (default: 0.5)
 - `CROSS_ENCODER_USE_FP16`: Enable FP16 for faster inference (default: true)
 - `CROSS_ENCODER_NORMALIZE`: Normalize scores to 0-1 with sigmoid (default: true)
 - `CROSS_ENCODER_MAX_LENGTH`: Max token length for query-doc pairs (default: 512)
@@ -297,10 +299,14 @@ Both rerankers support temporal context for handling contradictory memories (e.g
 - `TANTIVY_COMPACTION_MAX_TOMBSTONES`: Force compaction above this count (default: 10000)
 - `TANTIVY_TOMBSTONE_TTL_DAYS`: Days before tombstones eligible for removal (default: 7)
 - `EAGER_INITIALIZATION`: Pre-warm engines during startup (default: true)
+- `log_search_results_verbose`: Enable verbose logging of individual search results (default: false)
+- `log_search_result_limit`: Max results to log when verbose enabled (default: 3)
+- `fusion_method`: Fusion algorithm method - "rrf", "sum", "mnz", "max", "bordafuse" (default: "rrf")
+- `fusion_normalization`: Optional score normalization method for fusion (default: null)
 
 ### MCP Tools
 
-Four modular FastMCP tools backed by `MemoryManager`:
+Five modular FastMCP tools backed by `MemoryManager`:
 
 1. **add(messages: list[str])**: Store messages in hybrid storage
    - Validates message length (1-30720 chars)
@@ -328,6 +334,18 @@ Four modular FastMCP tools backed by `MemoryManager`:
    - Case-sensitive exact string matching
    - Removes ALL occurrences of each message
    - Silently ignores non-existent messages (logs but no error)
+
+5. **health_check() -> HealthCheckResult**: Server health status and configuration
+   - No parameters required
+   - Returns HealthCheckResult with:
+     - `overall_status`: "healthy" | "unhealthy"
+     - `project_id`: Current project identifier
+     - `semantic_engine_initialized`: Boolean
+     - `tantivy_engine_state`: str ("loaded" | "disabled")
+     - `reranker_engine_type`: str ("llm" | "cross_encoder" | "none")
+     - `hybrid_search_enabled`: Boolean
+     - `rrf_fusion_enabled`: Boolean
+     - `recency_boost_enabled`: Boolean
 
 ### Entry Point Flow
 

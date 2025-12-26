@@ -10,6 +10,7 @@ tools/
 ├── base.py              # BaseTool abstract base class
 ├── add.py               # AddTool - add(messages) implementation
 ├── get_all.py           # GetAllTool - get_all() implementation
+├── health_check.py      # HealthCheckTool - health_check() implementation
 ├── search.py            # SearchTool - search(query) implementation
 └── remove.py            # RemoveTool - remove(messages) implementation
 ```
@@ -280,6 +281,50 @@ def _remove_single_message(self, message: str) -> int:
     return len(exact_matches)
 ```
 
+### HealthCheckTool (`health_check.py`)
+
+**Purpose**: Returns server health status and configuration
+
+```python
+def health_check() -> HealthCheckResult
+```
+
+**Key Features**:
+- No parameters required
+- Returns HealthCheckResult with:
+  - `overall_status`: "healthy" | "unhealthy"
+  - `project_id`: Current project identifier
+  - `semantic_engine_initialized`: Boolean
+  - `tantivy_engine_state`: str ("loaded" | "disabled")
+  - `reranker_engine_type`: str ("llm" | "cross_encoder" | "none")
+  - `hybrid_search_enabled`: Boolean
+  - `rrf_fusion_enabled`: Boolean
+  - `recency_boost_enabled`: Boolean
+
+**Implementation**:
+```python
+def get_handler(self):
+    def health_check() -> HealthCheckResult:
+        self.log_invocation("health_check")
+
+        result = HealthCheckResult(
+            overall_status="healthy",
+            project_id=self.config.project_id,
+            semantic_engine_initialized=self.memory._semantic_engine is not None,
+            tantivy_engine_state="loaded" if self.memory._tantivy_engine else "disabled",
+            reranker_engine_type=self.config.reranker_engine,
+            hybrid_search_enabled=self.config.enable_hybrid_search,
+            rrf_fusion_enabled=self.config.enable_rrf_fusion,
+            recency_boost_enabled=self.config.enable_recency_boost,
+        )
+
+        self.log_completion("health_check", status=result.overall_status)
+
+        return result
+
+    return health_check
+```
+
 ## Validation System
 
 ### Message Validation (`utils/validation.py`)
@@ -350,6 +395,7 @@ Tools are registered in `FastMCPServer`:
 AVAILABLE_TOOL_CLASSES: Dict[str, Type[BaseTool]] = {
     "add": AddTool,
     "get_all": GetAllTool,
+    "health_check": HealthCheckTool,
     "search": SearchTool,
     "remove": RemoveTool,
 }

@@ -30,6 +30,7 @@ application/
 │   ├── base.py           # BaseTool abstract class
 │   ├── add.py            # AddTool
 │   ├── get_all.py        # GetAllTool
+│   ├── health_check.py   # HealthCheckTool
 │   ├── search.py         # SearchTool
 │   └── remove.py         # RemoveTool
 └── utils/                # Utilities
@@ -47,7 +48,7 @@ This layer implements the MCP server using the FastMCP framework, including:
 - **Exception hierarchy** (`exceptions.py`) for structured error handling
 - Server initialization and configuration
 - Memory storage setup with hybrid USearch + Tantivy engines
-- Four modular MCP tools: `add`, `get_all`, `search`, `remove`
+- Five modular MCP tools: `add`, `get_all`, `search`, `remove`, `health_check`
 - Message validation logic
 - Structured logging with context
 - Security utilities for API key redaction
