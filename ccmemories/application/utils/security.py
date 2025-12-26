@@ -117,6 +117,53 @@ def sanitize_for_logging(
     return text
 
 
+def validate_project_id(project_id: str) -> str:
+    """Validate project_id to prevent path traversal attacks.
+
+    This function validates that a project_id contains only safe characters
+    and does not contain path traversal patterns like "../" that could allow
+    writing files outside the intended directory.
+
+    Args:
+        project_id: The project identifier to validate.
+
+    Returns:
+        The validated project_id (lowercased).
+
+    Raises:
+        ValidationError: If project_id contains invalid characters or path patterns.
+
+    Example:
+        >>> validate_project_id("my-project-123")
+        'my-project-123'
+        >>> validate_project_id("../../../etc")
+        ValidationError: Invalid project_id: ../../../etc
+    """
+    from ..exceptions import ValidationError
+
+    if not project_id:
+        raise ValidationError("project_id cannot be empty")
+
+    # Check for path traversal patterns
+    if ".." in project_id or project_id.startswith("/"):
+        raise ValidationError(f"Invalid project_id: {project_id}")
+
+    # Allow only alphanumeric, hyphen, underscore, and dot
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", project_id):
+        raise ValidationError(
+            f"project_id contains invalid characters: {project_id}. "
+            "Only alphanumeric, hyphens, underscores, and dots are allowed."
+        )
+
+    # Length limit (prevent excessively long project IDs)
+    if len(project_id) > 128:
+        raise ValidationError(
+            f"project_id too long (max 128 characters): {len(project_id)}"
+        )
+
+    return project_id.lower()
+
+
 def redact_dict_secrets(
     data: dict[str, Any],
     secret_keys: set[str] | None = None,

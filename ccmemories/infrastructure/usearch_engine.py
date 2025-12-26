@@ -22,6 +22,7 @@ from usearch.index import Index, BatchMatches
 
 from ccmemories.application.types import ISemanticSearchEngine
 from ccmemories.application.utils.numba_utils import distance_to_similarity_cosine
+from ccmemories.application.utils.security import validate_project_id
 from ccmemories.infrastructure.message_store import MessageStore
 
 
@@ -72,7 +73,8 @@ class USearchConfig:
         Returns:
             USearchConfig with extracted settings.
         """
-        project_id = config.project_id.lower()
+        # Validate project_id to prevent path traversal attacks
+        project_id = validate_project_id(config.project_id)
         base_path = os.path.join(os.getcwd(), "indexes", project_id, "usearch")
 
         # Determine embedding dims based on provider

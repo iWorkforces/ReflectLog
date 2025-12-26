@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 class CachedEmbeddings(BaseModel, Embeddings):
     """LRU caching wrapper for any Embeddings provider.
 
-    This wrapper caches `embed_query()` results using an MD5 hash of the query
+    This wrapper caches `embed_query()` results using a SHA-256 hash of the query
     text as the cache key. This is useful for search operations where the same
     query may be executed multiple times (e.g., during result refinement).
 
@@ -59,21 +59,23 @@ class CachedEmbeddings(BaseModel, Embeddings):
     _misses: int = PrivateAttr(default=0)
 
     def _hash_query(self, text: str) -> str:
-        """Compute MD5 hash of query text as cache key.
+        """Compute SHA-256 hash of query text as cache key.
+
+        SHA-256 is cryptographically secure and avoids MD5 collision risks.
 
         Args:
             text: Query text to hash.
 
         Returns:
-            MD5 hex digest of the text.
+            SHA-256 hex digest of the text.
         """
-        return hashlib.md5(text.encode("utf-8")).hexdigest()
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     def _get_cached(self, cache_key: str) -> Optional[List[float]]:
         """Get cached embedding if exists (LRU access).
 
         Args:
-            cache_key: MD5 hash of the query text.
+            cache_key: SHA-256 hash of the query text.
 
         Returns:
             Cached embedding if found, None otherwise.
@@ -91,7 +93,7 @@ class CachedEmbeddings(BaseModel, Embeddings):
         """Cache an embedding with LRU eviction.
 
         Args:
-            cache_key: MD5 hash of the query text.
+            cache_key: SHA-256 hash of the query text.
             embedding: Embedding vector to cache.
         """
         with self._lock:

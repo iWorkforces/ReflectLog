@@ -182,6 +182,12 @@ class Config:
                 "Invalid PROJECT_ID: only A-Za-z0-9_.- allowed, max length 64."
             )
 
+        # Check for path traversal patterns (not caught by regex)
+        if ".." in project_id or project_id.startswith("/"):
+            raise ConfigurationError(
+                f"Invalid PROJECT_ID: path traversal patterns not allowed: {project_id}"
+            )
+
         openrouter_api_key_raw = os.environ.get("OPENROUTER_API_KEY")
         if not openrouter_api_key_raw:
             raise ConfigurationError(
