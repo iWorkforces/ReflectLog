@@ -122,7 +122,6 @@ class Config:
     # Temporal-aware reranking settings (recency boost for memories)
     enable_recency_boost: bool = True  # Include memory age in reranking context
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
-    recency_max_boost: float = 0.2  # Maximum recency boost (added to base score)
 
     # Memory behavior
     deduplicate_messages: bool = True
@@ -425,9 +424,6 @@ class Config:
             == "true",
             recency_decay_rate=max(
                 0.0, float(os.environ.get("RECENCY_DECAY_RATE", "0.01"))
-            ),
-            recency_max_boost=max(
-                0.0, float(os.environ.get("RECENCY_MAX_BOOST", "0.2"))
             ),
             # Memory behavior
             deduplicate_messages=os.environ.get("DEDUPLICATE_MESSAGES", "true").lower()

@@ -1150,3 +1150,86 @@ class TestToolRegistrationConfiguration:
         assert "No MCP tools selected" in first_warning.args[0]
         extra = first_warning.kwargs.get("extra", {})
         assert "available_tools" in extra
+
+
+@pytest.mark.unit
+class TestHealthCheckTool:
+    """Test suite for health_check() tool."""
+
+    async def test_health_check_returns_healthy_status(self, mcp_server):
+        """Test health check returns healthy status with all components."""
+        # Mock semantic and tantivy engines as initialized
+        mcp_server.memory_manager._semantic_engine = MagicMock()
+        mcp_server.memory_manager._tantivy_engine = MagicMock()
+
+        health_check_func = None
+        for tool in mcp_server.mcp._tool_manager._tools.values():
+            if tool.name == "health_check":
+                health_check_func = tool.fn
+                break
+
+        assert health_check_func is not None
+        result = await health_check_func()
+
+        assert result["status"] == "healthy"
+        assert result["project_id"] == "test_project"
+        assert result["semantic_engine"] == "initialized"
+        assert result["tantivy_engine"] == "initialized"
+        assert result["reranker_engine"] == "llm"
+        assert result["hybrid_search_enabled"] is True
+        assert result["rrf_fusion_enabled"] is True
+        assert result["recency_boost_enabled"] is True
+
+    async def test_health_check_with_tantivy_disabled(self, mcp_server):
+        """Test health check when Tantivy is disabled."""
+        # Mock semantic engine as initialized, tantivy as None
+        mcp_server.memory_manager._semantic_engine = MagicMock()
+        mcp_server.memory_manager._tantivy_engine = None
+
+        health_check_func = None
+        for tool in mcp_server.mcp._tool_manager._tools.values():
+            if tool.name == "health_check":
+                health_check_func = tool.fn
+                break
+
+        assert health_check_func is not None
+        result = await health_check_func()
+
+        assert result["status"] == "healthy"
+        assert result["semantic_engine"] == "initialized"
+        assert result["tantivy_engine"] == "disabled"
+
+    async def test_health_check_no_semantic_engine(self, mcp_server):
+        """Test health check when semantic engine is not initialized."""
+        mcp_server.memory_manager._semantic_engine = None
+        mcp_server.memory_manager._tantivy_engine = None
+
+        health_check_func = None
+        for tool in mcp_server.mcp._tool_manager._tools.values():
+            if tool.name == "health_check":
+                health_check_func = tool.fn
+                break
+
+        assert health_check_func is not None
+        result = await health_check_func()
+
+        assert result["semantic_engine"] == "not_initialized"
+        assert result["tantivy_engine"] == "disabled"
+
+    async def test_health_check_with_different_reranker(self, mcp_server):
+        """Test health check reports configured reranker engine."""
+        # The default reranker is "llm" - verify it's reported correctly
+        mcp_server._memory_manager._semantic_engine = MagicMock()
+        mcp_server._memory_manager._tantivy_engine = MagicMock()
+
+        health_check_func = None
+        for tool in mcp_server.mcp._tool_manager._tools.values():
+            if tool.name == "health_check":
+                health_check_func = tool.fn
+                break
+
+        assert health_check_func is not None
+        result = await health_check_func()
+
+        # Default reranker should be "llm"
+        assert result["reranker_engine"] == "llm"

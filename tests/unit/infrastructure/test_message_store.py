@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ccmemories.application.exceptions import StorageError
 from ccmemories.infrastructure.message_store import MessageStore
 
 
@@ -90,7 +91,7 @@ class TestMessageStoreInsert:
 
             store.insert("user1", "Hello world")
 
-            with pytest.raises(RuntimeError, match="Duplicate message"):
+            with pytest.raises(StorageError, match="Duplicate message"):
                 store.insert("user1", "Hello world")
 
             store.close()

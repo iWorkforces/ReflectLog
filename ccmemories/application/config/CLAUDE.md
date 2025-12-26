@@ -84,7 +84,6 @@ class Config:
     # Temporal-aware reranking settings (recency boost for memories)
     enable_recency_boost: bool = True        # Include memory age in reranking context
     recency_decay_rate: float = 0.01         # Decay rate per hour: exp(-rate * hours_old)
-    recency_max_boost: float = 0.2           # Maximum recency boost (added to base score)
 
     remove_score_threshold: float = 0.9
 
@@ -307,7 +306,6 @@ New Memory: "{new_memory}"
 | `RERANKER_BATCH_NORMALIZE` | bool | `true` | Enable batch min-max normalization |
 | `ENABLE_RECENCY_BOOST` | bool | `true` | Include memory age in reranking context |
 | `RECENCY_DECAY_RATE` | float | `0.01` | Decay rate per hour: exp(-rate * hours_old) |
-| `RECENCY_MAX_BOOST` | float | `0.2` | Maximum recency boost (added to base score) |
 | `REMOVE_SEARCH_LIMIT` | int | `5` | Candidates for removal |
 | `REMOVE_SCORE_THRESHOLD` | float | `0.9` | Min score for remove candidates |
 | `ENABLE_HYBRID_SEARCH` | bool | `true` | Enable Tantivy full-text |

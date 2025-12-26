@@ -16,6 +16,8 @@ from typing import Any, Optional
 import libsql
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
+from ccmemories.application.exceptions import StorageError
+
 
 @dataclass(frozen=True)
 class MessageRecord:
@@ -82,6 +84,7 @@ class MessageStore(BaseModel):
 
     db_path: str
     logger: Any = None
+    timeout: float = 30.0  # Database busy timeout in seconds
 
     _conn: Optional[libsql.Connection] = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
@@ -101,7 +104,7 @@ class MessageStore(BaseModel):
         """Get libSQL connection (lazy initialization).
 
         Returns:
-            libSQL connection with WAL mode enabled.
+            libSQL connection with WAL mode enabled and busy timeout.
         """
         if self._conn is None:
             with self._init_lock:
@@ -114,13 +117,18 @@ class MessageStore(BaseModel):
                     self._conn = libsql.connect(self.db_path)
                     self._conn.execute("PRAGMA journal_mode=WAL")
                     self._conn.execute("PRAGMA synchronous=NORMAL")
+                    # Set busy timeout to handle concurrent access gracefully
+                    self._conn.execute(f"PRAGMA busy_timeout = {int(self.timeout * 1000)}")
                     self._create_schema()
                     self._conn.commit()
 
                     if self.logger:
                         self.logger.debug(
                             "MessageStore initialized",
-                            extra={"db_path": self.db_path},
+                            extra={
+                                "db_path": self.db_path,
+                                "timeout_seconds": self.timeout,
+                            },
                         )
         # Type narrowing assertion - self._conn is guaranteed non-None after init
         assert self._conn is not None
@@ -181,20 +189,19 @@ class MessageStore(BaseModel):
             The auto-generated libSQL row ID.
 
         Raises:
-            RuntimeError: If insert fails.
+            StorageError: If insert fails.
         """
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute(
                 "INSERT INTO messages (project_id, message) VALUES (?, ?)",
                 (project_id, message),
             )
             row_id = cursor.lastrowid
             self.connection.commit()
-            cursor.close()
 
             if row_id is None:
-                raise RuntimeError("Insert did not return a row ID")
+                raise StorageError("Insert did not return a row ID")
 
             if self.logger:
                 self.logger.debug(
@@ -207,8 +214,9 @@ class MessageStore(BaseModel):
                 )
             return row_id
 
-        except Exception as e:
+        except (libsql.Error, ValueError) as e:
             # Check for unique constraint violation (duplicate message)
+            # Note: libsql raises ValueError for constraint violations
             error_str = str(e).lower()
             if "unique constraint" in error_str or "constraint failed" in error_str:
                 if self.logger:
@@ -216,14 +224,16 @@ class MessageStore(BaseModel):
                         "Duplicate message detected",
                         extra={"project_id": project_id, "error": str(e)},
                     )
-                raise RuntimeError(f"Duplicate message: {e}") from e
-            # Other errors
+                raise StorageError(f"Duplicate message: {e}") from e
+            # Other libsql errors
             if self.logger:
                 self.logger.error(
                     "Failed to insert message",
                     extra={"project_id": project_id, "error": str(e)},
                 )
-            raise RuntimeError(f"Failed to insert message: {e}") from e
+            raise StorageError(f"Failed to insert message: {e}") from e
+        finally:
+            cursor.close()
 
     def get(self, message_id: int) -> Optional[MessageRecord]:
         """Get a message by its ID.
@@ -233,15 +243,17 @@ class MessageStore(BaseModel):
 
         Returns:
             MessageRecord if found, None otherwise.
+
+        Raises:
+            StorageError: If database operation fails (other than not found).
         """
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute(
                 "SELECT id, project_id, message, created_at FROM messages WHERE id = ?",
                 (message_id,),
             )
             row = cursor.fetchone()
-            cursor.close()
 
             if row is None:
                 return None
@@ -253,13 +265,15 @@ class MessageStore(BaseModel):
                 created_at=row[3] if row[3] else "",
             )
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get message",
                     extra={"message_id": message_id, "error": str(e)},
                 )
-            return None
+            raise StorageError(f"Failed to retrieve message: {e}") from e
+        finally:
+            cursor.close()
 
     def get_batch(self, message_ids: list[int]) -> dict[int, MessageRecord]:
         """Get multiple messages by their IDs in a single query.
@@ -273,19 +287,21 @@ class MessageStore(BaseModel):
         Returns:
             Dictionary mapping message ID to MessageRecord.
             Missing IDs are not included in the result.
+
+        Raises:
+            StorageError: If database operation fails.
         """
         if not message_ids:
             return {}
 
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             placeholders = ",".join("?" * len(message_ids))
             cursor.execute(
                 f"SELECT id, project_id, message, created_at FROM messages WHERE id IN ({placeholders})",
                 message_ids,
             )
             rows = cursor.fetchall()
-            cursor.close()
 
             return {
                 row[0]: MessageRecord(
@@ -297,13 +313,15 @@ class MessageStore(BaseModel):
                 for row in rows
             }
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get messages batch",
                     extra={"message_ids_count": len(message_ids), "error": str(e)},
                 )
-            return {}
+            raise StorageError(f"Failed to retrieve message batch: {e}") from e
+        finally:
+            cursor.close()
 
     def get_all(self, project_id: str) -> list[str]:
         """Get all messages for a project.
@@ -313,25 +331,29 @@ class MessageStore(BaseModel):
 
         Returns:
             List of message strings.
+
+        Raises:
+            StorageError: If database operation fails.
         """
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute(
                 "SELECT message FROM messages WHERE project_id = ? ORDER BY id",
                 (project_id,),
             )
             rows = cursor.fetchall()
-            cursor.close()
 
             return [row[0] for row in rows]
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get all messages",
                     extra={"project_id": project_id, "error": str(e)},
                 )
-            return []
+            raise StorageError(f"Failed to retrieve all messages: {e}") from e
+        finally:
+            cursor.close()
 
     def delete(self, message_id: int) -> bool:
         """Delete a message by its ID.
@@ -341,13 +363,15 @@ class MessageStore(BaseModel):
 
         Returns:
             True if message was deleted, False if not found.
+
+        Raises:
+            StorageError: If database operation fails.
         """
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
             deleted = cursor.rowcount > 0
             self.connection.commit()
-            cursor.close()
 
             if self.logger:
                 if deleted:
@@ -363,13 +387,15 @@ class MessageStore(BaseModel):
 
             return deleted
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to delete message",
                     extra={"message_id": message_id, "error": str(e)},
                 )
-            return False
+            raise StorageError(f"Failed to delete message: {e}") from e
+        finally:
+            cursor.close()
 
     def delete_batch(self, message_ids: list[int]) -> int:
         """Delete multiple messages by their IDs in a single transaction.
@@ -382,12 +408,15 @@ class MessageStore(BaseModel):
 
         Returns:
             Number of messages actually deleted.
+
+        Raises:
+            StorageError: If database operation fails.
         """
         if not message_ids:
             return 0
 
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             placeholders = ",".join("?" * len(message_ids))
             cursor.execute(
                 f"DELETE FROM messages WHERE id IN ({placeholders})",
@@ -395,7 +424,6 @@ class MessageStore(BaseModel):
             )
             deleted_count = cursor.rowcount
             self.connection.commit()
-            cursor.close()
 
             if self.logger:
                 self.logger.debug(
@@ -408,13 +436,15 @@ class MessageStore(BaseModel):
 
             return deleted_count
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to delete messages batch",
                     extra={"message_ids_count": len(message_ids), "error": str(e)},
                 )
-            return 0
+            raise StorageError(f"Failed to delete message batch: {e}") from e
+        finally:
+            cursor.close()
 
     def exists(self, project_id: str, message: str) -> bool:
         """Check if a message exists (for deduplication).
@@ -425,24 +455,28 @@ class MessageStore(BaseModel):
 
         Returns:
             True if the message exists for this project.
+
+        Raises:
+            StorageError: If database operation fails.
         """
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute(
                 "SELECT 1 FROM messages WHERE project_id = ? AND message = ? LIMIT 1",
                 (project_id, message),
             )
             exists = cursor.fetchone() is not None
-            cursor.close()
             return exists
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to check message existence",
                     extra={"project_id": project_id, "error": str(e)},
                 )
-            return False
+            raise StorageError(f"Failed to check message existence: {e}") from e
+        finally:
+            cursor.close()
 
     def get_id_by_message(self, project_id: str, message: str) -> Optional[int]:
         """Get the ID of a message by its content.
@@ -453,24 +487,28 @@ class MessageStore(BaseModel):
 
         Returns:
             The message ID if found, None otherwise.
+
+        Raises:
+            StorageError: If database operation fails.
         """
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute(
                 "SELECT id FROM messages WHERE project_id = ? AND message = ? LIMIT 1",
                 (project_id, message),
             )
             row = cursor.fetchone()
-            cursor.close()
             return row[0] if row else None
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get message ID",
                     extra={"project_id": project_id, "error": str(e)},
                 )
-            return None
+            raise StorageError(f"Failed to get message ID: {e}") from e
+        finally:
+            cursor.close()
 
     def archive(
         self,
@@ -493,9 +531,12 @@ class MessageStore(BaseModel):
 
         Returns:
             Archive record ID if successful, None otherwise.
+
+        Raises:
+            StorageError: If database operation fails.
         """
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute(
                 """
                 INSERT INTO archived_messages
@@ -506,7 +547,6 @@ class MessageStore(BaseModel):
             )
             archive_id = cursor.lastrowid
             self.connection.commit()
-            cursor.close()
 
             if self.logger:
                 self.logger.debug(
@@ -520,13 +560,15 @@ class MessageStore(BaseModel):
                 )
             return archive_id
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to archive message",
                     extra={"message_id": message_id, "error": str(e)},
                 )
-            return None
+            raise StorageError(f"Failed to archive message: {e}") from e
+        finally:
+            cursor.close()
 
     def get_archived(
         self, project_id: str, limit: int = 100
@@ -539,9 +581,12 @@ class MessageStore(BaseModel):
 
         Returns:
             List of ArchivedMessageRecord objects.
+
+        Raises:
+            StorageError: If database operation fails.
         """
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute(
                 """
                 SELECT id, original_id, project_id, message, replaced_by,
@@ -554,7 +599,6 @@ class MessageStore(BaseModel):
                 (project_id, limit),
             )
             rows = cursor.fetchall()
-            cursor.close()
 
             return [
                 ArchivedMessageRecord(
@@ -570,13 +614,15 @@ class MessageStore(BaseModel):
                 for row in rows
             ]
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get archived messages",
                     extra={"project_id": project_id, "error": str(e)},
                 )
-            return []
+            raise StorageError(f"Failed to get archived messages: {e}") from e
+        finally:
+            cursor.close()
 
     def restore_from_archive(self, archive_id: int) -> Optional[int]:
         """Restore a message from the archive.
@@ -586,10 +632,12 @@ class MessageStore(BaseModel):
 
         Returns:
             New message ID if successful, None otherwise.
-        """
-        try:
-            cursor = self.connection.cursor()
 
+        Raises:
+            StorageError: If database operation fails.
+        """
+        cursor = self.connection.cursor()
+        try:
             # Get the archived record
             cursor.execute(
                 """
@@ -605,7 +653,6 @@ class MessageStore(BaseModel):
                         "Archive record not found",
                         extra={"archive_id": archive_id},
                     )
-                cursor.close()
                 return None
 
             project_id, message = row[0], row[1]
@@ -624,7 +671,6 @@ class MessageStore(BaseModel):
             )
 
             self.connection.commit()
-            cursor.close()
 
             if self.logger:
                 self.logger.info(
@@ -637,13 +683,15 @@ class MessageStore(BaseModel):
                 )
             return new_id
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to restore from archive",
                     extra={"archive_id": archive_id, "error": str(e)},
                 )
-            return None
+            raise StorageError(f"Failed to restore from archive: {e}") from e
+        finally:
+            cursor.close()
 
     def cleanup_expired_archive(self, ttl_days: int) -> int:
         """Remove archived messages older than TTL.
@@ -654,12 +702,15 @@ class MessageStore(BaseModel):
 
         Returns:
             Number of records deleted.
+
+        Raises:
+            StorageError: If database operation fails.
         """
         if ttl_days <= 0:
             return 0
 
+        cursor = self.connection.cursor()
         try:
-            cursor = self.connection.cursor()
             cursor.execute(
                 """
                 DELETE FROM archived_messages
@@ -669,7 +720,6 @@ class MessageStore(BaseModel):
             )
             deleted_count = cursor.rowcount
             self.connection.commit()
-            cursor.close()
 
             if self.logger and deleted_count > 0:
                 self.logger.info(
@@ -681,13 +731,15 @@ class MessageStore(BaseModel):
                 )
             return deleted_count
 
-        except Exception as e:
+        except libsql.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to cleanup expired archive",
                     extra={"ttl_days": ttl_days, "error": str(e)},
                 )
-            return 0
+            raise StorageError(f"Failed to cleanup expired archive: {e}") from e
+        finally:
+            cursor.close()
 
     def close(self) -> None:
         """Close the database connection."""
