@@ -1,4 +1,4 @@
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 
 # Export main components for programmatic access
 from ccmemories.server import main
