@@ -127,10 +127,12 @@ CCMemoriesMCP/
 │   │   └── utils/            # Utilities
 │   │       ├── logging.py    # StructuredLogger, format_fusion_score_status
 │   │       ├── numba_utils.py # Numba JIT functions (normalization, distance)
+│   │       ├── retry.py      # async_retry_with_backoff decorator
 │   │       ├── security.py   # SecretString, redact_dict_secrets
 │   │       └── validation.py # Message validation
 │   └── infrastructure/       # External integrations
 │       ├── cross_encoder_reranker.py # CrossEncoderReranker (FlagReranker-based local reranking)
+│       ├── llm_provider_base.py # BaseOpenAIProvider (shared LLM provider base class)
 │       ├── llm_reranker.py    # LLMReranker (AI relevance scoring)
 │       ├── message_store.py   # MessageStore (libSQL for USearch)
 │       ├── qwen3_embedding.py # LangchainQwenEmbeddings
@@ -202,6 +204,7 @@ CCMemoriesMCP/
   - Purpose: AI-powered relevance scoring via OpenRouter API
   - Uses `SCORING_PROMPT` or `SCORING_PROMPT_WITH_AGE` from `config/prompts.py` (based on `ENABLE_RECENCY_BOOST`)
   - **Provider abstraction**: Uses `IRerankerProvider` protocol with OpenAI or Anthropic backends (via `LLM_PROVIDER`)
+  - **Base provider pattern**: `OpenAIRerankerProvider` extends `BaseOpenAIProvider` for shared LLM functionality
   - Parallel scoring with concurrency control via `anyio.Semaphore`
   - HTTP/2 enabled via AsyncOpenAI with `DefaultAioHttpClient`
   - Graceful fallback: returns fusion score if LLM call fails
@@ -232,6 +235,8 @@ Both rerankers support temporal context for handling contradictory memories (e.g
 - Purpose: Detect when a new memory semantically replaces an existing one
 - Example: "I like cats" → "I don't like cats anymore, I like dogs"
 - Uses LLM (via `LLM_MODEL`) with structured JSON output for replacement detection
+- **Base provider pattern**: `OpenAIReplacementProvider` extends `BaseOpenAIProvider` for shared LLM functionality
+- **Retry logic**: Exponential backoff with `@async_retry_with_backoff` decorator
 - Configurable confidence threshold (default: 0.7)
 - Enabled by default, can be disabled via `ENABLE_SMART_REPLACE=false`
 - Graceful degradation: if LLM call fails, memory is added normally

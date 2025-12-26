@@ -7,12 +7,15 @@ following the same patterns as qwen3_embedding.py for consistency.
 import os
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, cast
 
 import numpy as np
 import tantivy
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+
+from ccmemories.application.exceptions import SearchError
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,7 @@ class TantivyConfig:
         compaction_threshold_ratio: Compact when tombstones > this ratio of docs.
         compaction_max_tombstones: Force compaction above this tombstone count.
         tombstone_ttl_days: Days before tombstones are eligible for removal.
+        tombstone_cache_max_size: Maximum number of project IDs to cache tombstones for.
         normalize_scores: Normalize BM25 scores to 0-1 range (batch min-max).
     """
 
@@ -35,6 +39,7 @@ class TantivyConfig:
     compaction_threshold_ratio: float = 0.2
     compaction_max_tombstones: int = 10000
     tombstone_ttl_days: int = 7
+    tombstone_cache_max_size: int = 100
     normalize_scores: bool = True
 
 
@@ -67,9 +72,12 @@ class TantivyEngine(BaseModel):
     # Note: Using RLock (re-entrant) because add() holds lock and calls self.writer property
     _writer_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
     _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
-    # In-memory tombstone cache for O(1) lookup after first search
+    # Bounded in-memory tombstone cache for O(1) lookup after first search
+    # Uses OrderedDict for LRU eviction when size exceeds tombstone_cache_max_size
     # Key: project_id, Value: set of tombstoned message contents
-    _tombstone_cache: dict[str, set[str]] = PrivateAttr(default_factory=dict)
+    _tombstone_cache: OrderedDict[str, set[str]] = PrivateAttr(
+        default_factory=OrderedDict
+    )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def __init__(
@@ -450,8 +458,9 @@ class TantivyEngine(BaseModel):
     def _get_tombstoned_messages(self, project_id: str) -> set[str]:
         """Get set of messages that have tombstones for a project.
 
-        Uses in-memory caching for O(1) lookup after first call per project.
+        Uses bounded in-memory caching with LRU eviction for O(1) lookup.
         Cache is populated by querying is_deleted=1 documents directly.
+        When cache size exceeds tombstone_cache_max_size, oldest entries are evicted.
 
         Args:
             project_id: Project identifier to filter by.
@@ -462,6 +471,8 @@ class TantivyEngine(BaseModel):
         # Fast path: check cache first (thread-safe read)
         with self._tombstone_cache_lock:
             if project_id in self._tombstone_cache:
+                # Move to end (most recently used)
+                self._tombstone_cache.move_to_end(project_id)
                 return self._tombstone_cache[project_id]
 
         if self._index is None:
@@ -486,13 +497,28 @@ class TantivyEngine(BaseModel):
                 if message is not None:
                     tombstoned.add(cast(str, message))
 
-            # Store in cache (thread-safe write)
+            # Store in cache with LRU eviction (thread-safe write)
             with self._tombstone_cache_lock:
+                # Remove oldest entry if cache is at max capacity
+                if len(self._tombstone_cache) >= self.config.tombstone_cache_max_size:
+                    self._tombstone_cache.popitem(last=False)
+                # Add new entry and move to end (most recently used)
                 self._tombstone_cache[project_id] = tombstoned
+                # Ensure this entry is at the end (most recent)
+                self._tombstone_cache.move_to_end(project_id)
 
             return tombstoned
 
+        except ValueError as e:
+            # Query parsing errors - expected failure, log as warning
+            if self.logger:
+                self.logger.warning(
+                    "Failed to get tombstoned messages (query parse error)",
+                    extra={"project_id": project_id, "error": str(e)},
+                )
+            return set()
         except Exception as e:
+            # Unexpected errors - log as warning with more context
             if self.logger:
                 self.logger.warning(
                     "Failed to get tombstoned messages",
@@ -627,19 +653,8 @@ class TantivyEngine(BaseModel):
             return []
 
         except Exception as e:
-            # Unexpected errors - log at error level with more context
-            if self.logger:
-                self.logger.error(
-                    "Tantivy full-text search failed unexpectedly",
-                    extra={
-                        "project_id": self.config.project_id,
-                        "query": query[:100] if query else "",
-                        "limit": limit,
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    },
-                )
-            return []
+            # Unexpected errors - raise SearchError for caller to handle
+            raise SearchError(f"Tantivy search failed: {e}") from e
 
     def ensure_initialized(self) -> None:
         """Ensure the engine is fully initialized (thread-safe).

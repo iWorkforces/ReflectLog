@@ -1,6 +1,7 @@
 """Infrastructure layer for external library wrappers.
 
 This module provides:
+- BaseOpenAIProvider: Base class for OpenAI-compatible LLM providers
 - CachedEmbeddings: LRU caching wrapper for query embedding caching
 - LangchainQwenEmbeddings: OpenRouter embedding provider with async support
 - LLMReranker: LLM-based document reranker for search results
@@ -13,6 +14,7 @@ This module provides:
 
 from .cached_embeddings import CachedEmbeddings
 from .cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
+from .llm_provider_base import BaseOpenAIProvider, IStructuredOutputSchema
 from .llm_reranker import (
     AnthropicRerankerProvider,
     IRerankerProvider,
@@ -40,7 +42,9 @@ from .usearch_engine import USearchConfig, USearchEngine
 __all__ = [
     "AnthropicRerankerProvider",
     "AnthropicReplacementProvider",
+    "BaseOpenAIProvider",
     "CachedEmbeddings",
+    "IStructuredOutputSchema",
     "create_reranker_provider",
     "create_replacement_provider",
     "CrossEncoderConfig",

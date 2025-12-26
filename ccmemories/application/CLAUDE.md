@@ -36,6 +36,7 @@ application/
     ├── __init__.py       # Utility exports
     ├── logging.py        # StructuredLogger, format_fusion_score_status
     ├── numba_utils.py    # Numba JIT functions (normalization, distance)
+    ├── retry.py          # async_retry_with_backoff decorator
     ├── security.py       # SecretString, redact_dict_secrets
     └── validation.py     # Message validation helpers
 ```

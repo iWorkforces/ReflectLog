@@ -20,8 +20,10 @@ from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import Index, BatchMatches
 
+from ccmemories.application.exceptions import StorageError
 from ccmemories.application.types import ISemanticSearchEngine
 from ccmemories.application.utils.numba_utils import distance_to_similarity_cosine
+from ccmemories.application.utils.security import validate_project_id
 from ccmemories.infrastructure.message_store import MessageStore
 
 
@@ -72,7 +74,8 @@ class USearchConfig:
         Returns:
             USearchConfig with extracted settings.
         """
-        project_id = config.project_id.lower()
+        # Validate project_id to prevent path traversal attacks
+        project_id = validate_project_id(config.project_id)
         base_path = os.path.join(os.getcwd(), "indexes", project_id, "usearch")
 
         # Determine embedding dims based on provider
@@ -297,8 +300,9 @@ class USearchEngine(BaseModel):
                     },
                 )
 
-        except RuntimeError as e:
+        except (RuntimeError, StorageError) as e:
             # Handle duplicate message (detected by database UNIQUE constraint)
+            # Note: StorageError is raised by MessageStore for duplicates
             if "Duplicate message" in str(e):
                 if self.logger:
                     self.logger.debug(
@@ -306,7 +310,7 @@ class USearchEngine(BaseModel):
                         extra={"project_id": self.config.project_id},
                     )
                 return
-            # Re-raise other RuntimeErrors
+            # Re-raise other errors
             if self.logger:
                 self.logger.error(
                     "Failed to add message to USearch index",

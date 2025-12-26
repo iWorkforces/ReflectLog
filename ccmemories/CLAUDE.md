@@ -33,11 +33,13 @@ ccmemories/
 │   └── utils/            # Utilities
 │       ├── logging.py    # StructuredLogger, format_fusion_score_status
 │       ├── numba_utils.py # Numba JIT functions (normalization, distance)
+│       ├── retry.py      # async_retry_with_backoff decorator
 │       ├── security.py   # SecretString, redact_dict_secrets
 │       └── validation.py # Message validation helpers
 ├── infrastructure/       # External integrations
 │   ├── cached_embeddings.py   # CachedEmbeddings (LRU query cache)
 │   ├── cross_encoder_reranker.py # CrossEncoderReranker (local FlagReranker)
+│   ├── llm_provider_base.py   # BaseOpenAIProvider (shared LLM provider base class)
 │   ├── llm_reranker.py        # LLMReranker (AI relevance scoring)
 │   ├── message_store.py       # MessageStore (libSQL for USearch)
 │   ├── qwen3_embedding.py     # LangchainQwenEmbeddings
@@ -110,7 +112,7 @@ When `ccmemories` command is run:
 - **memory/fusion/**: `RanxFusionEngine` for RRF hybrid ranking
 - **memory/reranking/**: Score normalization and recency decay utilities for rerankers
 - **tools/**: Modular tool implementations following `BaseTool` pattern
-- **utils/**: Logging, validation, and security utilities
+- **utils/**: Logging, validation, security, and retry utilities
 
 ### infrastructure/
 - **usearch_engine.py**: `USearchEngine` class for semantic vector search (HNSW)
@@ -118,9 +120,10 @@ When `ccmemories` command is run:
 - **message_store.py**: `MessageStore` libSQL storage for message text
 - **qwen3_embedding.py**: `LangchainQwenEmbeddings` class for custom embeddings
 - **cached_embeddings.py**: LRU caching wrapper for query embeddings
+- **llm_provider_base.py**: `BaseOpenAIProvider` base class for OpenAI-compatible LLM providers with structured output
 - **llm_reranker.py**: `LLMReranker` for AI-powered relevance scoring (with provider abstraction via `IRerankerProvider`)
 - **cross_encoder_reranker.py**: `CrossEncoderReranker` for local FlagReranker-based scoring (with recency decay support)
-- **smart_replacer.py**: `SmartReplacer` for LLM-based memory replacement detection
+- **smart_replacer.py**: `SmartReplacer` for LLM-based memory replacement detection (with retry logic)
 - Supports both sync and async operations
 - HTTP/2 enabled via `DefaultAioHttpClient`
 - Concurrency control with `anyio.Semaphore`

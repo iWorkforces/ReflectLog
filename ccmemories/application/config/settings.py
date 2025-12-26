@@ -122,7 +122,6 @@ class Config:
     # Temporal-aware reranking settings (recency boost for memories)
     enable_recency_boost: bool = True  # Include memory age in reranking context
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
-    recency_max_boost: float = 0.2  # Maximum recency boost (added to base score)
 
     # Memory behavior
     deduplicate_messages: bool = True
@@ -180,6 +179,12 @@ class Config:
         if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", project_id):
             raise ConfigurationError(
                 "Invalid PROJECT_ID: only A-Za-z0-9_.- allowed, max length 64."
+            )
+
+        # Check for path traversal patterns (not caught by regex)
+        if ".." in project_id or project_id.startswith("/"):
+            raise ConfigurationError(
+                f"Invalid PROJECT_ID: path traversal patterns not allowed: {project_id}"
             )
 
         openrouter_api_key_raw = os.environ.get("OPENROUTER_API_KEY")
@@ -419,9 +424,6 @@ class Config:
             == "true",
             recency_decay_rate=max(
                 0.0, float(os.environ.get("RECENCY_DECAY_RATE", "0.01"))
-            ),
-            recency_max_boost=max(
-                0.0, float(os.environ.get("RECENCY_MAX_BOOST", "0.2"))
             ),
             # Memory behavior
             deduplicate_messages=os.environ.get("DEDUPLICATE_MESSAGES", "true").lower()

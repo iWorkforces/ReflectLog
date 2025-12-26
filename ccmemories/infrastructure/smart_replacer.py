@@ -6,10 +6,13 @@ import re
 from dataclasses import dataclass
 from typing import Any, Protocol, Tuple
 
-from openai import AsyncOpenAI, DefaultAioHttpClient
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from ccmemories.application.config import REPLACEMENT_DETECTION_PROMPT, Config
+from ccmemories.application.utils.retry import async_retry_with_backoff
+from ccmemories.infrastructure.llm_provider_base import (
+    BaseOpenAIProvider,
+)
 
 
 class ReplacementDecision(BaseModel):
@@ -116,38 +119,51 @@ class IReplacementProvider(Protocol):
         ...
 
 
-class OpenAIReplacementProvider:
+class OpenAIReplacementProvider(BaseOpenAIProvider):
     """OpenAI/OpenRouter-based replacement detection provider.
 
     Uses AsyncOpenAI client with structured JSON output for reliable parsing.
     Supports fallback to json_object mode for models without structured output.
+
+    Inherits common functionality from BaseOpenAIProvider:
+    - AsyncOpenAI client initialization with HTTP/2 support
+    - Structured output with fallback to json_object
+    - Safe JSON parsing with clamping
+
+    Retry logic is handled by the retry decorator.
     """
 
-    def __init__(
+    @async_retry_with_backoff(max_retries=3, base_delay=1.0)
+    async def _detect_replacement_with_retry(
         self,
-        api_key: str,
-        base_url: str,
-        model: str,
-        timeout: float = 30.0,
-        logger: Any = None,
-    ):
-        """Initialize OpenAI replacement provider.
+        prompt: str,
+    ) -> Tuple[bool, float, str]:
+        """Call LLM with structured output and retry on transient errors.
 
         Args:
-            api_key: OpenRouter/OpenAI API key.
-            base_url: API base URL.
-            model: LLM model identifier.
-            timeout: HTTP request timeout in seconds.
-            logger: Optional structured logger.
+            prompt: The formatted replacement detection prompt.
+
+        Returns:
+            Tuple of (should_replace, confidence, reason).
+
+        Raises:
+            Exception: If LLM call fails (retried by decorator).
         """
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            http_client=DefaultAioHttpClient(),
-            timeout=timeout,
+        result = await self._call_llm_with_structured_output(
+            prompt=prompt,
+            response_schema=ReplacementDecision,
+            max_tokens=150,
         )
-        self._model = model
-        self._logger = logger
+
+        should_replace = self._extract_bool_field(
+            result, "should_replace", default=False
+        )
+        confidence = self._extract_float_field(result, "confidence", default=0.0)
+        reason = self._extract_string_field(
+            result, "reason", default="No reason provided"
+        )
+
+        return (should_replace, confidence, reason)
 
     async def detect_replacement(
         self,
@@ -165,92 +181,21 @@ class OpenAIReplacementProvider:
         Returns:
             Tuple of (should_replace, confidence, reason).
         """
-        # Build structured output response format using Pydantic schema
-        structured_response_format: dict[str, Any] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "replacement_decision",
-                "strict": True,
-                "schema": ReplacementDecision.model_json_schema(),
-            },
-        }
+        try:
+            return await self._detect_replacement_with_retry(prompt)
 
-        last_exception: Exception | None = None
-        use_fallback_format = False
+        except Exception as e:
+            if self._logger:
+                self._logger.warning(
+                    f"OpenAI replacement detection failed after {max_retries} retries",
+                    extra={
+                        "max_retries": max_retries,
+                        "error": str(e),
+                    },
+                )
 
-        for attempt in range(1, max_retries + 1):
-            try:
-                if use_fallback_format:
-                    response = await self._client.chat.completions.create(
-                        model=self._model,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0,
-                        max_tokens=150,
-                        response_format={"type": "json_object"},
-                    )
-                else:
-                    response = await self._client.chat.completions.create(
-                        model=self._model,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0,
-                        max_tokens=150,
-                        response_format=structured_response_format,
-                    )
-
-                # Parse response
-                content = response.choices[0].message.content
-                if content is None:
-                    raise ValueError("Empty response from LLM")
-
-                result = json.loads(content)
-                should_replace = bool(result.get("should_replace", False))
-                confidence = float(result.get("confidence", 0.0))
-                reason = str(result.get("reason", "No reason provided"))
-                confidence = max(0.0, min(1.0, confidence))
-
-                return (should_replace, confidence, reason)
-
-            except Exception as e:
-                error_msg = str(e).lower()
-
-                # Check if this is a structured output compatibility issue
-                if not use_fallback_format and (
-                    "json_schema" in error_msg or "structured" in error_msg
-                ):
-                    if self._logger:
-                        self._logger.warning(
-                            "Model doesn't support structured outputs, "
-                            "falling back to json_object",
-                            extra={"model": self._model, "error": str(e)},
-                        )
-                    use_fallback_format = True
-                    continue
-
-                last_exception = e
-
-                if self._logger:
-                    self._logger.warning(
-                        f"OpenAI replacement detection failed "
-                        f"(attempt {attempt}/{max_retries})",
-                        extra={
-                            "attempt": attempt,
-                            "max_retries": max_retries,
-                            "error": str(e),
-                        },
-                    )
-
-                if attempt < max_retries:
-                    delay = retry_delay * (2 ** (attempt - 1))
-                    if self._logger:
-                        self._logger.debug(
-                            f"Retrying in {delay:.1f}s",
-                            extra={"delay": delay, "next_attempt": attempt + 1},
-                        )
-                    await asyncio.sleep(delay)
-
-        # All retries exhausted - return safe defaults
-        error_msg = str(last_exception) if last_exception else "Unknown error"
-        return (False, 0.0, f"Error: {error_msg}")
+            error_msg = str(e) if e else "Unknown error"
+            return (False, 0.0, f"Error: {error_msg}")
 
 
 class AnthropicReplacementProvider:

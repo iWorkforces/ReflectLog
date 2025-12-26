@@ -126,7 +126,7 @@ class TestCreateRerankerProvider:
         )
 
         with patch(
-            "ccmemories.infrastructure.llm_reranker.AsyncOpenAI"
+            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_client_class:
             provider = create_reranker_provider(config)
 
@@ -168,7 +168,7 @@ class TestOpenAIRerankerProvider:
     def mock_provider(self) -> OpenAIRerankerProvider:
         """Create a mocked OpenAIRerankerProvider instance."""
         with patch(
-            "ccmemories.infrastructure.llm_reranker.AsyncOpenAI"
+            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
@@ -306,7 +306,9 @@ class TestOpenAIRerankerProvider:
             return_value=mock_response
         )
 
-        await mock_provider._call_llm_with_structured_output("test prompt")
+        await mock_provider._call_llm_with_structured_output(
+            "test prompt", RelevanceScore
+        )
 
         # Verify structured output format was used
         mock_provider._client.chat.completions.create.assert_called_once()
@@ -335,7 +337,9 @@ class TestOpenAIRerankerProvider:
         mock_logger = MagicMock()
         mock_provider._logger = mock_logger
 
-        await mock_provider._call_llm_with_structured_output("test prompt")
+        await mock_provider._call_llm_with_structured_output(
+            "test prompt", RelevanceScore
+        )
 
         # Verify fallback was called
         assert mock_provider._client.chat.completions.create.call_count == 2
@@ -368,7 +372,9 @@ class TestOpenAIRerankerProvider:
         mock_logger = MagicMock()
         mock_provider._logger = mock_logger
 
-        await mock_provider._call_llm_with_structured_output("test prompt")
+        await mock_provider._call_llm_with_structured_output(
+            "test prompt", RelevanceScore
+        )
 
         # Verify fallback occurred
         assert mock_provider._client.chat.completions.create.call_count == 2
@@ -384,7 +390,9 @@ class TestOpenAIRerankerProvider:
         )
 
         with pytest.raises(Exception, match="Network timeout"):
-            await mock_provider._call_llm_with_structured_output("test prompt")
+            await mock_provider._call_llm_with_structured_output(
+                "test prompt", RelevanceScore
+            )
 
 
 class TestAnthropicRerankerProvider:
@@ -486,7 +494,7 @@ class TestLLMRerankerInitialization:
         )
 
         with patch(
-            "ccmemories.infrastructure.llm_reranker.AsyncOpenAI"
+            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_async_client:
             reranker = LLMReranker(config=config)
 
@@ -529,7 +537,7 @@ class TestScoreSingle:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config)
             return reranker
 
@@ -582,7 +590,7 @@ class TestRerank:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config)
             return reranker
 
@@ -756,7 +764,7 @@ class TestLLMRerankerIntegration:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config, logger=MagicMock())
 
             # Mock the provider's score_document method
@@ -944,7 +952,7 @@ class TestRerankWithTimestampMap:
             provider="openai",
             enable_recency_boost=True,
         )
-        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config, logger=MagicMock())
             return reranker
 
@@ -1012,7 +1020,7 @@ class TestRerankWithTimestampMap:
             enable_recency_boost=False,  # Disabled
         )
 
-        with patch("ccmemories.infrastructure.llm_reranker.AsyncOpenAI"):
+        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config, logger=MagicMock())
 
             captured_ages: list[str | None] = []
