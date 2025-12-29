@@ -7,7 +7,7 @@ license = { text = "MIT" }
 authors = [
     { name = "CCWorkforce Engineers" }
 ]
-requires-python = ">=3.13.9"
+requires-python = ">=3.13.11"
 keywords = ["mcp", "claude-code", "semantic-memory"]
 classifiers = [
     "Development Status :: 4 - Beta",
