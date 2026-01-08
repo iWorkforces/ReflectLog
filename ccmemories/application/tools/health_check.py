@@ -42,6 +42,9 @@ class HealthCheckTool(BaseTool):
                 - tantivy_engine: "initialized" or "disabled" based on hybrid search
                 - reranker_engine: The configured reranker type
                 - hybrid_search_enabled: Whether full-text search is enabled
+                - rrf_fusion_enabled: Whether RRF fusion is enabled
+                - recency_boost_enabled: Whether recency boost is enabled
+                - startup_metrics: Optional dict with startup timing data (milliseconds)
 
             Examples:
                 >>> health_check()
@@ -51,7 +54,14 @@ class HealthCheckTool(BaseTool):
                     "semantic_engine": "initialized",
                     "tantivy_engine": "initialized",
                     "reranker_engine": "llm",
-                    "hybrid_search_enabled": True
+                    "hybrid_search_enabled": True,
+                    "rrf_fusion_enabled": True,
+                    "recency_boost_enabled": True,
+                    "startup_metrics": {
+                        "numba_warmup": 250.5,
+                        "server_initialization": 150.3,
+                        "total_startup": 400.8
+                    }
                 }
             """
             try:
@@ -82,6 +92,15 @@ class HealthCheckTool(BaseTool):
                     "rrf_fusion_enabled": self.config.enable_rrf_fusion,
                     "recency_boost_enabled": self.config.enable_recency_boost,
                 }
+
+                # Add startup metrics if available
+                if self.memory._startup_metrics is not None:
+                    # Convert seconds to milliseconds for better readability
+                    startup_metrics_ms = {
+                        phase: duration * 1000
+                        for phase, duration in self.memory._startup_metrics.items()
+                    }
+                    health_status["startup_metrics"] = startup_metrics_ms
 
                 self.log_completion("health_check", status=health_status["status"])
 

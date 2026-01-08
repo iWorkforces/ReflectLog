@@ -298,7 +298,13 @@ Both rerankers support temporal context for handling contradictory memories (e.g
 - `TANTIVY_COMPACTION_THRESHOLD_RATIO`: Compact when tombstones > ratio of live docs (default: 0.2)
 - `TANTIVY_COMPACTION_MAX_TOMBSTONES`: Force compaction above this count (default: 10000)
 - `TANTIVY_TOMBSTONE_TTL_DAYS`: Days before tombstones eligible for removal (default: 7)
-- `EAGER_INITIALIZATION`: Pre-warm engines during startup (default: true)
+- `EAGER_INITIALIZATION`: Pre-warm search engines during startup (default: true)
+- `EAGER_INITIALIZE_SEARCH_ENGINES`: Pre-warm USearch/Tantivy (default: null, uses EAGER_INITIALIZATION)
+- `EAGER_INITIALIZE_RERANKER`: Pre-load reranker on startup (default: null, false = lazy loading)
+- `EAGER_INITIALIZE_SMART_REPLACER`: Pre-load SmartReplacer on startup (default: null, false = lazy loading)
+- `NUMBA_WARMUP`: Enable JIT pre-compilation (default: true)
+- `NUMBA_WARMUP_MODE`: Execution mode - sync, async, background (default: background)
+- `STARTUP_TIMING_VERBOSE`: Enable detailed startup timing breakdown (default: false)
 - `log_search_results_verbose`: Enable verbose logging of individual search results (default: false)
 - `log_search_result_limit`: Max results to log when verbose enabled (default: 3)
 - `fusion_method`: Fusion algorithm method - "rrf", "sum", "mnz", "max", "bordafuse" (default: "rrf")
@@ -723,10 +729,28 @@ OVERFETCH_MAX_MULTIPLIER=3.0  # For small indexes
 
 ### Eager Initialization
 
-Pre-warm all engines at startup to avoid cold-start latency:
+Pre-warm engines at startup to avoid cold-start latency (granular control):
 
 ```bash
-EAGER_INITIALIZATION=true  # Pre-warm USearch + Tantivy + embeddings (default: true)
+# General flag (applies to search engines only)
+EAGER_INITIALIZATION=true  # Pre-warm USearch + Tantivy (default: true)
+
+# Granular controls (override general flag)
+EAGER_INITIALIZE_SEARCH_ENGINES=true   # Pre-warm USearch/Tantivy (default: null)
+EAGER_INITIALIZE_RERANKER=false          # Pre-load reranker (default: null, lazy)
+EAGER_INITIALIZE_SMART_REPLACER=false   # Pre-load SmartReplacer (default: null, lazy)
+
+# Numba JIT warmup
+NUMBA_WARMUP=true                     # Enable JIT pre-compilation (default: true)
+NUMBA_WARMUP_MODE=background           # sync, async, background (default: background)
+
+# Startup timing
+STARTUP_TIMING_VERBOSE=false            # Enable detailed timing breakdown (default: false)
 ```
+
+**Behavior**:
+- Rerankers and SmartReplacer are lazy-loaded by default (faster startup)
+- Search engines are eagerly initialized by default (faster first request)
+- Background mode runs numba warmup in a daemon thread (non-blocking)
 
 When disabled, engines initialize lazily on first use (faster startup, slower first request).

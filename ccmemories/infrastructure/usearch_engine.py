@@ -186,12 +186,13 @@ class USearchEngine(BaseModel):
                     if index_dir:
                         os.makedirs(index_dir, exist_ok=True)
 
-                    # Try to load existing index
-                    if os.path.exists(self.config.index_path):
+                    # Optimization: Try restore first, avoid extra os.path.exists() call
+                    # This is faster for existing indices (one less syscall)
+                    try:
                         loaded_index = Index.restore(self.config.index_path)
                         if loaded_index is None:
                             raise RuntimeError(
-                                f"Failed to load USearch index from {self.config.index_path}"
+                                f"Index.restore() returned None for {self.config.index_path}"
                             )
                         self._index = loaded_index
                         if self.logger:
@@ -203,8 +204,16 @@ class USearchEngine(BaseModel):
                                     "size": len(loaded_index),
                                 },
                             )
-                    else:
-                        # Create new index
+                    except (RuntimeError, FileNotFoundError, OSError):
+                        # Index doesn't exist or is corrupted, create new one
+                        if self.logger:
+                            self.logger.debug(
+                                "USearch index not found, creating new index",
+                                extra={
+                                    "project_id": self.config.project_id,
+                                    "index_path": self.config.index_path,
+                                },
+                            )
                         new_index = Index(
                             ndim=self.config.embedding_dims,
                             metric=self.config.metric,

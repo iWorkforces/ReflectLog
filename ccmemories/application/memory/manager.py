@@ -65,6 +65,12 @@ class MemoryManager:
         # Thread-safety: RLock for protecting concurrent operations
         # RLock (re-entrant) because some methods may call other protected methods
         self._lock = threading.RLock()
+        # Lock for lazy reranker initialization (separate from main lock to avoid deadlock)
+        self._reranker_lock = threading.Lock()
+        self._smart_replacer_lock = threading.Lock()
+
+        # Startup timing metrics (set by server.py after initialization)
+        self._startup_metrics: Dict[str, float] | None = None
 
         # Hybrid mode enabled by default
         self.is_hybrid_search = self.config.enable_hybrid_search
@@ -118,24 +124,19 @@ class MemoryManager:
             logger=self.logger,
         )
 
-        # 4. Initialize reranker (LLM or CrossEncoder, based on reranker_engine config)
+        # 4. Rerankers (LLM or CrossEncoder) - lazily initialized via properties
+        # These are created on first search to avoid startup overhead
         self._llm_reranker: LLMReranker | None = None
         self._cross_encoder_reranker: CrossEncoderReranker | None = None
 
         if self.config.reranker_engine == "llm":
-            reranker_config = LLMRerankerConfig.from_app_config(config)
-            self._llm_reranker = LLMReranker(config=reranker_config, logger=self.logger)
             self.logger.info(
-                f"Initialized LLM reranker [model={config.llm_model}]",
+                f"LLM reranker configured (lazy init) [model={config.llm_model}]",
                 extra={"reranker_engine": "llm", "model": config.llm_model},
             )
         elif self.config.reranker_engine == "cross_encoder":
-            ce_config = CrossEncoderConfig.from_app_config(config)
-            self._cross_encoder_reranker = CrossEncoderReranker(
-                config=ce_config, logger=self.logger
-            )
             self.logger.info(
-                f"Initialized CrossEncoder reranker [model={config.cross_encoder_model}]",
+                f"CrossEncoder reranker configured (lazy init) [model={config.cross_encoder_model}]",
                 extra={
                     "reranker_engine": "cross_encoder",
                     "model": config.cross_encoder_model,
@@ -148,15 +149,13 @@ class MemoryManager:
                 extra={"reranker_engine": "none"},
             )
 
-        # 5. Initialize smart replacer (LLM-based memory replacement detection)
+        # 5. SmartReplacer - lazily initialized via property
+        # Created on first add operation to avoid startup overhead
         self._smart_replacer: SmartReplacer | None = None
+
         if self.config.enable_smart_replace:
-            smart_replacer_config = SmartReplacerConfig.from_app_config(config)
-            self._smart_replacer = SmartReplacer(
-                config=smart_replacer_config, logger=self.logger
-            )
             self.logger.info(
-                f"Initialized SmartReplacer [model={config.llm_model}, "
+                f"SmartReplacer configured (lazy init) [model={config.llm_model}, "
                 f"threshold={config.smart_replace_threshold}]",
                 extra={
                     "smart_replacer": "enabled",
@@ -171,14 +170,14 @@ class MemoryManager:
             )
 
         # 7. Initialize search pipeline
+        # Note: Rerankers are lazily loaded by the pipeline via memory_manager
         self._search_pipeline = SearchPipeline(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
             fusion_engine=self._fusion_engine,
-            llm_reranker=self._llm_reranker,
-            cross_encoder_reranker=self._cross_encoder_reranker,
             config=self.config,
             logger=self.logger,
+            memory_manager=self,  # Pass self for lazy reranker fetching
         )
 
         # 8. Initialize add pipeline
@@ -190,9 +189,9 @@ class MemoryManager:
         )
         self._smart_replacement_phase = SmartReplacementPhase(
             semantic_engine=self._semantic_engine,
-            smart_replacer=self._smart_replacer,
             config=self.config,
             logger=self.logger,
+            memory_manager=self,  # Pass self for lazy SmartReplacer fetching
         )
         self._storage_phase = StoragePhase(
             semantic_engine=self._semantic_engine,
@@ -234,37 +233,209 @@ class MemoryManager:
             self._eager_initialize_engines()
 
     def _eager_initialize_engines(self) -> None:
-        """Pre-warm all storage engines for faster first operation.
+        """Pre-warm storage engines for faster first operation.
 
-        This method forces initialization of lazy-loaded resources:
-        - USearch index and libSQL connection
-        - Tantivy index, writer, and searcher
+        This method forces initialization of lazy-loaded resources based on
+        granular configuration settings:
+        - USearch index and libSQL connection (when eager_initialize_search_engines)
+        - Tantivy index, writer, and searcher (when eager_initialize_search_engines)
+        - Reranker (when eager_initialize_reranker)
+        - SmartReplacer (when eager_initialize_smart_replacer)
+
+        Granular settings take precedence over the general EAGER_INITIALIZATION flag.
+        If granular settings are None (not explicitly configured), falls back to
+        EAGER_INITIALIZATION for search engines only (rerankers are lazy by default).
 
         Useful for reducing first-request latency in production deployments.
-        Called during __init__ when EAGER_INITIALIZATION=true.
+        Called during __init__ when enabled.
         """
         start_time = time.time()
-        self.logger.info(
-            "Starting eager engine initialization...",
-            extra={"project_id": self.project_id},
+
+        # Determine which components to initialize
+        # Priority: granular setting > general eager_initialization > default (search only)
+        should_init_search = (
+            self.config.eager_initialize_search_engines
+            if self.config.eager_initialize_search_engines is not None
+            else self.config.eager_initialization
+        )
+        should_init_reranker = (
+            self.config.eager_initialize_reranker
+            if self.config.eager_initialize_reranker is not None
+            else False  # Rerankers are lazy by default
+        )
+        should_init_smart_replacer = (
+            self.config.eager_initialize_smart_replacer
+            if self.config.eager_initialize_smart_replacer is not None
+            else False  # SmartReplacer is lazy by default
         )
 
-        # Pre-warm USearch semantic engine
-        self._semantic_engine.ensure_initialized()
+        engines_initialized = []
 
-        # Pre-warm Tantivy full-text engine
-        if self._tantivy_engine is not None:
-            self._tantivy_engine.ensure_initialized()
+        # Pre-warm search engines if configured
+        if should_init_search:
+            self.logger.info(
+                "Starting eager search engine initialization...",
+                extra={"project_id": self.project_id},
+            )
+
+            # Pre-warm USearch semantic engine
+            self._semantic_engine.ensure_initialized()
+            engines_initialized.append("usearch")
+
+            # Pre-warm Tantivy full-text engine
+            if self._tantivy_engine is not None:
+                self._tantivy_engine.ensure_initialized()
+                engines_initialized.append("tantivy")
+
+        # Pre-warm reranker if explicitly configured (lazy by default)
+        if should_init_reranker:
+            self.logger.info(
+                "Starting eager reranker initialization...",
+                extra={"project_id": self.project_id, "reranker_engine": self.config.reranker_engine},
+            )
+            reranker = self.get_reranker()
+            if reranker is not None:
+                engines_initialized.append(f"reranker_{self.config.reranker_engine}")
+
+        # Pre-warm SmartReplacer if explicitly configured (lazy by default)
+        if should_init_smart_replacer:
+            self.logger.info(
+                "Starting eager SmartReplacer initialization...",
+                extra={"project_id": self.project_id},
+            )
+            _ = self.smart_replacer
+            engines_initialized.append("smart_replacer")
 
         elapsed_ms = (time.time() - start_time) * 1000
-        self.logger.info(
-            f"Eager initialization complete [{elapsed_ms:.1f}ms]",
-            extra={
-                "project_id": self.project_id,
-                "elapsed_ms": elapsed_ms,
-                "engines": ["usearch", "tantivy" if self._tantivy_engine else None],
-            },
-        )
+
+        if engines_initialized:
+            self.logger.info(
+                f"Eager initialization complete [{elapsed_ms:.1f}ms]",
+                extra={
+                    "project_id": self.project_id,
+                    "elapsed_ms": elapsed_ms,
+                    "engines_initialized": engines_initialized,
+                },
+            )
+        else:
+            self.logger.info(
+                "Eager initialization skipped (all components set to lazy loading)",
+                extra={"project_id": self.project_id},
+            )
+
+    @property
+    def llm_reranker(self) -> LLMReranker | None:
+        """Get LLM reranker (lazy initialization with thread-safety).
+
+        Returns:
+            LLMReranker instance if configured, None otherwise.
+
+        Raises:
+            RuntimeError: If reranker_engine is 'llm' but initialization fails.
+        """
+        # Fast path: already initialized or not configured
+        if self._llm_reranker is not None or self.config.reranker_engine != "llm":
+            return self._llm_reranker
+
+        # Slow path: need to initialize with lock
+        with self._reranker_lock:
+            # Double-check after acquiring lock
+            if self._llm_reranker is not None or self.config.reranker_engine != "llm":
+                return self._llm_reranker
+
+            # Initialize LLM reranker
+            reranker_config = LLMRerankerConfig.from_app_config(self.config)
+            self._llm_reranker = LLMReranker(config=reranker_config, logger=self.logger)
+            self.logger.info(
+                f"Lazy initialized LLM reranker [model={self.config.llm_model}]",
+                extra={"reranker_engine": "llm", "model": self.config.llm_model},
+            )
+            return self._llm_reranker
+
+    @property
+    def cross_encoder_reranker(self) -> CrossEncoderReranker | None:
+        """Get CrossEncoder reranker (lazy initialization with thread-safety).
+
+        Returns:
+            CrossEncoderReranker instance if configured, None otherwise.
+
+        Raises:
+            RuntimeError: If reranker_engine is 'cross_encoder' but initialization fails.
+        """
+        # Fast path: already initialized or not configured
+        if self._cross_encoder_reranker is not None or self.config.reranker_engine != "cross_encoder":
+            return self._cross_encoder_reranker
+
+        # Slow path: need to initialize with lock
+        with self._reranker_lock:
+            # Double-check after acquiring lock
+            if self._cross_encoder_reranker is not None or self.config.reranker_engine != "cross_encoder":
+                return self._cross_encoder_reranker
+
+            # Initialize CrossEncoder reranker
+            ce_config = CrossEncoderConfig.from_app_config(self.config)
+            self._cross_encoder_reranker = CrossEncoderReranker(
+                config=ce_config, logger=self.logger
+            )
+            self.logger.info(
+                f"Lazy initialized CrossEncoder reranker [model={self.config.cross_encoder_model}]",
+                extra={
+                    "reranker_engine": "cross_encoder",
+                    "model": self.config.cross_encoder_model,
+                    "device": self.config.cross_encoder_device,
+                },
+            )
+            return self._cross_encoder_reranker
+
+    @property
+    def smart_replacer(self) -> SmartReplacer | None:
+        """Get SmartReplacer (lazy initialization with thread-safety).
+
+        Returns:
+            SmartReplacer instance if smart replacement is enabled, None otherwise.
+
+        Raises:
+            RuntimeError: If ENABLE_SMART_REPLACE=true but initialization fails.
+        """
+        # Fast path: already initialized or not configured
+        if self._smart_replacer is not None or not self.config.enable_smart_replace:
+            return self._smart_replacer
+
+        # Slow path: need to initialize with lock
+        with self._smart_replacer_lock:
+            # Double-check after acquiring lock
+            if self._smart_replacer is not None or not self.config.enable_smart_replace:
+                return self._smart_replacer
+
+            # Initialize SmartReplacer
+            smart_replacer_config = SmartReplacerConfig.from_app_config(self.config)
+            self._smart_replacer = SmartReplacer(
+                config=smart_replacer_config, logger=self.logger
+            )
+            self.logger.info(
+                f"Lazy initialized SmartReplacer [model={self.config.llm_model}]",
+                extra={
+                    "smart_replacer": "enabled",
+                    "model": self.config.llm_model,
+                },
+            )
+            return self._smart_replacer
+
+    def get_reranker(self) -> LLMReranker | CrossEncoderReranker | None:
+        """Get the appropriate reranker based on configuration.
+
+        Returns:
+            The configured reranker instance (LLM or CrossEncoder), or None if disabled.
+
+        Note:
+            This method provides a unified interface for the search pipeline
+            to obtain the active reranker without needing to know the type.
+        """
+        if self.config.reranker_engine == "llm":
+            return self.llm_reranker
+        elif self.config.reranker_engine == "cross_encoder":
+            return self.cross_encoder_reranker
+        return None
 
     def _add_message(self, message: str) -> bool:
         """Add a single message to BOTH USearch semantic and Tantivy full-text engines if not duplicate.

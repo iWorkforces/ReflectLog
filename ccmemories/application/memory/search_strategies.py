@@ -85,10 +85,9 @@ class SearchPipeline:
         semantic_engine: ISemanticSearchEngine,
         tantivy_engine: Any,  # TantivyEngine | None
         fusion_engine: FusionEngine,
-        llm_reranker: Any,  # LLMReranker | None
-        cross_encoder_reranker: Any,  # CrossEncoderReranker | None
         config: Config,
         logger: StructuredLogger,
+        memory_manager: Any,  # MemoryManager for lazy reranker fetching
     ):
         """Initialize search pipeline.
 
@@ -96,18 +95,16 @@ class SearchPipeline:
             semantic_engine: USearchEngine for semantic search.
             tantivy_engine: TantivyEngine for full-text search (optional).
             fusion_engine: RanxFusionEngine for result fusion.
-            llm_reranker: LLMReranker for AI reranking (optional).
-            cross_encoder_reranker: CrossEncoderReranker for local reranking (optional).
             config: Application configuration.
             logger: Structured logger instance.
+            memory_manager: MemoryManager instance for lazy reranker fetching.
         """
         self._semantic_engine = semantic_engine
         self._tantivy_engine = tantivy_engine
         self._fusion_engine = fusion_engine
-        self._llm_reranker = llm_reranker
-        self._cross_encoder_reranker = cross_encoder_reranker
         self.config = config
         self.logger = logger
+        self._memory_manager = memory_manager
 
     async def execute(self, context: SearchContext) -> SearchResult:
         """Execute the full search pipeline.
@@ -434,6 +431,22 @@ class SearchPipeline:
 
         return filtered
 
+    def _get_reranker(self):
+        """Get the appropriate reranker (lazy loading via memory_manager).
+
+        Returns:
+            Tuple of (reranker_type, reranker_instance) where type is 'llm', 'cross_encoder', or None.
+        """
+        if self._memory_manager is None:
+            return None, None
+
+        reranker = self._memory_manager.get_reranker()
+        if self.config.reranker_engine == "llm" and reranker is not None:
+            return "llm", reranker
+        elif self.config.reranker_engine == "cross_encoder" and reranker is not None:
+            return "cross_encoder", reranker
+        return None, None
+
     async def _step4_reranking(
         self,
         context: SearchContext,
@@ -442,10 +455,12 @@ class SearchPipeline:
         step_num: int,
     ) -> List[Tuple[str, float]]:
         """Step 4: Rerank results using LLM or CrossEncoder."""
-        if self._llm_reranker is not None:
-            return await self._rerank_llm(context, results, timestamp_map, step_num)
-        elif self._cross_encoder_reranker is not None:
-            return await self._rerank_cross_encoder(context, results, step_num)
+        reranker_type, reranker = self._get_reranker()
+
+        if reranker_type == "llm":
+            return await self._rerank_llm(context, results, timestamp_map, step_num, reranker)
+        elif reranker_type == "cross_encoder":
+            return await self._rerank_cross_encoder(context, results, step_num, reranker)
         else:
             # No reranking configured
             return results
@@ -456,8 +471,15 @@ class SearchPipeline:
         results: List[Tuple[str, float]],
         timestamp_map: Dict[str, str],
         step_num: int,
+        llm_reranker = None,  # Optional parameter to use provided reranker
     ) -> List[Tuple[str, float]]:
         """Rerank using LLM."""
+        # Use provided reranker or fetch via _get_reranker
+        if llm_reranker is None:
+            _, llm_reranker = self._get_reranker()
+            if llm_reranker is None:
+                return results
+
         self.logger.info(
             f"STEP {step_num}: LLM Reranking ({len(results)} candidates)...",
             extra={
@@ -471,7 +493,7 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        results = await self._llm_reranker.rerank(context.query, results, timestamp_map)
+        results = await llm_reranker.rerank(context.query, results, timestamp_map)
 
         rerank_duration = (time.time() - rerank_start) * 1000
 
@@ -495,8 +517,15 @@ class SearchPipeline:
         context: SearchContext,
         results: List[Tuple[str, float]],
         step_num: int,
+        cross_encoder_reranker = None,  # Optional parameter to use provided reranker
     ) -> List[Tuple[str, float]]:
         """Rerank using CrossEncoder."""
+        # Use provided reranker or fetch via _get_reranker
+        if cross_encoder_reranker is None:
+            _, cross_encoder_reranker = self._get_reranker()
+            if cross_encoder_reranker is None:
+                return results
+
         self.logger.info(
             f"STEP {step_num}: CrossEncoder Reranking ({len(results)} candidates)...",
             extra={
@@ -510,7 +539,7 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        results = await self._cross_encoder_reranker.rerank_async(
+        results = await cross_encoder_reranker.rerank_async(
             context.query, results
         )
 

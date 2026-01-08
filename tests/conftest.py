@@ -139,6 +139,9 @@ def mcp_server(set_env_vars, mock_usearch_engine):
         patch(
             "ccmemories.application.memory.manager.LangchainQwenEmbeddings"
         ) as mock_embedder_cls,
+        patch(
+            "ccmemories.application.memory.manager.CachedEmbeddings"
+        ) as mock_cached_embedder_cls,
     ):
         # Configure USearchEngine mock
         mock_usearch_cls.return_value = mock_usearch_engine
@@ -151,6 +154,12 @@ def mcp_server(set_env_vars, mock_usearch_engine):
         # Configure embedder mock
         mock_embedder = MagicMock()
         mock_embedder_cls.return_value = mock_embedder
+
+        # Configure CachedEmbeddings mock to return the base embedder mock
+        # This prevents Pydantic validation errors in tests
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = mock_embedder
+        mock_cached_embedder_cls.return_value = mock_cached_embedder
 
         from ccmemories.application.mcp_server import FastMCPServer
 
