@@ -102,7 +102,7 @@ class TestBuildInstructions:
 
     def test_tool_order_constant(self):
         """Verify TOOL_ORDER contains expected tools in correct order."""
-        assert TOOL_ORDER == ["add", "get_all", "search", "remove"]
+        assert TOOL_ORDER == ["add", "get_all", "search", "remove", "health_check"]
 
 
 @pytest.mark.unit

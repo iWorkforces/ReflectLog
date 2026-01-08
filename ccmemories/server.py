@@ -2,6 +2,7 @@ import sys
 import os
 import argparse
 import signal
+import time
 from typing import Optional
 
 # Add the current directory to Python path for direct execution
@@ -17,9 +18,66 @@ os.environ.setdefault("NUMBA_DEBUG", "0")
 # Enable fastmath for additional floating-point optimizations
 os.environ.setdefault("NUMBA_FASTMATH", "1")
 
+import threading
+
 from ccmemories import __version__
 from ccmemories.application.mcp_server import FastMCPServer
 from ccmemories.application.utils.numba_utils import warmup_numba_functions
+
+
+def warmup_numba_with_config(
+    enabled: bool = True,
+    mode: str = "sync",
+    output_stream=None,
+) -> threading.Thread | None:
+    """Warm up numba JIT functions with configurable execution mode.
+
+    Args:
+        enabled: Whether to perform JIT warmup at all.
+        mode: Execution mode - "sync" (default), "async" (background thread), or "background" (daemon thread).
+        output_stream: Stream to print progress messages (stderr for stdio, stdout otherwise).
+
+    Returns:
+        Thread object if mode is "async" or "background", None otherwise.
+
+    Raises:
+        ValueError: If mode is not one of "sync", "async", or "background".
+    """
+    if not enabled:
+        if output_stream:
+            print("Numba JIT warmup disabled (NUMBA_WARMUP=false)", file=output_stream)
+        return None
+
+    valid_modes = ("sync", "async", "background")
+    if mode not in valid_modes:
+        raise ValueError(f"Invalid NUMBA_WARMUP_MODE: '{mode}'. Valid options: {', '.join(valid_modes)}")
+
+    if mode == "sync":
+        if output_stream:
+            print("Warming up numba JIT functions (synchronous)...", file=output_stream)
+        warmup_numba_functions()
+        if output_stream:
+            print("Numba functions compiled and cached", file=output_stream)
+        return None
+    else:
+        # async or background mode
+        is_daemon = (mode == "background")
+        if output_stream:
+            mode_desc = "background daemon thread" if is_daemon else "background thread"
+            print(f"Warming up numba JIT functions ({mode_desc})...", file=output_stream)
+
+        def warmup_worker():
+            try:
+                warmup_numba_functions()
+                if output_stream:
+                    print("Numba functions compiled and cached (background complete)", file=output_stream)
+            except Exception as e:
+                if output_stream:
+                    print(f"Numba warmup warning: {e}", file=output_stream)
+
+        thread = threading.Thread(target=warmup_worker, daemon=is_daemon)
+        thread.start()
+        return thread
 
 
 def parse_args() -> argparse.Namespace:
@@ -130,10 +188,25 @@ def main() -> None:
     print(f"Version: {__version__}", file=output_stream)
     print(f"Transport: {transport_mode}", file=output_stream)
 
-    # Pre-compile numba JIT functions to avoid first-call latency
-    print("Warming up numba JIT functions...", file=output_stream)
-    warmup_numba_functions()
-    print("Numba functions compiled and cached", file=output_stream)
+    # Pre-compile numba JIT functions to avoid first-call latency (configurable)
+    # Environment variables:
+    #   NUMBA_WARMUP: Enable/disable JIT warmup (default: true)
+    #   NUMBA_WARMUP_MODE: Execution mode - sync, async, background (default: background)
+    numba_warmup_enabled = os.environ.get("NUMBA_WARMUP", "true").lower() == "true"
+    numba_warmup_mode = os.environ.get("NUMBA_WARMUP_MODE", "background").lower()
+
+    # Track overall startup time for performance monitoring
+    startup_start_time = time.time()
+    startup_phases: dict[str, float] = {}
+
+    # Phase: Numba JIT warmup
+    numba_start = time.time()
+    warmup_numba_with_config(
+        enabled=numba_warmup_enabled,
+        mode=numba_warmup_mode,
+        output_stream=output_stream,
+    )
+    startup_phases["numba_warmup"] = time.time() - numba_start
 
     # Create server with dependency injection
     server: Optional[FastMCPServer] = None
@@ -163,7 +236,28 @@ def main() -> None:
     signal.signal(signal.SIGTERM, graceful_shutdown)
 
     try:
+        # Phase: Server initialization
+        phase_start = time.time()
         server = FastMCPServer()
+        startup_phases["server_initialization"] = time.time() - phase_start
+
+        # Phase: Total startup time
+        total_startup_time = time.time() - startup_start_time
+        startup_phases["total_startup"] = total_startup_time
+
+        # Log startup metrics
+        print(
+            f"Server startup completed in {total_startup_time * 1000:.1f}ms",
+            file=output_stream,
+        )
+        if os.environ.get("STARTUP_TIMING_VERBOSE", "false").lower() == "true":
+            print("Startup timing breakdown:", file=output_stream)
+            for phase, duration in startup_phases.items():
+                print(f"  {phase}: {duration * 1000:.1f}ms", file=output_stream)
+
+        # Store startup metrics on memory manager for health check
+        server._memory_manager._startup_metrics = startup_phases
+
         server.run()
     except KeyboardInterrupt:
         # KeyboardInterrupt may be raised before signal handler is fully set up

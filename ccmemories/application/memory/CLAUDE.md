@@ -123,13 +123,12 @@ Query → [Step 1: Parallel Search] → [Step 2: Concatenate] → [Step 3: Reran
 
 ### Infrastructure Layer Abstraction
 
-**MemoryManager** uses dedicated engine classes from the infrastructure layer:
+**MemoryManager** uses dedicated engine classes from the infrastructure layer with lazy initialization:
 
 ```python
 # In MemoryManager.__init__():
 from ccmemories.infrastructure import (
     USearchConfig, USearchEngine, TantivyConfig, TantivyEngine,
-    LLMReranker, LLMRerankerConfig
 )
 
 # Semantic engine (USearch/libSQL)
@@ -142,15 +141,32 @@ if config.enable_hybrid_search:
     tantivy_config = TantivyConfig(project_id=config.project_id, index_path=tantivy_index_path)
     self._tantivy_engine = TantivyEngine(tantivy_config, logger=self.logger)
 
-# LLM Reranker (optional, when RERANKER_ENGINE=llm)
-if config.reranker_engine == "llm":
-    reranker_config = LLMRerankerConfig.from_app_config(config)
-    self._llm_reranker = LLMReranker(config=reranker_config, logger=self.logger)
+# Rerankers and SmartReplacer - lazily initialized via properties
+# These are created on first use to avoid startup overhead
+self._llm_reranker: LLMReranker | None = None
+self._cross_encoder_reranker: CrossEncoderReranker | None = None
+self._smart_replacer: SmartReplacer | None = None
 
-# CrossEncoder Reranker (optional, when RERANKER_ENGINE=cross_encoder)
-if config.reranker_engine == "cross_encoder":
-    ce_config = CrossEncoderConfig.from_app_config(config)
-    self._cross_encoder_reranker = CrossEncoderReranker(config=ce_config, logger=self.logger)
+# Properties provide thread-safe lazy loading
+@property
+def llm_reranker(self) -> LLMReranker | None:
+    """Get LLM reranker (lazy initialization with thread-safety)."""
+    if self._llm_reranker is not None or self.config.reranker_engine != "llm":
+        return self._llm_reranker
+    with self._reranker_lock:
+        if self._llm_reranker is not None:
+            return self._llm_reranker
+        reranker_config = LLMRerankerConfig.from_app_config(self.config)
+        self._llm_reranker = LLMReranker(config=reranker_config, logger=self.logger)
+        return self._llm_reranker
+
+def get_reranker(self) -> LLMReranker | CrossEncoderReranker | None:
+    """Get the appropriate reranker based on configuration."""
+    if self.config.reranker_engine == "llm":
+        return self.llm_reranker
+    elif self.config.reranker_engine == "cross_encoder":
+        return self.cross_encoder_reranker
+    return None
 ```
 
 This architecture provides:
@@ -181,6 +197,50 @@ This architecture provides:
 - **Better testability**: Each pipeline/phase can be tested independently
 - **Clearer separation of concerns**: Manager orchestrates, pipelines execute
 - **Reusability**: Pipelines can be reused or extended without modifying manager.py
+
+### Lazy Initialization Architecture
+
+**Performance Optimization**: Rerankers and SmartReplacer use lazy loading via thread-safe properties to reduce server startup time.
+
+**Components with Lazy Loading**:
+
+1. **LLMReranker** (`llm_reranker` property)
+   - Initialized on first search when `RERANKER_ENGINE=llm`
+   - Thread-safe double-checked locking with `_reranker_lock`
+   - Returns `None` if not configured
+
+2. **CrossEncoderReranker** (`cross_encoder_reranker` property)
+   - Initialized on first search when `RERANKER_ENGINE=cross_encoder`
+   - Thread-safe double-checked locking with `_reranker_lock`
+   - Returns `None` if not configured
+
+3. **SmartReplacer** (`smart_replacer` property)
+   - Initialized on first add operation when `ENABLE_SMART_REPLACE=true`
+   - Thread-safe double-checked locking with `_smart_replacer_lock`
+   - Returns `None` if smart replacement disabled
+
+**Unified Access via `get_reranker()`**:
+```python
+# In MemoryManager:
+def get_reranker(self) -> LLMReranker | CrossEncoderReranker | None:
+    """Get the appropriate reranker based on configuration."""
+    if self.config.reranker_engine == "llm":
+        return self.llm_reranker  # Triggers lazy init if needed
+    elif self.config.reranker_engine == "cross_encoder":
+        return self.cross_encoder_reranker  # Triggers lazy init if needed
+    return None
+```
+
+**Pipeline Integration**:
+- `SearchPipeline` receives `memory_manager` parameter
+- Calls `memory_manager.get_reranker()` during search execution
+- `SmartReplacementPhase` receives `memory_manager` parameter
+- Calls `memory_manager.smart_replacer` during add execution
+
+**Benefits**:
+- **Startup Time**: Reduces startup by 500-2000ms (LLM) or avoids unnecessary model loading
+- **Memory**: Only loads components when actually needed
+- **Thread-Safe**: Double-checked locking prevents race conditions
 
 ### Phased Parallel Add Processing
 
@@ -320,14 +380,23 @@ Index Size → [Logarithmic Interpolation] → Overfetch Multiplier
 
 ### Eager Initialization
 
-The `_eager_initialize_engines()` method pre-warms all storage engines during `MemoryManager.__init__()`:
+The `_eager_initialize_engines()` method provides granular control over which components are pre-warmed during `MemoryManager.__init__()`:
 
-- **USearch**: Loads HNSW index and opens libSQL connection
-- **Tantivy**: Opens index, creates writer and searcher
+**Default Behavior** (Rerankers/SmartReplacer are lazy by default):
+- **USearch**: Loads HNSW index and opens libSQL connection (when `EAGER_INITIALIZE_SEARCH_ENGINES=true`)
+- **Tantivy**: Opens index, creates writer and searcher (when `EAGER_INITIALIZE_SEARCH_ENGINES=true`)
+- **Rerankers**: Lazy loaded on first search (can be overridden with `EAGER_INITIALIZE_RERANKER=true`)
+- **SmartReplacer**: Lazy loaded on first add (can be overridden with `EAGER_INITIALIZE_SMART_REPLACER=true`)
 
-**Configuration**: Set `EAGER_INITIALIZATION=true` (default: true)
+**Configuration**:
+- `EAGER_INITIALIZATION`: General flag (default: true) - applies to search engines only
+- `EAGER_INITIALIZE_SEARCH_ENGINES`: Pre-warm USearch/Tantivy (default: falls back to EAGER_INITIALIZATION)
+- `EAGER_INITIALIZE_RERANKER`: Pre-load reranker on startup (default: false - lazy loading)
+- `EAGER_INITIALIZE_SMART_REPLACER`: Pre-load SmartReplacer on startup (default: false - lazy loading)
 
-**Impact**: Reduces first-request latency by moving initialization overhead to server startup.
+**Impact**:
+- **Search engines**: Reduces first-request latency by moving initialization to server startup
+- **Rerankers/SmartReplacer**: Lazy loading reduces server startup time by 500-2000ms
 
 ### Configuration
 
@@ -388,7 +457,15 @@ Key environment variables (via `Config`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ADD_MAX_CONCURRENCY` | 4 | Max concurrent message additions in Phase 1 |
-| `EAGER_INITIALIZATION` | true | Pre-warm engines during server startup |
+
+**Eager Initialization Configuration**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EAGER_INITIALIZATION` | true | Pre-warm search engines during server startup |
+| `EAGER_INITIALIZE_SEARCH_ENGINES` | null | Pre-warm USearch/Tantivy (null = use EAGER_INITIALIZATION) |
+| `EAGER_INITIALIZE_RERANKER` | null | Pre-load reranker on startup (null = false, lazy loading) |
+| `EAGER_INITIALIZE_SMART_REPLACER` | null | Pre-load SmartReplacer on startup (null = false, lazy loading) |
 
 **Tantivy Soft-Delete Configuration**:
 
@@ -598,3 +675,18 @@ The current architecture uses USearchEngine as the primary semantic backend:
 - **Fusion**: RRF via ranx library
 - **Reranking**: LLM-based relevance scoring via LLMReranker
 - **Benefit**: Better precision via full-text matching + semantic understanding + AI refinement
+
+
+<claude-mem-context>
+# Recent Activity
+
+<!-- This section is auto-generated by claude-mem. Edit content outside the tags. -->
+
+### Dec 26, 2025
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #577 | 11:57 AM | ✅ | Documentation Directory Structure Update | ~202 |
+| #498 | 11:39 AM | 🟣 | Memory Module Enhancement | ~179 |
+| #483 | 11:34 AM | 🔵 | Memory Manager Methods Identified | ~167 |
+</claude-mem-context>

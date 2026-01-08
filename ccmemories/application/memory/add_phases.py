@@ -321,23 +321,33 @@ class SmartReplacementPhase:
     def __init__(
         self,
         semantic_engine: ISemanticSearchEngine,
-        smart_replacer: Any,  # SmartReplacer | None
         config: Config,
         logger: StructuredLogger,
+        memory_manager: Any,  # MemoryManager for lazy SmartReplacer fetching
     ):
         """Initialize smart replacement phase.
 
         Args:
             semantic_engine: USearchEngine for semantic search.
-            smart_replacer: SmartReplacer for LLM replacement detection.
             config: Application configuration.
             logger: Structured logger instance.
+            memory_manager: MemoryManager instance for lazy SmartReplacer fetching.
         """
         self._semantic_engine = semantic_engine
-        self._smart_replacer = smart_replacer
         self.config = config
         self.logger = logger
         self._project_id = config.project_id
+        self._memory_manager = memory_manager
+
+    def _get_smart_replacer(self) -> Any:
+        """Get SmartReplacer (lazy loading via memory_manager).
+
+        Returns:
+            SmartReplacer instance if configured, None otherwise.
+        """
+        if self._memory_manager is None:
+            return None
+        return self._memory_manager.smart_replacer
 
     async def execute(self, messages: List[str]) -> Phase2Result:
         """Execute Phase 2: Parallel smart replacement detection.
@@ -353,7 +363,10 @@ class SmartReplacementPhase:
         # Map: message -> list of replacement infos
         replacement_map: Dict[str, List[ReplacementInfo]] = {}
 
-        if self._smart_replacer is None or not messages:
+        # Get SmartReplacer (lazy loaded via memory_manager if available)
+        smart_replacer = self._get_smart_replacer()
+
+        if smart_replacer is None or not messages:
             return Phase2Result(
                 replacement_map=replacement_map,
                 total_replacements=0,
@@ -361,7 +374,7 @@ class SmartReplacementPhase:
             )
 
         # Capture in local variable for type narrowing in nested function
-        smart_replacer = self._smart_replacer
+        smart_replacer = smart_replacer
 
         async with create_task_group() as tg:
             replacement_results: List[Tuple[str, List[ReplacementInfo]]] = []
@@ -986,7 +999,7 @@ class AddPipeline:
             f"Starting phased parallel message addition [{mode_str}]: {len(messages)} messages",
             extra={
                 "total_messages": len(messages),
-                "smart_replace_enabled": self._phase2._smart_replacer is not None,
+                "smart_replace_enabled": self._phase2._get_smart_replacer() is not None,
                 "dry_run": dry_run,
                 "optimization": "phased_parallel",
             },

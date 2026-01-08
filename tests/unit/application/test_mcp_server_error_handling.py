@@ -4,6 +4,7 @@
 import os
 import pytest
 from unittest.mock import MagicMock, patch
+import pytest_asyncio
 
 from ccmemories.application.exceptions import (
     ConfigurationError,
@@ -24,6 +25,17 @@ def mock_usearch_engine():
     engine.delete = MagicMock(return_value=None)
     engine.commit = MagicMock(return_value=None)
     return engine
+
+
+@pytest.fixture
+def mock_cached_embedder():
+    """Create a mock CachedEmbeddings instance."""
+    embedder = MagicMock()
+    embedder.embed_query = MagicMock(return_value=[0.1, 0.2, 0.3])
+    embedder.aembed_query = MagicMock(return_value=[0.1, 0.2, 0.3])
+    embedder.embed_documents = MagicMock(return_value=[[0.1, 0.2, 0.3]])
+    embedder.aembed_documents = MagicMock(return_value=[[0.1, 0.2, 0.3]])
+    return embedder
 
 
 @pytest.mark.unit
@@ -47,12 +59,18 @@ class TestServerInitializationErrors:
 
             assert "PROJECT_ID" in str(exc_info.value)
 
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_init_with_memory_config_error(
-        self, mock_usearch_engine_class, mock_embeddings
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, set_env_vars
     ):
         """Test server initialization handles Memory.from_config errors."""
+        # Configure CachedEmbeddings mock to return embedder mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         # Make USearchEngine raise an exception
         mock_usearch_engine_class.side_effect = Exception(
             "Memory initialization failed"
@@ -70,12 +88,19 @@ class TestServerInitializationErrors:
 class TestAddToolErrorHandling:
     """Test error handling in add tool."""
 
+    @pytest.mark.asyncio
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_add_memory_storage_failure(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+    async def test_add_memory_storage_failure(
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test add tool handles memory storage failures."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         # Configure mock to raise exception on add
         mock_usearch_engine.add.side_effect = Exception("Storage failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
@@ -86,17 +111,24 @@ class TestAddToolErrorHandling:
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
 
         with pytest.raises(StorageError) as exc_info:
-            add_tool(["Test message"])
+            await add_tool(["Test message"])
 
         assert "Failed to add messages" in str(exc_info.value)
         assert "Storage failure" in str(exc_info.value)
 
+    @pytest.mark.asyncio
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_add_validation_error_with_non_string(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+    async def test_add_validation_error_with_non_string(
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test add tool validation error with non-string message."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from ccmemories.application.mcp_server import FastMCPServer
@@ -105,16 +137,23 @@ class TestAddToolErrorHandling:
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
 
         with pytest.raises(ValueError) as exc_info:
-            add_tool([123, "Valid message"])
+            await add_tool([123, "Valid message"])
 
         assert "not a string" in str(exc_info.value)
 
+    @pytest.mark.asyncio
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_add_validation_error_with_empty_string(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+    async def test_add_validation_error_with_empty_string(
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test add tool validation error with empty string."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from ccmemories.application.mcp_server import FastMCPServer
@@ -123,7 +162,7 @@ class TestAddToolErrorHandling:
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
 
         with pytest.raises(ValueError) as exc_info:
-            add_tool([""])
+            await add_tool([""])
 
         assert "too short" in str(exc_info.value).lower()
 
@@ -132,12 +171,19 @@ class TestAddToolErrorHandling:
 class TestGetAllToolErrorHandling:
     """Test error handling in get_all tool."""
 
+    @pytest.mark.asyncio
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_get_all_memory_retrieval_failure(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+    async def test_get_all_memory_retrieval_failure(
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test get_all tool handles retrieval failures."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         # Configure mock to raise exception on get_all
         mock_usearch_engine.get_all.side_effect = Exception("Retrieval failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
@@ -148,7 +194,7 @@ class TestGetAllToolErrorHandling:
         get_all_tool = mcp_server.mcp._tool_manager._tools["get_all"].fn
 
         with pytest.raises(StorageError) as exc_info:
-            get_all_tool()
+            await get_all_tool()
 
         assert "Failed to retrieve messages" in str(exc_info.value)
         assert "Retrieval failure" in str(exc_info.value)
@@ -158,12 +204,19 @@ class TestGetAllToolErrorHandling:
 class TestSearchToolErrorHandling:
     """Test error handling in search tool."""
 
+    @pytest.mark.asyncio
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_search_memory_failure(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+    async def test_search_memory_failure(
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test search tool handles search failures."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         # Configure mock to raise exception on search
         mock_usearch_engine.search.side_effect = Exception("Search failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
@@ -174,7 +227,7 @@ class TestSearchToolErrorHandling:
         search_tool = mcp_server.mcp._tool_manager._tools["search"].fn
 
         with pytest.raises(SearchError) as exc_info:
-            search_tool("test query")
+            await search_tool("test query")
 
         assert "Failed to search" in str(exc_info.value)
         assert "Search failure" in str(exc_info.value)
@@ -184,12 +237,19 @@ class TestSearchToolErrorHandling:
 class TestRemoveToolErrorHandling:
     """Test error handling in remove tool."""
 
+    @pytest.mark.asyncio
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_remove_with_empty_list(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+    async def test_remove_with_empty_list(
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test remove tool with empty list (no-op)."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from ccmemories.application.mcp_server import FastMCPServer
@@ -198,17 +258,24 @@ class TestRemoveToolErrorHandling:
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
 
         # Should not raise any errors
-        remove_tool([])
+        await remove_tool([])
 
         # Verify delete was never called
         mock_usearch_engine.delete.assert_not_called()
 
+    @pytest.mark.asyncio
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_remove_memory_delete_failure(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+    async def test_remove_memory_delete_failure(
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test remove tool handles delete failures."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         # Configure mock to return a search result (USearchEngine returns List[Tuple[str, float]])
         mock_usearch_engine.search.return_value = [("Test message", 0.9)]
         # Configure mock to raise exception on delete
@@ -221,17 +288,24 @@ class TestRemoveToolErrorHandling:
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
 
         with pytest.raises(StorageError) as exc_info:
-            remove_tool(["Test message"])
+            await remove_tool(["Test message"])
 
         assert "Failed to remove messages" in str(exc_info.value)
         assert "Delete failure" in str(exc_info.value)
 
+    @pytest.mark.asyncio
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
-    def test_remove_message_not_found(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+    async def test_remove_message_not_found(
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test remove tool when message is not found."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         # Configure mock to return no results (USearchEngine returns List[Tuple[str, float]])
         mock_usearch_engine.search.return_value = []
         mock_usearch_engine_class.return_value = mock_usearch_engine
@@ -242,7 +316,7 @@ class TestRemoveToolErrorHandling:
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
 
         # Should not raise any errors, just silently skip
-        remove_tool(["Nonexistent message"])
+        await remove_tool(["Nonexistent message"])
 
         # Verify delete was never called
         mock_usearch_engine.delete.assert_not_called()
@@ -252,14 +326,19 @@ class TestRemoveToolErrorHandling:
 class TestRunMethodCoverage:
     """Test coverage for run() method."""
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch.dict(os.environ, {"MCP_TRANSPORT": "http"}, clear=False)
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_http_transport(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test run() method with HTTP transport."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from ccmemories.application.mcp_server import FastMCPServer
@@ -275,14 +354,19 @@ class TestRunMethodCoverage:
         # Verify run was called
         mock_run.assert_called_once()
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch.dict(os.environ, {"MCP_TRANSPORT": "stdio"}, clear=False)
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_stdio_transport(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test run() method with stdio transport."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from ccmemories.application.mcp_server import FastMCPServer
@@ -295,14 +379,19 @@ class TestRunMethodCoverage:
 
         mock_run.assert_called_once()
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch.dict(os.environ, {"MCP_TRANSPORT": "sse"}, clear=False)
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_sse_transport(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test run() method with SSE transport."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from ccmemories.application.mcp_server import FastMCPServer
@@ -315,7 +404,6 @@ class TestRunMethodCoverage:
 
         mock_run.assert_called_once()
 
-    @patch("ccmemories.application.mcp_server.PROJECT_ID", "test_project")
     @patch.dict(
         os.environ,
         {
@@ -326,12 +414,18 @@ class TestRunMethodCoverage:
         },
         clear=False,
     )
+    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_custom_config(
-        self, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine
+        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
     ):
         """Test run() method with custom configuration."""
+        # Configure CachedEmbeddings mock
+        mock_cached_embedder = MagicMock()
+        mock_cached_embedder.embedder = MagicMock()
+        mock_cached_embedder_class.return_value = mock_cached_embedder
+
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from ccmemories.application.mcp_server import FastMCPServer

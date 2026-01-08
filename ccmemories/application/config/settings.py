@@ -16,6 +16,29 @@ from ..utils.security import SecretString
 TransportMode: TypeAlias = Literal["stdio", "http", "sse", "streamable-http"]
 
 
+def _parse_optional_bool(value: str | None) -> bool | None:
+    """Parse an optional boolean environment variable.
+
+    Returns:
+        True if value is "true" or "1", False if value is "false" or "0",
+        None if value is None or empty string.
+
+    Examples:
+        _parse_optional_bool("true") -> True
+        _parse_optional_bool("false") -> False
+        _parse_optional_bool(None) -> None
+        _parse_optional_bool("") -> None
+    """
+    if value is None or value.strip() == "":
+        return None
+    normalized = value.strip().lower()
+    if normalized in ("true", "1", "yes", "on"):
+        return True
+    if normalized in ("false", "0", "no", "off"):
+        return False
+    return None
+
+
 @dataclass(frozen=True)
 class Config:
     """Configuration settings for CCMemoriesMCP Server.
@@ -147,6 +170,12 @@ class Config:
 
     # Initialization settings
     eager_initialization: bool = True  # Pre-warm engines during MemoryManager init
+
+    # Granular eager initialization settings (for fine-grained control)
+    # These override eager_initialization when set
+    eager_initialize_search_engines: bool | None = None  # Pre-warm USearch/Tantivy (default: true if eager_initialization)
+    eager_initialize_reranker: bool | None = None  # Pre-load reranker (default: false - lazy load on first search)
+    eager_initialize_smart_replacer: bool | None = None  # Pre-load SmartReplacer (default: false - lazy load on first add)
 
     # Logging settings
     log_level: str = "INFO"
@@ -455,6 +484,16 @@ class Config:
             # Initialization settings
             eager_initialization=os.environ.get("EAGER_INITIALIZATION", "true").lower()
             == "true",
+            # Granular eager initialization (overrides eager_initialization when set)
+            eager_initialize_search_engines=_parse_optional_bool(
+                os.environ.get("EAGER_INITIALIZE_SEARCH_ENGINES")
+            ),  # Default: true if eager_initialization
+            eager_initialize_reranker=_parse_optional_bool(
+                os.environ.get("EAGER_INITIALIZE_RERANKER")
+            ),  # Default: false (lazy load)
+            eager_initialize_smart_replacer=_parse_optional_bool(
+                os.environ.get("EAGER_INITIALIZE_SMART_REPLACER")
+            ),  # Default: false (lazy load)
             # Logging
             log_level=os.environ.get("LOG_LEVEL", "INFO"),
             log_search_results_verbose=os.environ.get(
