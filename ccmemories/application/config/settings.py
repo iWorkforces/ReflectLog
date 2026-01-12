@@ -173,9 +173,15 @@ class Config:
 
     # Granular eager initialization settings (for fine-grained control)
     # These override eager_initialization when set
-    eager_initialize_search_engines: bool | None = None  # Pre-warm USearch/Tantivy (default: true if eager_initialization)
-    eager_initialize_reranker: bool | None = None  # Pre-load reranker (default: false - lazy load on first search)
-    eager_initialize_smart_replacer: bool | None = None  # Pre-load SmartReplacer (default: false - lazy load on first add)
+    eager_initialize_search_engines: bool | None = (
+        None  # Pre-warm USearch/Tantivy (default: true if eager_initialization)
+    )
+    eager_initialize_reranker: bool | None = (
+        None  # Pre-load reranker (default: false - lazy load on first search)
+    )
+    eager_initialize_smart_replacer: bool | None = (
+        None  # Pre-load SmartReplacer (default: false - lazy load on first add)
+    )
 
     # Logging settings
     log_level: str = "INFO"

@@ -85,7 +85,7 @@ def cleanup_manager(manager: MemoryManager) -> None:
     """Clean up MemoryManager resources and delete index files."""
     # Close resources first
     if hasattr(manager._semantic_engine, "close"):
-        manager._semantic_engine.close()  # type: ignore[union-attr]
+        manager._semantic_engine.close()
 
     # Clean up USearch index directory (created at cwd/indexes/{project_id}/usearch/)
     project_id = manager.config.project_id.lower()
@@ -377,7 +377,7 @@ class TestUSearchPersistence:
                 # Commit to ensure persistence
                 manager1._semantic_engine.commit()
                 if hasattr(manager1._semantic_engine, "close"):
-                    manager1._semantic_engine.close()  # type: ignore[union-attr]
+                    manager1._semantic_engine.close()
 
             # Second manager instance - should load existing data
             with patch(

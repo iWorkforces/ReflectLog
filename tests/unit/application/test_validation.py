@@ -70,6 +70,7 @@ class TestValidateMessages:
         messages = [123]  # Integer instead of string
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "not a string" in error_msg
         assert "index 0" in error_msg
 
@@ -78,6 +79,7 @@ class TestValidateMessages:
         messages = [sample_messages["invalid"]["empty"]]
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "too short" in error_msg
 
     def test_whitespace_only_message_invalid(self, sample_messages):
@@ -85,6 +87,7 @@ class TestValidateMessages:
         messages = [sample_messages["invalid"]["whitespace_only"]]
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "only whitespace" in error_msg
 
     def test_message_too_long_invalid(self, sample_messages):
@@ -92,6 +95,7 @@ class TestValidateMessages:
         messages = [sample_messages["invalid"]["too_long"]]
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "too long" in error_msg
 
     def test_mixed_valid_and_invalid_messages(self):
@@ -99,6 +103,7 @@ class TestValidateMessages:
         messages = ["Valid message", ""]  # Second message is invalid
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "index 1" in error_msg
 
     @pytest.mark.parametrize(
@@ -110,13 +115,12 @@ class TestValidateMessages:
             ({}, "not a string"),
         ],
     )
-    def test_various_non_string_types(
-        self, invalid_message, expected_error
-    ):
+    def test_various_non_string_types(self, invalid_message, expected_error):
         """Test validation with various non-string types."""
         messages = [invalid_message]
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert expected_error in error_msg
 
     @pytest.mark.parametrize(
@@ -134,6 +138,7 @@ class TestValidateMessages:
         messages = [invalid_message]
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert expected_error in error_msg
 
     def test_error_message_includes_index(self):
@@ -141,6 +146,7 @@ class TestValidateMessages:
         messages = ["Valid", "Also valid", 123, "Another valid"]
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "index 2" in error_msg
 
     def test_multiple_messages_first_invalid(self):
@@ -148,6 +154,7 @@ class TestValidateMessages:
         messages = ["", "Valid message"]
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "index 0" in error_msg
 
     def test_multiple_messages_last_invalid(self):
@@ -155,6 +162,7 @@ class TestValidateMessages:
         messages = ["Valid message", ""]
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "index 1" in error_msg
 
     def test_message_exactly_one_over_max_length(self):
@@ -162,6 +170,7 @@ class TestValidateMessages:
         messages = ["x" * 30721]  # One over the limit
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "too long" in error_msg
         assert "30720" in error_msg
 
@@ -180,4 +189,5 @@ class TestValidateMessages:
 
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
+        assert error_msg is not None
         assert "index 50" in error_msg

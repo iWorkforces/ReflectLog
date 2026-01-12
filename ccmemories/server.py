@@ -50,7 +50,9 @@ def warmup_numba_with_config(
 
     valid_modes = ("sync", "async", "background")
     if mode not in valid_modes:
-        raise ValueError(f"Invalid NUMBA_WARMUP_MODE: '{mode}'. Valid options: {', '.join(valid_modes)}")
+        raise ValueError(
+            f"Invalid NUMBA_WARMUP_MODE: '{mode}'. Valid options: {', '.join(valid_modes)}"
+        )
 
     if mode == "sync":
         if output_stream:
@@ -61,16 +63,21 @@ def warmup_numba_with_config(
         return None
     else:
         # async or background mode
-        is_daemon = (mode == "background")
+        is_daemon = mode == "background"
         if output_stream:
             mode_desc = "background daemon thread" if is_daemon else "background thread"
-            print(f"Warming up numba JIT functions ({mode_desc})...", file=output_stream)
+            print(
+                f"Warming up numba JIT functions ({mode_desc})...", file=output_stream
+            )
 
         def warmup_worker():
             try:
                 warmup_numba_functions()
                 if output_stream:
-                    print("Numba functions compiled and cached (background complete)", file=output_stream)
+                    print(
+                        "Numba functions compiled and cached (background complete)",
+                        file=output_stream,
+                    )
             except Exception as e:
                 if output_stream:
                     print(f"Numba warmup warning: {e}", file=output_stream)

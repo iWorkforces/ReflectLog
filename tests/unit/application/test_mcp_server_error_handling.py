@@ -4,7 +4,6 @@
 import os
 import pytest
 from unittest.mock import MagicMock, patch
-import pytest_asyncio
 
 from ccmemories.application.exceptions import (
     ConfigurationError,
@@ -63,7 +62,11 @@ class TestServerInitializationErrors:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_init_with_memory_config_error(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        set_env_vars,
     ):
         """Test server initialization handles Memory.from_config errors."""
         # Configure CachedEmbeddings mock to return embedder mock
@@ -93,7 +96,12 @@ class TestAddToolErrorHandling:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     async def test_add_memory_storage_failure(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test add tool handles memory storage failures."""
         # Configure CachedEmbeddings mock
@@ -121,7 +129,12 @@ class TestAddToolErrorHandling:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     async def test_add_validation_error_with_non_string(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test add tool validation error with non-string message."""
         # Configure CachedEmbeddings mock
@@ -146,7 +159,12 @@ class TestAddToolErrorHandling:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     async def test_add_validation_error_with_empty_string(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test add tool validation error with empty string."""
         # Configure CachedEmbeddings mock
@@ -176,7 +194,12 @@ class TestGetAllToolErrorHandling:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     async def test_get_all_memory_retrieval_failure(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test get_all tool handles retrieval failures."""
         # Configure CachedEmbeddings mock
@@ -209,7 +232,12 @@ class TestSearchToolErrorHandling:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     async def test_search_memory_failure(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test search tool handles search failures."""
         # Configure CachedEmbeddings mock
@@ -242,7 +270,12 @@ class TestRemoveToolErrorHandling:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     async def test_remove_with_empty_list(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test remove tool with empty list (no-op)."""
         # Configure CachedEmbeddings mock
@@ -268,7 +301,12 @@ class TestRemoveToolErrorHandling:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     async def test_remove_memory_delete_failure(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test remove tool handles delete failures."""
         # Configure CachedEmbeddings mock
@@ -298,7 +336,12 @@ class TestRemoveToolErrorHandling:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     async def test_remove_message_not_found(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test remove tool when message is not found."""
         # Configure CachedEmbeddings mock
@@ -331,7 +374,12 @@ class TestRunMethodCoverage:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_http_transport(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test run() method with HTTP transport."""
         # Configure CachedEmbeddings mock
@@ -359,7 +407,12 @@ class TestRunMethodCoverage:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_stdio_transport(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test run() method with stdio transport."""
         # Configure CachedEmbeddings mock
@@ -384,7 +437,12 @@ class TestRunMethodCoverage:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_sse_transport(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test run() method with SSE transport."""
         # Configure CachedEmbeddings mock
@@ -418,7 +476,12 @@ class TestRunMethodCoverage:
     @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
     @patch("ccmemories.application.memory.manager.USearchEngine")
     def test_run_method_with_custom_config(
-        self, mock_cached_embedder_class, mock_usearch_engine_class, mock_embeddings, mock_usearch_engine, set_env_vars
+        self,
+        mock_cached_embedder_class,
+        mock_usearch_engine_class,
+        mock_embeddings,
+        mock_usearch_engine,
+        set_env_vars,
     ):
         """Test run() method with custom configuration."""
         # Configure CachedEmbeddings mock

@@ -1,6 +1,5 @@
 """Tests for MCP server tools: add, get_all, search, remove."""
 # mypy: disable-error-code="misc,var-annotated"
-# ty: ignore[call-non-callable]  # Test pattern: assign None, loop to find func, call
 # Tests are async because tool handlers are async functions
 
 from unittest.mock import MagicMock, patch

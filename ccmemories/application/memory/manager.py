@@ -291,7 +291,10 @@ class MemoryManager:
         if should_init_reranker:
             self.logger.info(
                 "Starting eager reranker initialization...",
-                extra={"project_id": self.project_id, "reranker_engine": self.config.reranker_engine},
+                extra={
+                    "project_id": self.project_id,
+                    "reranker_engine": self.config.reranker_engine,
+                },
             )
             reranker = self.get_reranker()
             if reranker is not None:
@@ -363,13 +366,19 @@ class MemoryManager:
             RuntimeError: If reranker_engine is 'cross_encoder' but initialization fails.
         """
         # Fast path: already initialized or not configured
-        if self._cross_encoder_reranker is not None or self.config.reranker_engine != "cross_encoder":
+        if (
+            self._cross_encoder_reranker is not None
+            or self.config.reranker_engine != "cross_encoder"
+        ):
             return self._cross_encoder_reranker
 
         # Slow path: need to initialize with lock
         with self._reranker_lock:
             # Double-check after acquiring lock
-            if self._cross_encoder_reranker is not None or self.config.reranker_engine != "cross_encoder":
+            if (
+                self._cross_encoder_reranker is not None
+                or self.config.reranker_engine != "cross_encoder"
+            ):
                 return self._cross_encoder_reranker
 
             # Initialize CrossEncoder reranker

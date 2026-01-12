@@ -206,7 +206,7 @@ class TestUSearchEngineSearch:
             # Results should be (message, score, created_at) tuples
             assert all(
                 isinstance(r, tuple) and len(r) == 3
-                for r in results  # type: ignore[misc]
+                for r in results
             )
         finally:
             engine.close()

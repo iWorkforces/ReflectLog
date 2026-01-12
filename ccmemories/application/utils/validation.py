@@ -1,10 +1,10 @@
 """Message validation utilities for CCMemoriesMCP Server."""
 
-from typing import Optional
+from typing import Any, Optional
 
 
 def validate_messages(
-    messages: list[str], min_length: int, max_length: int
+    messages: list[Any], min_length: int, max_length: int
 ) -> tuple[bool, Optional[str]]:
     """Validate message list for add/remove operations.
 

@@ -458,9 +458,13 @@ class SearchPipeline:
         reranker_type, reranker = self._get_reranker()
 
         if reranker_type == "llm":
-            return await self._rerank_llm(context, results, timestamp_map, step_num, reranker)
+            return await self._rerank_llm(
+                context, results, timestamp_map, step_num, reranker
+            )
         elif reranker_type == "cross_encoder":
-            return await self._rerank_cross_encoder(context, results, step_num, reranker)
+            return await self._rerank_cross_encoder(
+                context, results, step_num, reranker
+            )
         else:
             # No reranking configured
             return results
@@ -471,7 +475,7 @@ class SearchPipeline:
         results: List[Tuple[str, float]],
         timestamp_map: Dict[str, str],
         step_num: int,
-        llm_reranker = None,  # Optional parameter to use provided reranker
+        llm_reranker=None,  # Optional parameter to use provided reranker
     ) -> List[Tuple[str, float]]:
         """Rerank using LLM."""
         # Use provided reranker or fetch via _get_reranker
@@ -517,7 +521,7 @@ class SearchPipeline:
         context: SearchContext,
         results: List[Tuple[str, float]],
         step_num: int,
-        cross_encoder_reranker = None,  # Optional parameter to use provided reranker
+        cross_encoder_reranker=None,  # Optional parameter to use provided reranker
     ) -> List[Tuple[str, float]]:
         """Rerank using CrossEncoder."""
         # Use provided reranker or fetch via _get_reranker
@@ -539,9 +543,7 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        results = await cross_encoder_reranker.rerank_async(
-            context.query, results
-        )
+        results = await cross_encoder_reranker.rerank_async(context.query, results)
 
         rerank_duration = (time.time() - rerank_start) * 1000
 
