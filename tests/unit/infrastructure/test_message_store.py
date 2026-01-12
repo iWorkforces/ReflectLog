@@ -1,4 +1,4 @@
-"""Unit tests for MessageStore libSQL storage."""
+"""Unit tests for MessageStore SQLite storage."""
 
 import os
 import tempfile

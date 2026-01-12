@@ -1,11 +1,10 @@
-"""libSQL-backed message storage for USearch engine.
+"""SQLite-backed message storage for USearch engine.
 
 This module provides persistent message text storage separate from the
 USearch vector index. Messages are stored with their project_id for filtering
 and the SQLite row ID is used as the USearch key.
 
-Uses libSQL (a high-performance SQLite fork) for improved concurrent write
-performance via MVCC.
+Uses SQLite with WAL mode for improved concurrent write performance via MVCC.
 """
 
 import os
@@ -13,7 +12,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Optional
 
-import libsql
+import sqlite3
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from ccmemories.application.exceptions import StorageError
@@ -62,12 +61,12 @@ class ArchivedMessageRecord:
 
 
 class MessageStore(BaseModel):
-    """libSQL-backed message storage for USearch engine.
+    """SQLite-backed message storage for USearch engine.
 
-    Provides CRUD operations for message text storage, using libSQL's
+    Provides CRUD operations for message text storage, using SQLite's
     auto-increment ID as the key for USearch vector index.
 
-    Uses libSQL (SQLite fork) with WAL mode for better concurrent performance
+    Uses SQLite with WAL mode for better concurrent performance
     via MVCC (Multi-Version Concurrency Control).
 
     Example:
@@ -86,7 +85,7 @@ class MessageStore(BaseModel):
     logger: Any = None
     timeout: float = 30.0  # Database busy timeout in seconds
 
-    _conn: Optional[libsql.Connection] = PrivateAttr(default=None)
+    _conn: Optional[sqlite3.Connection] = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def __init__(self, db_path: str, logger: Any = None, **kwargs: Any) -> None:
@@ -100,11 +99,11 @@ class MessageStore(BaseModel):
         super().__init__(db_path=db_path, logger=logger, **kwargs)
 
     @property
-    def connection(self) -> libsql.Connection:
-        """Get libSQL connection (lazy initialization).
+    def connection(self) -> sqlite3.Connection:
+        """Get SQLite connection (lazy initialization).
 
         Returns:
-            libSQL connection with WAL mode enabled and busy timeout.
+            SQLite connection with WAL mode enabled and busy timeout.
         """
         if self._conn is None:
             with self._init_lock:
@@ -114,7 +113,7 @@ class MessageStore(BaseModel):
                     if db_dir:
                         os.makedirs(db_dir, exist_ok=True)
 
-                    self._conn = libsql.connect(self.db_path)
+                    self._conn = sqlite3.connect(self.db_path)
                     self._conn.execute("PRAGMA journal_mode=WAL")
                     self._conn.execute("PRAGMA synchronous=NORMAL")
                     # Set busy timeout to handle concurrent access gracefully
@@ -216,9 +215,9 @@ class MessageStore(BaseModel):
                 )
             return row_id
 
-        except (libsql.Error, ValueError) as e:
+        except (sqlite3.Error, ValueError) as e:
             # Check for unique constraint violation (duplicate message)
-            # Note: libsql raises ValueError for constraint violations
+            # Note: sqlite3 raises ValueError for constraint violations
             error_str = str(e).lower()
             if "unique constraint" in error_str or "constraint failed" in error_str:
                 if self.logger:
@@ -267,7 +266,7 @@ class MessageStore(BaseModel):
                 created_at=row[3] if row[3] else "",
             )
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get message",
@@ -315,7 +314,7 @@ class MessageStore(BaseModel):
                 for row in rows
             }
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get messages batch",
@@ -347,7 +346,7 @@ class MessageStore(BaseModel):
 
             return [row[0] for row in rows]
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get all messages",
@@ -389,7 +388,7 @@ class MessageStore(BaseModel):
 
             return deleted
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to delete message",
@@ -438,7 +437,7 @@ class MessageStore(BaseModel):
 
             return deleted_count
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to delete messages batch",
@@ -470,7 +469,7 @@ class MessageStore(BaseModel):
             exists = cursor.fetchone() is not None
             return exists
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to check message existence",
@@ -502,7 +501,7 @@ class MessageStore(BaseModel):
             row = cursor.fetchone()
             return row[0] if row else None
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get message ID",
@@ -562,7 +561,7 @@ class MessageStore(BaseModel):
                 )
             return archive_id
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to archive message",
@@ -616,7 +615,7 @@ class MessageStore(BaseModel):
                 for row in rows
             ]
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to get archived messages",
@@ -685,7 +684,7 @@ class MessageStore(BaseModel):
                 )
             return new_id
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to restore from archive",
@@ -733,7 +732,7 @@ class MessageStore(BaseModel):
                 )
             return deleted_count
 
-        except libsql.Error as e:
+        except sqlite3.Error as e:
             if self.logger:
                 self.logger.error(
                     "Failed to cleanup expired archive",
