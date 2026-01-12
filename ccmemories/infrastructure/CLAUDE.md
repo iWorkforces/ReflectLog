@@ -11,18 +11,18 @@ infrastructure/
 ├── cross_encoder_reranker.py # CrossEncoderReranker for local reranking
 ├── llm_provider_base.py     # BaseOpenAIProvider for OpenAI-compatible providers
 ├── llm_reranker.py          # LLMReranker for AI relevance scoring
-├── message_store.py         # MessageStore libSQL storage (for USearch)
+├── message_store.py         # MessageStore SQLite storage (for USearch)
 ├── qwen3_embedding.py       # LangchainQwenEmbeddings implementation
 ├── smart_replacer.py        # SmartReplacer for LLM-based memory replacement
 ├── tantivy_engine.py        # TantivyEngine full-text search wrapper (with soft-delete)
-└── usearch_engine.py        # USearchEngine vector search wrapper (USearch/libSQL)
+└── usearch_engine.py        # USearchEngine vector search wrapper (USearch/SQLite)
 ```
 
 ## Purpose
 
 The `infrastructure/` module provides:
 - External service integrations (embedding providers, search engines)
-- Semantic vector search via **USearch/libSQL** (`USearchEngine`): HNSW-based search with libSQL message storage
+- Semantic vector search via **USearch/SQLite** (`USearchEngine`): HNSW-based search with SQLite message storage
 - Full-text search (Tantivy)
 - Async operation support via `anyio`
 - HTTP/2 performance optimizations
@@ -44,7 +44,7 @@ from ccmemories.infrastructure import (
 
     # Search engines
     MessageRecord,                  # Message record dataclass for MessageStore
-    MessageStore,                   # libSQL message storage (for USearch)
+    MessageStore,                   # SQLite message storage (for USearch)
     TantivyConfig,                  # Tantivy configuration dataclass (includes soft-delete options)
     TantivyEngine,                  # Full-text search engine with soft-delete support
     USearchConfig,                  # USearch engine configuration dataclass
@@ -235,10 +235,10 @@ class MyRerankerProvider(BaseOpenAIProvider):
 
 ### Overview
 
-Primary semantic search engine using [USearch](https://github.com/unum-cloud/usearch) for HNSW vector similarity search and libSQL for message text storage:
+Primary semantic search engine using [USearch](https://github.com/unum-cloud/usearch) for HNSW vector similarity search and SQLite for message text storage:
 - Clean infrastructure-layer abstraction implementing `ISemanticSearchEngine`
 - Persistent USearch index storage on disk
-- libSQL-based message text storage with WAL mode and MVCC
+- SQLite-based message text storage with WAL mode and MVCC
 - Thread-safe lazy initialization
 - Vector similarity search with cosine distance
 - Compatible with any `langchain_core.embeddings.Embeddings` provider
@@ -251,7 +251,7 @@ Primary semantic search engine using [USearch](https://github.com/unum-cloud/use
 class USearchConfig:
     project_id: str           # Unique project identifier for filtering
     index_path: str           # Path to the USearch index file (.usearch)
-    db_path: str              # Path to the libSQL message database
+    db_path: str              # Path to the SQLite message database
     embedding_dims: int       # Embedding vector dimensions
     metric: str = "cos"       # Distance metric (cos, l2, ip)
     connectivity: int = 16    # HNSW M parameter
@@ -264,7 +264,7 @@ class USearchConfig:
 config = USearchConfig.from_app_config(app_config)
 ```
 
-This factory method creates a `USearchConfig` from the application's `Config` object, extracting all necessary fields and constructing paths for both USearch index and libSQL database.
+This factory method creates a `USearchConfig` from the application's `Config` object, extracting all necessary fields and constructing paths for both USearch index and SQLite database.
 
 ### Class Definition
 
@@ -321,7 +321,7 @@ messages = engine.get_all(project_id="my-project")
 **Returns**: List of message strings (no scores).
 
 #### `delete(memory_id: str) -> None`
-Delete a message by its libSQL row ID:
+Delete a message by its SQLite row ID:
 ```python
 engine.delete(memory_id="123")
 ```
@@ -343,12 +343,12 @@ engine.ensure_initialized()  # Useful before parallel operations
 #### `close() -> None`
 Close resources and cleanup:
 ```python
-engine.close()  # Closes libSQL connection
+engine.close()  # Closes SQLite connection
 ```
 
 ### Lazy Initialization
 
-Both USearch index and libSQL MessageStore are lazily initialized on first access:
+Both USearch index and SQLite MessageStore are lazily initialized on first access:
 
 ```python
 @property
@@ -372,15 +372,15 @@ def index(self) -> Index:
 
 ### Message Storage
 
-USearch stores only vector embeddings (keys → vectors). Message text is stored separately in libSQL via `MessageStore`:
+USearch stores only vector embeddings (keys → vectors). Message text is stored separately in SQLite via `MessageStore`:
 
 ```python
-# Insert: get libSQL ID, use as USearch key
+# Insert: get SQLite ID, use as USearch key
 msg_id = self.message_store.insert(project_id, message)
 vector = self.embedder.embed_query(message)
 self.index.add(msg_id, vector)
 
-# Search: find USearch keys, look up messages in libSQL
+# Search: find USearch keys, look up messages in SQLite
 matches = self.index.search(query_vector, limit)
 for match in matches:
     record = self.message_store.get(match.key)
@@ -457,7 +457,7 @@ self._semantic_engine = USearchEngine(
 
 **Why USearchEngine?**
 
-1. **Lightweight**: Minimal dependencies (usearch, libsql)
+1. **Lightweight**: Minimal dependencies (usearch, sqlite3)
 2. **Fast startup**: Simple initialization with lazy loading
 3. **Predictable behavior**: No LLM inference side effects
 4. **Testing friendly**: Easier to mock with simple embedder
@@ -466,8 +466,8 @@ self._semantic_engine = USearchEngine(
 
 **Storage Architecture:**
 - **USearch Index**: Stores only (key → vector) mappings in `.usearch` file
-- **libSQL Database**: Stores (id, project_id, message) records with WAL mode and MVCC
-- **Key relationship**: libSQL auto-increment ID = USearch key
+- **SQLite Database**: Stores (id, project_id, message) records with WAL mode and MVCC
+- **Key relationship**: SQLite auto-increment ID = USearch key
 
 ---
 
@@ -1184,13 +1184,13 @@ The LLM evaluates these scenarios:
 
 ### Overview
 
-libSQL-backed message text storage for use with USearchEngine:
+SQLite-backed message text storage for use with USearchEngine:
 - Persistent storage with WAL mode and MVCC for concurrent writes
 - Auto-increment IDs serve as USearch keys
 - Thread-safe with lazy connection initialization
 - User/project-level filtering via `project_id` column
 
-**Why libSQL?** libSQL is a high-performance SQLite fork by Turso with MVCC (Multi-Version Concurrency Control) support, eliminating SQLite's single-writer bottleneck while maintaining full SQL compatibility.
+**Why SQLite?** SQLite with WAL mode provides MVCC (Multi-Version Concurrency Control) support, eliminating the single-writer bottleneck while maintaining full SQL compatibility.
 
 ### Configuration
 
@@ -1211,7 +1211,7 @@ store = MessageStore(
 | `delete(msg_id) -> bool` | Delete by ID, return success |
 | `exists(project_id, message) -> bool` | Check for duplicates |
 | `get_id_by_message(project_id, message) -> int \| None` | Find ID by content |
-| `close()` | Close libSQL connection |
+| `close()` | Close SQLite connection |
 | `ensure_initialized()` | Force connection creation |
 
 ### Usage Example
@@ -2032,7 +2032,7 @@ class TestLangchainQwenEmbeddings:
 - `pydantic`: Model validation
 - `tantivy`: Full-text search library
 - `usearch`: HNSW vector search library
-- `libsql`: High-performance SQLite fork with MVCC
+- `sqlite3`: Python standard library database
 
 ---
 
@@ -2051,9 +2051,9 @@ class TestLangchainQwenEmbeddings:
 ## Architecture Notes
 
 This infrastructure provides:
-- **USearchEngine**: Primary semantic search engine with USearch HNSW + libSQL storage
+- **USearchEngine**: Primary semantic search engine with USearch HNSW + SQLite storage
 - **TantivyEngine**: Full-text search with persistence, project filtering, and O(1) soft-delete
-- **MessageStore**: libSQL-backed text storage for USearch vectors (MVCC for concurrent writes)
+- **MessageStore**: SQLite-backed text storage for USearch vectors (MVCC for concurrent writes)
 - **CachedEmbeddings**: LRU caching wrapper for query embeddings (reduces API calls)
 - **LangchainQwenEmbeddings**: Async-capable embedding client with retry logic and batching
 - **LLMReranker**: AI-powered relevance scoring with parallel execution and graceful fallback
@@ -2094,30 +2094,23 @@ All engines follow Pydantic BaseModel patterns for consistency and type safety. 
 
 <!-- This section is auto-generated by claude-mem. Edit content outside the tags. -->
 
-### Dec 21, 2025
-
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #196 | 4:26 PM | 🔵 | Current libsql Integration Points Identified | ~283 |
-| #190 | 4:20 PM | 🔵 | libSQL MessageStore Implementation Analyzed | ~485 |
-| #187 | 4:19 PM | 🔵 | Comprehensive libsql integration architecture mapped | ~629 |
-| #186 | " | 🔵 | libsql usage patterns identified throughout message_store | ~307 |
-| #185 | " | 🔵 | libsql message store implementation analyzed | ~332 |
-| #181 | 4:16 PM | 🔵 | USearchEngine Integration with MessageStore and libsql | ~517 |
-| #180 | " | 🔵 | Current MessageStore Implementation Using libsql | ~561 |
-
 ### Dec 26, 2025
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #645 | 12:42 PM | 🔵 | Infrastructure Layer Architecture | ~338 |
-| #420 | 11:10 AM | 🔴 | Smart Replacer Import Errors | ~182 |
-| #407 | 11:08 AM | 🔴 | Removed Unused pydantic.BaseModel Import | ~136 |
-| #406 | " | 🔴 | Linting Issue Detected in LLM Provider Base | ~158 |
+| #444 | 11:23 AM | 🟣 | Added BaseOpenAIProvider Documentation | ~340 |
+| #443 | 11:22 AM | ✅ | Updated Exports Documentation | ~239 |
 
 ### Jan 8, 2026
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #759 | 10:36 AM | 🔵 | Deprecated Code Removal Task | ~151 |
+| #676 | 8:48 AM | 🔵 | Infrastructure Module Structure Identified | ~173 |
+| #672 | " | 🔵 | Current USearchEngine Implementation Analyzed | ~235 |
+
+### Jan 12, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #796 | 10:12 PM | 🔵 | MessageStore依赖关系分析 | ~132 |
 </claude-mem-context>

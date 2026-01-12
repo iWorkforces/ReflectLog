@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CCMemoriesMCP is an MCP (Model Context Protocol) server that provides persistent, project-based memory storage for intelligent AI Agents with **hybrid semantic + full-text search**. It combines:
 
-- **Semantic vector search**: USearch HNSW algorithm with libSQL text storage
+- **Semantic vector search**: USearch HNSW algorithm with SQLite text storage
 - **Full-text search**: Tantivy (stemmed + exact matching via `en_stem` tokenizer)
 - **RRF fusion**: Reciprocal Rank Fusion via ranx library for hybrid ranking
 - **Pluggable reranking**: LLM-based or local cross-encoder relevance scoring (default: LLM)
@@ -136,7 +136,7 @@ CCMemoriesMCP/
 │       ├── cross_encoder_reranker.py # CrossEncoderReranker (FlagReranker-based local reranking)
 │       ├── llm_provider_base.py # BaseOpenAIProvider (shared LLM provider base class)
 │       ├── llm_reranker.py    # LLMReranker (AI relevance scoring)
-│       ├── message_store.py   # MessageStore (libSQL for USearch)
+│       ├── message_store.py   # MessageStore (SQLite for USearch)
 │       ├── qwen3_embedding.py # LangchainQwenEmbeddings
 │       ├── smart_replacer.py  # SmartReplacer (LLM-based memory replacement detection)
 │       ├── tantivy_engine.py  # TantivyEngine (full-text search wrapper)
@@ -149,7 +149,6 @@ CCMemoriesMCP/
 │   └── integration/          # Integration tests (real engines)
 ├── stubs/                    # Type stubs for ty
 │   ├── fastmcp/              # FastMCP library stubs
-│   ├── libsql/               # libSQL library stubs
 │   ├── numba/                # Numba JIT compiler stubs
 │   ├── ranx/                 # RRF ranking library stubs
 │   └── usearch/              # USearch library stubs
@@ -169,13 +168,13 @@ CCMemoriesMCP/
 **Infrastructure Layer**:
 
 - Uses dedicated engine classes from `ccmemories/infrastructure/`
-- **USearchEngine**: Semantic vector search with USearch (HNSW) + libSQL text storage
+- **USearchEngine**: Semantic vector search with USearch (HNSW) + SQLite text storage
 - **TantivyEngine**: Full-text search with English stemming
 
 **Semantic Search** (USearchEngine):
 
 - Infrastructure: `ccmemories.infrastructure.USearchEngine`
-- Backend: USearch HNSW index + libSQL `MessageStore` for text
+- Backend: USearch HNSW index + SQLite `MessageStore` for text
 - Embeddings: `LangchainQwenEmbeddings` (Qwen 4096 dims) or OpenAI compatible
 - Storage: `indexes/{project_id}/usearch/` (vectors.usearch + messages.db)
 - **Source of truth** for `get_all()` - returns all stored messages
@@ -325,7 +324,7 @@ Five modular FastMCP tools backed by `MemoryManager`:
    - Dual engine storage: USearchEngine (vectors) + TantivyEngine (full-text)
 
 2. **get_all() -> list[str]**: Retrieve all messages
-   - **Source of truth**: USearchEngine (libSQL MessageStore)
+   - **Source of truth**: USearchEngine (SQLite MessageStore)
    - Returns defensive copy (new list each time)
    - Empty list `[]` if no messages stored
 
@@ -401,11 +400,10 @@ uv run pytest tests/unit/infrastructure/  # Infrastructure unit tests only
 
 **Runtime** (from pyproject.toml):
 
-- Python ≥3.13
+- Python ≥3.14.2
 - fastmcp ≥2.13.2
 - tantivy ≥0.25.1
 - usearch ≥2.21.0
-- libsql ≥0.1.11
 - openai ≥2.9.0
 - langchain ≥1.1.3
 - langchain-openai ≥1.1.1

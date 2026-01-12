@@ -14,8 +14,6 @@ stubs/
 │   └── utilities/         # Utility stubs
 │       ├── __init__.pyi
 │       └── logging.pyi
-├── libsql/                # Type stubs for libsql library
-│   └── __init__.pyi
 ├── numba/                 # Type stubs for numba JIT compiler
 │   ├── __init__.pyi
 │   └── core/
@@ -55,7 +53,6 @@ Without stubs, ty would report errors about missing type information for externa
 - `usearch`: HNSW vector search library
 - `ranx`: RRF fusion ranking library
 - `fastmcp`: MCP server framework
-- `libsql`: High-performance SQLite fork with MVCC
 - `numba`: JIT compiler for Python numerical code
 - `sentence_transformers`: Sentence embeddings and cross-encoders
 - `tantivy`: Full-text search engine (Python bindings)
@@ -163,23 +160,6 @@ The `stubs/fastmcp/` directory provides types for the MCP server framework:
 1. **FastMCP class**: MCP server implementation
 2. **Client class**: MCP client for testing
 3. **Logging utilities**: Structured logging helpers
-
-## libsql Stubs
-
-The `stubs/libsql/__init__.pyi` file provides types for the libSQL database client:
-
-1. **connect function**: Create database connection
-   - `connect(path: str) -> Connection`: Connect to local database
-
-2. **Connection class**: Database connection
-   - `execute(sql: str, params: tuple) -> Cursor`: Execute SQL
-   - `commit()`: Commit transaction
-   - `close()`: Close connection
-
-3. **Cursor class**: Query result cursor
-   - `fetchone() -> tuple | None`: Fetch single row
-   - `fetchall() -> list[tuple]`: Fetch all rows
-   - `lastrowid: int`: Last inserted row ID
 
 ## numba Stubs
 

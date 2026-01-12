@@ -366,4 +366,10 @@ When testing tools:
 | #749 | 8:57 AM | 🔵 | Memory Manager Initialization Critical Path | ~65 |
 | #746 | " | 🔵 | Server Architecture Analysis | ~158 |
 | #722 | 8:52 AM | ✅ | Tool Count Updated | ~212 |
+
+### Jan 12, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #803 | 10:14 PM | 🔵 | 项目依赖范围最终确认 | ~128 |
 </claude-mem-context>
