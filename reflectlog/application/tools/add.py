@@ -7,6 +7,8 @@ from ..exceptions import StorageError
 from ..utils import truncate_message, validate_messages
 from .base import BaseTool
 
+LOG_MESSAGE_PREVIEW_LIMIT = 20
+
 
 class AddTool(BaseTool):
     """Tool for adding messages to memory storage."""
@@ -90,8 +92,9 @@ class AddTool(BaseTool):
                 },
             )
 
-            # Log message previews
-            for idx, message in enumerate(messages, 1):
+            # Log message previews (throttled for large batches)
+            log_limit = min(len(messages), LOG_MESSAGE_PREVIEW_LIMIT)
+            for idx, message in enumerate(messages[:log_limit], 1):
                 preview = truncate_message(message, max_length=80)
                 self.logger.info(
                     f"  Message {idx}/{len(messages)} ({len(message):,} chars): {preview}",
@@ -99,6 +102,15 @@ class AddTool(BaseTool):
                         "tool": "add",
                         "message_index": idx,
                         "message_length": len(message),
+                    },
+                )
+            if len(messages) > log_limit:
+                self.logger.info(
+                    f"  ... {len(messages) - log_limit} more message(s) omitted from logs",
+                    extra={
+                        "tool": "add",
+                        "omitted_count": len(messages) - log_limit,
+                        "message_count": len(messages),
                     },
                 )
 

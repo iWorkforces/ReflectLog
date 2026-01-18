@@ -60,14 +60,23 @@ class BaseOpenAIProvider:
             timeout: HTTP request timeout in seconds.
             logger: Optional structured logger.
         """
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            http_client=DefaultAioHttpClient(),
-            timeout=timeout,
-        )
+        self._client: AsyncOpenAI | None = None
+        self._api_key = api_key
+        self._base_url = base_url
+        self._timeout = timeout
         self._model = model
         self._logger = logger
+
+    def _get_client(self) -> AsyncOpenAI:
+        """Get or initialize the AsyncOpenAI client."""
+        if self._client is None:
+            self._client = AsyncOpenAI(
+                api_key=self._api_key,
+                base_url=self._base_url,
+                http_client=DefaultAioHttpClient(),
+                timeout=self._timeout,
+            )
+        return self._client
 
     async def _call_llm_with_structured_output(
         self,
@@ -104,7 +113,8 @@ class BaseOpenAIProvider:
 
         try:
             # Try structured outputs first (guaranteed schema compliance)
-            response = await self._client.chat.completions.create(
+            client = self._get_client()
+            response = await client.chat.completions.create(
                 model=self._model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
@@ -121,7 +131,8 @@ class BaseOpenAIProvider:
                         "falling back to json_object",
                         extra={"model": self._model, "error": str(e)},
                     )
-                response = await self._client.chat.completions.create(
+                client = self._get_client()
+                response = await client.chat.completions.create(
                     model=self._model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0,

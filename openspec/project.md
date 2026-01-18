@@ -11,7 +11,7 @@ Data persists across restarts in `indexes/{project_id}/usearch/` and `indexes/{p
 
 ## Tech Stack
 
-- **Language**: Python ≥3.13
+- **Language**: Python ≥3.14
 - **Package Manager**: uv
 - **MCP Framework**: fastmcp ≥2.13.1
 - **Semantic Memory**: usearch ≥2.17.0

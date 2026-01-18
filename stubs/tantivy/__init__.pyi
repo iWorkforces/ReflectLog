@@ -100,6 +100,10 @@ class Searcher:
         """Retrieve a document by address."""
         ...
 
+    def num_docs(self) -> int:
+        """Return the total number of documents in the index."""
+        ...
+
 class IndexWriter:
     """A Tantivy index writer for adding/deleting documents."""
 

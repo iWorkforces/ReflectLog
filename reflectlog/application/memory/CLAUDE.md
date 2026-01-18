@@ -181,7 +181,7 @@ This architecture provides:
 - Extracts the 4-step search logic from manager.py into a focused, testable module
 - Implements: Parallel Search → RRF Fusion/Concatenation → Fusion Filter → Reranking
 - Classes: `SearchContext` (input parameters), `SearchResult` (output with metadata)
-- Functions: `calculate_adaptive_overfetch()`, `escape_tantivy_query()`
+- Functions: `calculate_adaptive_overfetch()` (see `match_utils.escape_tantivy_query()` for query escaping)
 
 **AddPipeline** (`add_phases.py`):
 - Extracts the 3-phase add logic from manager.py into modular phase classes

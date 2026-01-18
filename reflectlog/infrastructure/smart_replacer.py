@@ -133,12 +133,11 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
     Retry logic is handled by the retry decorator.
     """
 
-    @async_retry_with_backoff(max_retries=3, base_delay=1.0)
-    async def _detect_replacement_with_retry(
+    async def _detect_replacement_once(
         self,
         prompt: str,
     ) -> Tuple[bool, float, str]:
-        """Call LLM with structured output and retry on transient errors.
+        """Call LLM with structured output once.
 
         Args:
             prompt: The formatted replacement detection prompt.
@@ -147,7 +146,7 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
             Tuple of (should_replace, confidence, reason).
 
         Raises:
-            Exception: If LLM call fails (retried by decorator).
+            Exception: If LLM call fails.
         """
         result = await self._call_llm_with_structured_output(
             prompt=prompt,
@@ -182,7 +181,10 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
             Tuple of (should_replace, confidence, reason).
         """
         try:
-            return await self._detect_replacement_with_retry(prompt)
+            retry = async_retry_with_backoff(
+                max_retries=max_retries, base_delay=retry_delay
+            )
+            return await retry(self._detect_replacement_once)(prompt)
 
         except Exception as e:
             if self._logger:

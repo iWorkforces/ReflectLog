@@ -31,8 +31,8 @@ from .search_strategies import (
     SearchContext,
     SearchPipeline,
     calculate_adaptive_overfetch,
-    escape_tantivy_query,
 )
+from .match_utils import has_exact_match
 from .add_phases import (
     AddPipeline,
     AddResult,
@@ -46,6 +46,7 @@ from .add_phases import (
 MIN_OVERFETCH_LIMIT = 20  # Minimum docs to fetch for better fusion quality
 TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize to 0-1
 LOG_QUERY_TRUNCATE_LENGTH = 100  # Max query length in log messages
+LOG_ADD_MESSAGE_PREVIEW_LIMIT = 20  # Max per-message logs during add operations
 
 
 class MemoryManager:
@@ -86,6 +87,8 @@ class MemoryManager:
                 else config.embedding_dims,
                 "api_key": config.openrouter_api_key.get_secret_value(),
                 "openai_base_url": config.openrouter_base_url,
+                "batch_size": config.embedding_batch_size,
+                "max_concurrent_batches": config.embedding_max_concurrent_batches,
             }
         )
 
@@ -509,31 +512,93 @@ class MemoryManager:
         """
         with self._lock:
             stored_count = 0
+            messages_to_add: List[str] = []
+            seen_messages: set[str] = set()
+
+            log_limit = min(len(messages), LOG_ADD_MESSAGE_PREVIEW_LIMIT)
             for idx, message in enumerate(messages, 1):
-                preview = truncate_message(message, max_length=60)
-                self.logger.info(
-                    f"  ⏳ [{idx}/{len(messages)}] Processing: {preview}",
-                    extra={
-                        "message_index": idx,
-                        "total_messages": len(messages),
-                        "message_length": len(message),
-                    },
-                )
-                if self._add_message(message):
-                    stored_count += 1
+                if idx <= log_limit:
+                    preview = truncate_message(message, max_length=60)
                     self.logger.info(
-                        "    Stored in USearch (semantic) + Tantivy (full-text)",
+                        f"  ⏳ [{idx}/{len(messages)}] Processing: {preview}",
                         extra={
                             "message_index": idx,
-                            "engines": ["usearch", "tantivy"]
-                            if self._tantivy_engine
-                            else ["usearch"],
+                            "total_messages": len(messages),
+                            "message_length": len(message),
                         },
                     )
-                else:
+                if message in seen_messages:
+                    if idx <= log_limit:
+                        self.logger.info(
+                            "    Skipped (duplicate in batch)",
+                            extra={"message_index": idx, "reason": "batch_duplicate"},
+                        )
+                    continue
+                seen_messages.add(message)
+
+                if self.config.deduplicate_messages and self._has_exact_match(message):
+                    if idx <= log_limit:
+                        self.logger.info(
+                            "    Skipped (duplicate detected)",
+                            extra={"message_index": idx, "reason": "duplicate"},
+                        )
+                    continue
+
+                messages_to_add.append(message)
+            if len(messages) > log_limit:
+                self.logger.info(
+                    f"  ... {len(messages) - log_limit} more message(s) omitted from logs",
+                    extra={
+                        "omitted_count": len(messages) - log_limit,
+                        "total_messages": len(messages),
+                    },
+                )
+
+            if messages_to_add:
+                inserted_messages = self._semantic_engine.add_batch(
+                    project_id=self.project_id,
+                    messages=messages_to_add,
+                    infer=self.config.enable_llm_infer,
+                )
+
+                if self._tantivy_engine is not None:
+                    for message in inserted_messages:
+                        self._tantivy_engine.add(self.project_id, message)
+
+                stored_count = len(inserted_messages)
+                inserted_set = set(inserted_messages)
+
+                stored_log_limit = min(
+                    len(messages_to_add), LOG_ADD_MESSAGE_PREVIEW_LIMIT
+                )
+                for idx, message in enumerate(messages_to_add, 1):
+                    if idx > stored_log_limit:
+                        break
+                    if message in inserted_set:
+                        self.logger.info(
+                            "    Stored in USearch (semantic) + Tantivy (full-text)",
+                            extra={
+                                "message_index": idx,
+                                "engines": ["usearch", "tantivy"]
+                                if self._tantivy_engine
+                                else ["usearch"],
+                            },
+                        )
+                    else:
+                        self.logger.warning(
+                            "    Skipped during batch insert",
+                            extra={
+                                "message_index": idx,
+                                "reason": "batch_insert_skipped",
+                            },
+                        )
+                if len(messages_to_add) > stored_log_limit:
                     self.logger.info(
-                        "    Skipped (duplicate detected)",
-                        extra={"message_index": idx, "reason": "duplicate"},
+                        f"  ... {len(messages_to_add) - stored_log_limit} more result(s) omitted from logs",
+                        extra={
+                            "omitted_count": len(messages_to_add) - stored_log_limit,
+                            "total_messages": len(messages_to_add),
+                        },
                     )
 
             # Commit Tantivy changes after batch
@@ -812,50 +877,13 @@ class MemoryManager:
         Sprint 2.1 Optimization: Fallback now uses get_id_by_message() for direct
         indexed database lookup instead of semantic search with embedding API call.
         """
-        # Fast path: Use Tantivy for exact match if hybrid search is enabled
-        if self._tantivy_engine is not None:
-            try:
-                # Use quoted exact phrase search with escaped query
-                escaped_query = escape_tantivy_query(message)
-                results = self._tantivy_engine.search(
-                    f'"{escaped_query}"',
-                    self.project_id,
-                    limit=5,  # Small limit since we only need to check existence
-                )
-                # Check for exact string match in results
-                has_match = any(msg == message for msg, _ in results)
-                if has_match:
-                    self.logger.debug(
-                        "Tantivy found exact duplicate",
-                        extra={"project_id": self.project_id},
-                    )
-                return has_match
-            except Exception as e:
-                self.logger.warning(
-                    "Tantivy duplicate check failed; falling back to database lookup",
-                    extra={"project_id": self.project_id, "error": str(e)},
-                )
-
-        # Optimized fallback: Direct database lookup (O(log n), no embedding API call)
-        # This avoids the 100-500ms embedding API overhead of semantic search
-        try:
-            msg_id = self._semantic_engine.get_id_by_message(self.project_id, message)
-            if msg_id is not None:
-                self.logger.debug(
-                    "Database lookup found exact duplicate",
-                    extra={"project_id": self.project_id, "msg_id": msg_id},
-                )
-                return True
-            return False
-        except Exception as e:
-            self.logger.warning(
-                "Duplicate detection failed; proceeding without deduplication",
-                extra={
-                    "project_id": self.project_id,
-                    "error": str(e),
-                },
-            )
-            return False
+        return has_exact_match(
+            semantic_engine=self._semantic_engine,
+            tantivy_engine=self._tantivy_engine,
+            project_id=self.project_id,
+            message=message,
+            logger=self.logger,
+        )
 
     def close(self) -> None:
         """Close all resources and persist data to disk (thread-safe).

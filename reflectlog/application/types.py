@@ -83,6 +83,27 @@ class ISemanticSearchConfig(Protocol):
     def qwen_embedding_dims(self) -> int: ...
 
 
+@runtime_checkable
+class Embeddings(Protocol):
+    """Interface for embedding providers used by semantic search engines."""
+
+    def embed_query(self, text: str) -> List[float]:
+        """Embed a single query string."""
+        ...
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed a batch of documents."""
+        ...
+
+    async def aembed_query(self, text: str) -> List[float]:
+        """Embed a single query string asynchronously."""
+        ...
+
+    async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed a batch of documents asynchronously."""
+        ...
+
+
 class ISemanticSearchEngine(Protocol):
     """Interface for semantic search engine operations.
 
@@ -122,6 +143,19 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If add operation fails.
+        """
+        ...
+
+    def add_batch(self, project_id: str, messages: List[str], infer: bool) -> List[str]:
+        """Add multiple messages to the semantic index in a single batch.
+
+        Args:
+            project_id: Project identifier for filtering.
+            messages: List of message texts to index.
+            infer: Whether to enable LLM-based message inference.
+
+        Returns:
+            List of messages successfully added (duplicates skipped).
         """
         ...
 
