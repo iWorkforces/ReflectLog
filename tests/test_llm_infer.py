@@ -29,7 +29,7 @@ async def test_with_infer_enabled():
 
     server = subprocess.Popen(
         [
-            "./start-ccmemories-mcp-server.sh",
+            "./start-reflectlog-mcp-server.sh",
             "--project_id",
             "TestLLMInfer",
             "--transport",
@@ -119,7 +119,7 @@ async def test_with_infer_disabled():
 
     server = subprocess.Popen(
         [
-            "./start-ccmemories-mcp-server.sh",
+            "./start-reflectlog-mcp-server.sh",
             "--project_id",
             "TestNoInfer",
             "--transport",

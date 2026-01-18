@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from langchain_core.embeddings import Embeddings
 
-from ccmemories.infrastructure.usearch_engine import USearchConfig, USearchEngine
+from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 
 class MockEmbedder(Embeddings):
@@ -206,7 +206,7 @@ class TestUSearchEngineSearch:
             # Results should be (message, score, created_at) tuples
             assert all(
                 isinstance(r, tuple) and len(r) == 3
-                for r in results  # type: ignore[misc]
+                for r in results
             )
         finally:
             engine.close()

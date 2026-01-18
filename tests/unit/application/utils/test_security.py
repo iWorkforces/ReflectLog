@@ -1,9 +1,9 @@
-"""Unit tests for ccmemories.application.utils.security module."""
+"""Unit tests for reflectlog.application.utils.security module."""
 
 import pytest
 
-from ccmemories.application.exceptions import ValidationError
-from ccmemories.application.utils.security import (
+from reflectlog.application.exceptions import ValidationError
+from reflectlog.application.utils.security import (
     SecretString,
     redact_dict_secrets,
     sanitize_for_logging,

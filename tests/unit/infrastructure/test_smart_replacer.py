@@ -6,7 +6,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
-from ccmemories.infrastructure.smart_replacer import (
+from reflectlog.infrastructure.smart_replacer import (
     AnthropicReplacementProvider,
     OpenAIReplacementProvider,
     ReplacementDecision,
@@ -185,7 +185,7 @@ class TestCreateReplacementProvider:
         )
 
         with patch(
-            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
+            "reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_async_client:
             provider = create_replacement_provider(config)
 
@@ -206,7 +206,7 @@ class TestCreateReplacementProvider:
             provider="anthropic",
         )
 
-        with patch("ccmemories.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.init_credentials") as mock_init:
             provider = create_replacement_provider(config)
 
             assert isinstance(provider, AnthropicReplacementProvider)
@@ -231,7 +231,7 @@ class TestOpenAIReplacementProvider:
     @pytest.fixture
     def mock_provider(self) -> OpenAIReplacementProvider:
         """Create a mocked OpenAI provider instance."""
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             provider = OpenAIReplacementProvider(
                 api_key="test-key",
                 base_url="https://openrouter.ai/api/v1",
@@ -398,7 +398,7 @@ class TestAnthropicReplacementProvider:
 
     def test_extract_json_pure_json(self) -> None:
         """Test extracting pure JSON from response."""
-        with patch("ccmemories.utility.init_credentials"):
+        with patch("reflectlog.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         result = provider._extract_json_from_response(
@@ -411,7 +411,7 @@ class TestAnthropicReplacementProvider:
 
     def test_extract_json_markdown_code_block(self) -> None:
         """Test extracting JSON from markdown code block."""
-        with patch("ccmemories.utility.init_credentials"):
+        with patch("reflectlog.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         response = """Here's the analysis:
@@ -429,7 +429,7 @@ That's my assessment."""
 
     def test_extract_json_embedded_json(self) -> None:
         """Test extracting embedded JSON from text."""
-        with patch("ccmemories.utility.init_credentials"):
+        with patch("reflectlog.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         response = 'The result is {"should_replace": false, "confidence": 0.3, "reason": "Different topics"} done.'
@@ -441,7 +441,7 @@ That's my assessment."""
 
     def test_extract_json_fails_raises_error(self) -> None:
         """Test that extraction failure raises ValueError."""
-        with patch("ccmemories.utility.init_credentials"):
+        with patch("reflectlog.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         with pytest.raises(ValueError, match="Could not extract JSON"):
@@ -450,10 +450,10 @@ That's my assessment."""
     @pytest.mark.asyncio
     async def test_detect_replacement_success(self) -> None:
         """Test successful replacement detection with Anthropic."""
-        with patch("ccmemories.utility.init_credentials"):
+        with patch("reflectlog.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch("ccmemories.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.generate_content") as mock_generate:
             mock_generate.return_value = json.dumps(
                 {
                     "should_replace": True,
@@ -480,10 +480,10 @@ That's my assessment."""
     @pytest.mark.asyncio
     async def test_detect_replacement_with_markdown_response(self) -> None:
         """Test replacement detection with markdown-wrapped response."""
-        with patch("ccmemories.utility.init_credentials"):
+        with patch("reflectlog.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch("ccmemories.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.generate_content") as mock_generate:
             mock_generate.return_value = """Analysis complete:
 
 ```json
@@ -502,10 +502,10 @@ That's my assessment."""
     @pytest.mark.asyncio
     async def test_all_retries_exhausted_returns_safe_defaults(self) -> None:
         """Test that exhausted retries return safe defaults."""
-        with patch("ccmemories.utility.init_credentials"):
+        with patch("reflectlog.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch("ccmemories.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.generate_content") as mock_generate:
             mock_generate.side_effect = Exception("API Error")
 
             mock_logger = MagicMock()
@@ -536,7 +536,7 @@ class TestSmartReplacerInitialization:
         )
 
         with patch(
-            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
+            "reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_async_client:
             replacer = SmartReplacer(config=config)
 
@@ -554,7 +554,7 @@ class TestSmartReplacerInitialization:
             provider="anthropic",
         )
 
-        with patch("ccmemories.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.init_credentials") as mock_init:
             replacer = SmartReplacer(config=config)
 
             mock_init.assert_called_once_with(verbose=False)
@@ -571,7 +571,7 @@ class TestSmartReplacerInitialization:
         )
 
         with patch(
-            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
+            "reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_async_client:
             replacer = SmartReplacer(config=config)
 
@@ -593,7 +593,7 @@ class TestCheckReplacement:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             replacer = SmartReplacer(config=config)
             return replacer
 
@@ -691,7 +691,7 @@ class TestCheckReplacement:
             enabled=False,
         )
 
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             replacer = SmartReplacer(config=config)
 
         should_replace, confidence, reason = await replacer.check_replacement(
@@ -756,7 +756,7 @@ class TestSmartReplacerIntegration:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             replacer = SmartReplacer(config=config, logger=MagicMock())
 
             mock_response = MagicMock()
@@ -795,10 +795,10 @@ class TestSmartReplacerIntegration:
             provider="anthropic",
         )
 
-        with patch("ccmemories.utility.init_credentials"):
+        with patch("reflectlog.utility.init_credentials"):
             replacer = SmartReplacer(config=config, logger=MagicMock())
 
-            with patch("ccmemories.utility.generate_content") as mock_generate:
+            with patch("reflectlog.utility.generate_content") as mock_generate:
                 mock_generate.return_value = json.dumps(
                     {
                         "should_replace": True,
@@ -827,7 +827,7 @@ class TestSmartReplacerIntegration:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             replacer = SmartReplacer(config=config, logger=MagicMock())
 
             mock_response = MagicMock()

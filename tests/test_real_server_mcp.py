@@ -178,7 +178,7 @@ This was a complete END-TO-END test with:
         traceback.print_exc()
         print("\nMake sure the server is running:")
         print(
-            "  MCP_TRANSPORT=http MCP_PORT=9103 ./start-ccmemories-mcp-server.sh --project_id CCMemoriesMCP"
+            "  MCP_TRANSPORT=http MCP_PORT=9103 ./start-reflectlog-mcp-server.sh --project_id ReflectLogMCP"
         )
         raise
 

@@ -1,24 +1,24 @@
 [project]
-name = "ccmemories"
-version = "0.1.3"
+name = "reflectlog"
+version = "0.1.4"
 description = "MCP Server For AI Agent Project-base Memories"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "CCWorkforce Engineers" }
 ]
-requires-python = ">=3.13.11"
+requires-python = ">=3.14.2"
 keywords = ["mcp", "claude-code", "semantic-memory"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Code Generators",
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
-    "fastmcp>=2.14.2",
+    "fastmcp>=2.14.3",
     "pydantic>=2.12.5",
     "fastapi[standard]>=0.128.0",
     "uvicorn[standard]>=0.40.0",
@@ -31,15 +31,15 @@ dependencies = [
     "uvloop>=0.22.1",
     "httptools>=0.7.1",
     "starlette>=0.50.0",
-    "langchain-core>=1.2.6",
-    "langchain>=1.2.2",
-    "openai>=2.14.0",
+    "langchain-core>=1.2.7",
+    "langchain>=1.2.6",
+    "openai>=2.15.0",
     "tiktoken>=0.12.0",
     "aiohttp>=3.13.3",
-    "aiodns>=3.6.1",
+    "aiodns>=4.0.0",
     "httpx-aiohttp>=0.1.12",
     "tantivy>=0.25.1",
-    "usearch>=2.21.0",
+    "usearch>=2.23.0",
     "numba>=0.63.1",
     "ranx>=0.3.21",
     "httpx[http2]>=0.28.1",
@@ -52,35 +52,34 @@ dependencies = [
     "hpack>=4.1.0",
     "sentence-transformers>=5.2.0",
     "flagembedding>=1.3.5",
-    "claude-agent-sdk>=0.1.19",
-    "libsql>=0.1.11",
+    "claude-agent-sdk>=0.1.20",
     "pydantic-core>=2.41.5",
 ]
 
 [project.urls]
-Homepage = "https://github.com/CCWorkforce/CCMemoriesMCP"
-Repository = "https://github.com/CCWorkforce/CCMemoriesMCP"
-Issues = "https://github.com/CCWorkforce/CCMemoriesMCP/issues"
-Documentation = "https://github.com/CCWorkforce/CCMemoriesMCP#readme"
+Homepage = "https://github.com/CCWorkforce/ReflectLogMCP"
+Repository = "https://github.com/CCWorkforce/ReflectLogMCP"
+Issues = "https://github.com/CCWorkforce/ReflectLogMCP/issues"
+Documentation = "https://github.com/CCWorkforce/ReflectLogMCP#readme"
 
 [project.scripts]
-ccmemories = "ccmemories.server:main"
+reflectlog = "reflectlog.server:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ccmemories"]
+packages = ["reflectlog"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.14.10",
+    "ruff>=0.14.13",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.8.0",
-    "ty>=0.0.10",
+    "ty>=0.0.12",
 ]
 
 [tool.pytest.ini_options]
@@ -110,7 +109,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["ccmemories"]
+source = ["reflectlog"]
 omit = [
     "*/tests/*",
     "*/test_*.py",
@@ -135,13 +134,13 @@ exclude_lines = [
 
 [tool.ty.environment]
 # Target Python version
-python-version = "3.13"
+python-version = "3.14"
 # Custom stub paths (equivalent to mypy_path)
 extra-paths = ["stubs"]
 
 [tool.ty.src]
 # Include project source and tests
-include = ["ccmemories", "tests"]
+include = ["reflectlog", "tests"]
 # Exclude common non-source directories
 exclude = [
     "indexes/",

@@ -149,7 +149,7 @@ Key Insights:
         print("\nDetailed error:")
         traceback.print_exc()
         print("\nMake sure the server is running:")
-        print("  ./start-ccmemories-mcp-server.sh --project_id CCMemoriesMCP")
+        print("  ./start-reflectlog-mcp-server.sh --project_id ReflectLogMCP")
         raise
 
 

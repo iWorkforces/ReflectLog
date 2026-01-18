@@ -1,7 +1,7 @@
 # Project Context
 
 ## Purpose
-CCMemoriesMCP is an MCP (Model Context Protocol) server that provides persistent, project-based memory storage for Claude Code and other AI agents. It combines:
+ReflectLogMCP is an MCP (Model Context Protocol) server that provides persistent, project-based memory storage for Claude Code and other AI agents. It combines:
 - **Semantic search** via USearch HNSW vector embeddings (OpenRouter embeddings)
 - **Full-text search** via Tantivy (stemmed + exact matching)
 - **Hybrid ranking** via RRF (Reciprocal Rank Fusion)

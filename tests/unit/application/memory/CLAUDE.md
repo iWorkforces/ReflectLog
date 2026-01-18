@@ -13,7 +13,7 @@ memory/
 
 ## Purpose
 
-Tests for the `ccmemories/application/memory/` module components:
+Tests for the `reflectlog/application/memory/` module components:
 
 - **Score normalization** (`reranking/`): Tests for `normalize_reranker_scores()` and `apply_threshold_with_safety_net()`
 

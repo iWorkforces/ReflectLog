@@ -1,1 +1,1 @@
-"""Unit tests for ccmemories.application.utils package."""
+"""Unit tests for reflectlog.application.utils package."""

@@ -13,10 +13,10 @@ import numpy as np
 import pytest
 from langchain_core.embeddings import Embeddings
 
-from ccmemories.application.config import Config
-from ccmemories.application.memory import MemoryManager
-from ccmemories.application.utils import StructuredLogger
-from ccmemories.application.utils.security import SecretString
+from reflectlog.application.config import Config
+from reflectlog.application.memory import MemoryManager
+from reflectlog.application.utils import StructuredLogger
+from reflectlog.application.utils.security import SecretString
 
 
 class MockEmbedder(Embeddings):
@@ -74,7 +74,7 @@ def create_memory_manager(config: Config) -> tuple[MemoryManager, MagicMock]:
     mock_logger = MagicMock(spec=StructuredLogger)
 
     with patch(
-        "ccmemories.application.memory.manager.LangchainQwenEmbeddings",
+        "reflectlog.application.memory.manager.LangchainQwenEmbeddings",
         return_value=mock_embedder,
     ):
         manager = MemoryManager(config, mock_logger)
@@ -85,7 +85,7 @@ def cleanup_manager(manager: MemoryManager) -> None:
     """Clean up MemoryManager resources and delete index files."""
     # Close resources first
     if hasattr(manager._semantic_engine, "close"):
-        manager._semantic_engine.close()  # type: ignore[union-attr]
+        manager._semantic_engine.close()
 
     # Clean up USearch index directory (created at cwd/indexes/{project_id}/usearch/)
     project_id = manager.config.project_id.lower()
@@ -367,7 +367,7 @@ class TestUSearchPersistence:
 
             # First manager instance - add data
             with patch(
-                "ccmemories.application.memory.manager.LangchainQwenEmbeddings",
+                "reflectlog.application.memory.manager.LangchainQwenEmbeddings",
                 return_value=mock_embedder,
             ):
                 manager1 = MemoryManager(config, mock_logger)
@@ -377,11 +377,11 @@ class TestUSearchPersistence:
                 # Commit to ensure persistence
                 manager1._semantic_engine.commit()
                 if hasattr(manager1._semantic_engine, "close"):
-                    manager1._semantic_engine.close()  # type: ignore[union-attr]
+                    manager1._semantic_engine.close()
 
             # Second manager instance - should load existing data
             with patch(
-                "ccmemories.application.memory.manager.LangchainQwenEmbeddings",
+                "reflectlog.application.memory.manager.LangchainQwenEmbeddings",
                 return_value=mock_embedder,
             ):
                 manager2 = MemoryManager(config, mock_logger)

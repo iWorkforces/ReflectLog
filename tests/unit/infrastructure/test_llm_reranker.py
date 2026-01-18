@@ -5,7 +5,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from ccmemories.infrastructure.llm_reranker import (
+from reflectlog.infrastructure.llm_reranker import (
     AnthropicRerankerProvider,
     LLMReranker,
     LLMRerankerConfig,
@@ -126,7 +126,7 @@ class TestCreateRerankerProvider:
         )
 
         with patch(
-            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
+            "reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_client_class:
             provider = create_reranker_provider(config)
 
@@ -142,7 +142,7 @@ class TestCreateRerankerProvider:
             provider="anthropic",
         )
 
-        with patch("ccmemories.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.init_credentials") as mock_init:
             provider = create_reranker_provider(config)
 
             assert isinstance(provider, AnthropicRerankerProvider)
@@ -168,7 +168,7 @@ class TestOpenAIRerankerProvider:
     def mock_provider(self) -> OpenAIRerankerProvider:
         """Create a mocked OpenAIRerankerProvider instance."""
         with patch(
-            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
+            "reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
@@ -401,7 +401,7 @@ class TestAnthropicRerankerProvider:
     @pytest.fixture
     def mock_provider(self) -> AnthropicRerankerProvider:
         """Create a mocked AnthropicRerankerProvider instance."""
-        with patch("ccmemories.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.init_credentials") as mock_init:
             provider = AnthropicRerankerProvider(
                 model="claude-3-sonnet",
                 logger=MagicMock(),
@@ -450,7 +450,7 @@ class TestAnthropicRerankerProvider:
         self, mock_provider: AnthropicRerankerProvider
     ) -> None:
         """Test successful document scoring with Anthropic."""
-        with patch("ccmemories.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.generate_content") as mock_generate:
             mock_generate.return_value = '{"score": 0.85}'
 
             doc, score = await mock_provider.score_document(
@@ -468,7 +468,7 @@ class TestAnthropicRerankerProvider:
         self, mock_provider: AnthropicRerankerProvider
     ) -> None:
         """Test that errors use fallback score."""
-        with patch("ccmemories.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.generate_content") as mock_generate:
             mock_generate.side_effect = Exception("API Error")
 
             doc, score = await mock_provider.score_document(
@@ -494,7 +494,7 @@ class TestLLMRerankerInitialization:
         )
 
         with patch(
-            "ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"
+            "reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"
         ) as mock_async_client:
             reranker = LLMReranker(config=config)
 
@@ -516,7 +516,7 @@ class TestLLMRerankerInitialization:
             provider="anthropic",
         )
 
-        with patch("ccmemories.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.init_credentials") as mock_init:
             reranker = LLMReranker(config=config)
 
             mock_init.assert_called_once_with(verbose=False)
@@ -537,7 +537,7 @@ class TestScoreSingle:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config)
             return reranker
 
@@ -590,7 +590,7 @@ class TestRerank:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config)
             return reranker
 
@@ -764,7 +764,7 @@ class TestLLMRerankerIntegration:
             provider="openai",
         )
 
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config, logger=MagicMock())
 
             # Mock the provider's score_document method
@@ -802,19 +802,19 @@ class TestFormatMemoryAge:
 
     def test_format_memory_age_none_input(self) -> None:
         """Test that None input returns None."""
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         assert format_memory_age(None) is None
 
     def test_format_memory_age_empty_string(self) -> None:
         """Test that empty string returns None."""
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         assert format_memory_age("") is None
 
     def test_format_memory_age_invalid_format(self) -> None:
         """Test that invalid timestamp format returns None."""
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         assert format_memory_age("not-a-timestamp") is None
 
@@ -822,7 +822,7 @@ class TestFormatMemoryAge:
         """Test formatting for very recent timestamps."""
         from datetime import datetime, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp from 30 seconds ago
         now = datetime.now(timezone.utc)
@@ -835,7 +835,7 @@ class TestFormatMemoryAge:
         """Test formatting for minutes ago."""
         from datetime import datetime, timedelta, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp from 5 minutes ago
         past = datetime.now(timezone.utc) - timedelta(minutes=5)
@@ -848,7 +848,7 @@ class TestFormatMemoryAge:
         """Test formatting for 1 minute ago."""
         from datetime import datetime, timedelta, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp from 1 minute ago
         past = datetime.now(timezone.utc) - timedelta(minutes=1, seconds=30)
@@ -861,7 +861,7 @@ class TestFormatMemoryAge:
         """Test formatting for hours ago."""
         from datetime import datetime, timedelta, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp from 3 hours ago
         past = datetime.now(timezone.utc) - timedelta(hours=3)
@@ -874,7 +874,7 @@ class TestFormatMemoryAge:
         """Test formatting for 1 hour ago."""
         from datetime import datetime, timedelta, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp from 1 hour ago
         past = datetime.now(timezone.utc) - timedelta(hours=1, minutes=30)
@@ -887,7 +887,7 @@ class TestFormatMemoryAge:
         """Test formatting for days ago."""
         from datetime import datetime, timedelta, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp from 5 days ago
         past = datetime.now(timezone.utc) - timedelta(days=5)
@@ -900,7 +900,7 @@ class TestFormatMemoryAge:
         """Test formatting for weeks ago."""
         from datetime import datetime, timedelta, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp from 2 weeks ago
         past = datetime.now(timezone.utc) - timedelta(weeks=2)
@@ -913,7 +913,7 @@ class TestFormatMemoryAge:
         """Test formatting for months ago."""
         from datetime import datetime, timedelta, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp from 45 days ago (about 1.5 months)
         past = datetime.now(timezone.utc) - timedelta(days=45)
@@ -926,7 +926,7 @@ class TestFormatMemoryAge:
         """Test formatting with Z suffix timezone."""
         from datetime import datetime, timedelta, timezone
 
-        from ccmemories.infrastructure.llm_reranker import format_memory_age
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
 
         # Create a timestamp with Z suffix
         past = datetime.now(timezone.utc) - timedelta(hours=2)
@@ -952,7 +952,7 @@ class TestRerankWithTimestampMap:
             provider="openai",
             enable_recency_boost=True,
         )
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config, logger=MagicMock())
             return reranker
 
@@ -1020,7 +1020,7 @@ class TestRerankWithTimestampMap:
             enable_recency_boost=False,  # Disabled
         )
 
-        with patch("ccmemories.infrastructure.llm_provider_base.AsyncOpenAI"):
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             reranker = LLMReranker(config=config, logger=MagicMock())
 
             captured_ages: list[str | None] = []

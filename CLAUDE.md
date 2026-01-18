@@ -23,9 +23,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CCMemoriesMCP is an MCP (Model Context Protocol) server that provides persistent, project-based memory storage for intelligent AI Agents with **hybrid semantic + full-text search**. It combines:
+ReflectLogMCP is an MCP (Model Context Protocol) server that provides persistent, project-based memory storage for intelligent AI Agents with **hybrid semantic + full-text search**. It combines:
 
-- **Semantic vector search**: USearch HNSW algorithm with libSQL text storage
+- **Semantic vector search**: USearch HNSW algorithm with SQLite text storage
 - **Full-text search**: Tantivy (stemmed + exact matching via `en_stem` tokenizer)
 - **RRF fusion**: Reciprocal Rank Fusion via ranx library for hybrid ranking
 - **Pluggable reranking**: LLM-based or local cross-encoder relevance scoring (default: LLM)
@@ -47,14 +47,14 @@ uv run python <script>     # Run a Python script
 
 **Command-line tool** (after installation):
 ```bash
-ccmemories                              # stdio transport (default)
-ccmemories --transport http --port 9103 # HTTP transport
+reflectlog                              # stdio transport (default)
+reflectlog --transport http --port 9103 # HTTP transport
 ```
 
 **Direct execution** (development):
 ```bash
-uv run python ccmemories/server.py --transport http
-./start-ccmemories-mcp-server.sh --project_id my-project
+uv run python reflectlog/server.py --transport http
+./start-reflectlog-mcp-server.sh --project_id my-project
 ```
 
 ### Code Quality
@@ -100,8 +100,8 @@ Transport can be configured via:
 ### Project Structure
 
 ```
-CCMemoriesMCP/
-├── ccmemories/              # Main package
+ReflectLogMCP/
+├── reflectlog/              # Main package
 │   ├── __init__.py           # Package metadata (__version__ = "0.1.2")
 │   ├── server.py             # CLI entry point
 │   ├── application/          # Application layer
@@ -136,7 +136,7 @@ CCMemoriesMCP/
 │       ├── cross_encoder_reranker.py # CrossEncoderReranker (FlagReranker-based local reranking)
 │       ├── llm_provider_base.py # BaseOpenAIProvider (shared LLM provider base class)
 │       ├── llm_reranker.py    # LLMReranker (AI relevance scoring)
-│       ├── message_store.py   # MessageStore (libSQL for USearch)
+│       ├── message_store.py   # MessageStore (SQLite for USearch)
 │       ├── qwen3_embedding.py # LangchainQwenEmbeddings
 │       ├── smart_replacer.py  # SmartReplacer (LLM-based memory replacement detection)
 │       ├── tantivy_engine.py  # TantivyEngine (full-text search wrapper)
@@ -149,7 +149,6 @@ CCMemoriesMCP/
 │   └── integration/          # Integration tests (real engines)
 ├── stubs/                    # Type stubs for ty
 │   ├── fastmcp/              # FastMCP library stubs
-│   ├── libsql/               # libSQL library stubs
 │   ├── numba/                # Numba JIT compiler stubs
 │   ├── ranx/                 # RRF ranking library stubs
 │   └── usearch/              # USearch library stubs
@@ -164,18 +163,18 @@ CCMemoriesMCP/
 
 ### Hybrid Memory Storage (MemoryManager)
 
-**Core Engine**: `ccmemories/application/memory/manager.py`
+**Core Engine**: `reflectlog/application/memory/manager.py`
 
 **Infrastructure Layer**:
 
-- Uses dedicated engine classes from `ccmemories/infrastructure/`
-- **USearchEngine**: Semantic vector search with USearch (HNSW) + libSQL text storage
+- Uses dedicated engine classes from `reflectlog/infrastructure/`
+- **USearchEngine**: Semantic vector search with USearch (HNSW) + SQLite text storage
 - **TantivyEngine**: Full-text search with English stemming
 
 **Semantic Search** (USearchEngine):
 
-- Infrastructure: `ccmemories.infrastructure.USearchEngine`
-- Backend: USearch HNSW index + libSQL `MessageStore` for text
+- Infrastructure: `reflectlog.infrastructure.USearchEngine`
+- Backend: USearch HNSW index + SQLite `MessageStore` for text
 - Embeddings: `LangchainQwenEmbeddings` (Qwen 4096 dims) or OpenAI compatible
 - Storage: `indexes/{project_id}/usearch/` (vectors.usearch + messages.db)
 - **Source of truth** for `get_all()` - returns all stored messages
@@ -186,7 +185,7 @@ CCMemoriesMCP/
 
 **Full-text Search** (TantivyEngine):
 
-- Infrastructure: `ccmemories.infrastructure.TantivyEngine`
+- Infrastructure: `reflectlog.infrastructure.TantivyEngine`
 - Schema: `project_id` (raw tokenizer), `message` (en_stem tokenizer)
 - Storage: `indexes/{project_id}/tantivy/`
 - Optimized for exact phrase matching and keyword search
@@ -195,14 +194,14 @@ CCMemoriesMCP/
 
 - USearchEngine + TantivyEngine → **RanxFusionEngine** → optional **Reranker**
 - RRF formula: `RRF_score(doc) = sum(1 / (k + rank(doc)))`
-- Implementation: `ccmemories/application/memory/fusion/ranx_fusion.py`
+- Implementation: `reflectlog/application/memory/fusion/ranx_fusion.py`
 - Configurable `k` parameter via `FUSION_RRF_K` (default: 60)
 
 **Pluggable Reranking** (LLMReranker or CrossEncoderReranker):
 
 - Controlled by `RERANKER_ENGINE` env var: `llm`, `cross_encoder`, or `none`
 - **LLMReranker** (`reranker_engine=llm`, default):
-  - Infrastructure: `ccmemories.infrastructure.LLMReranker`
+  - Infrastructure: `reflectlog.infrastructure.LLMReranker`
   - Purpose: AI-powered relevance scoring via OpenRouter API
   - Uses `SCORING_PROMPT` or `SCORING_PROMPT_WITH_AGE` from `config/prompts.py` (based on `ENABLE_RECENCY_BOOST`)
   - **Provider abstraction**: Uses `IRerankerProvider` protocol with OpenAI or Anthropic backends (via `LLM_PROVIDER`)
@@ -211,7 +210,7 @@ CCMemoriesMCP/
   - HTTP/2 enabled via AsyncOpenAI with `DefaultAioHttpClient`
   - Graceful fallback: returns fusion score if LLM call fails
 - **CrossEncoderReranker** (`reranker_engine=cross_encoder`):
-  - Infrastructure: `ccmemories.infrastructure.CrossEncoderReranker`
+  - Infrastructure: `reflectlog.infrastructure.CrossEncoderReranker`
   - Purpose: Fast local reranking using FlagEmbedding's FlagReranker
   - Default model: `BAAI/bge-reranker-v2-m3` (multilingual, high quality)
   - **Recency decay support**: Accepts `timestamp_map` for temporal-aware scoring
@@ -233,7 +232,7 @@ Both rerankers support temporal context for handling contradictory memories (e.g
 
 **Smart Memory Replacement** (SmartReplacer):
 
-- Infrastructure: `ccmemories.infrastructure.SmartReplacer`
+- Infrastructure: `reflectlog.infrastructure.SmartReplacer`
 - Purpose: Detect when a new memory semantically replaces an existing one
 - Example: "I like cats" → "I don't like cats anymore, I like dogs"
 - Uses LLM (via `LLM_MODEL`) with structured JSON output for replacement detection
@@ -325,7 +324,7 @@ Five modular FastMCP tools backed by `MemoryManager`:
    - Dual engine storage: USearchEngine (vectors) + TantivyEngine (full-text)
 
 2. **get_all() -> list[str]**: Retrieve all messages
-   - **Source of truth**: USearchEngine (libSQL MessageStore)
+   - **Source of truth**: USearchEngine (SQLite MessageStore)
    - Returns defensive copy (new list each time)
    - Empty list `[]` if no messages stored
 
@@ -355,7 +354,7 @@ Five modular FastMCP tools backed by `MemoryManager`:
 
 ### Entry Point Flow
 
-1. `ccmemories/server.py::main()`: CLI parsing, env setup
+1. `reflectlog/server.py::main()`: CLI parsing, env setup
 2. `FastMCPServer.__init__()`: Init `MemoryManager`, register tools
 3. `FastMCPServer._initialize_tools()`: Create tool instances
 4. `FastMCPServer._register_tools()`: Register with FastMCP
@@ -401,11 +400,10 @@ uv run pytest tests/unit/infrastructure/  # Infrastructure unit tests only
 
 **Runtime** (from pyproject.toml):
 
-- Python ≥3.13
+- Python ≥3.14.2
 - fastmcp ≥2.13.2
 - tantivy ≥0.25.1
 - usearch ≥2.21.0
-- libsql ≥0.1.11
 - openai ≥2.9.0
 - langchain ≥1.1.3
 - langchain-openai ≥1.1.1
@@ -419,7 +417,7 @@ uv run pytest tests/unit/infrastructure/  # Infrastructure unit tests only
 
 ### Adding a New MCP Tool
 
-1. Create `ccmemories/application/tools/new_tool.py`:
+1. Create `reflectlog/application/tools/new_tool.py`:
 
    ```python
    from .base import BaseTool
@@ -592,7 +590,7 @@ EMBEDDING_MODEL=qwen/qwen3-embedding-8b
 QWEN_EMBEDDING_DIMS=4096
 ```
 
-The default uses `LangchainQwenEmbeddings` from `ccmemories/infrastructure/qwen3_embedding.py`.
+The default uses `LangchainQwenEmbeddings` from `reflectlog/infrastructure/qwen3_embedding.py`.
 
 ## Environment Setup
 

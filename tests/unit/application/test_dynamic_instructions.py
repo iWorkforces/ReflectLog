@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ccmemories.application.config.prompts import (
+from reflectlog.application.config.prompts import (
     INSTRUCTIONS_HEADER,
     TOOL_ORDER,
     build_instructions,
@@ -97,7 +97,7 @@ class TestBuildInstructions:
         """Header should always be included."""
         result = build_instructions([("add", "    • add snippet")])
 
-        assert "CCMemoriesMCP Server" in result
+        assert "ReflectLogMCP Server" in result
         assert "Available Tools:" in result
 
     def test_tool_order_constant(self):
@@ -111,7 +111,7 @@ class TestToolInstructionSnippets:
 
     def test_add_tool_snippet_format(self, mock_memory_class, set_env_vars):
         """Test AddTool provides properly formatted snippet."""
-        from ccmemories.application.tools import AddTool
+        from reflectlog.application.tools import AddTool
 
         mock_memory_manager = MagicMock()
         mock_logger = MagicMock()
@@ -128,7 +128,7 @@ class TestToolInstructionSnippets:
 
     def test_get_all_tool_snippet_format(self, mock_memory_class, set_env_vars):
         """Test GetAllTool provides properly formatted snippet."""
-        from ccmemories.application.tools import GetAllTool
+        from reflectlog.application.tools import GetAllTool
 
         mock_memory_manager = MagicMock()
         mock_logger = MagicMock()
@@ -143,7 +143,7 @@ class TestToolInstructionSnippets:
 
     def test_search_tool_snippet_format(self, mock_memory_class, set_env_vars):
         """Test SearchTool provides properly formatted snippet."""
-        from ccmemories.application.tools import SearchTool
+        from reflectlog.application.tools import SearchTool
 
         mock_memory_manager = MagicMock()
         mock_logger = MagicMock()
@@ -158,7 +158,7 @@ class TestToolInstructionSnippets:
 
     def test_remove_tool_snippet_format(self, mock_memory_class, set_env_vars):
         """Test RemoveTool provides properly formatted snippet."""
-        from ccmemories.application.tools import RemoveTool
+        from reflectlog.application.tools import RemoveTool
 
         mock_memory_manager = MagicMock()
         mock_logger = MagicMock()
@@ -197,18 +197,18 @@ class TestDynamicInstructionsIntegration:
 
         with (
             patch(
-                "ccmemories.application.mcp_server.FastMCP",
+                "reflectlog.application.mcp_server.FastMCP",
                 side_effect=capture_fastmcp,
             ),
-            patch("ccmemories.application.mcp_server.MemoryManager"),
+            patch("reflectlog.application.mcp_server.MemoryManager"),
             patch(
-                "ccmemories.application.mcp_server.create_logger"
+                "reflectlog.application.mcp_server.create_logger"
             ) as mock_create_logger,
         ):
             mock_create_logger.return_value = MagicMock()
 
-            from ccmemories.application.config import Config
-            from ccmemories.application.mcp_server import FastMCPServer
+            from reflectlog.application.config import Config
+            from reflectlog.application.mcp_server import FastMCPServer
 
             server_config = Config.from_environment()
             server = FastMCPServer(server_config=server_config)
@@ -263,7 +263,7 @@ class TestDynamicInstructionsIntegration:
             monkeypatch, "add"
         )
 
-        assert "CCMemoriesMCP Server" in instructions
+        assert "ReflectLogMCP Server" in instructions
         assert "hybrid search" in instructions
 
 
@@ -273,7 +273,7 @@ class TestBackwardCompatibility:
 
     def test_mcp_instructions_constant_includes_all_tools(self):
         """MCP_INSTRUCTIONS constant should include all tools (backward compatibility)."""
-        from ccmemories.application.config.prompts import MCP_INSTRUCTIONS
+        from reflectlog.application.config.prompts import MCP_INSTRUCTIONS
 
         assert "add(messages: list[str])" in MCP_INSTRUCTIONS
         assert "get_all() -> list[str]" in MCP_INSTRUCTIONS
@@ -282,7 +282,7 @@ class TestBackwardCompatibility:
 
     def test_mcp_instructions_has_header(self):
         """MCP_INSTRUCTIONS should have proper header."""
-        from ccmemories.application.config.prompts import MCP_INSTRUCTIONS
+        from reflectlog.application.config.prompts import MCP_INSTRUCTIONS
 
-        assert "CCMemoriesMCP Server" in MCP_INSTRUCTIONS
+        assert "ReflectLogMCP Server" in MCP_INSTRUCTIONS
         assert "Available Tools:" in MCP_INSTRUCTIONS

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# CCMemoriesMCP - Pre-Push Git Hook
+# ReflectLogMCP - Pre-Push Git Hook
 # This hook runs type checking and linting before allowing a push
 
 # Colors for output

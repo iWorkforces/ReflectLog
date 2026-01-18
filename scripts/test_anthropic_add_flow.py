@@ -58,9 +58,9 @@ async def main():
     print()
 
     # Import after setting env vars
-    from ccmemories.application.config import Config
-    from ccmemories.application.memory import MemoryManager
-    from ccmemories.application.utils.logging import create_logger
+    from reflectlog.application.config import Config
+    from reflectlog.application.memory import MemoryManager
+    from reflectlog.application.utils.logging import create_logger
 
     # Create config and logger
     config = Config.from_environment()

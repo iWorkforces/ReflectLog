@@ -1,6 +1,6 @@
 # Git Hooks
 
-This directory contains git hooks for the CCMemoriesMCP project.
+This directory contains git hooks for the ReflectLogMCP project.
 
 ## Available Hooks
 

@@ -33,7 +33,7 @@ async def main():
     print()
 
     # Import after setting env vars
-    from ccmemories.infrastructure.smart_replacer import (
+    from reflectlog.infrastructure.smart_replacer import (
         SmartReplacer,
         SmartReplacerConfig,
     )

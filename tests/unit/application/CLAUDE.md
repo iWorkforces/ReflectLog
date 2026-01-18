@@ -24,7 +24,7 @@ application/
 
 ## Purpose
 
-Test the `ccmemories/application/memory/` module in isolation:
+Test the `reflectlog/application/memory/` module in isolation:
 - `MemoryManager` class (hybrid USearch + Tantivy)
 - Dual-engine storage logic
 - RRF fusion algorithm
@@ -36,17 +36,17 @@ Test the `ccmemories/application/memory/` module in isolation:
 
 | File | Tests For |
 |------|-----------|
-| `test_mcp_server.py` | `ccmemories/application/mcp_server.py` |
-| `test_memory_manager.py` | `ccmemories/application/memory/manager.py` |
-| `test_ranx_fusion.py` | `ccmemories/application/memory/fusion/ranx_fusion.py` |
-| `test_validation.py` | `ccmemories/application/utils/validation.py` |
-| `test_logging_utils.py` | `ccmemories/application/utils/logging.py` |
+| `test_mcp_server.py` | `reflectlog/application/mcp_server.py` |
+| `test_memory_manager.py` | `reflectlog/application/memory/manager.py` |
+| `test_ranx_fusion.py` | `reflectlog/application/memory/fusion/ranx_fusion.py` |
+| `test_validation.py` | `reflectlog/application/utils/validation.py` |
+| `test_logging_utils.py` | `reflectlog/application/utils/logging.py` |
 | `test_dynamic_instructions.py` | Dynamic instruction generation logic |
 | `test_mcp_server_error_handling.py` | Server error handling paths |
-| `memory/reranking/test_normalization.py` | `ccmemories/application/memory/reranking/normalization.py` |
-| `utils/test_logging.py` | `ccmemories/application/utils/logging.py` |
-| `utils/test_numba_utils.py` | `ccmemories/application/utils/numba_utils.py` |
-| `utils/test_security.py` | `ccmemories/application/utils/security.py` |
+| `memory/reranking/test_normalization.py` | `reflectlog/application/memory/reranking/normalization.py` |
+| `utils/test_logging.py` | `reflectlog/application/utils/logging.py` |
+| `utils/test_numba_utils.py` | `reflectlog/application/utils/numba_utils.py` |
+| `utils/test_security.py` | `reflectlog/application/utils/security.py` |
 
 ## Test Organization for `test_memory_manager.py`
 
@@ -164,7 +164,7 @@ def test_initialization_without_project_id_raises_runtime_error():
 def test_usearch_engine_is_initialized():
     """Verify USearchEngine is properly initialized."""
     with patch.dict(os.environ, {'PROJECT_ID': 'test'}):
-        with patch('ccmemories.application.memory.manager.USearchEngine') as mock:
+        with patch('reflectlog.application.memory.manager.USearchEngine') as mock:
             MemoryManager(config, logger)
 
             # Verify USearchEngine was initialized
@@ -176,7 +176,7 @@ def test_usearch_engine_is_initialized():
 def test_tantivy_index_creation():
     """Verify Tantivy index is created with correct schema."""
     with patch.dict(os.environ, {'PROJECT_ID': 'test'}):
-        with patch('ccmemories.application.memory.manager.tantivy') as mock_tantivy:
+        with patch('reflectlog.application.memory.manager.tantivy') as mock_tantivy:
             mock_index = Mock()
             mock_tantivy.Index.return_value = mock_index
             mock_tantivy.Index.open.side_effect = Exception("No existing index")
@@ -340,7 +340,7 @@ def test_search_with_empty_query_raises_validation_error():
 ```python
 def test_add_logs_with_structured_context():
     """add() should log with structured extra context."""
-    with patch('ccmemories.application.mcp_server.get_logger') as mock_logger_func:
+    with patch('reflectlog.application.mcp_server.get_logger') as mock_logger_func:
         mock_logger = Mock()
         mock_logger_func.return_value = mock_logger
 
@@ -365,7 +365,7 @@ def test_add_logs_with_structured_context():
 @pytest.fixture
 def mock_memory_manager():
     """Mock MemoryManager for all tests."""
-    with patch('ccmemories.application.memory.MemoryManager') as mock_class:
+    with patch('reflectlog.application.memory.MemoryManager') as mock_class:
         mock_instance = Mock()
         mock_class.return_value = mock_instance
         yield mock_instance
@@ -406,12 +406,12 @@ uv run pytest tests/unit/application/test_mcp_server.py::TestAddTool -v
 uv run pytest tests/unit/application/test_mcp_server.py::TestAddTool::test_add_empty_list -v
 
 # With coverage
-uv run pytest tests/unit/application/ --cov=ccmemories.application --cov-report=term-missing
+uv run pytest tests/unit/application/ --cov=reflectlog.application --cov-report=term-missing
 ```
 
 ## Coverage Goals
 
-Aim for **90%+ coverage** of `ccmemories/application/mcp_server.py`:
+Aim for **90%+ coverage** of `reflectlog/application/mcp_server.py`:
 - All `__init__` logic
 - All tool implementations
 - All validation paths
