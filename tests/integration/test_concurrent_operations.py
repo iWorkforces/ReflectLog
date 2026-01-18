@@ -10,10 +10,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ccmemories.application.config import Config
-from ccmemories.application.memory import MemoryManager
-from ccmemories.application.utils import StructuredLogger
-from ccmemories.application.utils.security import SecretString
+from reflectlog.application.config import Config
+from reflectlog.application.memory import MemoryManager
+from reflectlog.application.utils import StructuredLogger
+from reflectlog.application.utils.security import SecretString
 from langchain_core.embeddings import Embeddings
 
 import numpy as np
@@ -63,7 +63,7 @@ def create_memory_manager(config: Config) -> MemoryManager:
     from unittest.mock import patch
 
     with patch(
-        "ccmemories.application.memory.manager.LangchainQwenEmbeddings",
+        "reflectlog.application.memory.manager.LangchainQwenEmbeddings",
         return_value=mock_embedder,
     ):
         manager = MemoryManager(config, mock_logger)

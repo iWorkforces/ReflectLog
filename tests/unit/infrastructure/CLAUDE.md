@@ -17,7 +17,7 @@ infrastructure/
 
 ## Purpose
 
-Test the `ccmemories/infrastructure/` module in isolation:
+Test the `reflectlog/infrastructure/` module in isolation:
 - `CachedEmbeddings` class for LRU query embedding caching
 - `CrossEncoderReranker` class for local FlagReranker-based reranking
 - `SmartReplacer` class for LLM-based memory replacement detection
@@ -32,13 +32,13 @@ Test the `ccmemories/infrastructure/` module in isolation:
 
 | File | Tests For |
 |------|-----------|
-| `test_cross_encoder_reranker.py` | `ccmemories/infrastructure/cross_encoder_reranker.py` |
-| `test_llm_reranker.py` | `ccmemories/infrastructure/llm_reranker.py` |
-| `test_smart_replacer.py` | `ccmemories/infrastructure/smart_replacer.py` |
-| `test_usearch_engine.py` | `ccmemories/infrastructure/usearch_engine.py` |
-| `test_tantivy_engine.py` | `ccmemories/infrastructure/tantivy_engine.py` |
-| `test_message_store.py` | `ccmemories/infrastructure/message_store.py` |
-| `test_qwen3_embedding.py` | `ccmemories/infrastructure/qwen3_embedding.py` |
+| `test_cross_encoder_reranker.py` | `reflectlog/infrastructure/cross_encoder_reranker.py` |
+| `test_llm_reranker.py` | `reflectlog/infrastructure/llm_reranker.py` |
+| `test_smart_replacer.py` | `reflectlog/infrastructure/smart_replacer.py` |
+| `test_usearch_engine.py` | `reflectlog/infrastructure/usearch_engine.py` |
+| `test_tantivy_engine.py` | `reflectlog/infrastructure/tantivy_engine.py` |
+| `test_message_store.py` | `reflectlog/infrastructure/message_store.py` |
+| `test_qwen3_embedding.py` | `reflectlog/infrastructure/qwen3_embedding.py` |
 
 ## Test Scenarios
 
@@ -299,7 +299,7 @@ class TestQwenEmbeddingsGeneration:
 from unittest.mock import Mock, patch, AsyncMock
 
 # Mock FlagReranker for cross-encoder tests
-@patch('ccmemories.infrastructure.cross_encoder_reranker.FlagReranker')
+@patch('reflectlog.infrastructure.cross_encoder_reranker.FlagReranker')
 def test_cross_encoder_reranker(mock_flag_reranker_class):
     mock_model = Mock()
     mock_model.compute_score.return_value = [0.9, 0.7, 0.3]
@@ -307,35 +307,35 @@ def test_cross_encoder_reranker(mock_flag_reranker_class):
     # Test code
 
 # Mock USearch index
-@patch('ccmemories.infrastructure.usearch_engine.Index')
+@patch('reflectlog.infrastructure.usearch_engine.Index')
 def test_usearch_initialization(mock_index_class):
     mock_index = Mock()
     mock_index_class.return_value = mock_index
     # Test code
 
 # Mock Tantivy
-@patch('ccmemories.infrastructure.tantivy_engine.tantivy')
+@patch('reflectlog.infrastructure.tantivy_engine.tantivy')
 def test_tantivy_initialization(mock_tantivy):
     mock_index = Mock()
     mock_tantivy.Index.return_value = mock_index
     # Test code
 
 # Mock libSQL
-@patch('ccmemories.infrastructure.message_store.libsql.connect')
+@patch('reflectlog.infrastructure.message_store.libsql.connect')
 def test_message_store(mock_connect):
     mock_conn = Mock()
     mock_connect.return_value = mock_conn
     # Test code
 
 # Mock OpenAI client for embeddings
-@patch('ccmemories.infrastructure.qwen3_embedding.OpenAI')
+@patch('reflectlog.infrastructure.qwen3_embedding.OpenAI')
 def test_embeddings(mock_openai):
     mock_client = Mock()
     mock_openai.return_value = mock_client
     # Test code
 
 # Mock AsyncOpenAI client for SmartReplacer
-@patch('ccmemories.infrastructure.smart_replacer.AsyncOpenAI')
+@patch('reflectlog.infrastructure.smart_replacer.AsyncOpenAI')
 async def test_smart_replacer(mock_async_openai):
     mock_client = AsyncMock()
     mock_response = Mock()
@@ -376,12 +376,12 @@ uv run pytest tests/unit/infrastructure/test_usearch_engine.py -v
 uv run pytest tests/unit/infrastructure/test_usearch_engine.py::TestUSearchEngineSearch -v
 
 # With coverage
-uv run pytest tests/unit/infrastructure/ --cov=ccmemories.infrastructure --cov-report=term-missing
+uv run pytest tests/unit/infrastructure/ --cov=reflectlog.infrastructure --cov-report=term-missing
 ```
 
 ## Coverage Goals
 
-Aim for **85%+ coverage** of `ccmemories/infrastructure/`:
+Aim for **85%+ coverage** of `reflectlog/infrastructure/`:
 - All public methods
 - Index initialization and persistence
 - Error handling paths

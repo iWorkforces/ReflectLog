@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from ccmemories.infrastructure.llm_reranker import OpenAIRerankerProvider
-from ccmemories.infrastructure.smart_replacer import (
+from reflectlog.infrastructure.llm_reranker import OpenAIRerankerProvider
+from reflectlog.infrastructure.smart_replacer import (
     OpenAIReplacementProvider,
 )
 

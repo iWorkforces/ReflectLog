@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# CCMemoriesMCP - Type Checking Script
+# ReflectLogMCP - Type Checking Script
 # This script uses ty to perform static type checking on all Python files
 
 set -e
@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 # Configuration
 TY_CONFIG_FILE="pyproject.toml"
 
-echo -e "${BLUE}🔍 CCMemoriesMCP - Type Checking (ty)${NC}"
+echo -e "${BLUE}🔍 ReflectLogMCP - Type Checking (ty)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 

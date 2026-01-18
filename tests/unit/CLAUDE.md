@@ -75,7 +75,7 @@ unit/
 from unittest.mock import Mock, patch, MagicMock
 
 # Mock MemoryManager
-@patch('ccmemories.application.memory.MemoryManager')
+@patch('reflectlog.application.memory.MemoryManager')
 def test_server_initialization(mock_memory_manager):
     mock_instance = Mock()
     mock_memory_manager.return_value = mock_instance
@@ -98,7 +98,7 @@ def test_with_env_vars():
 
 ### Mock FastMCP Logger
 ```python
-@patch('ccmemories.application.mcp_server.get_logger')
+@patch('reflectlog.application.mcp_server.get_logger')
 def test_logging(mock_get_logger):
     mock_logger = Mock()
     mock_get_logger.return_value = mock_logger
@@ -120,7 +120,7 @@ def test_logging(mock_get_logger):
 ```python
 def test_add_messages_success():
     # Arrange
-    with patch('ccmemories.application.mcp_server.Memory') as mock_memory_class:
+    with patch('reflectlog.application.mcp_server.Memory') as mock_memory_class:
         mock_memory = Mock()
         mock_memory_class.from_config.return_value = mock_memory
 
@@ -160,7 +160,7 @@ def test_validate_messages(messages, expected_valid, expected_error):
 **Pattern for error scenarios**:
 ```python
 def test_add_raises_runtime_error_on_memory_failure():
-    with patch('ccmemories.application.mcp_server.Memory') as mock_memory_class:
+    with patch('reflectlog.application.mcp_server.Memory') as mock_memory_class:
         mock_memory = Mock()
         mock_memory.add.side_effect = Exception("Storage failure")
         mock_memory_class.from_config.return_value = mock_memory
@@ -176,7 +176,7 @@ def test_add_raises_runtime_error_on_memory_failure():
 **Pattern for immutability tests**:
 ```python
 def test_get_all_returns_defensive_copy():
-    with patch('ccmemories.application.mcp_server.Memory') as mock_memory_class:
+    with patch('reflectlog.application.mcp_server.Memory') as mock_memory_class:
         mock_memory = Mock()
         original = ["message1", "message2"]
         mock_memory.get_all.return_value = original
@@ -215,7 +215,7 @@ uv run pytest tests/unit/application/ -v
 
 ### File Naming
 
-- Match source structure: `ccmemories/application/mcp_server.py` → `tests/unit/application/test_mcp_server.py`
+- Match source structure: `reflectlog/application/mcp_server.py` → `tests/unit/application/test_mcp_server.py`
 - Use `test_` prefix for test files
 
 ### Test Class Organization (Optional)
@@ -317,7 +317,7 @@ class TestAddMessages:
 @pytest.fixture
 def mock_memory_manager():
     """Mock MemoryManager instance."""
-    with patch('ccmemories.application.memory.MemoryManager') as mock_class:
+    with patch('reflectlog.application.memory.MemoryManager') as mock_class:
         mock_instance = Mock()
         mock_class.return_value = mock_instance
         yield mock_instance

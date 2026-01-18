@@ -5,7 +5,7 @@ import os
 import pytest
 from unittest.mock import MagicMock, patch
 
-from ccmemories.application.exceptions import (
+from reflectlog.application.exceptions import (
     ConfigurationError,
     SearchError,
     StorageError,
@@ -45,22 +45,22 @@ class TestServerInitializationErrors:
         """Test server initialization fails without PROJECT_ID."""
         # Clear both PROJECT_ID and OPENROUTER_API_KEY to trigger config error
         # Reset config singleton first
-        import ccmemories.application.config.settings as settings_module
+        import reflectlog.application.config.settings as settings_module
 
         settings_module._config = None
 
         with patch.dict(os.environ, {}, clear=True):
             # The config validation requires PROJECT_ID
             with pytest.raises(ConfigurationError) as exc_info:
-                from ccmemories.application.config.settings import Config
+                from reflectlog.application.config.settings import Config
 
                 Config.from_environment()
 
             assert "PROJECT_ID" in str(exc_info.value)
 
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     def test_init_with_memory_config_error(
         self,
         mock_cached_embedder_class,
@@ -79,7 +79,7 @@ class TestServerInitializationErrors:
             "Memory initialization failed"
         )
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         with pytest.raises(Exception) as exc_info:
             FastMCPServer()
@@ -92,9 +92,9 @@ class TestAddToolErrorHandling:
     """Test error handling in add tool."""
 
     @pytest.mark.asyncio
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     async def test_add_memory_storage_failure(
         self,
         mock_cached_embedder_class,
@@ -113,7 +113,7 @@ class TestAddToolErrorHandling:
         mock_usearch_engine.add.side_effect = Exception("Storage failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
@@ -125,9 +125,9 @@ class TestAddToolErrorHandling:
         assert "Storage failure" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     async def test_add_validation_error_with_non_string(
         self,
         mock_cached_embedder_class,
@@ -144,7 +144,7 @@ class TestAddToolErrorHandling:
 
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
@@ -155,9 +155,9 @@ class TestAddToolErrorHandling:
         assert "not a string" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     async def test_add_validation_error_with_empty_string(
         self,
         mock_cached_embedder_class,
@@ -174,7 +174,7 @@ class TestAddToolErrorHandling:
 
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
@@ -190,9 +190,9 @@ class TestGetAllToolErrorHandling:
     """Test error handling in get_all tool."""
 
     @pytest.mark.asyncio
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     async def test_get_all_memory_retrieval_failure(
         self,
         mock_cached_embedder_class,
@@ -211,7 +211,7 @@ class TestGetAllToolErrorHandling:
         mock_usearch_engine.get_all.side_effect = Exception("Retrieval failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         get_all_tool = mcp_server.mcp._tool_manager._tools["get_all"].fn
@@ -228,9 +228,9 @@ class TestSearchToolErrorHandling:
     """Test error handling in search tool."""
 
     @pytest.mark.asyncio
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     async def test_search_memory_failure(
         self,
         mock_cached_embedder_class,
@@ -249,7 +249,7 @@ class TestSearchToolErrorHandling:
         mock_usearch_engine.search.side_effect = Exception("Search failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         search_tool = mcp_server.mcp._tool_manager._tools["search"].fn
@@ -266,9 +266,9 @@ class TestRemoveToolErrorHandling:
     """Test error handling in remove tool."""
 
     @pytest.mark.asyncio
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     async def test_remove_with_empty_list(
         self,
         mock_cached_embedder_class,
@@ -285,7 +285,7 @@ class TestRemoveToolErrorHandling:
 
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
@@ -297,9 +297,9 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine.delete.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     async def test_remove_memory_delete_failure(
         self,
         mock_cached_embedder_class,
@@ -320,7 +320,7 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine.delete.side_effect = Exception("Delete failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
@@ -332,9 +332,9 @@ class TestRemoveToolErrorHandling:
         assert "Delete failure" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     async def test_remove_message_not_found(
         self,
         mock_cached_embedder_class,
@@ -353,7 +353,7 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine.search.return_value = []
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
@@ -370,9 +370,9 @@ class TestRunMethodCoverage:
     """Test coverage for run() method."""
 
     @patch.dict(os.environ, {"MCP_TRANSPORT": "http"}, clear=False)
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     def test_run_method_with_http_transport(
         self,
         mock_cached_embedder_class,
@@ -389,7 +389,7 @@ class TestRunMethodCoverage:
 
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
 
@@ -403,9 +403,9 @@ class TestRunMethodCoverage:
         mock_run.assert_called_once()
 
     @patch.dict(os.environ, {"MCP_TRANSPORT": "stdio"}, clear=False)
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     def test_run_method_with_stdio_transport(
         self,
         mock_cached_embedder_class,
@@ -422,7 +422,7 @@ class TestRunMethodCoverage:
 
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         mock_run = MagicMock()
@@ -433,9 +433,9 @@ class TestRunMethodCoverage:
         mock_run.assert_called_once()
 
     @patch.dict(os.environ, {"MCP_TRANSPORT": "sse"}, clear=False)
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     def test_run_method_with_sse_transport(
         self,
         mock_cached_embedder_class,
@@ -452,7 +452,7 @@ class TestRunMethodCoverage:
 
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         mock_run = MagicMock()
@@ -472,9 +472,9 @@ class TestRunMethodCoverage:
         },
         clear=False,
     )
-    @patch("ccmemories.application.memory.manager.CachedEmbeddings")
-    @patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings")
-    @patch("ccmemories.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
     def test_run_method_with_custom_config(
         self,
         mock_cached_embedder_class,
@@ -491,7 +491,7 @@ class TestRunMethodCoverage:
 
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
         mock_run = MagicMock()

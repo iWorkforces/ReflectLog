@@ -38,9 +38,9 @@ async def main():
     print("Testing: cats -> dogs replacement")
     print("=" * 70)
 
-    from ccmemories.application.config import Config
-    from ccmemories.application.memory import MemoryManager
-    from ccmemories.application.utils.logging import create_logger
+    from reflectlog.application.config import Config
+    from reflectlog.application.memory import MemoryManager
+    from reflectlog.application.utils.logging import create_logger
 
     config = Config.from_environment()
     logger = create_logger(config.project_id, config.log_level)
@@ -87,7 +87,7 @@ async def main():
             print("   Let's check the similarity score...")
 
             # Check similarity manually
-            from ccmemories.infrastructure import SmartReplacer, SmartReplacerConfig
+            from reflectlog.infrastructure import SmartReplacer, SmartReplacerConfig
 
             sr_config = SmartReplacerConfig(
                 api_key="not-used",

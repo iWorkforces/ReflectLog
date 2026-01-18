@@ -2,7 +2,7 @@
 
 import pytest
 
-from ccmemories.application.utils.validation import validate_messages
+from reflectlog.application.utils.validation import validate_messages
 
 
 @pytest.mark.unit

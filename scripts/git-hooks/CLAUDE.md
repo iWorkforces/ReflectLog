@@ -1,6 +1,6 @@
 # scripts/git-hooks/
 
-This directory contains version-controlled git hooks for the CCMemoriesMCP project.
+This directory contains version-controlled git hooks for the ReflectLogMCP project.
 
 ## Structure
 

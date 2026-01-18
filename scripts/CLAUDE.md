@@ -1,6 +1,6 @@
 # scripts/
 
-This directory contains development automation scripts for the CCMemoriesMCP project.
+This directory contains development automation scripts for the ReflectLogMCP project.
 
 ## Structure
 
@@ -177,7 +177,7 @@ These scripts are at project root (not in `scripts/`):
 - `./start-lint.sh` - Code linting
 - `./start-type-check.sh` - Type checking
 - `./start-unittest.sh` - Unit tests
-- `./start-ccmemories-mcp-server.sh` - Start MCP server
+- `./start-reflectlog-mcp-server.sh` - Start MCP server
 
 See root `CLAUDE.md` for details on these scripts.
 
@@ -186,7 +186,7 @@ See root `CLAUDE.md` for details on these scripts.
 ```bash
 # Clone repository
 git clone <repo-url>
-cd CCMemoriesMCP
+cd ReflectLogMCP
 
 # Install git hooks
 ./scripts/setup-git-hooks.sh

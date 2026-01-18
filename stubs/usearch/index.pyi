@@ -1,7 +1,7 @@
 """Type stubs for usearch.index module.
 
 This module provides type annotations for the USearch HNSW vector index library.
-Only APIs used by CCMemoriesMCP are stubbed.
+Only APIs used by ReflectLogMCP are stubbed.
 
 Reference: https://github.com/unum-cloud/usearch
 """

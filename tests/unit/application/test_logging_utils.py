@@ -12,7 +12,7 @@ sys.path.insert(
 )
 
 # Import directly from the module file to avoid triggering config singleton
-from ccmemories.application.utils.logging import (
+from reflectlog.application.utils.logging import (
     format_fusion_score_status,
 )
 

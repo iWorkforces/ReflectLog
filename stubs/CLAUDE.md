@@ -236,7 +236,7 @@ The `stubs/tantivy/__init__.pyi` file provides types for the tantivy-py library:
 ./start-type-check.sh
 
 # Check specific file
-uv run ty check ccmemories/infrastructure/usearch_engine.py
+uv run ty check reflectlog/infrastructure/usearch_engine.py
 ```
 
 ### Verify stubs match actual API

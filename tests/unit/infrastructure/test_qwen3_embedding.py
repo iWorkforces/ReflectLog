@@ -6,7 +6,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
-from ccmemories.infrastructure.qwen3_embedding import (
+from reflectlog.infrastructure.qwen3_embedding import (
     EmbedderConfig,
     LangchainQwenEmbeddings,
 )
@@ -26,10 +26,10 @@ class TestLangchainQwenEmbeddingsInitialization:
 
         with (
             patch(
-                "ccmemories.infrastructure.qwen3_embedding.OpenAI"
+                "reflectlog.infrastructure.qwen3_embedding.OpenAI"
             ) as mock_sync_client,
             patch(
-                "ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"
+                "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
             ) as mock_async_client,
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
@@ -61,10 +61,10 @@ class TestLangchainQwenEmbeddingsInitialization:
 
         with (
             patch(
-                "ccmemories.infrastructure.qwen3_embedding.OpenAI"
+                "reflectlog.infrastructure.qwen3_embedding.OpenAI"
             ) as mock_sync_client,
             patch(
-                "ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"
+                "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
             ) as mock_async_client,
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
@@ -88,8 +88,8 @@ class TestLangchainQwenEmbeddingsInitialization:
     def test_initialization_with_empty_config(self) -> None:
         """Test initialization with empty configuration."""
         with (
-            patch("ccmemories.infrastructure.qwen3_embedding.OpenAI"),
-            patch("ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config={})
             assert embeddings.config.embedding_dims == 1536  # Default value
@@ -99,10 +99,10 @@ class TestLangchainQwenEmbeddingsInitialization:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-api-key"}):
             with (
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 LangchainQwenEmbeddings(config={})
@@ -120,10 +120,10 @@ class TestLangchainQwenEmbeddingsInitialization:
         ):
             with (
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 LangchainQwenEmbeddings(config={})
@@ -139,10 +139,10 @@ class TestLangchainQwenEmbeddingsInitialization:
         with patch.dict(os.environ, {}, clear=True):
             with (
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 LangchainQwenEmbeddings(config={})
@@ -157,8 +157,8 @@ class TestLangchainQwenEmbeddingsInitialization:
         """Test deprecation warning for OPENAI_API_BASE."""
         with patch.dict(os.environ, {"OPENAI_API_BASE": "https://old.url"}):
             with (
-                patch("ccmemories.infrastructure.qwen3_embedding.OpenAI"),
-                patch("ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"),
+                patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+                patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
             ):
                 with pytest.warns(DeprecationWarning, match="OPENAI_API_BASE"):
                     LangchainQwenEmbeddings(config={})
@@ -176,8 +176,8 @@ class TestSyncEmbedQuery:
             "api_key": "test-key",
         }
         with (
-            patch("ccmemories.infrastructure.qwen3_embedding.OpenAI"),
-            patch("ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
             return embeddings
@@ -235,8 +235,8 @@ class TestSyncEmbedDocuments:
             "api_key": "test-key",
         }
         with (
-            patch("ccmemories.infrastructure.qwen3_embedding.OpenAI"),
-            patch("ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
             return embeddings
@@ -295,8 +295,8 @@ class TestAsyncEmbedQuery:
             "api_key": "test-key",
         }
         with (
-            patch("ccmemories.infrastructure.qwen3_embedding.OpenAI"),
-            patch("ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
             return embeddings
@@ -382,8 +382,8 @@ class TestAsyncEmbedDocuments:
             "api_key": "test-key",
         }
         with (
-            patch("ccmemories.infrastructure.qwen3_embedding.OpenAI"),
-            patch("ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
             return embeddings
@@ -530,10 +530,10 @@ class TestConfigurationPriority:
             config = {"api_key": "config-key"}
             with (
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 LangchainQwenEmbeddings(config=config)
@@ -547,10 +547,10 @@ class TestConfigurationPriority:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-key"}):
             with (
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "ccmemories.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 LangchainQwenEmbeddings(config={})

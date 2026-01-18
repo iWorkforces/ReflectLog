@@ -73,7 +73,7 @@ async def test_infer_disabled():
         traceback.print_exc()
         print("\nMake sure the server is running with:")
         print(
-            "  ENABLE_LLM_INFER=false MCP_TRANSPORT=http ./start-ccmemories-mcp-server.sh --project_id TestInfer"
+            "  ENABLE_LLM_INFER=false MCP_TRANSPORT=http ./start-reflectlog-mcp-server.sh --project_id TestInfer"
         )
         raise
 
@@ -101,7 +101,7 @@ Key Insights:
 
 To test with LLM inference enabled:
   1. Stop the current server
-  2. Start with: ENABLE_LLM_INFER=true ./start-ccmemories-mcp-server.sh --project_id TestInfer
+  2. Start with: ENABLE_LLM_INFER=true ./start-reflectlog-mcp-server.sh --project_id TestInfer
   3. Run this test again to see messages being transformed by the LLM
     """)
 

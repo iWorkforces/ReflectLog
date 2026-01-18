@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ccmemories.application.exceptions import StorageError
-from ccmemories.infrastructure.message_store import MessageStore
+from reflectlog.application.exceptions import StorageError
+from reflectlog.infrastructure.message_store import MessageStore
 
 
 class TestMessageStoreInitialization:

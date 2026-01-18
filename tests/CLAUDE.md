@@ -1,6 +1,6 @@
 # tests/
 
-This directory contains all test suites for the CCMemoriesMCP server.
+This directory contains all test suites for the ReflectLogMCP server.
 
 ## Structure
 
@@ -159,7 +159,7 @@ async def test_async_operation():
 ```python
 from unittest.mock import Mock, patch
 
-@patch('ccmemories.application.mcp_server.Memory')
+@patch('reflectlog.application.mcp_server.Memory')
 def test_with_mocked_memory(mock_memory_class):
     mock_instance = Mock()
     mock_memory_class.from_config.return_value = mock_instance

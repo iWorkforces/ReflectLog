@@ -6,12 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ccmemories.application.exceptions import (
+from reflectlog.application.exceptions import (
     ConfigurationError,
     SearchError,
     StorageError,
 )
-from ccmemories.application.memory.manager import AddResult
+from reflectlog.application.memory.manager import AddResult
 
 
 @pytest.mark.unit
@@ -34,7 +34,7 @@ class TestFastMCPServerInitialization:
         """
         import os
 
-        from ccmemories.application.config import Config
+        from reflectlog.application.config import Config
 
         # Save original and clear PROJECT_ID
         original = os.environ.pop("PROJECT_ID", None)
@@ -50,16 +50,16 @@ class TestFastMCPServerInitialization:
 
     def test_memory_config_structure(self, set_env_vars):
         """Test USearchEngine is initialized with correct config."""
-        from ccmemories.application.mcp_server import FastMCPServer
+        from reflectlog.application.mcp_server import FastMCPServer
 
         with patch(
-            "ccmemories.application.memory.manager.USearchEngine"
+            "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_cls:
             mock_usearch_cls.return_value = MagicMock()
 
-            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+            with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
-                    "ccmemories.application.memory.manager.TantivyEngine"
+                    "reflectlog.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_cls:
                     mock_tantivy_cls.return_value = MagicMock()
 
@@ -1085,12 +1085,12 @@ class TestToolRegistrationConfiguration:
             monkeypatch.setenv("ALLOWED_TOOLS", allowed_value)
 
         with (
-            patch("ccmemories.application.mcp_server.FastMCP") as mock_fastmcp,
+            patch("reflectlog.application.mcp_server.FastMCP") as mock_fastmcp,
             patch(
-                "ccmemories.application.mcp_server.MemoryManager"
+                "reflectlog.application.mcp_server.MemoryManager"
             ) as mock_memory_manager,
             patch(
-                "ccmemories.application.mcp_server.create_logger"
+                "reflectlog.application.mcp_server.create_logger"
             ) as mock_create_logger,
         ):
             fastmcp_instance = MagicMock()
@@ -1099,8 +1099,8 @@ class TestToolRegistrationConfiguration:
             logger = MagicMock()
             mock_create_logger.return_value = logger
 
-            from ccmemories.application.config import Config
-            from ccmemories.application.mcp_server import FastMCPServer
+            from reflectlog.application.config import Config
+            from reflectlog.application.mcp_server import FastMCPServer
 
             server_config = Config.from_environment()
             server = FastMCPServer(server_config=server_config)

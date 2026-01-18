@@ -1,11 +1,11 @@
-"""Unit tests for ccmemories.application.utils.logging module."""
+"""Unit tests for reflectlog.application.utils.logging module."""
 
 import logging
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from ccmemories.application.utils.logging import (
+from reflectlog.application.utils.logging import (
     StructuredLogger,
     create_logger,
     format_fusion_score_status,

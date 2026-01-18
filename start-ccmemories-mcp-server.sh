@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# CCMemoriesMCP Server Startup Script
-# This script starts the CCMemoriesMCP server
+# ReflectLogMCP Server Startup Script
+# This script starts the ReflectLogMCP server
 
 set -e
 
@@ -29,7 +29,7 @@ shutdown_server() {
 
     if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
         echo ""
-        echo -e "${YELLOW}🛑 Shutting down CCMemoriesMCP Server Gracefully...${NC}"
+        echo -e "${YELLOW}🛑 Shutting down ReflectLogMCP Server Gracefully...${NC}"
         echo -e "${CYAN}   Persisting USearch and Tantivy data to disk...${NC}"
 
         local target_pid="$SERVER_PID"
@@ -99,7 +99,7 @@ NC='\033[0m' # No Color
 # Usage/help function
 show_usage() {
     cat << EOF
-${BLUE}CCMemoriesMCP Server${NC}
+${BLUE}ReflectLogMCP Server${NC}
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
@@ -141,7 +141,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo -e "${BLUE}🚀 CCMemoriesMCP Server${NC}"
+echo -e "${BLUE}🚀 ReflectLogMCP Server${NC}"
 echo -e "${BLUE}================================${NC}"
 echo ""
 
@@ -188,13 +188,13 @@ echo -e "${CYAN}Python version: $(uv run python --version 2>&1)${NC}"
 echo ""
 
 # Check if we're in the correct directory
-if [ ! -f "ccmemories/server.py" ]; then
-    echo -e "${RED}❌ ccmemories/server.py not found${NC}"
-    echo -e "${YELLOW}Please run this script from the CCMemoriesMCP project root directory${NC}"
+if [ ! -f "reflectlog/server.py" ]; then
+    echo -e "${RED}❌ reflectlog/server.py not found${NC}"
+    echo -e "${YELLOW}Please run this script from the ReflectLogMCP project root directory${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✅ Found ccmemories/server.py${NC}"
+echo -e "${GREEN}✅ Found reflectlog/server.py${NC}"
 echo ""
 
 # Check if pyproject.toml exists
@@ -242,13 +242,13 @@ fi
 echo ""
 
 # Display startup information
-echo -e "${BLUE}Starting CCMemoriesMCP Server...${NC}"
+echo -e "${BLUE}Starting ReflectLogMCP Server...${NC}"
 if [ ! -z "$MCP_TRANSPORT" ]; then
     echo -e "${CYAN}Transport: $MCP_TRANSPORT${NC}"
 else
     echo -e "${CYAN}Transport: stdio (default)${NC}"
 fi
-echo -e "${CYAN}Command: uv run ccmemories${NC}"
+echo -e "${CYAN}Command: uv run reflectlog${NC}"
 echo ""
 
 # Start the server
@@ -257,7 +257,7 @@ echo ""
 
 # Start the server in the background and capture its PID
 # Let server.py read MCP_* environment variables from .env
-uv run ccmemories &
+uv run reflectlog &
 SERVER_PID=$!
 
 # Wait for the server process to complete

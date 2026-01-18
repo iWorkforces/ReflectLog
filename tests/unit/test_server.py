@@ -1,4 +1,4 @@
-"""Unit tests for ccmemories/server.py CLI module."""
+"""Unit tests for reflectlog/server.py CLI module."""
 
 import os
 import sys
@@ -17,19 +17,19 @@ class TestCLIArgumentParsing:
     """Test CLI argument parsing functionality."""
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_default_arguments(self, mock_server_class, mock_warmup, mock_signal):
         """Test main() with no arguments uses defaults."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
         # Import main and test
-        from ccmemories.server import main
+        from reflectlog.server import main
 
         # Mock sys.argv
-        with patch("sys.argv", ["ccmemories"]):
+        with patch("sys.argv", ["reflectlog"]):
             # Should not raise any errors
             try:
                 main()
@@ -40,17 +40,17 @@ class TestCLIArgumentParsing:
             mock_server_class.assert_called_once()
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_transport_http_argument(self, mock_server_class, mock_warmup, mock_signal):
         """Test --transport http argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--transport", "http"]):
+        with patch("sys.argv", ["reflectlog", "--transport", "http"]):
             try:
                 main()
             except SystemExit:
@@ -60,9 +60,9 @@ class TestCLIArgumentParsing:
             assert os.environ.get("MCP_TRANSPORT") == "http"
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_transport_stdio_argument(
         self, mock_server_class, mock_warmup, mock_signal
     ):
@@ -70,9 +70,9 @@ class TestCLIArgumentParsing:
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--transport", "stdio"]):
+        with patch("sys.argv", ["reflectlog", "--transport", "stdio"]):
             try:
                 main()
             except SystemExit:
@@ -81,17 +81,17 @@ class TestCLIArgumentParsing:
             assert os.environ.get("MCP_TRANSPORT") == "stdio"
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_port_argument(self, mock_server_class, mock_warmup, mock_signal):
         """Test --port argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--port", "9999"]):
+        with patch("sys.argv", ["reflectlog", "--port", "9999"]):
             try:
                 main()
             except SystemExit:
@@ -100,17 +100,17 @@ class TestCLIArgumentParsing:
             assert os.environ.get("MCP_PORT") == "9999"
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_host_argument(self, mock_server_class, mock_warmup, mock_signal):
         """Test --host argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--host", "192.168.1.1"]):
+        with patch("sys.argv", ["reflectlog", "--host", "192.168.1.1"]):
             try:
                 main()
             except SystemExit:
@@ -119,17 +119,17 @@ class TestCLIArgumentParsing:
             assert os.environ.get("MCP_HOST") == "192.168.1.1"
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_path_argument(self, mock_server_class, mock_warmup, mock_signal):
         """Test --path argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--path", "/custom"]):
+        with patch("sys.argv", ["reflectlog", "--path", "/custom"]):
             try:
                 main()
             except SystemExit:
@@ -138,20 +138,20 @@ class TestCLIArgumentParsing:
             assert os.environ.get("MCP_PATH") == "/custom"
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_multiple_arguments(self, mock_server_class, mock_warmup, mock_signal):
         """Test multiple arguments together."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
         with patch(
             "sys.argv",
             [
-                "ccmemories",
+                "reflectlog",
                 "--transport",
                 "http",
                 "--port",
@@ -172,9 +172,9 @@ class TestCLIArgumentParsing:
     @patch.dict(os.environ, {}, clear=True)
     def test_help_argument(self):
         """Test --help argument."""
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--help"]):
+        with patch("sys.argv", ["reflectlog", "--help"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
 
@@ -184,9 +184,9 @@ class TestCLIArgumentParsing:
     @patch.dict(os.environ, {}, clear=True)
     def test_version_argument(self):
         """Test --version argument."""
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--version"]):
+        with patch("sys.argv", ["reflectlog", "--version"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
 
@@ -199,17 +199,17 @@ class TestEnvironmentConfiguration:
     """Test environment variable configuration."""
 
     @patch.dict(os.environ, {"MCP_TRANSPORT": "sse"}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_env_var_transport(self, mock_server_class, mock_warmup, mock_signal):
         """Test MCP_TRANSPORT environment variable."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories"]):
+        with patch("sys.argv", ["reflectlog"]):
             try:
                 main()
             except SystemExit:
@@ -219,9 +219,9 @@ class TestEnvironmentConfiguration:
             assert os.environ.get("MCP_TRANSPORT") == "sse"
 
     @patch.dict(os.environ, {"MCP_TRANSPORT": "stdio", "MCP_PORT": "5000"}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_cli_args_override_env_vars(
         self, mock_server_class, mock_warmup, mock_signal
     ):
@@ -229,9 +229,9 @@ class TestEnvironmentConfiguration:
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--transport", "http", "--port", "9103"]):
+        with patch("sys.argv", ["reflectlog", "--transport", "http", "--port", "9103"]):
             try:
                 main()
             except SystemExit:
@@ -247,17 +247,17 @@ class TestServerInitialization:
     """Test server initialization and startup."""
 
     @patch.dict(os.environ, {"PROJECT_ID": "test_project"}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_server_instantiation(self, mock_server_class, mock_warmup, mock_signal):
         """Test FastMCPServer is instantiated."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories"]):
+        with patch("sys.argv", ["reflectlog"]):
             try:
                 main()
             except SystemExit:
@@ -267,17 +267,17 @@ class TestServerInitialization:
             mock_server_class.assert_called_once()
 
     @patch.dict(os.environ, {"PROJECT_ID": "test_project"}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_server_run_called(self, mock_server_class, mock_warmup, mock_signal):
         """Test server.run() is called."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories"]):
+        with patch("sys.argv", ["reflectlog"]):
             try:
                 main()
             except SystemExit:
@@ -294,9 +294,9 @@ class TestOutputStreams:
     @patch.dict(os.environ, {"PROJECT_ID": "test_project"}, clear=True)
     @patch("sys.stderr")
     @patch("sys.stdout")
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_stdio_transport_uses_stderr(
         self, mock_server_class, mock_warmup, mock_signal, mock_stdout, mock_stderr
     ):
@@ -304,9 +304,9 @@ class TestOutputStreams:
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--transport", "stdio"]):
+        with patch("sys.argv", ["reflectlog", "--transport", "stdio"]):
             try:
                 main()
             except SystemExit:
@@ -317,9 +317,9 @@ class TestOutputStreams:
             assert os.environ.get("MCP_TRANSPORT") == "stdio"
 
     @patch.dict(os.environ, {"PROJECT_ID": "test_project"}, clear=True)
-    @patch("ccmemories.server.signal.signal")
-    @patch("ccmemories.server.warmup_numba_functions")
-    @patch("ccmemories.server.FastMCPServer")
+    @patch("reflectlog.server.signal.signal")
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_http_transport_uses_stdout(
         self, mock_server_class, mock_warmup, mock_signal
     ):
@@ -327,9 +327,9 @@ class TestOutputStreams:
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        from ccmemories.server import main
+        from reflectlog.server import main
 
-        with patch("sys.argv", ["ccmemories", "--transport", "http"]):
+        with patch("sys.argv", ["reflectlog", "--transport", "http"]):
             try:
                 main()
             except SystemExit:

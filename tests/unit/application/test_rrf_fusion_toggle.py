@@ -5,7 +5,7 @@ import os
 import pytest
 from unittest.mock import Mock, patch
 
-from ccmemories.application.config.settings import Config
+from reflectlog.application.config.settings import Config
 
 
 @pytest.mark.unit
@@ -201,20 +201,20 @@ class TestSearchPipelineWithRRFToggle:
     @pytest.fixture
     def mock_logger(self):
         """Mock structured logger."""
-        from ccmemories.application.utils import StructuredLogger
+        from reflectlog.application.utils import StructuredLogger
 
         return Mock(spec=StructuredLogger)
 
     def test_rrf_enabled_uses_fusion_engine(self, mock_config_rrf_enabled, mock_logger):
         """When RRF is enabled, fusion engine should be called."""
-        from ccmemories.application.memory.manager import MemoryManager
+        from reflectlog.application.memory.manager import MemoryManager
 
         with patch(
-            "ccmemories.application.memory.manager.USearchEngine"
+            "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch:
-            with patch("ccmemories.application.memory.manager.LangchainQwenEmbeddings"):
+            with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
-                    "ccmemories.application.memory.manager.TantivyEngine"
+                    "reflectlog.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy:
                     mock_usearch_instance = Mock()
                     mock_usearch_instance.search.return_value = [("msg1", 0.9)]
