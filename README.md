@@ -1,2 +1,3 @@
-# CCMemoriesMCP
-🌾 🥳 🌋 🏰 🌅 🌕 Agentic Memory Layer For Claude Code 🌖 🌔 🌈 🏆 👑
+# ReflectLogMCP
+
+🌾 🥳 🌋 🏰 🌅 🌕 An Agentic Memory Layer For Coding Agent 🌖 🌔 🌈 🏆 👑
