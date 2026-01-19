@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 from reflectlog.application.exceptions import (
     ConfigurationError,
-    SearchError,
     StorageError,
 )
 

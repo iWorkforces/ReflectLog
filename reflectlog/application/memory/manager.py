@@ -543,7 +543,9 @@ class MemoryManager:
                         continue
                     seen_messages.add(message)
 
-                    if self.config.deduplicate_messages and self._has_exact_match(message):
+                    if self.config.deduplicate_messages and self._has_exact_match(
+                        message
+                    ):
                         if idx <= log_limit:
                             self.logger.info(
                                 "    Skipped (duplicate detected)",

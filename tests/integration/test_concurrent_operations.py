@@ -9,20 +9,19 @@ import os
 from collections import Counter
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
+
+from reflectlog.application.config import Config
+from reflectlog.application.memory import MemoryManager
+from reflectlog.application.types import Embeddings
+from reflectlog.application.utils import StructuredLogger
+from reflectlog.application.utils.security import SecretString
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_USEARCH_CONCURRENCY_TESTS") != "1",
     reason="Set RUN_USEARCH_CONCURRENCY_TESTS=1 to run USearch concurrency tests",
 )
-
-from reflectlog.application.config import Config
-from reflectlog.application.memory import MemoryManager
-from reflectlog.application.utils import StructuredLogger
-from reflectlog.application.utils.security import SecretString
-from reflectlog.application.types import Embeddings
-
-import numpy as np
 
 
 class MockEmbedder(Embeddings):
