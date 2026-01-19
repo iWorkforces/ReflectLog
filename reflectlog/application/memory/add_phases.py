@@ -10,6 +10,7 @@ Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
 """
 
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -538,6 +539,7 @@ class StoragePhase:
         tantivy_engine: Any,  # TantivyEngine | None
         config: Config,
         logger: StructuredLogger,
+        write_lock: threading.Lock | None = None,
     ):
         """Initialize storage phase.
 
@@ -552,6 +554,7 @@ class StoragePhase:
         self.config = config
         self.logger = logger
         self._project_id = config.project_id
+        self._write_lock = write_lock
 
     async def execute(
         self,
@@ -629,14 +632,10 @@ class StoragePhase:
                             )
                             continue
 
-                        await asyncify(self._semantic_engine.delete)(
-                            memory_id=str(msg_id)
+                        self._delete_message(
+                            memory_id=str(msg_id),
+                            message=replacement_info.old_memory,
                         )
-                        # Delete from Tantivy too
-                        if self._tantivy_engine is not None:
-                            self._tantivy_engine.delete(
-                                self._project_id, replacement_info.old_memory
-                            )
 
                         replaced_count += 1
                         replacements.append(replacement_info)
@@ -671,7 +670,7 @@ class StoragePhase:
                 stored_count += 1
 
         if not dry_run and messages_to_add:
-            stored_messages = await asyncify(self._add_messages_batch)(messages_to_add)
+            stored_messages = self._add_messages_batch(messages_to_add)
             stored_count = len(stored_messages)
             if stored_count != len(messages_to_add):
                 self.logger.warning(
@@ -720,15 +719,27 @@ class StoragePhase:
             return []
 
         try:
-            inserted_messages = self._semantic_engine.add_batch(
-                project_id=self._project_id,
-                messages=messages,
-                infer=self.config.enable_llm_infer,
-            )
+            if self._write_lock is None:
+                inserted_messages = self._semantic_engine.add_batch(
+                    project_id=self._project_id,
+                    messages=messages,
+                    infer=self.config.enable_llm_infer,
+                )
 
-            if self._tantivy_engine is not None:
-                for message in inserted_messages:
-                    self._tantivy_engine.add(self._project_id, message)
+                if self._tantivy_engine is not None:
+                    for message in inserted_messages:
+                        self._tantivy_engine.add(self._project_id, message)
+            else:
+                with self._write_lock:
+                    inserted_messages = self._semantic_engine.add_batch(
+                        project_id=self._project_id,
+                        messages=messages,
+                        infer=self.config.enable_llm_infer,
+                    )
+
+                    if self._tantivy_engine is not None:
+                        for message in inserted_messages:
+                            self._tantivy_engine.add(self._project_id, message)
 
             self.logger.debug(
                 "Batch added messages to hybrid storage",
@@ -742,6 +753,19 @@ class StoragePhase:
 
         except Exception as e:
             raise StorageError(f"Failed to add message batch: {e}") from e
+
+    def _delete_message(self, memory_id: str, message: str) -> None:
+        """Delete a message from semantic and full-text engines with write locking."""
+        if self._write_lock is None:
+            self._semantic_engine.delete(memory_id=memory_id)
+            if self._tantivy_engine is not None:
+                self._tantivy_engine.delete(self._project_id, message)
+            return
+
+        with self._write_lock:
+            self._semantic_engine.delete(memory_id=memory_id)
+            if self._tantivy_engine is not None:
+                self._tantivy_engine.delete(self._project_id, message)
 
     def _add_message(self, message: str) -> bool:
         """Add a single message to BOTH USearch semantic and Tantivy full-text engines.
