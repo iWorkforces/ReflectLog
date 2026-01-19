@@ -83,7 +83,12 @@ class TestHybridMemoryManager:
 
     def test_initialization(self, mock_config, mock_logger):
         """Test basic initialization with TantivyEngine."""
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -98,7 +103,12 @@ class TestHybridMemoryManager:
     def test_initialization_without_hybrid_search(self, mock_config, mock_logger):
         """Test initialization with hybrid search disabled."""
         mock_config.enable_hybrid_search = False
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -119,6 +129,7 @@ class TestHybridMemoryManager:
                 ) as mock_tantivy_class:
                     # Setup USearch engine mock
                     mock_usearch = MagicMock()
+                    mock_usearch.add_batch.return_value = ["test"]
                     mock_usearch_class.return_value = mock_usearch
 
                     # Setup tantivy mock
@@ -129,8 +140,8 @@ class TestHybridMemoryManager:
                     result = manager.add_messages(["test"])
 
                     assert result == 1
-                    # USearchEngine.add should be called
-                    mock_usearch.add.assert_called_once()
+                    # USearchEngine.add_batch should be called
+                    mock_usearch.add_batch.assert_called_once()
                     # TantivyEngine.add should be called
                     mock_tantivy.add.assert_called_once()
                     # TantivyEngine.commit should be called after batch
@@ -185,7 +196,12 @@ class TestHybridMemoryManager:
 
     def test_exact_match_detection(self, mock_config, mock_logger):
         """Test exact match detection uses Tantivy."""
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -250,6 +266,7 @@ class TestHybridMemoryManager:
     @pytest.mark.asyncio
     async def test_search_uses_rrf_fusion(self, mock_config, mock_logger):
         """Test hybrid search uses RRFFusion for ranking."""
+        mock_config.reranker_engine = "none"  # Skip LLM reranking in unit test
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -286,7 +303,12 @@ class TestParallelMessageAddition:
     @pytest.mark.asyncio
     async def test_add_messages_async_empty_list(self, mock_config, mock_logger):
         """Empty list should return AddResult with 0 stored without any operations."""
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch("reflectlog.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
@@ -298,7 +320,12 @@ class TestParallelMessageAddition:
     @pytest.mark.asyncio
     async def test_add_messages_async_single_message(self, mock_config, mock_logger):
         """Single message should skip concurrency overhead."""
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -316,7 +343,12 @@ class TestParallelMessageAddition:
     @pytest.mark.asyncio
     async def test_add_messages_async_multiple_messages(self, mock_config, mock_logger):
         """Multiple messages should be processed in parallel."""
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -341,7 +373,12 @@ class TestParallelMessageAddition:
         """Concurrency limit should be respected via semaphore."""
         mock_config.add_max_concurrency = 2  # Low limit for testing
 
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -367,7 +404,12 @@ class TestParallelMessageAddition:
         in parallel, so we use a side_effect function instead of a list to
         handle non-deterministic call order.
         """
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -404,7 +446,7 @@ class TestParallelMessageAddition:
                 ) as mock_tantivy_class:
                     # Setup USearchEngine mock to raise error
                     mock_usearch = MagicMock()
-                    mock_usearch.add.side_effect = Exception("Storage error")
+                    mock_usearch.add_batch.side_effect = Exception("Storage error")
                     mock_usearch.search.return_value = []  # For deduplication check
                     mock_usearch_class.return_value = mock_usearch
 
@@ -426,7 +468,12 @@ class TestParallelMessageAddition:
         Sprint 2.2: Phase 1 includes deduplicating within the batch itself
         before checking storage, to avoid storing the same message twice.
         """
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -464,7 +511,12 @@ class TestConcurrencyConfiguration:
         """Low concurrency limit should still process all messages."""
         mock_config.add_max_concurrency = 1  # Sequential processing
 
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -482,7 +534,12 @@ class TestConcurrencyConfiguration:
         """High concurrency limit should allow more parallel tasks."""
         mock_config.add_max_concurrency = 100  # Higher than message count
 
-        with patch("reflectlog.application.memory.manager.USearchEngine"):
+        with patch(
+            "reflectlog.application.memory.manager.USearchEngine"
+        ) as mock_usearch_class:
+            mock_usearch_class.return_value.add_batch.side_effect = (
+                lambda project_id, messages, infer: messages
+            )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"

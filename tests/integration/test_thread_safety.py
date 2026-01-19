@@ -14,7 +14,7 @@ from reflectlog.application.config import Config
 from reflectlog.application.memory import MemoryManager
 from reflectlog.application.utils import StructuredLogger
 from reflectlog.application.utils.security import SecretString
-from langchain_core.embeddings import Embeddings
+from reflectlog.application.types import Embeddings
 
 import numpy as np
 

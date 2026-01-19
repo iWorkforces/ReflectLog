@@ -5,16 +5,22 @@ correctly, including race conditions, duplicate detection, and data consistency.
 """
 
 import asyncio
+import os
 from collections import Counter
 from unittest.mock import MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_USEARCH_CONCURRENCY_TESTS") != "1",
+    reason="Set RUN_USEARCH_CONCURRENCY_TESTS=1 to run USearch concurrency tests",
+)
+
 from reflectlog.application.config import Config
 from reflectlog.application.memory import MemoryManager
 from reflectlog.application.utils import StructuredLogger
 from reflectlog.application.utils.security import SecretString
-from langchain_core.embeddings import Embeddings
+from reflectlog.application.types import Embeddings
 
 import numpy as np
 

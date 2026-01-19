@@ -1,7 +1,7 @@
 """Unit tests for LLMReranker."""
 
 import json
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -131,7 +131,7 @@ class TestCreateRerankerProvider:
             provider = create_reranker_provider(config)
 
             assert isinstance(provider, OpenAIRerankerProvider)
-            mock_client_class.assert_called_once()
+            mock_client_class.assert_not_called()
 
     def test_create_anthropic_provider(self) -> None:
         """Test creating Anthropic provider."""
@@ -498,12 +498,7 @@ class TestLLMRerankerInitialization:
         ) as mock_async_client:
             reranker = LLMReranker(config=config)
 
-            mock_async_client.assert_called_once_with(
-                api_key="test-key",
-                base_url="https://openrouter.ai/api/v1",
-                http_client=ANY,
-                timeout=30.0,
-            )
+            mock_async_client.assert_not_called()
             assert reranker._provider is not None
             assert isinstance(reranker._provider, OpenAIRerankerProvider)
 

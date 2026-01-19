@@ -36,19 +36,14 @@ class TestLangchainQwenEmbeddingsInitialization:
 
             assert embeddings.config.model == "qwen/qwen-2.5-3b-instruct"
             assert embeddings.config.embedding_dims == 1536
-            # Both clients should be initialized
+            # Sync client should be initialized; async client is lazy
             mock_sync_client.assert_called_once_with(
                 api_key="test-api-key",
                 base_url="https://openrouter.ai/api/v1",
                 http_client=ANY,
                 timeout=60.0,
             )
-            mock_async_client.assert_called_once_with(
-                api_key="test-api-key",
-                base_url="https://openrouter.ai/api/v1",
-                http_client=ANY,
-                timeout=60.0,
-            )
+            mock_async_client.assert_not_called()
 
     def test_initialization_with_embedder_config(self) -> None:
         """Test initialization with EmbedderConfig."""
@@ -71,19 +66,14 @@ class TestLangchainQwenEmbeddingsInitialization:
 
             assert embeddings.config.model == "qwen/qwen-2.5-3b-instruct"
             assert embeddings.config.embedding_dims == 1536
-            # Both clients should be initialized
+            # Sync client should be initialized; async client is lazy
             mock_sync_client.assert_called_once_with(
                 api_key="test-api-key",
                 base_url="https://openrouter.ai/api/v1",
                 http_client=ANY,
                 timeout=60.0,
             )
-            mock_async_client.assert_called_once_with(
-                api_key="test-api-key",
-                base_url="https://openrouter.ai/api/v1",
-                http_client=ANY,
-                timeout=60.0,
-            )
+            mock_async_client.assert_not_called()
 
     def test_initialization_with_empty_config(self) -> None:
         """Test initialization with empty configuration."""
@@ -105,13 +95,12 @@ class TestLangchainQwenEmbeddingsInitialization:
                     "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
-                LangchainQwenEmbeddings(config={})
+                embeddings = LangchainQwenEmbeddings(config={})
                 mock_sync_client.assert_called_once()
-                mock_async_client.assert_called_once()
+                mock_async_client.assert_not_called()
                 sync_kwargs = mock_sync_client.call_args[1]
-                async_kwargs = mock_async_client.call_args[1]
                 assert sync_kwargs["api_key"] == "env-api-key"
-                assert async_kwargs["api_key"] == "env-api-key"
+                assert embeddings.config.api_key == "env-api-key"
 
     def test_base_url_from_environment(self) -> None:
         """Test base URL from environment variable."""
@@ -126,13 +115,12 @@ class TestLangchainQwenEmbeddingsInitialization:
                     "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
-                LangchainQwenEmbeddings(config={})
+                embeddings = LangchainQwenEmbeddings(config={})
                 mock_sync_client.assert_called_once()
-                mock_async_client.assert_called_once()
+                mock_async_client.assert_not_called()
                 sync_kwargs = mock_sync_client.call_args[1]
-                async_kwargs = mock_async_client.call_args[1]
                 assert sync_kwargs["base_url"] == "https://custom.url/api/v1"
-                assert async_kwargs["base_url"] == "https://custom.url/api/v1"
+                assert embeddings.config.openai_base_url == "https://custom.url/api/v1"
 
     def test_base_url_default_value(self) -> None:
         """Test default base URL."""
@@ -145,13 +133,14 @@ class TestLangchainQwenEmbeddingsInitialization:
                     "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
-                LangchainQwenEmbeddings(config={})
+                embeddings = LangchainQwenEmbeddings(config={})
                 mock_sync_client.assert_called_once()
-                mock_async_client.assert_called_once()
+                mock_async_client.assert_not_called()
                 sync_kwargs = mock_sync_client.call_args[1]
-                async_kwargs = mock_async_client.call_args[1]
                 assert sync_kwargs["base_url"] == "https://openrouter.ai/api/v1"
-                assert async_kwargs["base_url"] == "https://openrouter.ai/api/v1"
+                assert (
+                    embeddings.config.openai_base_url == "https://openrouter.ai/api/v1"
+                )
 
     def test_deprecated_openai_api_base_warning(self) -> None:
         """Test deprecation warning for OPENAI_API_BASE."""
@@ -361,13 +350,23 @@ class TestAsyncEmbedQuery:
     async def test_aembed_query_client_not_initialized(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        """Test error when async client is not initialized."""
+        """Test async client is initialized lazily."""
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
+
+        async_client = AsyncMock()
+        async_client.embeddings.create = AsyncMock(return_value=mock_response)
+
         mock_embeddings._async_client = None
 
-        with pytest.raises(
-            RuntimeError, match="Async embedding request failed after retries"
-        ):
-            await mock_embeddings.aembed_query("test")
+        with patch(
+            "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI",
+            return_value=async_client,
+        ) as mock_async_client:
+            result = await mock_embeddings.aembed_query("test")
+
+        assert result == [0.1, 0.2, 0.3]
+        mock_async_client.assert_called_once()
 
 
 class TestAsyncEmbedDocuments:
@@ -536,11 +535,11 @@ class TestConfigurationPriority:
                     "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
-                LangchainQwenEmbeddings(config=config)
+                embeddings = LangchainQwenEmbeddings(config=config)
                 sync_kwargs = mock_sync_client.call_args[1]
-                async_kwargs = mock_async_client.call_args[1]
                 assert sync_kwargs["api_key"] == "config-key"
-                assert async_kwargs["api_key"] == "config-key"
+                assert embeddings.config.api_key == "config-key"
+                mock_async_client.assert_not_called()
 
     def test_env_used_when_config_not_provided(self) -> None:
         """Test that environment variables are used when config not provided."""
@@ -553,8 +552,8 @@ class TestConfigurationPriority:
                     "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
-                LangchainQwenEmbeddings(config={})
+                embeddings = LangchainQwenEmbeddings(config={})
                 sync_kwargs = mock_sync_client.call_args[1]
-                async_kwargs = mock_async_client.call_args[1]
                 assert sync_kwargs["api_key"] == "env-key"
-                assert async_kwargs["api_key"] == "env-key"
+                assert embeddings.config.api_key == "env-key"
+                mock_async_client.assert_not_called()

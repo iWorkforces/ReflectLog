@@ -50,6 +50,9 @@ def mock_usearch_engine():
     """
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
+    engine.add_batch = MagicMock(
+        side_effect=lambda project_id, messages, infer: messages
+    )
     # USearchEngine.get_all returns List[str] directly
     engine.get_all = MagicMock(return_value=[])
     # USearchEngine.search returns List[Tuple[str, float]]
@@ -96,6 +99,7 @@ def set_env_vars(monkeypatch):
         "LOG_LEVEL": "INFO",
         "DEDUPLICATE_MESSAGES": "true",
         "ADD_MAX_CONCURRENCY": "8",
+        "RERANKER_ENGINE": "llm",
         # Disable embedding cache in tests to avoid issues with mocked embedders
         "EMBEDDING_CACHE_ENABLED": "false",
         # Disable eager initialization in tests to avoid issues with mocked engines
@@ -149,6 +153,7 @@ def mcp_server(set_env_vars, mock_usearch_engine):
         # Configure TantivyEngine mock (basic mock, not used in most tests)
         mock_tantivy = MagicMock()
         mock_tantivy.ensure_initialized = MagicMock(return_value=None)
+        mock_tantivy.search = MagicMock(return_value=[])
         mock_tantivy_cls.return_value = mock_tantivy
 
         # Configure embedder mock
@@ -229,8 +234,20 @@ def reset_env_after_test():
     This fixture runs after every test to ensure clean state.
     """
     yield
-    # Cleanup happens here if needed
-    pass
+    # Reset cached config singleton to avoid cross-test config mutation
+    try:
+        from reflectlog.application.config import settings as config_settings
+
+        with config_settings._config_lock:
+            config_settings._config = None
+        # Remove any per-test overrides set on the lazy config proxy.
+        try:
+            config_settings.config.__dict__.clear()
+        except AttributeError:
+            pass
+    except Exception:
+        # Best-effort reset; tests should still proceed if this fails
+        pass
 
 
 @pytest.fixture
@@ -241,13 +258,18 @@ def create_search_results(mock_search_result):
         mock_search_result: Factory fixture for single results (unused, kept for compatibility)
 
     Returns:
-        Callable that creates lists of tuples (message, score) for USearchEngine.search()
+        Callable that creates lists of tuples (message, score, created_at) for USearchEngine.search()
     """
 
-    def _create_results(messages: list[str]) -> list[tuple[str, float]]:
-        # USearchEngine.search returns List[Tuple[str, float]]
+    def _create_results(messages: list[str]) -> list[tuple[str, float, str]]:
+        # USearchEngine.search returns List[Tuple[str, float, str]]
         # Default scores decrease from 0.9 for ranking
-        return [(msg, 0.9 - (idx * 0.1)) for idx, msg in enumerate(messages)]
+        results: list[tuple[str, float, str]] = []
+        for idx, msg in enumerate(messages):
+            score = 0.9 - (idx * 0.1)
+            created_at = f"2024-01-{idx + 1:02d}T00:00:00"
+            results.append((msg, score, created_at))
+        return results
 
     return _create_results
 

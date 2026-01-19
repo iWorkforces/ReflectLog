@@ -217,7 +217,9 @@ class TestSearchPipelineWithRRFToggle:
                     "reflectlog.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy:
                     mock_usearch_instance = Mock()
-                    mock_usearch_instance.search.return_value = [("msg1", 0.9)]
+                    mock_usearch_instance.search.return_value = [
+                        ("msg1", 0.9, "2024-01-01T00:00:00")
+                    ]
                     mock_usearch.return_value = mock_usearch_instance
 
                     mock_tantivy_instance = Mock()

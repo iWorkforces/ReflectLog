@@ -16,13 +16,14 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            stored_messages.extend(messages or [])
+            return messages or []
 
         def get_all_side_effect(**kwargs):
-            return {"results": [{"memory": msg} for msg in stored_messages]}
+            return stored_messages.copy()
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
 
         # Get tool functions
@@ -54,19 +55,16 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            stored_messages.extend(messages or [])
+            return messages or []
 
         def search_side_effect(query, **kwargs):
             # Simulate semantic search returning messages containing query
             matching = [msg for msg in stored_messages if query.lower() in msg.lower()]
-            return {
-                "results": [
-                    {"memory": msg, "id": f"id_{i}"} for i, msg in enumerate(matching)
-                ]
-            }
+            return create_search_results(matching)
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
 
         # Get tool functions
@@ -82,6 +80,8 @@ class TestMCPWorkflows:
         assert add_func is not None
         assert search_func is not None
         await add_func(messages)
+        mcp_server.memory_manager.config.enable_rrf_fusion = False
+        mcp_server.memory_manager.config.reranker_engine = "none"
         result = await search_func("Python")
 
         # Verify
@@ -99,34 +99,38 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            stored_messages.extend(messages or [])
+            return messages or []
 
         def search_side_effect(query, **kwargs):
             # Return exact matches for removal
-            matching = [
-                (msg, stored_messages.index(msg))
-                for msg in stored_messages
-                if msg == query
-            ]
-            return {
-                "results": [{"memory": msg, "id": f"id_{idx}"} for msg, idx in matching]
-            }
+            matching = [msg for msg in stored_messages if msg == query]
+            return create_search_results(matching)
 
         def delete_side_effect(memory_id=None, project_id=None):
-            # Remove by message value (find and remove)
-            if memory_id and memory_id.startswith("id_"):
-                idx = int(memory_id.split("_")[1])
-                if idx < len(stored_messages):
-                    stored_messages.pop(idx)
+            # Remove by numeric ID (matches MessageStore auto-increment IDs)
+            if memory_id is None:
+                return
+            try:
+                idx = int(memory_id)
+            except (TypeError, ValueError):
+                return
+            if 0 <= idx < len(stored_messages):
+                stored_messages.pop(idx)
 
         def get_all_side_effect(**kwargs):
-            return {"results": [{"memory": msg} for msg in stored_messages]}
+            return stored_messages.copy()
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
+        mcp_server.memory_manager.memory.get_id_by_message.side_effect = (
+            lambda project_id, message: stored_messages.index(message)
+            if message in stored_messages
+            else None
+        )
 
         # Get tool functions
         add_func = None
@@ -175,25 +179,32 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            stored_messages.extend(messages or [])
+            return messages or []
 
         def search_side_effect(query, **kwargs):
             matching = [msg for msg in stored_messages if query.lower() in msg.lower()]
-            return {
-                "results": [
-                    {"memory": msg, "id": f"id_{i}"} for i, msg in enumerate(matching)
-                ]
-            }
+            return create_search_results(matching)
 
         def delete_side_effect(memory_id=None, project_id=None):
-            if memory_id and memory_id.startswith("id_"):
-                idx = int(memory_id.split("_")[1])
-                stored_messages.pop(idx) if idx < len(stored_messages) else None
+            if memory_id is None:
+                return
+            try:
+                idx = int(memory_id)
+            except (TypeError, ValueError):
+                return
+            if 0 <= idx < len(stored_messages):
+                stored_messages.pop(idx)
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
+        mcp_server.memory_manager.memory.get_id_by_message.side_effect = (
+            lambda project_id, message: stored_messages.index(message)
+            if message in stored_messages
+            else None
+        )
 
         # Get tool functions
         add_func = None
@@ -215,6 +226,8 @@ class TestMCPWorkflows:
         await add_func(messages)
 
         # 2. Search for "Python" - should find 3
+        mcp_server.memory_manager.config.enable_rrf_fusion = False
+        mcp_server.memory_manager.config.reranker_engine = "none"
         python_results_before = await search_func("Python")
         assert len(python_results_before) == 3
 
@@ -233,13 +246,14 @@ class TestMCPWorkflows:
         """Test multiple add operations in sequence."""
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            stored_messages.extend(messages or [])
+            return messages or []
 
         def get_all_side_effect(**kwargs):
-            return {"results": [{"memory": msg} for msg in stored_messages]}
+            return stored_messages.copy()
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
 
         # Get tool functions
@@ -301,29 +315,38 @@ class TestMCPWorkflows:
 
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            for msg in messages or []:
+                if msg not in stored_messages:
+                    stored_messages.append(msg)
+            return messages or []
 
         def search_side_effect(query, **kwargs):
             matching = [msg for msg in stored_messages if msg == query]
-            return {
-                "results": [
-                    {"memory": msg, "id": f"id_{i}"} for i, msg in enumerate(matching)
-                ]
-            }
+            return create_search_results(matching)
 
         def delete_side_effect(memory_id=None, project_id=None):
-            if memory_id and memory_id.startswith("id_"):
-                idx = int(memory_id.split("_")[1])
-                stored_messages.pop(idx) if idx < len(stored_messages) else None
+            if memory_id is None:
+                return
+            try:
+                idx = int(memory_id)
+            except (TypeError, ValueError):
+                return
+            if 0 <= idx < len(stored_messages):
+                stored_messages.pop(idx)
 
         def get_all_side_effect(**kwargs):
-            return {"results": [{"memory": msg} for msg in stored_messages]}
+            return stored_messages.copy()
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
+        mcp_server.memory_manager.memory.get_id_by_message.side_effect = (
+            lambda project_id, message: stored_messages.index(message)
+            if message in stored_messages
+            else None
+        )
 
         # Get tool functions
         add_func = None
@@ -344,7 +367,7 @@ class TestMCPWorkflows:
         await add_func(messages)
 
         all_msgs = await get_all_func()
-        assert len(all_msgs) == 3
+        assert len(all_msgs) == 2
 
         # Remove duplicates (should remove all occurrences)
         await remove_func([duplicate_message])
@@ -375,17 +398,18 @@ class TestMCPWorkflows:
 
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            stored_messages.extend(messages or [])
+            return messages or []
 
         def get_all_side_effect(**kwargs):
-            return {"results": [{"memory": msg} for msg in stored_messages]}
+            return stored_messages.copy()
 
         def search_side_effect(query, **kwargs):
             matching = [msg for msg in stored_messages if query in msg]
             return create_search_results(matching[:5])  # Limit to 5 as per config
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
 
@@ -426,18 +450,15 @@ class TestMCPWorkflows:
 
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            stored_messages.extend(messages or [])
+            return messages or []
 
         def search_side_effect(query, **kwargs):
             matching = [msg for msg in stored_messages if query in msg]
-            return {
-                "results": [
-                    {"memory": msg, "id": f"id_{i}"} for i, msg in enumerate(matching)
-                ]
-            }
+            return create_search_results(matching)
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
 
         # Get tool functions
@@ -475,18 +496,15 @@ class TestMCPWorkflows:
 
         stored_messages = []
 
-        def add_side_effect(message, project_id=None, infer=True):
-            stored_messages.append(message)
+        def add_side_effect(*, project_id=None, messages=None, infer=True):
+            stored_messages.extend(messages or [])
+            return messages or []
 
         def search_side_effect(query, **kwargs):
             matching = [msg for msg in stored_messages if query.lower() in msg.lower()]
-            return {
-                "results": [
-                    {"memory": msg, "id": f"id_{i}"} for i, msg in enumerate(matching)
-                ]
-            }
+            return create_search_results(matching)
 
-        mcp_server.memory_manager.memory.add.side_effect = add_side_effect
+        mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
 
         # Get tool functions
