@@ -6,7 +6,6 @@ import time
 import warnings
 import anyio
 from openai import OpenAI, AsyncOpenAI, DefaultAioHttpClient, DefaultHttpxClient
-from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 
@@ -23,9 +22,11 @@ class EmbedderConfig:
     api_key: Optional[str] = None
     openai_base_url: Optional[str] = None
     timeout: float = 60.0  # 60 seconds default for embedding requests
+    batch_size: Optional[int] = None
+    max_concurrent_batches: Optional[int] = None
 
 
-class LangchainQwenEmbeddings(BaseModel, Embeddings):
+class LangchainQwenEmbeddings(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     config: Any = None
     _client: OpenAI | None = PrivateAttr(default=None)
@@ -45,6 +46,8 @@ class LangchainQwenEmbeddings(BaseModel, Embeddings):
             or os.getenv("OPENROUTER_BASE_URL")
             or "https://openrouter.ai/api/v1"
         )
+        self.config.api_key = api_key
+        self.config.openai_base_url = base_url
         if os.environ.get("OPENAI_API_BASE"):
             warnings.warn(
                 "The environment variable 'OPENAI_API_BASE' is deprecated and will be removed in the 0.1.80. "
@@ -60,14 +63,19 @@ class LangchainQwenEmbeddings(BaseModel, Embeddings):
             timeout=self.config.timeout,
         )
 
-        # Initialize asynchronous client for async methods
-        # Note: aiohttp does not support HTTP/2, so we don't enable it
-        self._async_client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            http_client=DefaultAioHttpClient(),
-            timeout=self.config.timeout,
-        )
+        # Async client is initialized lazily to avoid unused aiohttp sessions
+
+    def _get_async_client(self) -> AsyncOpenAI:
+        """Get or initialize the async OpenAI client."""
+        if self._async_client is None:
+            # Note: aiohttp does not support HTTP/2, so we don't enable it
+            self._async_client = AsyncOpenAI(
+                api_key=self.config.api_key,
+                base_url=self.config.openai_base_url,
+                http_client=DefaultAioHttpClient(),
+                timeout=self.config.timeout,
+            )
+        return self._async_client
 
     def _sync_embed_with_retry(self, **kwargs: Any) -> list[list[float]]:
         """Call sync embeddings API with exponential backoff retry.
@@ -137,9 +145,12 @@ class LangchainQwenEmbeddings(BaseModel, Embeddings):
 
         cleaned_texts = [text.replace("\n", " ") for text in texts]
 
-        # Batch size configurable via env var (default 512, was 64)
+        # Batch size configurable via config or env var (default 512, was 64)
         # OpenRouter/OpenAI APIs support up to 2048 items per request
-        batch_size = int(os.environ.get("EMBEDDING_BATCH_SIZE", "512"))
+        batch_size = self.config.batch_size or int(
+            os.environ.get("EMBEDDING_BATCH_SIZE", "512")
+        )
+        batch_size = max(1, batch_size)
         results: list[list[float]] = []
         for i in range(0, len(cleaned_texts), batch_size):
             batch = cleaned_texts[i : i + batch_size]
@@ -173,11 +184,8 @@ class LangchainQwenEmbeddings(BaseModel, Embeddings):
 
         for attempt in range(1, max_attempts + 1):
             try:
-                if self._async_client is None:
-                    raise RuntimeError(
-                        "Async Qwen embeddings client is not initialized."
-                    )
-                response = await self._async_client.embeddings.create(**kwargs)
+                client = self._get_async_client()
+                response = await client.embeddings.create(**kwargs)
                 return [d.embedding for d in response.data]
             except Exception as exc:  # pragma: no cover - network/env dependent
                 last_exc = exc
@@ -222,14 +230,18 @@ class LangchainQwenEmbeddings(BaseModel, Embeddings):
 
         cleaned_texts = [text.replace("\n", " ") for text in texts]
 
-        # Batch size configurable via env var (default 512)
+        # Batch size configurable via config or env var (default 512)
         # OpenRouter/OpenAI APIs support up to 2048 items per request
-        batch_size = int(os.environ.get("EMBEDDING_BATCH_SIZE", "512"))
+        batch_size = self.config.batch_size or int(
+            os.environ.get("EMBEDDING_BATCH_SIZE", "512")
+        )
+        batch_size = max(1, batch_size)
 
-        # Max concurrent batches configurable via env var (default 4)
-        max_concurrent_batches = int(
+        # Max concurrent batches configurable via config or env var (default 4)
+        max_concurrent_batches = self.config.max_concurrent_batches or int(
             os.environ.get("EMBEDDING_MAX_CONCURRENT_BATCHES", "4")
         )
+        max_concurrent_batches = max(1, max_concurrent_batches)
 
         # Split into batches
         batches: list[tuple[int, list[str]]] = []

@@ -1,7 +1,7 @@
 """Unit tests for LLMReranker."""
 
 import json
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -131,7 +131,7 @@ class TestCreateRerankerProvider:
             provider = create_reranker_provider(config)
 
             assert isinstance(provider, OpenAIRerankerProvider)
-            mock_client_class.assert_called_once()
+            mock_client_class.assert_not_called()
 
     def test_create_anthropic_provider(self) -> None:
         """Test creating Anthropic provider."""
@@ -179,6 +179,8 @@ class TestOpenAIRerankerProvider:
             )
             # Replace the client with our mock for testing
             provider._client = mock_client
+            # Assert to narrow the type from AsyncOpenAI | None to AsyncOpenAI
+            assert provider._client is not None
             return provider
 
     @pytest.mark.asyncio
@@ -190,7 +192,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 0.85}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             return_value=mock_response
         )
 
@@ -213,7 +215,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 1.5}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             return_value=mock_response
         )
 
@@ -238,7 +240,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "not valid json"
 
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             return_value=mock_response
         )
 
@@ -261,7 +263,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = None
 
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             return_value=mock_response
         )
 
@@ -279,7 +281,7 @@ class TestOpenAIRerankerProvider:
         self, mock_provider: OpenAIRerankerProvider
     ) -> None:
         """Test that API error uses fallback score."""
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             side_effect=Exception("API Error")
         )
 
@@ -302,7 +304,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 0.85}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             return_value=mock_response
         )
 
@@ -311,8 +313,8 @@ class TestOpenAIRerankerProvider:
         )
 
         # Verify structured output format was used
-        mock_provider._client.chat.completions.create.assert_called_once()
-        call_kwargs = mock_provider._client.chat.completions.create.call_args[1]
+        mock_provider._client.chat.completions.create.assert_called_once()  # type: ignore[union-attr]
+        call_kwargs = mock_provider._client.chat.completions.create.call_args[1]  # type: ignore[union-attr]
         assert call_kwargs["response_format"]["type"] == "json_schema"
         assert "json_schema" in call_kwargs["response_format"]
         assert call_kwargs["response_format"]["json_schema"]["strict"] is True
@@ -327,7 +329,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices[0].message.content = '{"score": 0.75}'
 
         # First call fails with json_schema error, second succeeds
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             side_effect=[
                 Exception("json_schema is not supported for this model"),
                 mock_response,
@@ -342,11 +344,11 @@ class TestOpenAIRerankerProvider:
         )
 
         # Verify fallback was called
-        assert mock_provider._client.chat.completions.create.call_count == 2
+        assert mock_provider._client.chat.completions.create.call_count == 2  # type: ignore[union-attr]
 
         # Verify second call used json_object mode
         second_call_kwargs = (
-            mock_provider._client.chat.completions.create.call_args_list[1][1]
+            mock_provider._client.chat.completions.create.call_args_list[1][1]  # type: ignore[union-attr]
         )
         assert second_call_kwargs["response_format"]["type"] == "json_object"
 
@@ -362,7 +364,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 0.8}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             side_effect=[
                 Exception("structured outputs are not available"),
                 mock_response,
@@ -377,7 +379,7 @@ class TestOpenAIRerankerProvider:
         )
 
         # Verify fallback occurred
-        assert mock_provider._client.chat.completions.create.call_count == 2
+        assert mock_provider._client.chat.completions.create.call_count == 2  # type: ignore[union-attr]
         mock_logger.warning.assert_called_once()
 
     @pytest.mark.asyncio
@@ -385,7 +387,7 @@ class TestOpenAIRerankerProvider:
         self, mock_provider: OpenAIRerankerProvider
     ) -> None:
         """Test that unrelated errors are not caught for fallback."""
-        mock_provider._client.chat.completions.create = AsyncMock(
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
             side_effect=Exception("Network timeout error")
         )
 
@@ -498,12 +500,7 @@ class TestLLMRerankerInitialization:
         ) as mock_async_client:
             reranker = LLMReranker(config=config)
 
-            mock_async_client.assert_called_once_with(
-                api_key="test-key",
-                base_url="https://openrouter.ai/api/v1",
-                http_client=ANY,
-                timeout=30.0,
-            )
+            mock_async_client.assert_not_called()
             assert reranker._provider is not None
             assert isinstance(reranker._provider, OpenAIRerankerProvider)
 

@@ -5,6 +5,19 @@
 
 set -e
 
+# Ensure uv cache is writable (avoid permission errors in locked home cache)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -z "${UV_CACHE_DIR:-}" ]; then
+    export UV_CACHE_DIR="$SCRIPT_DIR/.cache/uv"
+fi
+if [ -z "${XDG_CACHE_HOME:-}" ]; then
+    export XDG_CACHE_HOME="$SCRIPT_DIR/.cache"
+fi
+if [ -z "${UV_PROJECT_ENVIRONMENT:-}" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
+    export UV_PROJECT_ENVIRONMENT="$SCRIPT_DIR/.venv"
+fi
+mkdir -p "$UV_CACHE_DIR"
+
 # Load test environment variables (before any imports)
 if [ -f ".env.test" ]; then
     set -a  # Automatically export all variables
@@ -26,6 +39,44 @@ TEST_DIR="tests"
 PYTEST_CONFIG_FILE="pyproject.toml"
 VENV_DIR="venv"
 COVERAGE_MIN=90  # Minimum coverage percentage
+VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"
+
+run_python() {
+    if [ -x "$VENV_PYTHON" ]; then
+        "$VENV_PYTHON" "$@"
+    else
+        uv run python "$@"
+    fi
+}
+
+run_pytest() {
+    if [ -x "$VENV_PYTHON" ]; then
+        "$VENV_PYTHON" -m pytest "$@"
+    else
+        uv run pytest "$@"
+    fi
+}
+
+pip_install() {
+    if [ -x "$VENV_PYTHON" ]; then
+        if ! "$VENV_PYTHON" -m pip --version &> /dev/null; then
+            "$VENV_PYTHON" -m ensurepip --upgrade &> /dev/null || true
+        fi
+        if "$VENV_PYTHON" -m pip --version &> /dev/null; then
+            "$VENV_PYTHON" -m pip install "$@"
+            return
+        fi
+    fi
+    uv pip install "$@"
+}
+
+run_ptw() {
+    if [ -x "$VENV_PYTHON" ]; then
+        "$VENV_PYTHON" -m pytest_watch "$@"
+    else
+        uv run ptw "$@"
+    fi
+}
 
 echo -e "${BLUE}🧪 ReflectLogMCP - Unit Testing${NC}"
 echo -e "${BLUE}=====================================${NC}"
@@ -75,32 +126,32 @@ check_uv() {
 
 # Function to check if pytest is installed
 check_pytest() {
-    if ! uv run python -c "import pytest" &> /dev/null; then
+    if ! run_python -c "import pytest" &> /dev/null; then
         echo -e "${YELLOW}📦 pytest not found, installing...${NC}"
-        echo -e "${CYAN}Installing pytest and dependencies via uv...${NC}"
-        uv pip install pytest pytest-asyncio pytest-cov pytest-xdist
+        echo -e "${CYAN}Installing pytest and dependencies...${NC}"
+        pip_install pytest pytest-asyncio pytest-cov pytest-xdist
 
         # Verify installation
-        if ! uv run python -c "import pytest" &> /dev/null; then
+        if ! run_python -c "import pytest" &> /dev/null; then
             echo -e "${RED}❌ Failed to install pytest${NC}"
-            echo -e "${YELLOW}Please install pytest manually: uv pip install pytest${NC}"
+            echo -e "${YELLOW}Please install pytest manually: python -m pip install pytest${NC}"
             exit 1
         fi
     fi
 
     echo -e "${GREEN}✅ pytest is available${NC}"
-    PYTEST_VERSION=$(uv run python -c "import pytest; print(pytest.__version__)" 2>/dev/null || echo "unknown")
+    PYTEST_VERSION=$(run_python -c "import pytest; print(pytest.__version__)" 2>/dev/null || echo "unknown")
     echo -e "${CYAN}Version: pytest $PYTEST_VERSION${NC}"
 }
 
 # Function to upgrade pytest to latest version
 upgrade_pytest() {
     echo -e "${BLUE}🔄 Upgrading pytest to latest version...${NC}"
-    echo -e "${CYAN}Upgrading pytest via uv...${NC}"
-    uv pip install --upgrade pytest pytest-asyncio pytest-cov pytest-xdist
+    echo -e "${CYAN}Upgrading pytest...${NC}"
+    pip_install --upgrade pytest pytest-asyncio pytest-cov pytest-xdist
 
     echo -e "${GREEN}✅ pytest upgraded to latest version${NC}"
-    PYTEST_VERSION=$(uv run python -c "import pytest; print(pytest.__version__)" 2>/dev/null || echo "unknown")
+    PYTEST_VERSION=$(run_python -c "import pytest; print(pytest.__version__)" 2>/dev/null || echo "unknown")
     echo -e "${CYAN}Version: pytest $PYTEST_VERSION${NC}"
     echo ""
 }
@@ -152,7 +203,7 @@ run_tests() {
     echo ""
 
     # Run pytest with verbose output
-    if uv run pytest "$TEST_DIR" -v; then
+    if run_pytest "$TEST_DIR" -v; then
         echo ""
         echo -e "${GREEN}✅ All tests passed!${NC}"
         return 0
@@ -169,13 +220,13 @@ run_tests_coverage() {
     echo ""
 
     # Run pytest with coverage
-    if uv run pytest "$TEST_DIR" -v --cov=reflectlog --cov-report=term-missing --cov-report=html; then
+    if run_pytest "$TEST_DIR" -v --cov=reflectlog --cov-report=term-missing --cov-report=html; then
         echo ""
         echo -e "${GREEN}✅ Tests completed with coverage report${NC}"
         echo -e "${CYAN}📁 HTML coverage report: htmlcov/index.html${NC}"
 
         # Check coverage percentage
-        COVERAGE=$(uv run pytest "$TEST_DIR" --cov=reflectlog --cov-report=term | grep "TOTAL" | awk '{print $NF}' | sed 's/%//' || echo "0")
+        COVERAGE=$(run_pytest "$TEST_DIR" --cov=reflectlog --cov-report=term | grep "TOTAL" | awk '{print $NF}' | sed 's/%//' || echo "0")
         if [ ! -z "$COVERAGE" ] && [ "$COVERAGE" != "0" ]; then
             if [ $(echo "$COVERAGE >= $COVERAGE_MIN" | bc -l 2>/dev/null || echo 0) -eq 1 ]; then
                 echo -e "${GREEN}✅ Coverage ${COVERAGE}% meets minimum requirement of ${COVERAGE_MIN}%${NC}"
@@ -197,11 +248,11 @@ run_tests_parallel() {
     echo ""
 
     # Run pytest with xdist for parallel execution
-    NUM_WORKERS=$(python -c "import os; print(os.cpu_count() or 4)")
+    NUM_WORKERS=$(run_python -c "import os; print(os.cpu_count() or 4)")
     echo -e "${CYAN}Using $NUM_WORKERS parallel workers${NC}"
     echo ""
 
-    if uv run pytest "$TEST_DIR" -v -n "$NUM_WORKERS"; then
+    if run_pytest "$TEST_DIR" -v -n "$NUM_WORKERS"; then
         echo ""
         echo -e "${GREEN}✅ All parallel tests passed!${NC}"
         return 0
@@ -218,7 +269,7 @@ run_test_file() {
     echo -e "${BLUE}🧪 Running tests in: $file${NC}"
     echo ""
 
-    if uv run pytest "$file" -v; then
+    if run_pytest "$file" -v; then
         echo ""
         echo -e "${GREEN}✅ Tests in $file passed!${NC}"
         return 0
@@ -235,7 +286,7 @@ run_tests_pattern() {
     echo -e "${BLUE}🧪 Running tests matching pattern: $pattern${NC}"
     echo ""
 
-    if uv run pytest "$TEST_DIR" -v -k "$pattern"; then
+    if run_pytest "$TEST_DIR" -v -k "$pattern"; then
         echo ""
         echo -e "${GREEN}✅ Tests matching '$pattern' passed!${NC}"
         return 0
@@ -253,13 +304,13 @@ show_test_stats() {
 
     # Collect test information
     echo -e "${CYAN}Test collection:${NC}"
-    uv run pytest "$TEST_DIR" --collect-only -q 2>/dev/null || echo "Unable to collect tests"
+    run_pytest "$TEST_DIR" --collect-only -q 2>/dev/null || echo "Unable to collect tests"
     echo ""
 
     # Show test distribution by file
     echo -e "${CYAN}Tests by file:${NC}"
     find "$TEST_DIR" -name "test_*.py" -o -name "*_test.py" | while read -r file; do
-        TEST_COUNT=$(uv run pytest "$file" --collect-only -q 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+        TEST_COUNT=$(run_pytest "$file" --collect-only -q 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
         echo "  $(basename $file): $TEST_COUNT tests"
     done
     echo ""
@@ -272,13 +323,13 @@ run_tests_watch() {
     echo ""
 
     # Install pytest-watch if needed
-    if ! uv run python -c "import pytest_watch" &> /dev/null; then
+    if ! run_python -c "import pytest_watch" &> /dev/null; then
         echo -e "${CYAN}Installing pytest-watch...${NC}"
-        uv pip install pytest-watch
+        pip_install pytest-watch
     fi
 
     # Run pytest-watch
-    uv run ptw "$TEST_DIR" -- -v
+    run_ptw "$TEST_DIR" -- -v
 }
 
 # Function to show detailed help
@@ -323,11 +374,11 @@ show_help() {
 # Function to install/upgrade pytest
 install_pytest() {
     echo -e "${BLUE}📦 Installing/upgrading pytest and dependencies...${NC}"
-    echo -e "${CYAN}Installing via uv...${NC}"
-    uv pip install --upgrade pytest pytest-asyncio pytest-cov pytest-xdist pytest-watch
+    echo -e "${CYAN}Installing...${NC}"
+    pip_install --upgrade pytest pytest-asyncio pytest-cov pytest-xdist pytest-watch
 
     echo -e "${GREEN}✅ pytest installation completed${NC}"
-    PYTEST_VERSION=$(uv run python -c "import pytest; print(pytest.__version__)" 2>/dev/null || echo "unknown")
+    PYTEST_VERSION=$(run_python -c "import pytest; print(pytest.__version__)" 2>/dev/null || echo "unknown")
     echo -e "${CYAN}Version: pytest $PYTEST_VERSION${NC}"
 }
 
@@ -341,7 +392,7 @@ list_test_files() {
         echo "$TEST_FILES" | while read -r file; do
             if [ -n "$file" ]; then
                 # Count tests in file
-                TEST_COUNT=$(uv run pytest "$file" --collect-only -q 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "?")
+                TEST_COUNT=$(run_pytest "$file" --collect-only -q 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "?")
                 echo "  $file ($TEST_COUNT tests)"
             fi
         done

@@ -10,6 +10,7 @@ Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
 """
 
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,6 +22,7 @@ from ..config import Config
 from ..exceptions import StorageError
 from ..types import ISemanticSearchEngine
 from ..utils import StructuredLogger, truncate_message
+from .match_utils import has_exact_match
 
 
 @dataclass
@@ -239,73 +241,13 @@ class DuplicateDetectionPhase:
         Sprint 2.1 Optimization: Fallback now uses get_id_by_message() for direct
         indexed database lookup instead of semantic search with embedding API call.
         """
-        # Fast path: Use Tantivy for exact match if hybrid search is enabled
-        if self._tantivy_engine is not None:
-            try:
-                # Use quoted exact phrase search with escaped query
-                escaped_query = self._escape_tantivy_query(message)
-                results = self._tantivy_engine.search(
-                    f'"{escaped_query}"',
-                    self._project_id,
-                    limit=5,  # Small limit since we only need to check existence
-                )
-                # Check for exact string match in results
-                has_match = any(msg == message for msg, _ in results)
-                if has_match:
-                    self.logger.debug(
-                        "Tantivy found exact duplicate",
-                        extra={"project_id": self._project_id},
-                    )
-                return has_match
-            except Exception as e:
-                self.logger.warning(
-                    "Tantivy duplicate check failed; falling back to database lookup",
-                    extra={"project_id": self._project_id, "error": str(e)},
-                )
-
-        # Optimized fallback: Direct database lookup (O(log n), no embedding API call)
-        # This avoids the 100-500ms embedding API overhead of semantic search
-        try:
-            msg_id = self._semantic_engine.get_id_by_message(self._project_id, message)
-            if msg_id is not None:
-                self.logger.debug(
-                    "Database lookup found exact duplicate",
-                    extra={"project_id": self._project_id, "msg_id": msg_id},
-                )
-                return True
-            return False
-        except Exception as e:
-            self.logger.warning(
-                "Duplicate detection failed; proceeding without deduplication",
-                extra={
-                    "project_id": self._project_id,
-                    "error": str(e),
-                },
-            )
-            return False
-
-    @staticmethod
-    def _escape_tantivy_query(query: str) -> str:
-        """Escape special characters for Tantivy query syntax.
-
-        Tantivy uses Lucene-style query syntax where certain characters have
-        special meaning. This method escapes them to prevent query injection.
-
-        Args:
-            query: Raw query string that may contain special characters.
-
-        Returns:
-            Escaped query string safe for use in Tantivy queries.
-        """
-        # Tantivy/Lucene special characters that need escaping
-        special_chars = r'+-&|!(){}[]^"~*?:\/'
-        escaped = []
-        for char in query:
-            if char in special_chars:
-                escaped.append(f"\\{char}")
-            else:
-                escaped.append(char)
-        return "".join(escaped)
+        return has_exact_match(
+            semantic_engine=self._semantic_engine,
+            tantivy_engine=self._tantivy_engine,
+            project_id=self._project_id,
+            message=message,
+            logger=self.logger,
+        )
 
 
 class SmartReplacementPhase:
@@ -376,12 +318,16 @@ class SmartReplacementPhase:
         # Capture in local variable for type narrowing in nested function
         smart_replacer = smart_replacer
 
+        # Limit concurrent replacement checks to avoid overload
+        semaphore = anyio.Semaphore(self.config.add_max_concurrency)
+
         async with create_task_group() as tg:
             replacement_results: List[Tuple[str, List[ReplacementInfo]]] = []
 
             async def check_replacement_for_msg(msg: str) -> None:
                 """Check replacement for a single message."""
-                infos = await self._check_for_replacement(msg, smart_replacer)
+                async with semaphore:
+                    infos = await self._check_for_replacement(msg, smart_replacer)
                 replacement_results.append((msg, infos))
 
             for msg in messages:
@@ -432,7 +378,7 @@ class SmartReplacementPhase:
         try:
             # Step 1: Find top N most similar memories via semantic search
             candidate_limit = self.config.smart_replace_candidate_limit
-            similar_results = self._semantic_engine.search(
+            similar_results = await asyncify(self._semantic_engine.search)(
                 query=new_memory,
                 project_id=self._project_id,
                 limit=candidate_limit,
@@ -593,6 +539,7 @@ class StoragePhase:
         tantivy_engine: Any,  # TantivyEngine | None
         config: Config,
         logger: StructuredLogger,
+        write_lock: threading.Lock | None = None,
     ):
         """Initialize storage phase.
 
@@ -607,6 +554,7 @@ class StoragePhase:
         self.config = config
         self.logger = logger
         self._project_id = config.project_id
+        self._write_lock = write_lock
 
     async def execute(
         self,
@@ -629,6 +577,7 @@ class StoragePhase:
         stored_count = 0
         replaced_count = 0
         replacements: List[ReplacementInfo] = []
+        messages_to_add: List[str] = []
 
         # Process each message sequentially
         for idx, message in enumerate(messages):
@@ -670,31 +619,34 @@ class StoragePhase:
                             )
 
                         # Delete the old memory
-                        deleted = await asyncify(self._semantic_engine.delete)(
-                            memory_id=str(
-                                self._semantic_engine.get_id_by_message(
-                                    self._project_id, replacement_info.old_memory
-                                )
-                                or ""
-                            )
+                        msg_id = self._semantic_engine.get_id_by_message(
+                            self._project_id, replacement_info.old_memory
                         )
-                        if deleted is None:
-                            # Delete from Tantivy too
-                            if self._tantivy_engine is not None:
-                                self._tantivy_engine.delete(
-                                    self._project_id, replacement_info.old_memory
-                                )
-
-                            replaced_count += 1
-                            replacements.append(replacement_info)
-                            self.logger.debug(
-                                "Old memory removed successfully",
+                        if msg_id is None:
+                            self.logger.warning(
+                                "Old memory not found for replacement delete",
                                 extra={
                                     "message_index": idx + 1,
-                                    "action": "delete_success",
-                                    "archived": archived,
+                                    "action": "delete_missing",
                                 },
                             )
+                            continue
+
+                        self._delete_message(
+                            memory_id=str(msg_id),
+                            message=replacement_info.old_memory,
+                        )
+
+                        replaced_count += 1
+                        replacements.append(replacement_info)
+                        self.logger.debug(
+                            "Old memory removed successfully",
+                            extra={
+                                "message_index": idx + 1,
+                                "action": "delete_success",
+                                "archived": archived,
+                            },
+                        )
                     except Exception as delete_error:
                         # Graceful degradation: log warning and continue
                         self.logger.warning(
@@ -712,18 +664,22 @@ class StoragePhase:
 
             # Add the new message (unless dry_run)
             if not dry_run:
-                stored = await asyncify(self._add_message)(message)
-                if stored:
-                    stored_count += 1
-                else:
-                    # Shouldn't happen since we already checked, but handle gracefully
-                    self.logger.warning(
-                        "Message was marked as unique but failed to store",
-                        extra={"message_index": idx + 1, "reason": "storage_failed"},
-                    )
+                messages_to_add.append(message)
             else:
                 # In dry_run, assume it would be stored
                 stored_count += 1
+
+        if not dry_run and messages_to_add:
+            stored_messages = self._add_messages_batch(messages_to_add)
+            stored_count = len(stored_messages)
+            if stored_count != len(messages_to_add):
+                self.logger.warning(
+                    "Batch add stored fewer messages than expected",
+                    extra={
+                        "expected_count": len(messages_to_add),
+                        "stored_count": stored_count,
+                    },
+                )
 
         # Commit changes (only in live mode)
         if not dry_run:
@@ -749,6 +705,67 @@ class StoragePhase:
             replacements=replacements,
             duration=duration,
         )
+
+    def _add_messages_batch(self, messages: List[str]) -> List[str]:
+        """Add multiple messages to both semantic and full-text engines.
+
+        Args:
+            messages: List of messages to store.
+
+        Returns:
+            List of messages actually stored (duplicates skipped).
+        """
+        if not messages:
+            return []
+
+        try:
+            if self._write_lock is None:
+                inserted_messages = self._semantic_engine.add_batch(
+                    project_id=self._project_id,
+                    messages=messages,
+                    infer=self.config.enable_llm_infer,
+                )
+
+                if self._tantivy_engine is not None:
+                    for message in inserted_messages:
+                        self._tantivy_engine.add(self._project_id, message)
+            else:
+                with self._write_lock:
+                    inserted_messages = self._semantic_engine.add_batch(
+                        project_id=self._project_id,
+                        messages=messages,
+                        infer=self.config.enable_llm_infer,
+                    )
+
+                    if self._tantivy_engine is not None:
+                        for message in inserted_messages:
+                            self._tantivy_engine.add(self._project_id, message)
+
+            self.logger.debug(
+                "Batch added messages to hybrid storage",
+                extra={
+                    "project_id": self._project_id,
+                    "message_count": len(inserted_messages),
+                    "engines": ["semantic", "tantivy"],
+                },
+            )
+            return inserted_messages
+
+        except Exception as e:
+            raise StorageError(f"Failed to add message batch: {e}") from e
+
+    def _delete_message(self, memory_id: str, message: str) -> None:
+        """Delete a message from semantic and full-text engines with write locking."""
+        if self._write_lock is None:
+            self._semantic_engine.delete(memory_id=memory_id)
+            if self._tantivy_engine is not None:
+                self._tantivy_engine.delete(self._project_id, message)
+            return
+
+        with self._write_lock:
+            self._semantic_engine.delete(memory_id=memory_id)
+            if self._tantivy_engine is not None:
+                self._tantivy_engine.delete(self._project_id, message)
 
     def _add_message(self, message: str) -> bool:
         """Add a single message to BOTH USearch semantic and Tantivy full-text engines.
@@ -804,72 +821,13 @@ class StoragePhase:
         falling back to direct database lookup otherwise. Both paths are O(log n)
         avoiding the ~100-500ms embedding API call overhead.
         """
-        # Fast path: Use Tantivy for exact match if hybrid search is enabled
-        if self._tantivy_engine is not None:
-            try:
-                # Use quoted exact phrase search with escaped query
-                escaped_query = self._escape_tantivy_query(message)
-                results = self._tantivy_engine.search(
-                    f'"{escaped_query}"',
-                    self._project_id,
-                    limit=5,  # Small limit since we only need to check existence
-                )
-                # Check for exact string match in results
-                has_match = any(msg == message for msg, _ in results)
-                if has_match:
-                    self.logger.debug(
-                        "Tantivy found exact duplicate",
-                        extra={"project_id": self._project_id},
-                    )
-                return has_match
-            except Exception as e:
-                self.logger.warning(
-                    "Tantivy duplicate check failed; falling back to database lookup",
-                    extra={"project_id": self._project_id, "error": str(e)},
-                )
-
-        # Optimized fallback: Direct database lookup (O(log n), no embedding API call)
-        try:
-            msg_id = self._semantic_engine.get_id_by_message(self._project_id, message)
-            if msg_id is not None:
-                self.logger.debug(
-                    "Database lookup found exact duplicate",
-                    extra={"project_id": self._project_id, "msg_id": msg_id},
-                )
-                return True
-            return False
-        except Exception as e:
-            self.logger.warning(
-                "Duplicate detection failed; proceeding without deduplication",
-                extra={
-                    "project_id": self._project_id,
-                    "error": str(e),
-                },
-            )
-            return False
-
-    @staticmethod
-    def _escape_tantivy_query(query: str) -> str:
-        """Escape special characters for Tantivy query syntax.
-
-        Tantivy uses Lucene-style query syntax where certain characters have
-        special meaning. This method escapes them to prevent query injection.
-
-        Args:
-            query: Raw query string that may contain special characters.
-
-        Returns:
-            Escaped query string safe for use in Tantivy queries.
-        """
-        # Tantivy/Lucene special characters that need escaping
-        special_chars = r'+-&|!(){}[]^"~*?:\/'
-        escaped = []
-        for char in query:
-            if char in special_chars:
-                escaped.append(f"\\{char}")
-            else:
-                escaped.append(char)
-        return "".join(escaped)
+        return has_exact_match(
+            semantic_engine=self._semantic_engine,
+            tantivy_engine=self._tantivy_engine,
+            project_id=self._project_id,
+            message=message,
+            logger=self.logger,
+        )
 
     def _archive_for_replacement(
         self, old_memory: str, new_memory: str, confidence: float, reason: str

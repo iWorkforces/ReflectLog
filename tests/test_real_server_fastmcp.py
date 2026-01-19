@@ -3,6 +3,13 @@
 from fastmcp import Client
 from fastmcp.client.client import CallToolResult
 import anyio
+import os
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_LIVE_TESTS") != "1",
+    reason="Set RUN_LIVE_TESTS=1 to run live server tests",
+)
 
 
 async def test_real_server_with_fastmcp_client():

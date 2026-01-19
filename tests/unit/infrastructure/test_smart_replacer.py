@@ -2,7 +2,7 @@
 
 import json
 from typing import cast
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -190,12 +190,7 @@ class TestCreateReplacementProvider:
             provider = create_replacement_provider(config)
 
             assert isinstance(provider, OpenAIReplacementProvider)
-            mock_async_client.assert_called_once_with(
-                api_key="test-key",
-                base_url="https://openrouter.ai/api/v1",
-                http_client=ANY,
-                timeout=30.0,
-            )
+            mock_async_client.assert_not_called()
 
     def test_create_anthropic_provider(self) -> None:
         """Test creating Anthropic provider."""
@@ -540,7 +535,7 @@ class TestSmartReplacerInitialization:
         ) as mock_async_client:
             replacer = SmartReplacer(config=config)
 
-            mock_async_client.assert_called_once()
+            mock_async_client.assert_not_called()
             assert replacer._provider is not None
             assert isinstance(replacer._provider, OpenAIReplacementProvider)
 

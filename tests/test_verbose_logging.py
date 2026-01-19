@@ -2,6 +2,13 @@
 
 from fastmcp import Client
 import anyio
+import os
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_LIVE_TESTS") != "1",
+    reason="Set RUN_LIVE_TESTS=1 to run live server tests",
+)
 
 
 async def test_verbose_logging():

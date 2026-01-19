@@ -16,12 +16,11 @@ from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union, cast
 
 import numpy as np
-from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import Index, BatchMatches
 
 from reflectlog.application.exceptions import StorageError
-from reflectlog.application.types import ISemanticSearchEngine
+from reflectlog.application.types import Embeddings, ISemanticSearchEngine
 from reflectlog.application.utils.numba_utils import distance_to_similarity_cosine
 from reflectlog.application.utils.security import validate_project_id
 from reflectlog.infrastructure.message_store import MessageStore
@@ -340,6 +339,65 @@ class USearchEngine(BaseModel):
                 )
             raise RuntimeError(f"Failed to add message: {e}") from e
 
+    def add_batch(self, project_id: str, messages: list[str], infer: bool) -> list[str]:
+        """Add multiple messages to the USearch index in a single batch.
+
+        Args:
+            project_id: Project identifier for filtering.
+            messages: List of message texts to index.
+            infer: Whether to enable LLM-based message inference (not supported).
+
+        Returns:
+            List of messages successfully added (duplicates skipped).
+        """
+        if not messages:
+            return []
+
+        if infer:
+            if self.logger:
+                self.logger.warning(
+                    "infer=True not supported by USearchEngine, proceeding as infer=False",
+                    extra={"project_id": self.config.project_id},
+                )
+
+        try:
+            inserted = self.message_store.insert_many(project_id, messages)
+            if not inserted:
+                return []
+
+            inserted_messages = [message for message, _ in inserted]
+            vectors = self.embedder.embed_documents(inserted_messages)
+            if len(vectors) != len(inserted_messages):
+                raise RuntimeError(
+                    "Embedding batch size mismatch for USearch add_batch"
+                )
+
+            for (_, msg_id), vector in zip(inserted, vectors, strict=True):
+                vector_np = np.array(vector, dtype=np.float32)
+                self.index.add(msg_id, vector_np)
+
+            if self.logger:
+                self.logger.debug(
+                    "Batch added messages to USearch index",
+                    extra={
+                        "project_id": self.config.project_id,
+                        "message_count": len(inserted_messages),
+                    },
+                )
+
+            return inserted_messages
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(
+                    "Failed to add message batch to USearch index",
+                    extra={
+                        "project_id": self.config.project_id,
+                        "error": str(e),
+                    },
+                )
+            raise RuntimeError(f"Failed to add message batch: {e}") from e
+
     def _should_use_exact_search(self) -> bool:
         """Determine if exact search should be used based on config and index size.
 
@@ -358,6 +416,37 @@ class USearchEngine(BaseModel):
 
         # Default to approximate search (HNSW)
         return False
+
+    def _rank_scores(self, count: int) -> np.ndarray:
+        """Create rank-based scores from 1.0 to 0.0.
+
+        Used when distance-to-similarity conversion is ambiguous.
+        """
+        if count <= 0:
+            return np.array([], dtype=np.float32)
+        if count == 1:
+            return np.array([1.0], dtype=np.float32)
+        return np.linspace(1.0, 0.0, num=count, dtype=np.float32)
+
+    def _distances_to_scores(self, distances: np.ndarray) -> np.ndarray:
+        """Convert index distances to similarity scores.
+
+        Cosine distances are mapped to [0, 1] similarity.
+        L2 distances are converted with a monotonic 1 / (1 + d) transform.
+        Other metrics fall back to rank-based scoring to preserve ordering.
+        """
+        metric = self.config.metric.lower()
+        if metric in ("cos", "cosine"):
+            return distance_to_similarity_cosine(distances)
+        if metric in ("l2", "euclidean"):
+            return np.float32(1.0) / (np.float32(1.0) + distances)
+
+        if self.logger:
+            self.logger.warning(
+                "USearch metric has ambiguous distance scale; using rank-based scores",
+                extra={"metric": self.config.metric},
+            )
+        return self._rank_scores(len(distances))
 
     def search(
         self,
@@ -449,7 +538,7 @@ class USearchEngine(BaseModel):
                     [match.distance for _, match in filtered_matches],
                     dtype=np.float32,
                 )
-                similarities = distance_to_similarity_cosine(distances)
+                similarities = self._distances_to_scores(distances)
 
                 # Build results with converted scores and created_at timestamps
                 results: List[Tuple[str, float, str]] = [

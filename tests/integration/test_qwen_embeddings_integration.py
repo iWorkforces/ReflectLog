@@ -6,10 +6,13 @@ import pytest
 
 from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 
-# Skip all tests if OPENROUTER_API_KEY is not set
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+RUN_REAL_API_TESTS = os.getenv("RUN_REAL_API_TESTS") == "1"
+
+# Skip all tests unless explicitly enabled with a real API key.
 pytestmark = pytest.mark.skipif(
-    not os.getenv("OPENROUTER_API_KEY"),
-    reason="OPENROUTER_API_KEY environment variable not set",
+    not RUN_REAL_API_TESTS or not OPENROUTER_API_KEY,
+    reason="Set RUN_REAL_API_TESTS=1 and OPENROUTER_API_KEY to run real API tests",
 )
 
 

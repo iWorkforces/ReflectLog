@@ -5,11 +5,12 @@ import threading
 from collections import OrderedDict
 from typing import Any, List, Optional
 
-from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
+from reflectlog.application.types import Embeddings
 
-class CachedEmbeddings(BaseModel, Embeddings):
+
+class CachedEmbeddings(BaseModel):
     """LRU caching wrapper for any Embeddings provider.
 
     This wrapper caches `embed_query()` results using a SHA-256 hash of the query

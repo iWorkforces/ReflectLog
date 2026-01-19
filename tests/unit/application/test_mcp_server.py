@@ -98,10 +98,10 @@ class TestAddTool:
 
         # Verify behavior
         assert result is None  # add returns None
-        mcp_server.memory_manager.memory.add.assert_called_once()
-        # USearchEngine.add is called with keyword arguments
-        call_kwargs = mcp_server.memory_manager.memory.add.call_args.kwargs
-        assert call_kwargs["message"] == messages[0]
+        mcp_server.memory_manager.memory.add_batch.assert_called_once()
+        # USearchEngine.add_batch is called with keyword arguments
+        call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
+        assert call_kwargs["messages"] == messages
         assert call_kwargs["project_id"] == mcp_server.config.project_id
 
     async def test_add_multiple_messages_success(self, mcp_server, sample_messages):
@@ -119,14 +119,10 @@ class TestAddTool:
         assert add_func is not None
         await add_func(messages)
 
-        # Verify memory.add was called with correct messages
-        assert mcp_server.memory_manager.memory.add.call_count == len(messages)
-        # USearchEngine.add uses keyword arguments
-        added_messages = [
-            call.kwargs["message"]
-            for call in mcp_server.memory_manager.memory.add.call_args_list
-        ]
-        assert added_messages == messages
+        # Verify memory.add_batch was called with correct messages
+        assert mcp_server.memory_manager.memory.add_batch.call_count == 1
+        call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
+        assert call_kwargs["messages"] == messages
 
     async def test_add_empty_list_noop(self, mcp_server):
         """Test adding empty list is no-op (no error, no call to memory)."""
@@ -143,9 +139,9 @@ class TestAddTool:
         assert add_func is not None
         result = await add_func(messages)
 
-        # Verify no-op: returns None and doesn't call memory.add
+        # Verify no-op: returns None and doesn't call memory.add_batch
         assert result is None
-        mcp_server.memory_manager.memory.add.assert_not_called()
+        mcp_server.memory_manager.memory.add_batch.assert_not_called()
 
     async def test_add_message_at_min_length(self, mcp_server, sample_messages):
         """Test adding message at minimum length (1 character)."""
@@ -159,7 +155,7 @@ class TestAddTool:
 
         assert add_func is not None
         await add_func(messages)
-        mcp_server.memory_manager.memory.add.assert_called_once()
+        mcp_server.memory_manager.memory.add_batch.assert_called_once()
 
     async def test_add_message_at_max_length(self, mcp_server, sample_messages):
         """Test adding message at maximum length (30720 characters)."""
@@ -173,7 +169,7 @@ class TestAddTool:
 
         assert add_func is not None
         await add_func(messages)
-        mcp_server.memory_manager.memory.add.assert_called_once()
+        mcp_server.memory_manager.memory.add_batch.assert_called_once()
 
     async def test_add_messages_with_special_characters(
         self, mcp_server, sample_messages
@@ -189,12 +185,9 @@ class TestAddTool:
 
         assert add_func is not None
         await add_func(messages)
-        assert mcp_server.memory_manager.memory.add.call_count == len(messages)
-        added_messages = [
-            call.kwargs["message"]
-            for call in mcp_server.memory_manager.memory.add.call_args_list
-        ]
-        assert added_messages == messages
+        assert mcp_server.memory_manager.memory.add_batch.call_count == 1
+        call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
+        assert call_kwargs["messages"] == messages
 
     async def test_add_non_string_message_raises_value_error(self, mcp_server):
         """Test adding non-string message raises ValueError."""
@@ -210,7 +203,7 @@ class TestAddTool:
         with pytest.raises(ValueError, match="not a string"):
             await add_func(messages)
 
-        mcp_server.memory_manager.memory.add.assert_not_called()
+        mcp_server.memory_manager.memory.add_batch.assert_not_called()
 
     async def test_add_empty_string_raises_value_error(self, mcp_server):
         """Test adding empty string raises ValueError."""
@@ -226,7 +219,7 @@ class TestAddTool:
         with pytest.raises(ValueError, match="too short"):
             await add_func(messages)
 
-        mcp_server.memory_manager.memory.add.assert_not_called()
+        mcp_server.memory_manager.memory.add_batch.assert_not_called()
 
     async def test_add_whitespace_only_raises_value_error(self, mcp_server):
         """Test adding whitespace-only message raises ValueError."""
@@ -242,7 +235,7 @@ class TestAddTool:
         with pytest.raises(ValueError, match="only whitespace"):
             await add_func(messages)
 
-        mcp_server.memory_manager.memory.add.assert_not_called()
+        mcp_server.memory_manager.memory.add_batch.assert_not_called()
 
     async def test_add_message_too_long_raises_value_error(
         self, mcp_server, sample_messages
@@ -260,7 +253,7 @@ class TestAddTool:
         with pytest.raises(ValueError, match="too long"):
             await add_func(messages)
 
-        mcp_server.memory_manager.memory.add.assert_not_called()
+        mcp_server.memory_manager.memory.add_batch.assert_not_called()
 
     async def test_add_mixed_valid_invalid_raises_value_error(self, mcp_server):
         """Test adding mix of valid and invalid messages raises ValueError."""
@@ -276,14 +269,16 @@ class TestAddTool:
         with pytest.raises(ValueError):
             await add_func(messages)
 
-        mcp_server.memory_manager.memory.add.assert_not_called()
+        mcp_server.memory_manager.memory.add_batch.assert_not_called()
 
     async def test_add_memory_storage_failure_raises_storage_error(self, mcp_server):
         """Test memory storage failure raises StorageError."""
         messages = ["Valid message"]
 
         # Configure mock to raise exception
-        mcp_server.memory_manager.memory.add.side_effect = Exception("Storage failed")
+        mcp_server.memory_manager.memory.add_batch.side_effect = Exception(
+            "Storage failed"
+        )
 
         add_func = None
         for tool in mcp_server.mcp._tool_manager._tools.values():
@@ -314,12 +309,9 @@ class TestAddTool:
 
         assert add_func is not None
         await add_func(messages)
-        assert mcp_server.memory_manager.memory.add.call_count == len(messages)
-        added_messages = [
-            call.kwargs["message"]
-            for call in mcp_server.memory_manager.memory.add.call_args_list
-        ]
-        assert added_messages == messages
+        assert mcp_server.memory_manager.memory.add_batch.call_count == 1
+        call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
+        assert call_kwargs["messages"] == messages
 
     async def test_add_skips_duplicates(self, mcp_server):
         """Test that duplicate messages are not stored twice."""

@@ -87,6 +87,7 @@ class MessageStore(BaseModel):
 
     _conn: Optional[sqlite3.Connection] = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    _conn_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
 
     def __init__(self, db_path: str, logger: Any = None, **kwargs: Any) -> None:
         """Initialize MessageStore.
@@ -113,7 +114,11 @@ class MessageStore(BaseModel):
                     if db_dir:
                         os.makedirs(db_dir, exist_ok=True)
 
-                    self._conn = sqlite3.connect(self.db_path)
+                    self._conn = sqlite3.connect(
+                        self.db_path,
+                        check_same_thread=False,
+                        timeout=self.timeout,
+                    )
                     self._conn.execute("PRAGMA journal_mode=WAL")
                     self._conn.execute("PRAGMA synchronous=NORMAL")
                     # Set busy timeout to handle concurrent access gracefully
@@ -192,49 +197,127 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If insert fails.
         """
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute(
-                "INSERT INTO messages (project_id, message) VALUES (?, ?)",
-                (project_id, message),
-            )
-            row_id = cursor.lastrowid
-            self.connection.commit()
-
-            if row_id is None:
-                raise StorageError("Insert did not return a row ID")
-
-            if self.logger:
-                self.logger.debug(
-                    "Message inserted",
-                    extra={
-                        "message_id": row_id,
-                        "project_id": project_id,
-                        "message_length": len(message),
-                    },
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(
+                    "INSERT INTO messages (project_id, message) VALUES (?, ?)",
+                    (project_id, message),
                 )
-            return row_id
+                row_id = cursor.lastrowid
+                self.connection.commit()
 
-        except (sqlite3.Error, ValueError) as e:
-            # Check for unique constraint violation (duplicate message)
-            # Note: sqlite3 raises ValueError for constraint violations
-            error_str = str(e).lower()
-            if "unique constraint" in error_str or "constraint failed" in error_str:
+                if row_id is None:
+                    raise StorageError("Insert did not return a row ID")
+
                 if self.logger:
                     self.logger.debug(
-                        "Duplicate message detected",
+                        "Message inserted",
+                        extra={
+                            "message_id": row_id,
+                            "project_id": project_id,
+                            "message_length": len(message),
+                        },
+                    )
+                return row_id
+
+            except (sqlite3.Error, ValueError) as e:
+                # Check for unique constraint violation (duplicate message)
+                # Note: sqlite3 raises ValueError for constraint violations
+                error_str = str(e).lower()
+                if "unique constraint" in error_str or "constraint failed" in error_str:
+                    if self.logger:
+                        self.logger.debug(
+                            "Duplicate message detected",
+                            extra={"project_id": project_id, "error": str(e)},
+                        )
+                    raise StorageError(f"Duplicate message: {e}") from e
+                # Other libsql errors
+                if self.logger:
+                    self.logger.error(
+                        "Failed to insert message",
                         extra={"project_id": project_id, "error": str(e)},
                     )
-                raise StorageError(f"Duplicate message: {e}") from e
-            # Other libsql errors
-            if self.logger:
-                self.logger.error(
-                    "Failed to insert message",
-                    extra={"project_id": project_id, "error": str(e)},
-                )
-            raise StorageError(f"Failed to insert message: {e}") from e
-        finally:
-            cursor.close()
+                raise StorageError(f"Failed to insert message: {e}") from e
+            finally:
+                cursor.close()
+
+    def insert_many(
+        self, project_id: str, messages: list[str]
+    ) -> list[tuple[str, int]]:
+        """Insert multiple messages in a single transaction.
+
+        Args:
+            project_id: Project identifier.
+            messages: List of message texts to insert.
+
+        Returns:
+            List of (message, id) tuples for successfully inserted messages.
+            Duplicate messages are skipped.
+
+        Raises:
+            StorageError: If the batch insert fails.
+        """
+        if not messages:
+            return []
+
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            inserted: list[tuple[str, int]] = []
+            skipped = 0
+            try:
+                cursor.execute("BEGIN")
+                for message in messages:
+                    try:
+                        cursor.execute(
+                            "INSERT INTO messages (project_id, message) VALUES (?, ?)",
+                            (project_id, message),
+                        )
+                        row_id = cursor.lastrowid
+                        if row_id is None:
+                            raise StorageError("Insert did not return a row ID")
+                        inserted.append((message, int(row_id)))
+                    except sqlite3.IntegrityError as e:
+                        error_str = str(e).lower()
+                        if (
+                            "unique constraint" in error_str
+                            or "constraint failed" in error_str
+                        ):
+                            skipped += 1
+                            if self.logger:
+                                self.logger.debug(
+                                    "Duplicate message skipped during batch insert",
+                                    extra={"project_id": project_id, "error": str(e)},
+                                )
+                            continue
+                        raise
+                self.connection.commit()
+
+                if self.logger:
+                    self.logger.debug(
+                        "Batch insert completed",
+                        extra={
+                            "project_id": project_id,
+                            "inserted_count": len(inserted),
+                            "skipped_duplicates": skipped,
+                        },
+                    )
+                return inserted
+
+            except (sqlite3.Error, StorageError) as e:
+                self.connection.rollback()
+                if self.logger:
+                    self.logger.error(
+                        "Failed to insert messages batch",
+                        extra={
+                            "project_id": project_id,
+                            "message_count": len(messages),
+                            "error": str(e),
+                        },
+                    )
+                raise StorageError(f"Failed to insert message batch: {e}") from e
+            finally:
+                cursor.close()
 
     def get(self, message_id: int) -> Optional[MessageRecord]:
         """Get a message by its ID.
@@ -248,33 +331,34 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If database operation fails (other than not found).
         """
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute(
-                "SELECT id, project_id, message, created_at FROM messages WHERE id = ?",
-                (message_id,),
-            )
-            row = cursor.fetchone()
-
-            if row is None:
-                return None
-
-            return MessageRecord(
-                id=row[0],
-                project_id=row[1],
-                message=row[2],
-                created_at=row[3] if row[3] else "",
-            )
-
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to get message",
-                    extra={"message_id": message_id, "error": str(e)},
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(
+                    "SELECT id, project_id, message, created_at FROM messages WHERE id = ?",
+                    (message_id,),
                 )
-            raise StorageError(f"Failed to retrieve message: {e}") from e
-        finally:
-            cursor.close()
+                row = cursor.fetchone()
+
+                if row is None:
+                    return None
+
+                return MessageRecord(
+                    id=row[0],
+                    project_id=row[1],
+                    message=row[2],
+                    created_at=row[3] if row[3] else "",
+                )
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to get message",
+                        extra={"message_id": message_id, "error": str(e)},
+                    )
+                raise StorageError(f"Failed to retrieve message: {e}") from e
+            finally:
+                cursor.close()
 
     def get_batch(self, message_ids: list[int]) -> dict[int, MessageRecord]:
         """Get multiple messages by their IDs in a single query.
@@ -295,34 +379,35 @@ class MessageStore(BaseModel):
         if not message_ids:
             return {}
 
-        cursor = self.connection.cursor()
-        try:
-            placeholders = ",".join("?" * len(message_ids))
-            cursor.execute(
-                f"SELECT id, project_id, message, created_at FROM messages WHERE id IN ({placeholders})",
-                message_ids,
-            )
-            rows = cursor.fetchall()
-
-            return {
-                row[0]: MessageRecord(
-                    id=row[0],
-                    project_id=row[1],
-                    message=row[2],
-                    created_at=row[3] if row[3] else "",
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                placeholders = ",".join("?" * len(message_ids))
+                cursor.execute(
+                    f"SELECT id, project_id, message, created_at FROM messages WHERE id IN ({placeholders})",
+                    message_ids,
                 )
-                for row in rows
-            }
+                rows = cursor.fetchall()
 
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to get messages batch",
-                    extra={"message_ids_count": len(message_ids), "error": str(e)},
-                )
-            raise StorageError(f"Failed to retrieve message batch: {e}") from e
-        finally:
-            cursor.close()
+                return {
+                    row[0]: MessageRecord(
+                        id=row[0],
+                        project_id=row[1],
+                        message=row[2],
+                        created_at=row[3] if row[3] else "",
+                    )
+                    for row in rows
+                }
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to get messages batch",
+                        extra={"message_ids_count": len(message_ids), "error": str(e)},
+                    )
+                raise StorageError(f"Failed to retrieve message batch: {e}") from e
+            finally:
+                cursor.close()
 
     def get_all(self, project_id: str) -> list[str]:
         """Get all messages for a project.
@@ -336,25 +421,26 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute(
-                "SELECT message FROM messages WHERE project_id = ? ORDER BY id",
-                (project_id,),
-            )
-            rows = cursor.fetchall()
-
-            return [row[0] for row in rows]
-
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to get all messages",
-                    extra={"project_id": project_id, "error": str(e)},
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(
+                    "SELECT message FROM messages WHERE project_id = ? ORDER BY id",
+                    (project_id,),
                 )
-            raise StorageError(f"Failed to retrieve all messages: {e}") from e
-        finally:
-            cursor.close()
+                rows = cursor.fetchall()
+
+                return [row[0] for row in rows]
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to get all messages",
+                        extra={"project_id": project_id, "error": str(e)},
+                    )
+                raise StorageError(f"Failed to retrieve all messages: {e}") from e
+            finally:
+                cursor.close()
 
     def delete(self, message_id: int) -> bool:
         """Delete a message by its ID.
@@ -368,35 +454,36 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
-            deleted = cursor.rowcount > 0
-            self.connection.commit()
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+                deleted = cursor.rowcount > 0
+                self.connection.commit()
 
-            if self.logger:
-                if deleted:
-                    self.logger.debug(
-                        "Message deleted",
-                        extra={"message_id": message_id},
+                if self.logger:
+                    if deleted:
+                        self.logger.debug(
+                            "Message deleted",
+                            extra={"message_id": message_id},
+                        )
+                    else:
+                        self.logger.debug(
+                            "Message not found for deletion",
+                            extra={"message_id": message_id},
+                        )
+
+                return deleted
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to delete message",
+                        extra={"message_id": message_id, "error": str(e)},
                     )
-                else:
-                    self.logger.debug(
-                        "Message not found for deletion",
-                        extra={"message_id": message_id},
-                    )
-
-            return deleted
-
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to delete message",
-                    extra={"message_id": message_id, "error": str(e)},
-                )
-            raise StorageError(f"Failed to delete message: {e}") from e
-        finally:
-            cursor.close()
+                raise StorageError(f"Failed to delete message: {e}") from e
+            finally:
+                cursor.close()
 
     def delete_batch(self, message_ids: list[int]) -> int:
         """Delete multiple messages by their IDs in a single transaction.
@@ -416,36 +503,37 @@ class MessageStore(BaseModel):
         if not message_ids:
             return 0
 
-        cursor = self.connection.cursor()
-        try:
-            placeholders = ",".join("?" * len(message_ids))
-            cursor.execute(
-                f"DELETE FROM messages WHERE id IN ({placeholders})",
-                message_ids,
-            )
-            deleted_count = cursor.rowcount
-            self.connection.commit()
-
-            if self.logger:
-                self.logger.debug(
-                    "Messages batch deleted",
-                    extra={
-                        "requested_count": len(message_ids),
-                        "deleted_count": deleted_count,
-                    },
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                placeholders = ",".join("?" * len(message_ids))
+                cursor.execute(
+                    f"DELETE FROM messages WHERE id IN ({placeholders})",
+                    message_ids,
                 )
+                deleted_count = cursor.rowcount
+                self.connection.commit()
 
-            return deleted_count
+                if self.logger:
+                    self.logger.debug(
+                        "Messages batch deleted",
+                        extra={
+                            "requested_count": len(message_ids),
+                            "deleted_count": deleted_count,
+                        },
+                    )
 
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to delete messages batch",
-                    extra={"message_ids_count": len(message_ids), "error": str(e)},
-                )
-            raise StorageError(f"Failed to delete message batch: {e}") from e
-        finally:
-            cursor.close()
+                return deleted_count
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to delete messages batch",
+                        extra={"message_ids_count": len(message_ids), "error": str(e)},
+                    )
+                raise StorageError(f"Failed to delete message batch: {e}") from e
+            finally:
+                cursor.close()
 
     def exists(self, project_id: str, message: str) -> bool:
         """Check if a message exists (for deduplication).
@@ -460,24 +548,25 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute(
-                "SELECT 1 FROM messages WHERE project_id = ? AND message = ? LIMIT 1",
-                (project_id, message),
-            )
-            exists = cursor.fetchone() is not None
-            return exists
-
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to check message existence",
-                    extra={"project_id": project_id, "error": str(e)},
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(
+                    "SELECT 1 FROM messages WHERE project_id = ? AND message = ? LIMIT 1",
+                    (project_id, message),
                 )
-            raise StorageError(f"Failed to check message existence: {e}") from e
-        finally:
-            cursor.close()
+                exists = cursor.fetchone() is not None
+                return exists
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to check message existence",
+                        extra={"project_id": project_id, "error": str(e)},
+                    )
+                raise StorageError(f"Failed to check message existence: {e}") from e
+            finally:
+                cursor.close()
 
     def get_id_by_message(self, project_id: str, message: str) -> Optional[int]:
         """Get the ID of a message by its content.
@@ -492,24 +581,25 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute(
-                "SELECT id FROM messages WHERE project_id = ? AND message = ? LIMIT 1",
-                (project_id, message),
-            )
-            row = cursor.fetchone()
-            return row[0] if row else None
-
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to get message ID",
-                    extra={"project_id": project_id, "error": str(e)},
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(
+                    "SELECT id FROM messages WHERE project_id = ? AND message = ? LIMIT 1",
+                    (project_id, message),
                 )
-            raise StorageError(f"Failed to get message ID: {e}") from e
-        finally:
-            cursor.close()
+                row = cursor.fetchone()
+                return row[0] if row else None
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to get message ID",
+                        extra={"project_id": project_id, "error": str(e)},
+                    )
+                raise StorageError(f"Failed to get message ID: {e}") from e
+            finally:
+                cursor.close()
 
     def archive(
         self,
@@ -536,40 +626,41 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute(
-                """
-                INSERT INTO archived_messages
-                    (original_id, project_id, message, replaced_by, reason, confidence)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (message_id, project_id, message, replaced_by, reason, confidence),
-            )
-            archive_id = cursor.lastrowid
-            self.connection.commit()
-
-            if self.logger:
-                self.logger.debug(
-                    "Message archived",
-                    extra={
-                        "archive_id": archive_id,
-                        "original_id": message_id,
-                        "project_id": project_id,
-                        "confidence": confidence,
-                    },
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO archived_messages
+                        (original_id, project_id, message, replaced_by, reason, confidence)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (message_id, project_id, message, replaced_by, reason, confidence),
                 )
-            return archive_id
+                archive_id = cursor.lastrowid
+                self.connection.commit()
 
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to archive message",
-                    extra={"message_id": message_id, "error": str(e)},
-                )
-            raise StorageError(f"Failed to archive message: {e}") from e
-        finally:
-            cursor.close()
+                if self.logger:
+                    self.logger.debug(
+                        "Message archived",
+                        extra={
+                            "archive_id": archive_id,
+                            "original_id": message_id,
+                            "project_id": project_id,
+                            "confidence": confidence,
+                        },
+                    )
+                return archive_id
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to archive message",
+                        extra={"message_id": message_id, "error": str(e)},
+                    )
+                raise StorageError(f"Failed to archive message: {e}") from e
+            finally:
+                cursor.close()
 
     def get_archived(
         self, project_id: str, limit: int = 100
@@ -586,44 +677,45 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute(
-                """
-                SELECT id, original_id, project_id, message, replaced_by,
-                       reason, confidence, archived_at
-                FROM archived_messages
-                WHERE project_id = ?
-                ORDER BY archived_at DESC
-                LIMIT ?
-                """,
-                (project_id, limit),
-            )
-            rows = cursor.fetchall()
-
-            return [
-                ArchivedMessageRecord(
-                    id=row[0],
-                    original_id=row[1],
-                    project_id=row[2],
-                    message=row[3],
-                    replaced_by=row[4],
-                    reason=row[5],
-                    confidence=row[6],
-                    archived_at=row[7],
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(
+                    """
+                    SELECT id, original_id, project_id, message, replaced_by,
+                           reason, confidence, archived_at
+                    FROM archived_messages
+                    WHERE project_id = ?
+                    ORDER BY archived_at DESC
+                    LIMIT ?
+                    """,
+                    (project_id, limit),
                 )
-                for row in rows
-            ]
+                rows = cursor.fetchall()
 
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to get archived messages",
-                    extra={"project_id": project_id, "error": str(e)},
-                )
-            raise StorageError(f"Failed to get archived messages: {e}") from e
-        finally:
-            cursor.close()
+                return [
+                    ArchivedMessageRecord(
+                        id=row[0],
+                        original_id=row[1],
+                        project_id=row[2],
+                        message=row[3],
+                        replaced_by=row[4],
+                        reason=row[5],
+                        confidence=row[6],
+                        archived_at=row[7],
+                    )
+                    for row in rows
+                ]
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to get archived messages",
+                        extra={"project_id": project_id, "error": str(e)},
+                    )
+                raise StorageError(f"Failed to get archived messages: {e}") from e
+            finally:
+                cursor.close()
 
     def restore_from_archive(self, archive_id: int) -> Optional[int]:
         """Restore a message from the archive.
@@ -637,62 +729,63 @@ class MessageStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
-        cursor = self.connection.cursor()
-        try:
-            # Get the archived record
-            cursor.execute(
-                """
-                SELECT project_id, message FROM archived_messages WHERE id = ?
-                """,
-                (archive_id,),
-            )
-            row = cursor.fetchone()
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                # Get the archived record
+                cursor.execute(
+                    """
+                    SELECT project_id, message FROM archived_messages WHERE id = ?
+                    """,
+                    (archive_id,),
+                )
+                row = cursor.fetchone()
 
-            if row is None:
+                if row is None:
+                    if self.logger:
+                        self.logger.warning(
+                            "Archive record not found",
+                            extra={"archive_id": archive_id},
+                        )
+                    return None
+
+                project_id, message = row[0], row[1]
+
+                # Insert back into messages table
+                cursor.execute(
+                    "INSERT INTO messages (project_id, message) VALUES (?, ?)",
+                    (project_id, message),
+                )
+                new_id = cursor.lastrowid
+
+                # Delete from archive
+                cursor.execute(
+                    "DELETE FROM archived_messages WHERE id = ?",
+                    (archive_id,),
+                )
+
+                self.connection.commit()
+
                 if self.logger:
-                    self.logger.warning(
-                        "Archive record not found",
-                        extra={"archive_id": archive_id},
+                    self.logger.info(
+                        "Message restored from archive",
+                        extra={
+                            "archive_id": archive_id,
+                            "new_message_id": new_id,
+                            "project_id": project_id,
+                        },
                     )
-                return None
+                return new_id
 
-            project_id, message = row[0], row[1]
-
-            # Insert back into messages table
-            cursor.execute(
-                "INSERT INTO messages (project_id, message) VALUES (?, ?)",
-                (project_id, message),
-            )
-            new_id = cursor.lastrowid
-
-            # Delete from archive
-            cursor.execute(
-                "DELETE FROM archived_messages WHERE id = ?",
-                (archive_id,),
-            )
-
-            self.connection.commit()
-
-            if self.logger:
-                self.logger.info(
-                    "Message restored from archive",
-                    extra={
-                        "archive_id": archive_id,
-                        "new_message_id": new_id,
-                        "project_id": project_id,
-                    },
-                )
-            return new_id
-
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to restore from archive",
-                    extra={"archive_id": archive_id, "error": str(e)},
-                )
-            raise StorageError(f"Failed to restore from archive: {e}") from e
-        finally:
-            cursor.close()
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to restore from archive",
+                        extra={"archive_id": archive_id, "error": str(e)},
+                    )
+                raise StorageError(f"Failed to restore from archive: {e}") from e
+            finally:
+                cursor.close()
 
     def cleanup_expired_archive(self, ttl_days: int) -> int:
         """Remove archived messages older than TTL.
@@ -710,48 +803,50 @@ class MessageStore(BaseModel):
         if ttl_days <= 0:
             return 0
 
-        cursor = self.connection.cursor()
-        try:
-            cursor.execute(
-                """
-                DELETE FROM archived_messages
-                WHERE archived_at < datetime('now', '-' || ? || ' days')
-                """,
-                (ttl_days,),
-            )
-            deleted_count = cursor.rowcount
-            self.connection.commit()
-
-            if self.logger and deleted_count > 0:
-                self.logger.info(
-                    "Expired archive records cleaned up",
-                    extra={
-                        "deleted_count": deleted_count,
-                        "ttl_days": ttl_days,
-                    },
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                cursor.execute(
+                    """
+                    DELETE FROM archived_messages
+                    WHERE archived_at < datetime('now', '-' || ? || ' days')
+                    """,
+                    (ttl_days,),
                 )
-            return deleted_count
+                deleted_count = cursor.rowcount
+                self.connection.commit()
 
-        except sqlite3.Error as e:
-            if self.logger:
-                self.logger.error(
-                    "Failed to cleanup expired archive",
-                    extra={"ttl_days": ttl_days, "error": str(e)},
-                )
-            raise StorageError(f"Failed to cleanup expired archive: {e}") from e
-        finally:
-            cursor.close()
+                if self.logger and deleted_count > 0:
+                    self.logger.info(
+                        "Expired archive records cleaned up",
+                        extra={
+                            "deleted_count": deleted_count,
+                            "ttl_days": ttl_days,
+                        },
+                    )
+                return deleted_count
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to cleanup expired archive",
+                        extra={"ttl_days": ttl_days, "error": str(e)},
+                    )
+                raise StorageError(f"Failed to cleanup expired archive: {e}") from e
+            finally:
+                cursor.close()
 
     def close(self) -> None:
         """Close the database connection."""
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
-            if self.logger:
-                self.logger.debug(
-                    "MessageStore closed",
-                    extra={"db_path": self.db_path},
-                )
+        with self._conn_lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
+                if self.logger:
+                    self.logger.debug(
+                        "MessageStore closed",
+                        extra={"db_path": self.db_path},
+                    )
 
     def ensure_initialized(self) -> None:
         """Ensure the store is fully initialized.

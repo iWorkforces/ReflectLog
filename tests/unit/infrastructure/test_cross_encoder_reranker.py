@@ -188,7 +188,13 @@ class TestRerank:
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             # Pre-set the model to avoid lazy loading
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+            assert reranker._model is not None
             return reranker
 
     def test_rerank_empty_candidates(self, mock_reranker: CrossEncoderReranker) -> None:
@@ -234,8 +240,12 @@ class TestRerank:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
-            reranker._model.compute_score.return_value = [0.9, 0.8, 0.7, 0.6, 0.5]  # type: ignore[union-attr]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8, 0.7, 0.6, 0.5]
 
             candidates = [(f"doc{i}", 0.5) for i in range(5)]
             result = reranker.rerank("test query", candidates)
@@ -251,9 +261,13 @@ class TestRerank:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
             # Scores: 0.9, 0.4, 0.6 - only 0.9 and 0.6 pass threshold
-            reranker._model.compute_score.return_value = [0.9, 0.4, 0.6]  # type: ignore[union-attr]
+            reranker._model.compute_score.return_value = [0.9, 0.4, 0.6]
 
             candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
             result = reranker.rerank("test query", candidates)
@@ -292,14 +306,18 @@ class TestRerank:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
-            reranker._model.compute_score.return_value = [0.8]  # type: ignore[union-attr]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.8]
 
             candidates = [("doc1", 0.5)]
             reranker.rerank("query", candidates)
 
             # Verify FlagReranker API parameters were passed
-            call_kwargs = reranker._model.compute_score.call_args[1]  # type: ignore[union-attr]
+            call_kwargs = reranker._model.compute_score.call_args[1]
             assert call_kwargs["batch_size"] == 16
             assert call_kwargs["max_length"] == 256
             assert call_kwargs["normalize"] is True
@@ -311,8 +329,12 @@ class TestRerank:
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             mock_logger = MagicMock()
             reranker = CrossEncoderReranker(config=config, logger=mock_logger)
-            reranker._model = MagicMock()  # type: ignore[assignment]
-            reranker._model.compute_score.return_value = [0.8, 0.7]  # type: ignore[union-attr]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.8, 0.7]
 
             candidates = [("doc1", 0.5), ("doc2", 0.5)]
             reranker.rerank("query", candidates)
@@ -328,9 +350,13 @@ class TestRerank:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
             # FlagReranker returns float for single pair, not list
-            reranker._model.compute_score.return_value = 0.85  # type: ignore[union-attr]
+            reranker._model.compute_score.return_value = 0.85
 
             candidates = [("single doc", 0.5)]
             result = reranker.rerank("query", candidates)
@@ -350,7 +376,11 @@ class TestRerankAsync:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
             return reranker
 
     @pytest.mark.asyncio
@@ -391,10 +421,14 @@ class TestCrossEncoderRerankerIntegration:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config, logger=MagicMock())
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
 
             # Simulate realistic cross-encoder scores
-            reranker._model.compute_score.return_value = [  # type: ignore[union-attr]
+            reranker._model.compute_score.return_value = [
                 0.95,
                 0.25,
                 0.78,
@@ -496,9 +530,13 @@ class TestBatchNormalization:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
             # CrossEncoder typical low scores (0.001-0.17)
-            reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]  # type: ignore[union-attr]
+            reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]
 
             candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
             result = reranker.rerank("query", candidates)
@@ -523,8 +561,12 @@ class TestBatchNormalization:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
-            reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]  # type: ignore[union-attr]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]
 
             candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
             result = reranker.rerank("query", candidates)
@@ -548,9 +590,13 @@ class TestBatchNormalization:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
             # After normalization: 0.17->1.0, 0.05->~0.29, 0.001->0.0
-            reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]  # type: ignore[union-attr]
+            reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]
 
             candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
             result = reranker.rerank("query", candidates)
@@ -575,10 +621,14 @@ class TestMinResultsSafetyNet:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
             # After normalization: 0.6->1.0, 0.4->0.5, 0.2->0.0
             # None would pass 0.9 threshold without safety net
-            reranker._model.compute_score.return_value = [0.6, 0.4, 0.2]  # type: ignore[union-attr]
+            reranker._model.compute_score.return_value = [0.6, 0.4, 0.2]
 
             candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
             result = reranker.rerank("query", candidates)
@@ -600,10 +650,14 @@ class TestMinResultsSafetyNet:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
             # After normalization: max is 1.0, but no scores pass 0.9 threshold
             # because we need normalized score >= 0.9
-            reranker._model.compute_score.return_value = [0.6, 0.4, 0.2]  # type: ignore[union-attr]
+            reranker._model.compute_score.return_value = [0.6, 0.4, 0.2]
 
             candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
             result = reranker.rerank("query", candidates)
@@ -624,10 +678,14 @@ class TestMinResultsSafetyNet:
 
         with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-            reranker._model = MagicMock()  # type: ignore[assignment]
+            reranker._model = MagicMock()
+
+            # Assert to narrow the type from BaseReranker | None to MagicMock
+
+            assert reranker._model is not None
             # After normalization: 0.9->1.0, 0.7->0.5, 0.5->0.0
             # Only 1.0 and 0.5 pass 0.3 threshold (0.0 doesn't pass)
-            reranker._model.compute_score.return_value = [0.9, 0.7, 0.5]  # type: ignore[union-attr]
+            reranker._model.compute_score.return_value = [0.9, 0.7, 0.5]
 
             candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
             result = reranker.rerank("query", candidates)

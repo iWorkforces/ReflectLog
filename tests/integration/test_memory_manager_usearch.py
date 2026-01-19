@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from langchain_core.embeddings import Embeddings
+from reflectlog.application.types import Embeddings
 
 from reflectlog.application.config import Config
 from reflectlog.application.memory import MemoryManager
@@ -59,6 +59,7 @@ def create_usearch_config(temp_dir: str, project_suffix: str = "") -> Config:
         embedding_dims=128,
         qwen_embedding_dims=128,
         enable_hybrid_search=True,
+        reranker_engine="none",
         tantivy_index_path_template=os.path.join(temp_dir, "{project_id}", "tantivy"),
         search_limit=5,
         fusion_ranking_threshold=0.0,  # Allow all results
@@ -84,7 +85,9 @@ def create_memory_manager(config: Config) -> tuple[MemoryManager, MagicMock]:
 def cleanup_manager(manager: MemoryManager) -> None:
     """Clean up MemoryManager resources and delete index files."""
     # Close resources first
-    if hasattr(manager._semantic_engine, "close"):
+    if hasattr(manager, "close"):
+        manager.close()
+    elif hasattr(manager._semantic_engine, "close"):
         manager._semantic_engine.close()
 
     # Clean up USearch index directory (created at cwd/indexes/{project_id}/usearch/)

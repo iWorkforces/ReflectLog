@@ -674,26 +674,3 @@ def calculate_adaptive_overfetch(limit: int, index_size: int, config: Config) ->
 
     overfetch_limit = int(limit * multiplier)
     return max(overfetch_limit, MIN_OVERFETCH_LIMIT)
-
-
-def escape_tantivy_query(query: str) -> str:
-    """Escape special characters for Tantivy query syntax.
-
-    Tantivy uses Lucene-style query syntax where certain characters have
-    special meaning. This function escapes them to prevent query injection.
-
-    Args:
-        query: Raw query string that may contain special characters.
-
-    Returns:
-        Escaped query string safe for use in Tantivy queries.
-    """
-    # Tantivy/Lucene special characters that need escaping
-    special_chars = r'+-&|!(){}[]^"~*?:\/'
-    escaped = []
-    for char in query:
-        if char in special_chars:
-            escaped.append(f"\\{char}")
-        else:
-            escaped.append(char)
-    return "".join(escaped)

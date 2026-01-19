@@ -45,6 +45,7 @@ class TantivyConfig:
 
 # Schema version constant (V2 only - soft-delete support)
 TANTIVY_SCHEMA_VERSION = 2
+DEFAULT_TANTIVY_DOC_LIMIT = 100000  # Fallback if searcher doc count unavailable
 
 
 class TantivyEngine(BaseModel):
@@ -249,6 +250,7 @@ class TantivyEngine(BaseModel):
         try:
             # Get cached tombstoned messages (O(1) after first call)
             tombstoned_messages = self._get_tombstoned_messages(project_id)
+            doc_limit = self._get_doc_limit()
 
             # Query all docs for this project
             escaped_project_id = self._escape_tantivy_query(project_id)
@@ -257,8 +259,8 @@ class TantivyEngine(BaseModel):
                 default_field_names=["project_id"],
             )
 
-            # Get all results (use high limit)
-            top_docs = self.searcher.search(query=query, limit=10000)
+            # Get all results (use index doc count to avoid truncation)
+            top_docs = self.searcher.search(query=query, limit=doc_limit)
 
             results: List[str] = []
             seen: set[str] = set()  # Track seen messages to avoid duplicates
@@ -313,6 +315,8 @@ class TantivyEngine(BaseModel):
             return []
 
         try:
+            doc_limit = self._get_doc_limit()
+
             # Use match-all query by searching for common patterns
             # Tantivy doesn't have a built-in match-all, so we use the searcher directly
             searcher = self.searcher
@@ -331,7 +335,7 @@ class TantivyEngine(BaseModel):
                 default_field_names=["message"],
             )
 
-            top_docs = searcher.search(query=query, limit=10000)
+            top_docs = searcher.search(query=query, limit=doc_limit)
 
             for _, doc_addr in top_docs.hits:
                 doc = searcher.doc(doc_addr)
@@ -479,6 +483,8 @@ class TantivyEngine(BaseModel):
             return set()
 
         try:
+            doc_limit = self._get_doc_limit()
+
             # Cache miss: query ONLY tombstoned documents directly (is_deleted=1)
             # This is O(tombstones) instead of O(all_docs)
             # Use range syntax [1 TO 1] for numeric field exact match
@@ -488,7 +494,7 @@ class TantivyEngine(BaseModel):
                 default_field_names=["project_id"],
             )
 
-            top_docs = self.searcher.search(query=query, limit=10000)
+            top_docs = self.searcher.search(query=query, limit=doc_limit)
             tombstoned: set[str] = set()
 
             for _, doc_addr in top_docs.hits:
@@ -590,14 +596,35 @@ class TantivyEngine(BaseModel):
 
             # Build query with project_id filter
             escaped_project_id = self._escape_tantivy_query(project_id)
-            if query.strip():
-                combined_query = f'({query}) AND project_id:"{escaped_project_id}"'
+            query_text = query.strip()
+            if query_text:
+                combined_query = f'({query_text}) AND project_id:"{escaped_project_id}"'
             else:
                 combined_query = f'project_id:"{escaped_project_id}"'
 
-            parsed_query = self._index.parse_query(
-                query=combined_query, default_field_names=["message"]
-            )
+            try:
+                parsed_query = self._index.parse_query(
+                    query=combined_query, default_field_names=["message"]
+                )
+            except ValueError:
+                if not query_text:
+                    raise
+                escaped_query_text = self._escape_tantivy_query(query_text)
+                combined_query = (
+                    f'({escaped_query_text}) AND project_id:"{escaped_project_id}"'
+                )
+                parsed_query = self._index.parse_query(
+                    query=combined_query, default_field_names=["message"]
+                )
+                if self.logger:
+                    self.logger.debug(
+                        "Escaped Tantivy query after parse failure",
+                        extra={
+                            "project_id": self.config.project_id,
+                            "original_query": query_text[:100],
+                            "escaped_query": escaped_query_text[:100],
+                        },
+                    )
 
             top_docs = self.searcher.search(query=parsed_query, limit=search_limit)
             results: List[Tuple[str, float]] = []
@@ -961,6 +988,41 @@ class TantivyEngine(BaseModel):
                 escaped.append(char)
         return "".join(escaped)
 
+    def _get_doc_limit(self) -> int:
+        """Get total document count for safe full scans.
+
+        Uses Tantivy's searcher num_docs when available to avoid truncation.
+        Falls back to a conservative limit if not accessible.
+        """
+        if self._index is None:
+            return 0
+
+        searcher = self.searcher
+        num_docs: int | None = None
+
+        try:
+            num_docs_attr = getattr(searcher, "num_docs", None)
+            if callable(num_docs_attr):
+                num_docs = int(num_docs_attr())
+            elif isinstance(num_docs_attr, (int, float)):
+                num_docs = int(num_docs_attr)
+        except Exception as e:
+            if self.logger:
+                self.logger.debug(
+                    "Failed to read Tantivy num_docs",
+                    extra={"error": str(e)},
+                )
+
+        if num_docs is None or num_docs < 0:
+            if self.logger:
+                self.logger.warning(
+                    "Tantivy searcher num_docs unavailable; using fallback limit",
+                    extra={"fallback_limit": DEFAULT_TANTIVY_DOC_LIMIT},
+                )
+            return DEFAULT_TANTIVY_DOC_LIMIT
+
+        return max(1, num_docs)
+
     def get_tombstone_stats(self) -> dict[str, int]:
         """Get statistics about tombstones in the index.
 
@@ -979,12 +1041,14 @@ class TantivyEngine(BaseModel):
             }
 
         try:
+            doc_limit = self._get_doc_limit()
+
             # Get all documents across all projects
             query = self._index.parse_query(
                 query="*",
                 default_field_names=["message"],
             )
-            top_docs = self.searcher.search(query=query, limit=100000)
+            top_docs = self.searcher.search(query=query, limit=doc_limit)
 
             total_docs = 0
             active_docs = 0
