@@ -5,6 +5,7 @@ from typing import Annotated, List
 
 from pydantic import Field
 
+from ..constants import LOG_SEPARATOR_LENGTH
 from ..exceptions import SearchError
 from ..utils import truncate_message
 from .base import BaseTool
@@ -79,7 +80,7 @@ class SearchTool(BaseTool):
 
                 # Log search header
                 self.logger.info(
-                    "=" * 60,
+                    "=" * LOG_SEPARATOR_LENGTH,
                     extra={"tool": "search", "section": "header"},
                 )
                 self.logger.info(
@@ -109,7 +110,7 @@ class SearchTool(BaseTool):
                 # Log final results
                 if similar_messages:
                     self.logger.info(
-                        "=" * 60,
+                        "=" * LOG_SEPARATOR_LENGTH,
                         extra={"tool": "search", "section": "results"},
                     )
                     self.logger.info(
@@ -135,7 +136,7 @@ class SearchTool(BaseTool):
                         )
                 else:
                     self.logger.info(
-                        "=" * 60,
+                        "=" * LOG_SEPARATOR_LENGTH,
                         extra={"tool": "search", "section": "results"},
                     )
                     self.logger.info(
@@ -158,7 +159,7 @@ class SearchTool(BaseTool):
                     },
                 )
                 self.logger.info(
-                    "=" * 60,
+                    "=" * LOG_SEPARATOR_LENGTH,
                     extra={"tool": "search", "section": "footer"},
                 )
 

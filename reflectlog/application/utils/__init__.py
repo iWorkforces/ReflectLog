@@ -1,10 +1,18 @@
 """Utilities for ReflectLogMCP Server."""
 
+from .circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerOpenError,
+    CircuitState,
+    circuit_breaker_decorator,
+)
 from .logging import (
     StructuredLogger,
     create_logger,
     format_fusion_score_status,
 )
+from .metrics import MetricsRegistry, MetricValue, timed
 from .numba_utils import (
     compute_rrf_scores_batch,
     distance_to_similarity_cosine,
@@ -34,4 +42,14 @@ __all__ = [
     "compute_rrf_scores_batch",
     "distance_to_similarity_cosine",
     "warmup_numba_functions",
+    # Circuit breaker
+    "CircuitBreaker",
+    "CircuitBreakerConfig",
+    "CircuitBreakerOpenError",
+    "CircuitState",
+    "circuit_breaker_decorator",
+    # Metrics
+    "MetricsRegistry",
+    "MetricValue",
+    "timed",
 ]
