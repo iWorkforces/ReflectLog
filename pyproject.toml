@@ -1,6 +1,6 @@
 [project]
 name = "reflectlog"
-version = "0.1.5"
+version = "0.1.6"
 description = "A MCP Server For AI Agent Project-base Memories"
 readme = "README.md"
 license = { text = "MIT" }
