@@ -5,7 +5,8 @@ Cross-platform Anthropic API key retrieval utility for Claude Code credentials.
 ## Purpose
 
 This module provides secure retrieval of Anthropic API keys and OAuth tokens from:
-1. Environment variables (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`)
+
+1. Environment variables (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`)
 2. Platform-specific credential stores (macOS Keychain, Windows Credential Manager, Linux GNOME Keyring)
 
 It enables ReflectLogMCP and other tools to authenticate with Anthropic APIs using credentials stored by Claude Code.
