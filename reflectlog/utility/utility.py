@@ -83,7 +83,7 @@ def get_anthropic_api_key() -> ApiKeyResult | None:
 def init_credentials(verbose: bool = True) -> str | None:
     """Initialize OAuth credentials from environment or keychain.
 
-    Checks for CLAUDE_CODE_OAUTH_TOKEN environment variable first,
+    Checks for ANTHROPIC_AUTH_TOKEN environment variable first,
     then falls back to keychain retrieval. If an OAuth token is found
     in the keychain, it's automatically set in the environment.
 
@@ -96,9 +96,9 @@ def init_credentials(verbose: bool = True) -> str | None:
     Example:
         >>> from ccoauth2 import init_credentials
         >>> token = init_credentials()
-        >>> # Token is now available in os.environ["CLAUDE_CODE_OAUTH_TOKEN"]
+        >>> # Token is now available in os.environ["ANTHROPIC_AUTH_TOKEN"]
     """
-    oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+    oauth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN")
 
     if not oauth_token:
         # Try to retrieve from keychain directly
@@ -106,10 +106,10 @@ def init_credentials(verbose: bool = True) -> str | None:
 
         if keychain_token and keychain_token.startswith(OAUTH_TOKEN_PREFIX):
             oauth_token = keychain_token
-            os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
+            os.environ["ANTHROPIC_AUTH_TOKEN"] = oauth_token
             if verbose:
                 print(
-                    f"CLAUDE_CODE_OAUTH_TOKEN: {oauth_token[:20]}... (retrieved from keychain)"
+                    f"ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}... (retrieved from keychain)"
                 )
         elif keychain_token:
             # It's a regular API key, not an OAuth token
@@ -124,11 +124,11 @@ def init_credentials(verbose: bool = True) -> str | None:
         else:
             if verbose:
                 print(
-                    "CLAUDE_CODE_OAUTH_TOKEN: <not set> (SDK will use stored credentials)"
+                    "ANTHROPIC_AUTH_TOKEN: <not set> (SDK will use stored credentials)"
                 )
     else:
         if verbose:
-            print(f"CLAUDE_CODE_OAUTH_TOKEN: {oauth_token[:20]}...")
+            print(f"ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}...")
 
     return oauth_token
 
