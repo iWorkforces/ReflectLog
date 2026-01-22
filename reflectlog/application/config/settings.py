@@ -191,6 +191,12 @@ class Config:
     # Tool registration settings
     allowed_tools: tuple[str, ...] | None = None
 
+    # Circuit breaker settings for external API calls
+    circuit_breaker_enabled: bool = False  # Enable circuit breaker for LLM APIs
+    circuit_breaker_failure_threshold: int = 5  # Failures before opening circuit
+    circuit_breaker_timeout: float = 60.0  # Seconds before attempting recovery
+    circuit_breaker_success_threshold: int = 2  # Successes needed to close circuit
+
     @classmethod
     def from_environment(cls) -> "Config":
         """Create configuration from environment variables.
@@ -509,6 +515,20 @@ class Config:
             log_search_result_limit=int(os.environ.get("LOG_SEARCH_RESULT_LIMIT", "3")),
             # Tools
             allowed_tools=allowed_tools,
+            # Circuit breaker
+            circuit_breaker_enabled=os.environ.get(
+                "CIRCUIT_BREAKER_ENABLED", "false"
+            ).lower()
+            == "true",
+            circuit_breaker_failure_threshold=max(
+                1, int(os.environ.get("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"))
+            ),
+            circuit_breaker_timeout=max(
+                1.0, float(os.environ.get("CIRCUIT_BREAKER_TIMEOUT", "60.0"))
+            ),
+            circuit_breaker_success_threshold=max(
+                1, int(os.environ.get("CIRCUIT_BREAKER_SUCCESS_THRESHOLD", "2"))
+            ),
         )
 
 

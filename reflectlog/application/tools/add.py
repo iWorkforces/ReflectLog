@@ -3,11 +3,13 @@
 import time
 from typing import List
 
+from ..constants import (
+    LOG_ADD_MESSAGE_PREVIEW_LIMIT,
+    LOG_SEPARATOR_LENGTH,
+)
 from ..exceptions import StorageError
 from ..utils import truncate_message, validate_messages
 from .base import BaseTool
-
-LOG_MESSAGE_PREVIEW_LIMIT = 20
 
 
 class AddTool(BaseTool):
@@ -78,7 +80,7 @@ class AddTool(BaseTool):
             # Log operation header
             total_chars = sum(len(m) for m in messages)
             self.logger.info(
-                "=" * 60,
+                "=" * LOG_SEPARATOR_LENGTH,
                 extra={"tool": "add", "section": "header"},
             )
             self.logger.info(
@@ -93,7 +95,7 @@ class AddTool(BaseTool):
             )
 
             # Log message previews (throttled for large batches)
-            log_limit = min(len(messages), LOG_MESSAGE_PREVIEW_LIMIT)
+            log_limit = min(len(messages), LOG_ADD_MESSAGE_PREVIEW_LIMIT)
             for idx, message in enumerate(messages[:log_limit], 1):
                 preview = truncate_message(message, max_length=80)
                 self.logger.info(
@@ -181,7 +183,7 @@ class AddTool(BaseTool):
                     },
                 )
                 self.logger.info(
-                    "=" * 60,
+                    "=" * LOG_SEPARATOR_LENGTH,
                     extra={"tool": "add", "section": "footer"},
                 )
 

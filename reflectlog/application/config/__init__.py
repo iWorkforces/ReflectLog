@@ -10,6 +10,11 @@ from .prompts import (
     build_instructions,
 )
 from .settings import Config, TransportMode, config
+from .validation import (
+    ConfigurationValidator,
+    ValidationError,
+    validate_config,
+)
 
 __all__ = [
     "Config",
@@ -22,4 +27,8 @@ __all__ = [
     "SCORING_PROMPT_WITH_AGE",
     "TOOL_ORDER",
     "build_instructions",
+    # Validation
+    "ConfigurationValidator",
+    "ValidationError",
+    "validate_config",
 ]

@@ -4,6 +4,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from reflectlog.application.constants import LOG_ADD_MESSAGE_PREVIEW_LIMIT
 from reflectlog.application.types import ISemanticSearchEngine
 from reflectlog.infrastructure import (
     CachedEmbeddings,
@@ -40,13 +41,6 @@ from .add_phases import (
     SmartReplacementPhase,
     StoragePhase,
 )
-
-
-# Constants for magic numbers (documented for maintainability)
-MIN_OVERFETCH_LIMIT = 20  # Minimum docs to fetch for better fusion quality
-TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize to 0-1
-LOG_QUERY_TRUNCATE_LENGTH = 100  # Max query length in log messages
-LOG_ADD_MESSAGE_PREVIEW_LIMIT = 20  # Max per-message logs during add operations
 
 
 class MemoryManager:
