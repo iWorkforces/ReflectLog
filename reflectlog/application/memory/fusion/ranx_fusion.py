@@ -1,5 +1,7 @@
 """ranx-based fusion engine implementation."""
 
+import logging
+import math
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
@@ -110,12 +112,24 @@ class RanxFusionEngine:
     def _convert_to_run(self, result_set: List[Tuple[str, float]], name: str) -> Run:
         """Convert (message, score) tuples to a ranx Run object.
 
+        Handles duplicate documents within the same result set by averaging their
+        scores. This provides better fusion quality than keeping only the first
+        occurrence, as multiple high-scoring instances from different sources
+        indicate stronger relevance.
+
+        Example:
+            Input: [("doc1", 0.9), ("doc2", 0.5), ("doc1", 0.7)]
+            Output: Run({"q": {"doc1": 0.8, "doc2": 0.5}})
+            # doc1 score: (0.9 + 0.7) / 2 = 0.8
+
         Args:
-            result_set: List of (message, score) tuples.
+            result_set: List of (message, score) tuples. May contain duplicate
+                       messages with different scores.
             name: Name for the Run object.
 
         Returns:
-            ranx Run object with messages as document IDs.
+            ranx Run object with messages as document IDs. Duplicate messages
+            are represented once with their averaged score.
         """
         if not result_set:
             return Run({self._QUERY_ID: {}}, name=name)
@@ -205,6 +219,35 @@ class RanxFusionEngine:
         non_empty = [rs for rs in result_sets if rs]
         if not non_empty:
             return []
+
+        # Validate score ranges and log unusual inputs (debug level)
+        if self.logger and self.logger.isEnabledFor(logging.DEBUG):
+            for i, result_set in enumerate(non_empty):
+                scores = [score for _, score in result_set]
+                if not scores:
+                    continue
+
+                # Check for unusual score ranges
+                has_negative = any(score < 0 for score in scores)
+                has_nan = any(math.isnan(score) for score in scores)
+                has_inf = any(math.isinf(score) for score in scores)
+                max_score = max(scores)
+                min_score = min(scores)
+
+                # Log if any unusual conditions detected
+                if has_negative or has_nan or has_inf:
+                    self.logger.debug(
+                        f"Unusual score range detected in result set {i}",
+                        extra={
+                            "result_set_index": i,
+                            "score_count": len(scores),
+                            "min_score": min_score,
+                            "max_score": max_score,
+                            "has_negative": has_negative,
+                            "has_nan": has_nan,
+                            "has_inf": has_inf,
+                        },
+                    )
 
         # Convert each result set to a ranx Run
         runs = [

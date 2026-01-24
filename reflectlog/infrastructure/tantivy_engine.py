@@ -466,6 +466,9 @@ class TantivyEngine(BaseModel):
         Cache is populated by querying is_deleted=1 documents directly.
         When cache size exceeds tombstone_cache_max_size, oldest entries are evicted.
 
+        Per-project tombstone sets are also bounded to prevent memory exhaustion
+        in projects with many deletions (max 10000 tombstones per project).
+
         Args:
             project_id: Project identifier to filter by.
 
@@ -496,11 +499,25 @@ class TantivyEngine(BaseModel):
 
             top_docs = self.searcher.search(query=query, limit=doc_limit)
             tombstoned: set[str] = set()
+            # Per-project tombstone limit to prevent memory exhaustion
+            max_tombstones_per_project = 10000
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
                 message = doc.get_first("message")
                 if message is not None:
+                    # Enforce per-project tombstone limit
+                    if len(tombstoned) >= max_tombstones_per_project:
+                        if self.logger:
+                            self.logger.warning(
+                                "Tombstone cache per-project limit reached, truncating",
+                                extra={
+                                    "project_id": project_id,
+                                    "tombstone_count": len(tombstoned),
+                                    "max_per_project": max_tombstones_per_project,
+                                },
+                            )
+                        break
                     tombstoned.add(cast(str, message))
 
             # Store in cache with LRU eviction (thread-safe write)
@@ -726,6 +743,7 @@ class TantivyEngine(BaseModel):
                 # Release searcher reference
                 self._searcher = None
 
+            # Clear index reference INSIDE writer_lock to prevent race with search()
             # Note: Index itself doesn't need explicit close in Tantivy Python bindings
             # but we clear the reference for consistency
             self._index = None

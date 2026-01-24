@@ -247,7 +247,9 @@ class USearchEngine(BaseModel):
                     ) from exc
 
         # After initialization, _index is guaranteed to be non-None
-        assert self._index is not None
+        # Use explicit check instead of assert (assert can be optimized away with -O flag)
+        if self._index is None:
+            raise RuntimeError("USearch index initialization failed")
         return self._index
 
     @property
@@ -280,6 +282,7 @@ class USearchEngine(BaseModel):
         Raises:
             RuntimeError: If add operation fails.
         """
+        msg_id = None  # Track msg_id for rollback on embedding failure
         try:
             if infer:
                 if self.logger:
@@ -291,9 +294,23 @@ class USearchEngine(BaseModel):
             # Insert into SQLite (relies on UNIQUE INDEX for dedup - no pre-check needed)
             msg_id = self.message_store.insert(project_id, message)
 
-            # Generate embedding
-            vector = self.embedder.embed_query(message)
-            vector_np = np.array(vector, dtype=np.float32)
+            # Generate embedding with rollback on failure
+            try:
+                vector = self.embedder.embed_query(message)
+                vector_np = np.array(vector, dtype=np.float32)
+            except Exception as embed_error:
+                # Rollback SQLite insert if embedding fails to prevent desynchronization
+                if msg_id is not None:
+                    self.message_store.delete(msg_id)
+                if self.logger:
+                    self.logger.error(
+                        "Embedding generation failed, rolled back SQLite insert",
+                        extra={
+                            "project_id": self.config.project_id,
+                            "error": str(embed_error),
+                        },
+                    )
+                raise RuntimeError(f"Failed to generate embedding: {embed_error}") from embed_error
 
             # Add to USearch index
             self.index.add(msg_id, vector_np)
@@ -360,18 +377,43 @@ class USearchEngine(BaseModel):
                     extra={"project_id": self.config.project_id},
                 )
 
+        inserted = []  # Track successfully inserted (message, msg_id) pairs
+        inserted_ids = []  # Track IDs for rollback on embedding failure
+
         try:
+            # First, insert all messages into SQLite
             inserted = self.message_store.insert_many(project_id, messages)
             if not inserted:
                 return []
 
             inserted_messages = [message for message, _ in inserted]
-            vectors = self.embedder.embed_documents(inserted_messages)
-            if len(vectors) != len(inserted_messages):
-                raise RuntimeError(
-                    "Embedding batch size mismatch for USearch add_batch"
-                )
+            inserted_ids = [msg_id for _, msg_id in inserted]
 
+            # Generate embeddings with rollback on failure
+            try:
+                vectors = self.embedder.embed_documents(inserted_messages)
+                if len(vectors) != len(inserted_messages):
+                    raise RuntimeError(
+                        "Embedding batch size mismatch for USearch add_batch"
+                    )
+            except Exception as embed_error:
+                # Rollback all SQLite inserts if embedding fails
+                if self.logger:
+                    self.logger.error(
+                        "Embedding generation failed, rolling back batch",
+                        extra={
+                            "project_id": self.config.project_id,
+                            "count": len(inserted_ids),
+                            "error": str(embed_error),
+                        },
+                    )
+                for msg_id in inserted_ids:
+                    self.message_store.delete(msg_id)
+                raise RuntimeError(
+                    f"Failed to generate embeddings for batch: {embed_error}"
+                ) from embed_error
+
+            # Add vectors to USearch index
             for (_, msg_id), vector in zip(inserted, vectors, strict=True):
                 vector_np = np.array(vector, dtype=np.float32)
                 self.index.add(msg_id, vector_np)
@@ -388,6 +430,7 @@ class USearchEngine(BaseModel):
             return inserted_messages
 
         except Exception as e:
+            # Clean up on any other error (shouldn't happen if above is correct)
             if self.logger:
                 self.logger.error(
                     "Failed to add message batch to USearch index",
@@ -725,6 +768,30 @@ class USearchEngine(BaseModel):
         """
         if self._message_store is not None:
             self._message_store.close()
+
+    def __enter__(self):
+        """Enter context manager.
+
+        Ensures the engine is initialized before use.
+
+        Returns:
+            self
+        """
+        self.ensure_initialized()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context manager.
+
+        Ensures resources are cleaned up.
+
+        Args:
+            exc_type: Exception type if raised
+            exc_val: Exception value if raised
+            exc_tb: Exception traceback if raised
+        """
+        self.close()
+        return False  # Don't suppress exceptions
 
 
 # Static type assertion: verify USearchEngine implements ISemanticSearchEngine protocol

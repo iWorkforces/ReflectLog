@@ -30,7 +30,7 @@ class AddTool(BaseTool):
     def get_handler(self):
         """Get the async tool handler function."""
 
-        async def add(messages: List[str]) -> None:
+        async def add(messages: List[str], dry_run: bool = False) -> None:
             """Add messages to the message store with parallel processing (async).
 
             This tool stores one or more text messages in the memory store using
@@ -45,18 +45,24 @@ class AddTool(BaseTool):
                 messages: List of message strings to add to storage. Empty list
                     is treated as no-op. Each message must be 1-30720 characters
                     and contain non-whitespace content.
+                dry_run: If True, performs smart replacement detection without
+                    actually storing messages. Useful for testing what changes
+                    would occur. When enabled, returns AddResult without
+                    modifying storage. Default is False (live mode).
 
             Returns:
                 None. Messages are stored successfully if no error is raised.
+                (In dry_run mode, no changes are made to storage.)
 
             Raises:
                 ValueError: If any message is invalid (empty, too long, whitespace-only).
-                RuntimeError: If storage operation fails.
+                RuntimeError: If storage operation fails (not raised in dry_run mode).
 
             Examples:
                 >>> add(["Hello", "World"])  # Processed in parallel
                 >>> add(["Meeting notes: Discussed API design"])
                 >>> add([])  # No-op, no error
+                >>> add(["Test message"], dry_run=True)  # Check replacements without storing
             """
             # Handle empty list gracefully (no-op, no error)
             if not messages:
@@ -75,7 +81,8 @@ class AddTool(BaseTool):
 
             # Log invocation with detailed info
             start_time = time.time()
-            self.log_invocation("add", count=len(messages))
+            mode_str = "DRY_RUN" if dry_run else "LIVE"
+            self.log_invocation("add", count=len(messages), mode=mode_str, dry_run=dry_run)
 
             # Log operation header
             total_chars = sum(len(m) for m in messages)
@@ -118,7 +125,7 @@ class AddTool(BaseTool):
 
             # Store messages using async method for better concurrency
             try:
-                result = await self.memory.add_messages_async(messages)
+                result = await self.memory.add_messages_async(messages, dry_run=dry_run)
 
                 # Log completion summary with timing
                 duration = (time.time() - start_time) * 1000  # ms

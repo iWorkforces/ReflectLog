@@ -262,7 +262,10 @@ class SearchPipeline:
     def _search_semantic(
         self, query: str, limit: int, project_id: str
     ) -> List[Tuple[str, float, str]]:
-        """Execute semantic search on USearchEngine."""
+        """Execute semantic search on USearchEngine.
+
+        Falls back to empty list on error, relying on Tantivy results.
+        """
         try:
             results = self._semantic_engine.search(
                 query=query,
@@ -271,9 +274,17 @@ class SearchPipeline:
             )
             return results
         except Exception as e:
+            # Enhanced diagnostic logging for semantic search fallback
             self.logger.warning(
-                "Semantic search failed, falling back to Tantivy",
-                extra={"project_id": project_id, "error": str(e)},
+                f"Semantic search failed - falling back to Tantivy full-text only",
+                extra={
+                    "project_id": project_id,
+                    "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                    "fallback_behavior": "empty_semantic_results",
+                    "note": "Search will continue with Tantivy results only",
+                },
             )
             return []
 
