@@ -7,17 +7,22 @@ This directory contains the application layer - the core business logic for the 
 ```
 application/
 ├── __init__.py           # Package exports
+├── constants.py          # Constants (search limits, score ranges, API timeouts, retry settings)
 ├── exceptions.py         # Custom exception hierarchy (ReflectLogError, etc.)
 ├── mcp_server.py         # FastMCPServer orchestrator
 ├── types.py              # Type definitions (ISemanticSearchEngine protocol)
 ├── config/               # Configuration management
 │   ├── __init__.py       # Config exports
 │   ├── settings.py       # Config dataclass from environment
-│   └── prompts.py        # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
+│   ├── prompts.py        # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
+│   └── validation.py     # ConfigurationValidator for config validation
 ├── memory/               # Memory management
 │   ├── __init__.py       # Memory exports
 │   ├── manager.py        # MemoryManager (USearch + Tantivy)
 │   ├── protocols.py      # Search engine protocols
+│   ├── match_utils.py    # Escape Tantivy queries, exact match detection
+│   ├── add_phases.py     # 3-phase parallel add pipeline (Duplicate, Replace, Storage phases)
+│   ├── search_strategies.py # SearchPipeline with adaptive overfetch
 │   ├── fusion/           # Hybrid ranking
 │   │   ├── __init__.py   # Fusion exports
 │   │   ├── base.py       # FusionEngine protocol
@@ -39,7 +44,9 @@ application/
     ├── numba_utils.py    # Numba JIT functions (normalization, distance)
     ├── retry.py          # async_retry_with_backoff decorator
     ├── security.py       # SecretString, redact_dict_secrets
-    └── validation.py     # Message validation helpers
+    ├── validation.py     # Message validation helpers
+    ├── circuit_breaker.py # CircuitBreaker for external service resilience
+    └── metrics.py        # Prometheus-style metrics collection (counters, gauges, histograms)
 ```
 
 ## Purpose

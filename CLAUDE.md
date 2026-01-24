@@ -104,6 +104,7 @@ ReflectLogMCP/
 ├── reflectlog/              # Main package
 │   ├── __init__.py           # Package metadata (__version__ = "0.1.7") and exception exports
 │   ├── server.py             # CLI entry point with numba JIT warmup configuration
+│   ├── constants.py          # Constants (search limits, score ranges, API timeouts, retry settings)
 │   ├── application/          # Application layer
 │   │   ├── __init__.py       # Application exports
 │   │   ├── exceptions.py     # Custom exception hierarchy (ReflectLogError, etc.)
@@ -112,11 +113,15 @@ ReflectLogMCP/
 │   │   ├── config/           # Configuration management
 │   │   │   ├── __init__.py   # Config exports
 │   │   │   ├── settings.py   # Config dataclass from env vars
-│   │   │   └── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
+│   │   │   ├── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
+│   │   │   └── validation.py # ConfigurationValidator for config validation
 │   │   ├── memory/           # Memory management
 │   │   │   ├── __init__.py   # Memory exports
 │   │   │   ├── manager.py    # MemoryManager (USearch + Tantivy)
 │   │   │   ├── protocols.py  # Search engine protocols
+│   │   │   ├── match_utils.py # Escape Tantivy queries, exact match detection
+│   │   │   ├── add_phases.py  # 3-phase parallel add pipeline
+│   │   │   ├── search_strategies.py # SearchPipeline with adaptive overfetch
 │   │   │   ├── fusion/       # Hybrid ranking
 │   │   │   │   ├── __init__.py   # Fusion exports
 │   │   │   │   ├── base.py   # FusionEngine protocol
@@ -138,7 +143,9 @@ ReflectLogMCP/
 │   │       ├── numba_utils.py # Numba JIT functions (normalization, distance)
 │   │       ├── retry.py      # async_retry_with_backoff decorator
 │   │       ├── security.py   # SecretString, redact_dict_secrets
-│   │       └── validation.py # Message validation helpers
+│   │       ├── validation.py # Message validation helpers
+│   │       ├── circuit_breaker.py # CircuitBreaker for external service resilience
+│   │       └── metrics.py    # Prometheus-style metrics collection
 │   ├── infrastructure/       # External integrations
 │   │   ├── __init__.py       # Infrastructure exports
 │   │   ├── cached_embeddings.py   # CachedEmbeddings (LRU query embedding cache)
@@ -162,12 +169,27 @@ ReflectLogMCP/
 │           └── windows.py    # Windows Credential Manager
 ├── tests/                    # Test suites
 │   ├── conftest.py           # Pytest fixtures
+│   ├── demo_test.py          # Demo/example tests
+│   ├── test_enhanced_scoring.py  # Enhanced scoring tests
+│   ├── test_get_all_messages.py  # Get all messages tests
+│   ├── test_llm_infer.py     # LLM inference tests
+│   ├── test_llm_infer_simple.py  # Simple LLM inference tests
+│   ├── test_real_server.py   # Real server tests
+│   ├── test_real_server_fastmcp.py  # FastMCP server tests
+│   ├── test_real_server_mcp.py   # MCP protocol server tests
+│   ├── test_real_tools_direct.py # Direct tool invocation tests
+│   ├── test_score_filtering_demo.py  # Score filtering demo tests
+│   ├── test_verbose_logging.py   # Verbose logging tests
 │   ├── unit/                 # Unit tests (mocked deps)
 │   │   ├── CLAUDE.md         # Unit test documentation
 │   │   ├── application/      # Application layer tests
 │   │   ├── infrastructure/   # Infrastructure layer tests
 │   │   └── application/utils/   # Utility tests
 │   └── integration/          # Integration tests (real engines)
+│       ├── test_memory_manager_usearch.py  # Memory manager integration tests
+│       ├── test_concurrent_operations.py   # Concurrent operation tests
+│       ├── test_mcp_workflows.py   # MCP workflow tests
+│       └── test_thread_safety.py   # Thread safety tests
 ├── stubs/                    # Type stubs for ty
 │   ├── fastmcp/              # FastMCP library stubs
 │   ├── fastmcp/client/       # FastMCP client stubs

@@ -8,6 +8,7 @@ This directory contains the main source code for the ReflectLogMCP server.
 reflectlog/
 ├── __init__.py           # Package metadata (__version__) and exception exports
 ├── server.py             # CLI entry point and argument parsing
+├── constants.py          # Constants (search limits, score ranges, API timeouts, retry settings)
 ├── application/          # Application layer (business logic)
 │   ├── __init__.py       # Application exports
 │   ├── exceptions.py     # Custom exception hierarchy (ReflectLogError, etc.)
@@ -15,10 +16,14 @@ reflectlog/
 │   ├── types.py          # Type definitions (ISemanticSearchEngine protocol)
 │   ├── config/           # Configuration management
 │   │   ├── settings.py   # Config dataclass from environment
-│   │   └── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
+│   │   ├── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
+│   │   └── validation.py # ConfigurationValidator for config validation
 │   ├── memory/           # Memory management
 │   │   ├── manager.py    # MemoryManager (USearch + Tantivy)
 │   │   ├── protocols.py  # Search engine protocols
+│   │   ├── match_utils.py # Escape Tantivy queries, exact match detection
+│   │   ├── add_phases.py # 3-phase parallel add pipeline
+│   │   ├── search_strategies.py # SearchPipeline with adaptive overfetch
 │   │   ├── fusion/       # Hybrid ranking
 │   │   │   ├── base.py   # FusionEngine protocol
 │   │   │   └── ranx_fusion.py # RanxFusionEngine (RRF)
@@ -28,6 +33,7 @@ reflectlog/
 │   │   ├── base.py       # BaseTool abstract class
 │   │   ├── add.py        # AddTool
 │   │   ├── get_all.py    # GetAllTool
+│   │   ├── health_check.py # HealthCheckTool
 │   │   ├── search.py     # SearchTool
 │   │   └── remove.py     # RemoveTool
 │   └── utils/            # Utilities
@@ -35,7 +41,9 @@ reflectlog/
 │       ├── numba_utils.py # Numba JIT functions (normalization, distance)
 │       ├── retry.py      # async_retry_with_backoff decorator
 │       ├── security.py   # SecretString, redact_dict_secrets
-│       └── validation.py # Message validation helpers
+│       ├── validation.py # Message validation helpers
+│       ├── circuit_breaker.py # CircuitBreaker for external service resilience
+│       └── metrics.py    # Prometheus-style metrics collection
 ├── infrastructure/       # External integrations
 │   ├── cached_embeddings.py   # CachedEmbeddings (LRU query cache)
 │   ├── cross_encoder_reranker.py # CrossEncoderReranker (local FlagReranker)
