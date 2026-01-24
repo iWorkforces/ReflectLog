@@ -277,6 +277,7 @@ class LangchainQwenEmbeddings(BaseModel):
                 # Empty results remain empty for this batch
                 # Caller can detect by checking for empty lists
                 import warnings
+
                 warnings.warn(
                     f"Embedding batch {start_idx} failed: {e}",
                     RuntimeWarning,

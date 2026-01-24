@@ -80,9 +80,18 @@ class SecretString:
 _SENSITIVE_PATTERNS = [
     # API keys - expanded coverage
     (re.compile(r"sk-[a-zA-Z0-9_-]{20,}", re.IGNORECASE), "[API_KEY_REDACTED]"),
-    (re.compile(r"sk-or-[a-zA-Z0-9_-]{20,}", re.IGNORECASE), "[OPENROUTER_KEY_REDACTED]"),
-    (re.compile(r"sk-ant-[a-zA-Z0-9_-]{20,}", re.IGNORECASE), "[ANTHROPIC_KEY_REDACTED]"),
-    (re.compile(r"sk-proj-[a-zA-Z0-9_-]{20,}", re.IGNORECASE), "[OPENAI_PROJECT_KEY_REDACTED]"),
+    (
+        re.compile(r"sk-or-[a-zA-Z0-9_-]{20,}", re.IGNORECASE),
+        "[OPENROUTER_KEY_REDACTED]",
+    ),
+    (
+        re.compile(r"sk-ant-[a-zA-Z0-9_-]{20,}", re.IGNORECASE),
+        "[ANTHROPIC_KEY_REDACTED]",
+    ),
+    (
+        re.compile(r"sk-proj-[a-zA-Z0-9_-]{20,}", re.IGNORECASE),
+        "[OPENAI_PROJECT_KEY_REDACTED]",
+    ),
     # Generic API key patterns
     (
         re.compile(r"api[_-]?key[\"']?\s*[:=]\s*[\"']?[a-zA-Z0-9_-]+", re.IGNORECASE),
@@ -93,8 +102,14 @@ _SENSITIVE_PATTERNS = [
         "[API_KEY_REDACTED]",
     ),
     # Bearer tokens
-    (re.compile(r"bearer\s+[a-zA-Z0-9_.-]{20,}", re.IGNORECASE), "[BEARER_TOKEN_REDACTED]"),
-    (re.compile(r"Bearer\s+[a-zA-Z0-9_.-]{20,}", re.IGNORECASE), "[BEARER_TOKEN_REDACTED]"),
+    (
+        re.compile(r"bearer\s+[a-zA-Z0-9_.-]{20,}", re.IGNORECASE),
+        "[BEARER_TOKEN_REDACTED]",
+    ),
+    (
+        re.compile(r"Bearer\s+[a-zA-Z0-9_.-]{20,}", re.IGNORECASE),
+        "[BEARER_TOKEN_REDACTED]",
+    ),
     # GitHub tokens
     (re.compile(r"ghp_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
     (re.compile(r"gho_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
@@ -102,7 +117,10 @@ _SENSITIVE_PATTERNS = [
     (re.compile(r"ghs_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
     (re.compile(r"ghr_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
     # Slack tokens
-    (re.compile(r"xox[baprs]-[0-9]{10,}-[0-9]+", re.IGNORECASE), "[SLACK_TOKEN_REDACTED]"),
+    (
+        re.compile(r"xox[baprs]-[0-9]{10,}-[0-9]+", re.IGNORECASE),
+        "[SLACK_TOKEN_REDACTED]",
+    ),
     # Passwords
     (
         re.compile(r"password[\"']?\s*[:=]\s*[\"']?[^\s\"']{8,}", re.IGNORECASE),
@@ -115,16 +133,41 @@ _SENSITIVE_PATTERNS = [
     # Email addresses - RFC 5322 compliant-ish pattern for redaction
     # Note: Full RFC 5322 compliance requires extremely complex regex.
     # This practical pattern covers common formats while being performant.
-    (re.compile(r"[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}"), "[EMAIL_REDACTED]"),
+    (
+        re.compile(
+            r"[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}"
+        ),
+        "[EMAIL_REDACTED]",
+    ),
     # URL query parameters with sensitive data
-    (re.compile(r"[?&](api[_-]?key|apikey|token|password|secret)=[^&\\s\"']+", re.IGNORECASE), "[URL_PARAM_REDACTED]"),
-    (re.compile(r"[?&](api[_-]?key|apikey|token|password|secret)=\"[^\"]*\"", re.IGNORECASE), "[URL_PARAM_REDACTED]"),
+    (
+        re.compile(
+            r"[?&](api[_-]?key|apikey|token|password|secret)=[^&\\s\"']+", re.IGNORECASE
+        ),
+        "[URL_PARAM_REDACTED]",
+    ),
+    (
+        re.compile(
+            r"[?&](api[_-]?key|apikey|token|password|secret)=\"[^\"]*\"", re.IGNORECASE
+        ),
+        "[URL_PARAM_REDACTED]",
+    ),
 ]
 
 # Additional patterns specifically for URL parameter redaction
 _URL_PARAM_PATTERNS = [
-    (re.compile(r"[?&](api[_-]?key|apikey|token|password|secret)=[^&\\s\"']+", re.IGNORECASE), "[URL_PARAM_REDACTED]"),
-    (re.compile(r"[?&](api[_-]?key|apikey|token|password|secret)=\"[^\"]*\"", re.IGNORECASE), "[URL_PARAM_REDACTED]"),
+    (
+        re.compile(
+            r"[?&](api[_-]?key|apikey|token|password|secret)=[^&\\s\"']+", re.IGNORECASE
+        ),
+        "[URL_PARAM_REDACTED]",
+    ),
+    (
+        re.compile(
+            r"[?&](api[_-]?key|apikey|token|password|secret)=\"[^\"]*\"", re.IGNORECASE
+        ),
+        "[URL_PARAM_REDACTED]",
+    ),
 ]
 
 
@@ -270,13 +313,17 @@ def redact_dict_secrets(
         elif isinstance(value, list):
             # Handle lists - recurse on dict elements
             result[key] = [
-                redact_dict_secrets(item, secret_keys) if isinstance(item, dict) else item
+                redact_dict_secrets(item, secret_keys)
+                if isinstance(item, dict)
+                else item
                 for item in value
             ]
         elif isinstance(value, tuple):
             # Handle tuples - recurse on dict elements, preserve tuple type
             result[key] = tuple(
-                redact_dict_secrets(item, secret_keys) if isinstance(item, dict) else item
+                redact_dict_secrets(item, secret_keys)
+                if isinstance(item, dict)
+                else item
                 for item in value
             )
         elif isinstance(value, SecretString):

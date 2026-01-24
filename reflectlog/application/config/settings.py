@@ -168,6 +168,7 @@ class Config:
 
     # Initialization settings
     eager_initialization: bool = True  # Pre-warm engines during MemoryManager init
+    enable_llm_infer: bool = False  # Enable LLM message inference
 
     # Granular eager initialization settings (for fine-grained control)
     # These override eager_initialization when set
@@ -249,7 +250,9 @@ class Config:
         return {
             "search_limit": int(os.environ.get("SEARCH_LIMIT", "5")),
             "remove_search_limit": int(os.environ.get("REMOVE_SEARCH_LIMIT", "5")),
-            "enable_hybrid_search": os.environ.get("ENABLE_HYBRID_SEARCH", "true").lower()
+            "enable_hybrid_search": os.environ.get(
+                "ENABLE_HYBRID_SEARCH", "true"
+            ).lower()
             == "true",
             "tantivy_index_path_template": "indexes/{project_id}/tantivy",
             "overfetch_multiplier": max(
@@ -263,7 +266,9 @@ class Config:
             "overfetch_max_multiplier": max(
                 1.0, float(os.environ.get("OVERFETCH_MAX_MULTIPLIER", "3.0"))
             ),
-            "usearch_exact_search": os.environ.get("USEARCH_EXACT_SEARCH", "true").lower()
+            "usearch_exact_search": os.environ.get(
+                "USEARCH_EXACT_SEARCH", "true"
+            ).lower()
             == "true",
             "usearch_exact_search_threshold": max(
                 0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "10000"))
@@ -367,7 +372,9 @@ class Config:
                 "RERANKER_BATCH_NORMALIZE", "true"
             ).lower()
             == "true",
-            "enable_recency_boost": os.environ.get("ENABLE_RECENCY_BOOST", "true").lower()
+            "enable_recency_boost": os.environ.get(
+                "ENABLE_RECENCY_BOOST", "true"
+            ).lower()
             == "true",
             "recency_decay_rate": max(
                 0.0, float(os.environ.get("RECENCY_DECAY_RATE", "0.01"))
@@ -380,7 +387,9 @@ class Config:
         return {
             "max_message_length": int(os.environ.get("MAX_MESSAGE_LENGTH", "30720")),
             "min_message_length": int(os.environ.get("MIN_MESSAGE_LENGTH", "1")),
-            "deduplicate_messages": os.environ.get("DEDUPLICATE_MESSAGES", "true").lower()
+            "deduplicate_messages": os.environ.get(
+                "DEDUPLICATE_MESSAGES", "true"
+            ).lower()
             == "true",
         }
 
@@ -388,7 +397,9 @@ class Config:
     def _parse_smart_replace_config() -> dict[str, Any]:
         """Parse smart replacement configuration from environment variables."""
         return {
-            "enable_smart_replace": os.environ.get("ENABLE_SMART_REPLACE", "true").lower()
+            "enable_smart_replace": os.environ.get(
+                "ENABLE_SMART_REPLACE", "true"
+            ).lower()
             == "true",
             "smart_replace_threshold": float(
                 os.environ.get("SMART_REPLACE_THRESHOLD", "0.7")
@@ -414,8 +425,12 @@ class Config:
     def _parse_init_config() -> dict[str, Any]:
         """Parse initialization-related configuration from environment variables."""
         return {
-            "add_max_concurrency": max(1, int(os.environ.get("ADD_MAX_CONCURRENCY", "4"))),
-            "eager_initialization": os.environ.get("EAGER_INITIALIZATION", "true").lower()
+            "add_max_concurrency": max(
+                1, int(os.environ.get("ADD_MAX_CONCURRENCY", "4"))
+            ),
+            "eager_initialization": os.environ.get(
+                "EAGER_INITIALIZATION", "true"
+            ).lower()
             == "true",
             "eager_initialize_search_engines": _parse_optional_bool(
                 os.environ.get("EAGER_INITIALIZE_SEARCH_ENGINES")
@@ -437,12 +452,15 @@ class Config:
                 "LOG_SEARCH_RESULTS_VERBOSE", "false"
             ).lower()
             == "true",
-            "log_search_result_limit": int(os.environ.get("LOG_SEARCH_RESULT_LIMIT", "3")),
+            "log_search_result_limit": int(
+                os.environ.get("LOG_SEARCH_RESULT_LIMIT", "3")
+            ),
         }
 
     @staticmethod
     def _parse_allowed_tools() -> tuple[str, ...] | None:
         """Parse allowed tools configuration from environment variables."""
+
         def _normalize_tool_token(raw_token: str) -> str:
             """Normalize tool identifiers to snake_case."""
             token = raw_token.strip()
@@ -570,7 +588,7 @@ class Config:
         errors = validate_config(config)
         if errors:
             raise ConfigurationError(
-                f"Configuration validation failed:\n"
+                "Configuration validation failed:\n"
                 + "\n".join(f"  - {error}" for error in errors)
             )
 

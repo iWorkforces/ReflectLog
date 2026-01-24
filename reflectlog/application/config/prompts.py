@@ -1,6 +1,5 @@
 """Prompts and text constants for ReflectLogMCP Server."""
 
-import re
 from string import Template
 from typing import List, Tuple
 
@@ -62,8 +61,7 @@ def format_scoring_prompt(query: str, document: str) -> str:
 
 # Backward compatibility: static prompt using the new safe formatting
 SCORING_PROMPT = format_scoring_prompt(
-    query="example query",
-    document="example document"
+    query="example query", document="example document"
 )
 
 # Scoring prompt with temporal context for LLM reranking
@@ -123,9 +121,7 @@ def format_scoring_prompt_with_age(query: str, document: str, memory_age: str) -
 
 # Backward compatibility: static prompt using the new safe formatting
 SCORING_PROMPT_WITH_AGE = format_scoring_prompt_with_age(
-    query="example query",
-    document="example document",
-    memory_age="2 hours ago"
+    query="example query", document="example document", memory_age="2 hours ago"
 )
 
 # Smart replacement detection prompt
@@ -193,8 +189,7 @@ def format_replacement_detection_prompt(old_memory: str, new_memory: str) -> str
 
 # Backward compatibility: static prompt using the new safe formatting
 REPLACEMENT_DETECTION_PROMPT = format_replacement_detection_prompt(
-    old_memory="I like cats",
-    new_memory="I don't like cats anymore"
+    old_memory="I like cats", new_memory="I don't like cats anymore"
 )
 
 # Template components for dynamic MCP_INSTRUCTIONS assembly

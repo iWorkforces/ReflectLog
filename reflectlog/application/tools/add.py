@@ -82,7 +82,9 @@ class AddTool(BaseTool):
             # Log invocation with detailed info
             start_time = time.time()
             mode_str = "DRY_RUN" if dry_run else "LIVE"
-            self.log_invocation("add", count=len(messages), mode=mode_str, dry_run=dry_run)
+            self.log_invocation(
+                "add", count=len(messages), mode=mode_str, dry_run=dry_run
+            )
 
             # Log operation header
             total_chars = sum(len(m) for m in messages)

@@ -276,7 +276,7 @@ class SearchPipeline:
         except Exception as e:
             # Enhanced diagnostic logging for semantic search fallback
             self.logger.warning(
-                f"Semantic search failed - falling back to Tantivy full-text only",
+                "Semantic search failed - falling back to Tantivy full-text only",
                 extra={
                     "project_id": project_id,
                     "query": query[:LOG_QUERY_TRUNCATE_LENGTH],

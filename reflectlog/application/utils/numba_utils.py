@@ -191,7 +191,9 @@ def compute_rrf_scores_batch(
         total = 0.0
         for j in range(n_rankings):
             rank = ranks_matrix[i, j]
-            if rank > 0:  # Only count if document is present in this ranking (0 = absent)
+            if (
+                rank > 0
+            ):  # Only count if document is present in this ranking (0 = absent)
                 total += 1.0 / (k + rank)
         scores[i] = total
 
@@ -259,5 +261,8 @@ def warmup_numba_functions() -> bool:
     except Exception as e:
         # Log but don't raise - allow application to continue with slower first calls
         import warnings
-        warnings.warn(f"Numba JIT warmup failed: {e}. First calls will be slower.", RuntimeWarning)
+
+        warnings.warn(
+            f"Numba JIT warmup failed: {e}. First calls will be slower.", RuntimeWarning
+        )
         return False

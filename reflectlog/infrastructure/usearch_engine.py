@@ -310,7 +310,9 @@ class USearchEngine(BaseModel):
                             "error": str(embed_error),
                         },
                     )
-                raise RuntimeError(f"Failed to generate embedding: {embed_error}") from embed_error
+                raise RuntimeError(
+                    f"Failed to generate embedding: {embed_error}"
+                ) from embed_error
 
             # Add to USearch index
             self.index.add(msg_id, vector_np)
