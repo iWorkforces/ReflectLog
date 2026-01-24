@@ -108,11 +108,27 @@ class HealthCheckTool(BaseTool):
 
             except Exception as e:
                 self.log_error("health_check", e)
-                # Return unhealthy status on error
+                # Return unhealthy status with diagnostic information
                 return {
                     "status": "unhealthy",
                     "project_id": self.config.project_id,
                     "error": str(e),
+                    "error_type": type(e).__name__,
+                    # Provide component states even during error
+                    "diagnostics": {
+                        "semantic_engine": (
+                            "initialized"
+                            if self.memory._semantic_engine is not None
+                            else "not_initialized"
+                        ),
+                        "tantivy_engine": (
+                            "initialized"
+                            if self.memory._tantivy_engine is not None
+                            else "disabled"
+                        ),
+                        "reranker_engine": self.config.reranker_engine,
+                        "hybrid_search_enabled": self.config.enable_hybrid_search,
+                    },
                 }
 
         return health_check

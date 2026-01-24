@@ -40,6 +40,11 @@ class RemoveTool(BaseTool):
             Note: Uses asyncify() to bridge to sync MemoryManager methods without
             blocking the event loop. This enables concurrent tool calls.
 
+            Performance Note: Messages are processed sequentially (O(n) where n is
+            the number of messages). For bulk removals (100+ messages), consider
+            batching into smaller groups or using a dedicated bulk operation if
+            available in the future.
+
             Args:
                 messages: List of message strings to remove from storage. Can be empty
                     (treated as no-op). Messages not found in the store are ignored.
@@ -63,6 +68,10 @@ class RemoveTool(BaseTool):
                 self.log_invocation("remove", count=0)
                 self.logger.info("Remove called with empty list, skipping")
                 return
+
+            # Performance note: Sequential processing is intentional for correctness
+            # Each message removal involves: search → exact match filter → delete
+            # For large bulk removals (100+), this may take noticeable time
 
             # Log invocation
             self.log_invocation(

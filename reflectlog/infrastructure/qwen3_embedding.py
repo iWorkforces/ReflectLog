@@ -256,21 +256,56 @@ class LangchainQwenEmbeddings(BaseModel):
         semaphore = anyio.Semaphore(max_concurrent_batches)
 
         async def embed_batch(start_idx: int, batch_texts: list[str]) -> None:
-            """Embed a batch of texts with semaphore control."""
-            async with semaphore:
-                batch_embeddings = await self._async_embed_with_retry(
-                    input=batch_texts,
-                    model=self.config.model,
-                    dimensions=self.config.embedding_dims,
-                    encoding_format="float",
+            """Embed a batch of texts with semaphore control.
+
+            Wraps the embedding call in try-except to continue on error
+            instead of cancelling all batches when one fails.
+            """
+            try:
+                async with semaphore:
+                    batch_embeddings = await self._async_embed_with_retry(
+                        input=batch_texts,
+                        model=self.config.model,
+                        dimensions=self.config.embedding_dims,
+                        encoding_format="float",
+                    )
+                    # Assign results to correct indices
+                    for j, embedding in enumerate(batch_embeddings):
+                        results[start_idx + j] = embedding
+            except Exception as e:
+                # Log error but don't cancel other batches
+                # Empty results remain empty for this batch
+                # Caller can detect by checking for empty lists
+                import warnings
+
+                warnings.warn(
+                    f"Embedding batch {start_idx} failed: {e}",
+                    RuntimeWarning,
                 )
-                # Assign results to correct indices
-                for j, embedding in enumerate(batch_embeddings):
-                    results[start_idx + j] = embedding
+                # Results at failed batch indices remain as empty lists
 
         # Process all batches concurrently (limited by semaphore)
+        # Note: If one batch fails, others continue
         async with anyio.create_task_group() as tg:
             for start_idx, batch_texts in batches:
                 tg.start_soon(embed_batch, start_idx, batch_texts)
 
         return results
+
+    async def aclose(self) -> None:
+        """Close the async client and cleanup resources.
+
+        This method should be called when done with the embedder to properly
+        close the async HTTP client and release resources.
+        """
+        if self._async_client is not None:
+            await self._async_client.close()
+            self._async_client = None
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.aclose()

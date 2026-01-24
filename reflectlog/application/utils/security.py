@@ -43,7 +43,7 @@ class SecretString:
 
     def __repr__(self) -> str:
         """Return redacted representation for debugging."""
-        return "SecretString('***REDACTED***')"
+        return "***REDACTED***"
 
     def __bool__(self) -> bool:
         """Return True if the secret value is non-empty."""
@@ -53,24 +53,121 @@ class SecretString:
         """Return the length of the secret value."""
         return len(self._value)
 
+    def __eq__(self, other: object) -> bool:
+        """Compare SecretString instances for equality.
+
+        Args:
+            other: Another object to compare with.
+
+        Returns:
+            True if the other object is a SecretString with the same value,
+            False otherwise.
+        """
+        if not isinstance(other, SecretString):
+            return NotImplemented
+        return self._value == other._value
+
+    def __hash__(self) -> int:
+        """Return hash of the secret value.
+
+        Returns:
+            Hash of the underlying secret string.
+        """
+        return hash(self._value)
+
 
 # Patterns for sensitive data detection
 _SENSITIVE_PATTERNS = [
-    # API keys
-    (re.compile(r"sk-[a-zA-Z0-9]{20,}", re.IGNORECASE), "[API_KEY_REDACTED]"),
+    # API keys - expanded coverage
+    (re.compile(r"sk-[a-zA-Z0-9_-]{20,}", re.IGNORECASE), "[API_KEY_REDACTED]"),
+    (
+        re.compile(r"sk-or-[a-zA-Z0-9_-]{20,}", re.IGNORECASE),
+        "[OPENROUTER_KEY_REDACTED]",
+    ),
+    (
+        re.compile(r"sk-ant-[a-zA-Z0-9_-]{20,}", re.IGNORECASE),
+        "[ANTHROPIC_KEY_REDACTED]",
+    ),
+    (
+        re.compile(r"sk-proj-[a-zA-Z0-9_-]{20,}", re.IGNORECASE),
+        "[OPENAI_PROJECT_KEY_REDACTED]",
+    ),
+    # Generic API key patterns
     (
         re.compile(r"api[_-]?key[\"']?\s*[:=]\s*[\"']?[a-zA-Z0-9_-]+", re.IGNORECASE),
         "[API_KEY_REDACTED]",
     ),
+    (
+        re.compile(r"apikey[\"']?\s*[:=]\s*[\"']?[a-zA-Z0-9_-]+", re.IGNORECASE),
+        "[API_KEY_REDACTED]",
+    ),
     # Bearer tokens
-    (re.compile(r"bearer\s+[a-zA-Z0-9_.-]+", re.IGNORECASE), "[BEARER_TOKEN_REDACTED]"),
+    (
+        re.compile(r"bearer\s+[a-zA-Z0-9_.-]{20,}", re.IGNORECASE),
+        "[BEARER_TOKEN_REDACTED]",
+    ),
+    (
+        re.compile(r"Bearer\s+[a-zA-Z0-9_.-]{20,}", re.IGNORECASE),
+        "[BEARER_TOKEN_REDACTED]",
+    ),
+    # GitHub tokens
+    (re.compile(r"ghp_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
+    (re.compile(r"gho_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
+    (re.compile(r"ghu_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
+    (re.compile(r"ghs_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
+    (re.compile(r"ghr_[a-zA-Z0-9]{36,}", re.IGNORECASE), "[GITHUB_TOKEN_REDACTED]"),
+    # Slack tokens
+    (
+        re.compile(r"xox[baprs]-[0-9]{10,}-[0-9]+", re.IGNORECASE),
+        "[SLACK_TOKEN_REDACTED]",
+    ),
     # Passwords
     (
-        re.compile(r"password[\"']?\s*[:=]\s*[\"']?[^\s\"']+", re.IGNORECASE),
+        re.compile(r"password[\"']?\s*[:=]\s*[\"']?[^\s\"']{8,}", re.IGNORECASE),
         "[PASSWORD_REDACTED]",
     ),
-    # Email addresses
-    (re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"), "[EMAIL_REDACTED]"),
+    (
+        re.compile(r"passwd[\"']?\s*[:=]\s*[\"']?[^\s\"']{8,}", re.IGNORECASE),
+        "[PASSWORD_REDACTED]",
+    ),
+    # Email addresses - RFC 5322 compliant-ish pattern for redaction
+    # Note: Full RFC 5322 compliance requires extremely complex regex.
+    # This practical pattern covers common formats while being performant.
+    (
+        re.compile(
+            r"[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}"
+        ),
+        "[EMAIL_REDACTED]",
+    ),
+    # URL query parameters with sensitive data
+    (
+        re.compile(
+            r"[?&](api[_-]?key|apikey|token|password|secret)=[^&\\s\"']+", re.IGNORECASE
+        ),
+        "[URL_PARAM_REDACTED]",
+    ),
+    (
+        re.compile(
+            r"[?&](api[_-]?key|apikey|token|password|secret)=\"[^\"]*\"", re.IGNORECASE
+        ),
+        "[URL_PARAM_REDACTED]",
+    ),
+]
+
+# Additional patterns specifically for URL parameter redaction
+_URL_PARAM_PATTERNS = [
+    (
+        re.compile(
+            r"[?&](api[_-]?key|apikey|token|password|secret)=[^&\\s\"']+", re.IGNORECASE
+        ),
+        "[URL_PARAM_REDACTED]",
+    ),
+    (
+        re.compile(
+            r"[?&](api[_-]?key|apikey|token|password|secret)=\"[^\"]*\"", re.IGNORECASE
+        ),
+        "[URL_PARAM_REDACTED]",
+    ),
 ]
 
 
@@ -144,6 +241,9 @@ def validate_project_id(project_id: str) -> str:
     if not project_id:
         raise ValidationError("project_id cannot be empty")
 
+    # Normalize to lowercase first (before other checks)
+    project_id = project_id.lower()
+
     # Check for path traversal patterns
     if ".." in project_id or project_id.startswith("/"):
         raise ValidationError(f"Invalid project_id: {project_id}")
@@ -161,7 +261,7 @@ def validate_project_id(project_id: str) -> str:
             f"project_id too long (max 128 characters): {len(project_id)}"
         )
 
-    return project_id.lower()
+    return project_id
 
 
 def redact_dict_secrets(
@@ -172,6 +272,8 @@ def redact_dict_secrets(
 
     This is useful for safely logging configuration dictionaries that may
     contain sensitive values.
+
+    Recursively handles nested dictionaries, lists, and tuples.
 
     Args:
         data: The dictionary to redact.
@@ -197,6 +299,7 @@ def redact_dict_secrets(
             "key",
             "openrouter_api_key",
             "openai_api_key",
+            "anthropic_auth_token",
         }
 
     secret_keys_lower = {k.lower() for k in secret_keys}
@@ -207,6 +310,22 @@ def redact_dict_secrets(
             result[key] = "[REDACTED]"
         elif isinstance(value, dict):
             result[key] = redact_dict_secrets(value, secret_keys)
+        elif isinstance(value, list):
+            # Handle lists - recurse on dict elements
+            result[key] = [
+                redact_dict_secrets(item, secret_keys)
+                if isinstance(item, dict)
+                else item
+                for item in value
+            ]
+        elif isinstance(value, tuple):
+            # Handle tuples - recurse on dict elements, preserve tuple type
+            result[key] = tuple(
+                redact_dict_secrets(item, secret_keys)
+                if isinstance(item, dict)
+                else item
+                for item in value
+            )
         elif isinstance(value, SecretString):
             result[key] = str(value)  # Returns "***REDACTED***"
         else:

@@ -66,6 +66,24 @@ class MemoryManager:
         self._reranker_lock = threading.Lock()
         self._smart_replacer_lock = threading.Lock()
 
+        # Lock hierarchy (outer to inner) - ALWAYS follow this order to prevent deadlocks:
+        # 1. _write_lock - for all write operations across async/sync boundary
+        # 2. _lock (RLock) - for state consistency within operations
+        #
+        # Usage pattern:
+        # - Read operations: use _lock only
+        # - Write operations: acquire _write_lock first, then _lock if needed
+        # - Never acquire _lock before _write_lock (risk of deadlock)
+        #
+        # Example (safe lock acquisition order):
+        #   with self._write_lock:
+        #       with self._lock:
+        #           # ... perform operation ...
+        #
+        # Example (unsafe lock acquisition - DO NOT DO THIS):
+        #   with self._lock:         # DEADLOCK if another thread has _write_lock!
+        #       with self._write_lock:
+
         # Startup timing metrics (set by server.py after initialization)
         self._startup_metrics: Dict[str, float] | None = None
 
@@ -289,6 +307,15 @@ class MemoryManager:
 
         # Pre-warm reranker if explicitly configured (lazy by default)
         if should_init_reranker:
+            # Validate that reranker engine type is supported
+            if self.config.reranker_engine not in ("llm", "cross_encoder"):
+                raise ValueError(
+                    f"Invalid reranker_engine for eager initialization: "
+                    f"{self.config.reranker_engine!r}. "
+                    f"Must be 'llm' or 'cross_encoder', or set "
+                    f"eager_initialize_reranker=false for lazy loading."
+                )
+
             self.logger.info(
                 "Starting eager reranker initialization...",
                 extra={
@@ -299,9 +326,25 @@ class MemoryManager:
             reranker = self.get_reranker()
             if reranker is not None:
                 engines_initialized.append(f"reranker_{self.config.reranker_engine}")
+            else:
+                self.logger.warning(
+                    "Eager reranker initialization requested but no reranker configured",
+                    extra={
+                        "project_id": self.project_id,
+                        "reranker_engine": self.config.reranker_engine,
+                    },
+                )
 
         # Pre-warm SmartReplacer if explicitly configured (lazy by default)
         if should_init_smart_replacer:
+            # Validate that smart replacement is enabled
+            if not self.config.enable_smart_replace:
+                raise ValueError(
+                    "Eager SmartReplacer initialization requested but "
+                    "enable_smart_replace is disabled. Set enable_smart_replace=true "
+                    "or set eager_initialize_smart_replacer=false for lazy loading."
+                )
+
             self.logger.info(
                 "Starting eager SmartReplacer initialization...",
                 extra={"project_id": self.project_id},

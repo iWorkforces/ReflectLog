@@ -986,14 +986,17 @@ class AddPipeline:
             result.replacements = phase3_result.replacements
 
         except Exception as e:
+            mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.logger.error(
-                f"Phased parallel message addition failed: {e}",
+                f"Phased parallel message addition failed [{mode_str}]: {e}",
                 extra={
+                    "mode": mode_str,
+                    "dry_run": dry_run,
                     "total_messages": len(messages),
                     "stored_count": result.stored_count,
                     "replaced_count": result.replaced_count,
                     "error": str(e),
-                    "dry_run": dry_run,
+                    "error_type": type(e).__name__,
                 },
             )
             if not dry_run:

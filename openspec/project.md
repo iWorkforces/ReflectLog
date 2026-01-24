@@ -11,10 +11,10 @@ Data persists across restarts in `indexes/{project_id}/usearch/` and `indexes/{p
 
 ## Tech Stack
 
-- **Language**: Python ≥3.14
+- **Language**: Python ≥3.14.2
 - **Package Manager**: uv
-- **MCP Framework**: fastmcp ≥2.13.1
-- **Semantic Memory**: usearch ≥2.17.0
+- **MCP Framework**: fastmcp ≥2.14.4
+- **Semantic Memory**: usearch ≥2.23.0
 - **Full-Text Search**: tantivy ≥0.25.0
 - **Hybrid Fusion**: ranx ≥0.3.21
 - **LLM/Embeddings**: openai ≥2.8.1, langchain ≥1.1.0 (via OpenRouter)

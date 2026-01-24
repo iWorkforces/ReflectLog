@@ -102,23 +102,30 @@ Transport can be configured via:
 ```
 ReflectLogMCP/
 ├── reflectlog/              # Main package
-│   ├── __init__.py           # Package metadata (__version__ = "0.1.2")
-│   ├── server.py             # CLI entry point
+│   ├── __init__.py           # Package metadata (__version__ = "0.1.7") and exception exports
+│   ├── server.py             # CLI entry point with numba JIT warmup configuration
 │   ├── application/          # Application layer
-│   │   ├── mcp_server.py     # FastMCPServer orchestrator
+│   │   ├── __init__.py       # Application exports
+│   │   ├── exceptions.py     # Custom exception hierarchy (ReflectLogError, etc.)
+│   │   ├── mcp_server.py     # FastMCPServer orchestrator with dynamic tool selection
 │   │   ├── types.py          # Type definitions (ISemanticSearchEngine protocol)
 │   │   ├── config/           # Configuration management
+│   │   │   ├── __init__.py   # Config exports
 │   │   │   ├── settings.py   # Config dataclass from env vars
 │   │   │   └── prompts.py    # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
 │   │   ├── memory/           # Memory management
+│   │   │   ├── __init__.py   # Memory exports
 │   │   │   ├── manager.py    # MemoryManager (USearch + Tantivy)
 │   │   │   ├── protocols.py  # Search engine protocols
 │   │   │   ├── fusion/       # Hybrid ranking
+│   │   │   │   ├── __init__.py   # Fusion exports
 │   │   │   │   ├── base.py   # FusionEngine protocol
 │   │   │   │   └── ranx_fusion.py # RanxFusionEngine (RRF)
-│   │   │   └── reranking/    # Score normalization utilities
-│   │   │       └── normalization.py # Min-max normalization for rerankers
-│   │   ├── tools/            # MCP tool implementations
+│   │   │   └── reranking/    # Score normalization and recency decay utilities
+│   │   │       ├── __init__.py   # Reranking exports
+│   │   │       └── normalization.py # Min-max normalization and recency decay
+│   │   ├── tools/            # Modular MCP tool implementations
+│   │   │   ├── __init__.py   # Tool exports
 │   │   │   ├── base.py       # BaseTool abstract class
 │   │   │   ├── add.py        # AddTool
 │   │   │   ├── get_all.py    # GetAllTool
@@ -126,35 +133,57 @@ ReflectLogMCP/
 │   │   │   ├── search.py     # SearchTool
 │   │   │   └── remove.py     # RemoveTool
 │   │   └── utils/            # Utilities
+│   │       ├── __init__.py   # Utility exports
 │   │       ├── logging.py    # StructuredLogger, format_fusion_score_status
 │   │       ├── numba_utils.py # Numba JIT functions (normalization, distance)
 │   │       ├── retry.py      # async_retry_with_backoff decorator
 │   │       ├── security.py   # SecretString, redact_dict_secrets
-│   │       └── validation.py # Message validation
-│   └── infrastructure/       # External integrations
-│       ├── cached_embeddings.py   # CachedEmbeddings (LRU query embedding cache)
-│       ├── cross_encoder_reranker.py # CrossEncoderReranker (FlagReranker-based local reranking)
-│       ├── llm_provider_base.py # BaseOpenAIProvider (shared LLM provider base class)
-│       ├── llm_reranker.py    # LLMReranker (AI relevance scoring)
-│       ├── message_store.py   # MessageStore (SQLite for USearch)
-│       ├── qwen3_embedding.py # LangchainQwenEmbeddings
-│       ├── smart_replacer.py  # SmartReplacer (LLM-based memory replacement detection)
-│       ├── tantivy_engine.py  # TantivyEngine (full-text search wrapper)
-│       └── usearch_engine.py  # USearchEngine (USearch/SQLite wrapper)
+│   │       └── validation.py # Message validation helpers
+│   ├── infrastructure/       # External integrations
+│   │   ├── __init__.py       # Infrastructure exports
+│   │   ├── cached_embeddings.py   # CachedEmbeddings (LRU query embedding cache)
+│   │   ├── cross_encoder_reranker.py # CrossEncoderReranker (local FlagReranker)
+│   │   ├── llm_provider_base.py   # BaseOpenAIProvider (shared LLM provider base class)
+│   │   ├── llm_reranker.py        # LLMReranker (AI relevance scoring with provider abstraction)
+│   │   ├── message_store.py       # MessageStore (SQLite for USearch with archive support)
+│   │   ├── qwen3_embedding.py     # LangchainQwenEmbeddings
+│   │   ├── smart_replacer.py      # SmartReplacer (LLM-based memory replacement)
+│   │   ├── tantivy_engine.py      # TantivyEngine (full-text search with soft-delete)
+│   │   └── usearch_engine.py      # USearchEngine (semantic search with exact/approximate modes)
+│   └── utility/              # Cross-platform credential retrieval
+│       ├── __init__.py       # Package exports
+│       ├── types.py          # Token prefix constants and types
+│       ├── utility.py        # Core credential retrieval functions
+│       └── platforms/        # Platform-specific implementations
+│           ├── __init__.py   # Platform detector + factory
+│           ├── base.py       # Abstract CredentialRetriever
+│           ├── darwin.py     # macOS Keychain retrieval
+│           ├── linux.py      # Linux config/secret-tool
+│           └── windows.py    # Windows Credential Manager
 ├── tests/                    # Test suites
 │   ├── conftest.py           # Pytest fixtures
 │   ├── unit/                 # Unit tests (mocked deps)
+│   │   ├── CLAUDE.md         # Unit test documentation
 │   │   ├── application/      # Application layer tests
-│   │   └── infrastructure/   # Infrastructure layer tests
+│   │   ├── infrastructure/   # Infrastructure layer tests
+│   │   └── application/utils/   # Utility tests
 │   └── integration/          # Integration tests (real engines)
 ├── stubs/                    # Type stubs for ty
 │   ├── fastmcp/              # FastMCP library stubs
+│   ├── fastmcp/client/       # FastMCP client stubs
+│   ├── fastmcp/utilities/    # FastMCP utilities stubs
 │   ├── numba/                # Numba JIT compiler stubs
+│   ├── numba/core/           # Numba core stubs
 │   ├── ranx/                 # RRF ranking library stubs
+│   ├── sentence_transformers/ # Sentence transformers stubs
+│   ├── tantivy/              # Tantivy library stubs
 │   └── usearch/              # USearch library stubs
 ├── scripts/                  # Development scripts
 │   ├── benchmark_engines.py  # Performance benchmarking
 │   └── git-hooks/            # Version-controlled git hooks
+├── openspec/                 # OpenSpec change proposals and specs
+│   ├── specs/                # Project specifications
+│   └── changes/              # Change proposals
 └── indexes/                  # Persisted indices (gitignored)
     └── {project_id}/
         ├── usearch/          # USearch vector + SQLite
@@ -362,7 +391,92 @@ Five modular FastMCP tools backed by `MemoryManager`:
 
 ### Output Stream Handling
 
-**Critical for stdio**: Non-JSON-RPC output to stderr only (see `server.py:110-111`).
+**Critical for stdio**: Non-JSON-RPC output to stderr only (see `server.py:189`).
+
+## Exception Hierarchy
+
+The `reflectlog/application/exceptions.py` module provides a structured exception hierarchy for error handling:
+
+```
+ReflectLogError (base)
+├── ConfigurationError     - Invalid or missing configuration
+├── ValidationError        - Input validation failures
+├── InitializationError    - Engine/client initialization failures
+├── StorageError           - Storage operation failures
+│   ├── DuplicateError     - Duplicate entry detected
+│   └── InconsistentStateError - Dual-engine state mismatch
+├── SearchError            - Search operation failures
+├── EmbeddingError         - Embedding generation failures
+└── RerankerError          - LLM reranking failures
+```
+
+**Usage**:
+```python
+from reflectlog.application.exceptions import (
+    ReflectLogError,
+    ConfigurationError,
+    StorageError,
+)
+
+try:
+    memory_manager.add_messages(messages)
+except StorageError as e:
+    # Handle storage-specific error
+except ReflectLogError as e:
+    # Handle any ReflectLogMCP error
+```
+
+**Exports** (via `reflectlog/__init__.py`):
+- All exception classes are exported for easy importing
+- Enables structured error handling across the codebase
+
+## Cross-Platform Credential Retrieval
+
+The `reflectlog/utility/` module provides secure retrieval of Anthropic API keys and OAuth tokens from:
+
+1. Environment variables (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`)
+2. Platform-specific credential stores (macOS Keychain, Windows Credential Manager, Linux GNOME Keyring)
+
+**Core Functions**:
+```python
+from reflectlog.utility import (
+    get_anthropic_api_key,    # Get API key from env or keychain
+    get_claude_code_api_key,  # Get key directly from credential store
+    init_credentials,         # Initialize OAuth token for SDK use
+    generate_content,         # Async content generation via Claude Agent SDK
+)
+```
+
+**Platform Support**:
+| Platform | Implementation |
+|----------|----------------|
+| macOS | `DarwinCredentialRetriever` - `security find-generic-password` |
+| Windows | `WindowsCredentialRetriever` - PowerShell `Get-StoredCredential` |
+| Linux | `LinuxCredentialRetriever` - Config files → `secret-tool` fallback |
+
+**Token Types**:
+| Prefix | Type | Usage |
+|--------|------|-------|
+| `sk-ant-oat01-` | OAuth Token | Claude Agent SDK only (Pro/Max subscriptions) |
+| `sk-ant-api` | API Key | Standard Anthropic API |
+| `sk-ant-` | Generic | Base prefix for all tokens |
+
+**Architecture**:
+```
+Request → get_anthropic_api_key()
+              ↓
+         Check ANTHROPIC_API_KEY env
+              ↓ (if not set)
+         get_claude_code_api_key()
+              ↓
+         get_platform_retriever() → Platform match
+              ↓
+         DarwinCredentialRetriever | LinuxCredentialRetriever | WindowsCredentialRetriever
+              ↓
+         parse_credential() → Validate token prefix
+              ↓
+         Return ApiKeyResult
+```
 
 ## Code Style
 
@@ -401,15 +515,19 @@ uv run pytest tests/unit/infrastructure/  # Infrastructure unit tests only
 **Runtime** (from pyproject.toml):
 
 - Python ≥3.14.2
-- fastmcp ≥2.13.2
+- fastmcp ≥2.14.4
 - tantivy ≥0.25.1
-- usearch ≥2.21.0
-- openai ≥2.9.0
+- usearch ≥2.23.0
+- openai ≥2.15.0
 - langchain ≥1.1.3
 - langchain-openai ≥1.1.1
 - pydantic ≥2.12.5
+- pydantic-core ≥2.41.5
 - ranx ≥0.3.21 (RRF fusion)
-- anyio ≥4.11.0
+- anyio ≥4.12.1
+- claude-agent-sdk ≥0.1.22
+- sentence-transformers ≥5.2.0
+- flagembedding ≥1.3.5
 
 **Dev**: ruff, ty, pytest (-asyncio, -cov, -xdist)
 

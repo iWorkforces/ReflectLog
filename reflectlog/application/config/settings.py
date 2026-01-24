@@ -4,10 +4,11 @@ import os
 import re
 import threading
 from dataclasses import dataclass
-from typing import Literal, Optional, TypeAlias, cast
+from typing import Any, Literal, Optional, TypeAlias, cast
 
 from ..exceptions import ConfigurationError
 from ..utils.security import SecretString
+from .validation import validate_config
 
 # Note: LangchainQwenEmbeddings is imported lazily in MemoryManager
 # to avoid unnecessary initialization when not using langchain provider
@@ -114,9 +115,6 @@ class Config:
     max_message_length: int = 30720
     min_message_length: int = 1
 
-    # LLM inference settings
-    enable_llm_infer: bool = False
-
     # Reranker engine selection
     reranker_engine: str = "llm"  # "llm", "cross_encoder", or "none"
 
@@ -170,6 +168,7 @@ class Config:
 
     # Initialization settings
     eager_initialization: bool = True  # Pre-warm engines during MemoryManager init
+    enable_llm_infer: bool = False  # Enable LLM message inference
 
     # Granular eager initialization settings (for fine-grained control)
     # These override eager_initialization when set
@@ -191,52 +190,13 @@ class Config:
     # Tool registration settings
     allowed_tools: tuple[str, ...] | None = None
 
-    # Circuit breaker settings for external API calls
-    circuit_breaker_enabled: bool = False  # Enable circuit breaker for LLM APIs
-    circuit_breaker_failure_threshold: int = 5  # Failures before opening circuit
-    circuit_breaker_timeout: float = 60.0  # Seconds before attempting recovery
-    circuit_breaker_success_threshold: int = 2  # Successes needed to close circuit
+    # Static helper methods for parsing configuration sections
+    # These methods improve testability and maintainability by extracting
+    # the large from_environment method into focused, single-responsibility functions.
 
-    @classmethod
-    def from_environment(cls) -> "Config":
-        """Create configuration from environment variables.
-
-        This method centralizes environment parsing and performs strict validation
-        for all critical settings. It fails fast with clear, non-secret-leaking
-        error messages when configuration is invalid.
-
-        Raises:
-            ConfigurationError: If required environment variables are missing or invalid.
-        """
-        # Check required variables
-        project_id = os.environ.get("PROJECT_ID")
-        if not project_id:
-            raise ConfigurationError(
-                "The PROJECT_ID environment variable has not been configured."
-            )
-
-        # Enforce a safe PROJECT_ID format to avoid path traversal and
-        # filesystem issues. Keep the rule intentionally strict.
-        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", project_id):
-            raise ConfigurationError(
-                "Invalid PROJECT_ID: only A-Za-z0-9_.- allowed, max length 64."
-            )
-
-        # Check for path traversal patterns (not caught by regex)
-        if ".." in project_id or project_id.startswith("/"):
-            raise ConfigurationError(
-                f"Invalid PROJECT_ID: path traversal patterns not allowed: {project_id}"
-            )
-
-        openrouter_api_key_raw = os.environ.get("OPENROUTER_API_KEY")
-        if not openrouter_api_key_raw:
-            raise ConfigurationError(
-                "The OPENROUTER_API_KEY environment variable has not been configured."
-            )
-        # Wrap in SecretString to prevent accidental logging
-        openrouter_api_key = SecretString(openrouter_api_key_raw)
-
-        # Get transport mode with validation
+    @staticmethod
+    def _parse_transport_config() -> dict[str, Any]:
+        """Parse transport-related configuration from environment variables."""
         transport_raw = os.environ.get("MCP_TRANSPORT", "stdio")
         valid_transports: tuple[TransportMode, ...] = (
             "stdio",
@@ -247,10 +207,260 @@ class Config:
         if transport_raw not in valid_transports:
             transport: TransportMode = "stdio"
         else:
-            # We've validated it's in valid_transports, so cast is safe
             transport = cast(TransportMode, transport_raw)
 
-        # Parse allowed tools configuration (comma-separated)
+        return {
+            "transport": transport,
+            "port": int(os.environ.get("PORT", os.environ.get("MCP_PORT", "9103"))),
+            "host": os.environ.get("MCP_HOST", "127.0.0.1"),
+            "path": os.environ.get("MCP_PATH", "/mcp"),
+            "openrouter_base_url": os.environ.get(
+                "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+            ),
+        }
+
+    @staticmethod
+    def _parse_embedding_config() -> dict[str, Any]:
+        """Parse embedding-related configuration from environment variables."""
+        return {
+            "embedder_provider": os.environ.get("EMBEDDER_PROVIDER", "openai"),
+            "embedding_model": os.environ.get(
+                "EMBEDDING_MODEL", "openai/text-embedding-3-large"
+            ),
+            "embedding_dims": int(os.environ.get("EMBEDDING_DIMS", "3072")),
+            "qwen_embedding_dims": int(os.environ.get("QWEN_EMBEDDING_DIMS", "4096")),
+            "embedding_batch_size": max(
+                1, int(os.environ.get("EMBEDDING_BATCH_SIZE", "512"))
+            ),
+            "embedding_max_concurrent_batches": max(
+                1, int(os.environ.get("EMBEDDING_MAX_CONCURRENT_BATCHES", "4"))
+            ),
+            "embedding_cache_enabled": os.environ.get(
+                "EMBEDDING_CACHE_ENABLED", "true"
+            ).lower()
+            == "true",
+            "embedding_cache_size": max(
+                1, int(os.environ.get("EMBEDDING_CACHE_SIZE", "100"))
+            ),
+        }
+
+    @staticmethod
+    def _parse_search_config() -> dict[str, Any]:
+        """Parse search-related configuration from environment variables."""
+        return {
+            "search_limit": int(os.environ.get("SEARCH_LIMIT", "5")),
+            "remove_search_limit": int(os.environ.get("REMOVE_SEARCH_LIMIT", "5")),
+            "enable_hybrid_search": os.environ.get(
+                "ENABLE_HYBRID_SEARCH", "true"
+            ).lower()
+            == "true",
+            "tantivy_index_path_template": "indexes/{project_id}/tantivy",
+            "overfetch_multiplier": max(
+                1, int(os.environ.get("OVERFETCH_MULTIPLIER", "3"))
+            ),
+            "overfetch_adaptive": os.environ.get("OVERFETCH_ADAPTIVE", "true").lower()
+            == "true",
+            "overfetch_min_multiplier": max(
+                1.0, float(os.environ.get("OVERFETCH_MIN_MULTIPLIER", "1.5"))
+            ),
+            "overfetch_max_multiplier": max(
+                1.0, float(os.environ.get("OVERFETCH_MAX_MULTIPLIER", "3.0"))
+            ),
+            "usearch_exact_search": os.environ.get(
+                "USEARCH_EXACT_SEARCH", "true"
+            ).lower()
+            == "true",
+            "usearch_exact_search_threshold": max(
+                0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "10000"))
+            ),
+            "fusion_method": os.environ.get("FUSION_METHOD", "rrf").lower(),
+            "fusion_normalization": os.environ.get("FUSION_NORMALIZATION") or None,
+            "fusion_rrf_k": int(os.environ.get("FUSION_RRF_K", "60")),
+            "fusion_ranking_threshold": float(
+                os.environ.get("FUSION_RANKING_THRESHOLD", "0.8")
+            ),
+            "enable_rrf_fusion": os.environ.get("ENABLE_RRF_FUSION", "true").lower()
+            == "true",
+        }
+
+    @staticmethod
+    def _parse_tantivy_config() -> dict[str, Any]:
+        """Parse Tantivy-specific configuration from environment variables."""
+        return {
+            "tantivy_soft_delete_enabled": os.environ.get(
+                "TANTIVY_SOFT_DELETE_ENABLED", "true"
+            ).lower()
+            == "true",
+            "tantivy_compaction_threshold_ratio": max(
+                0.01,
+                min(
+                    1.0,
+                    float(os.environ.get("TANTIVY_COMPACTION_THRESHOLD_RATIO", "0.2")),
+                ),
+            ),
+            "tantivy_compaction_max_tombstones": max(
+                100, int(os.environ.get("TANTIVY_COMPACTION_MAX_TOMBSTONES", "10000"))
+            ),
+            "tantivy_tombstone_ttl_days": max(
+                0, int(os.environ.get("TANTIVY_TOMBSTONE_TTL_DAYS", "7"))
+            ),
+            "tantivy_normalize_scores": os.environ.get(
+                "TANTIVY_NORMALIZE_SCORES", "true"
+            ).lower()
+            == "true",
+        }
+
+    @staticmethod
+    def _parse_reranker_config() -> dict[str, Any]:
+        """Parse reranker-related configuration from environment variables."""
+        # Determine reranker engine
+        reranker_engine_raw = os.environ.get("RERANKER_ENGINE", "llm")
+        reranker_engine = reranker_engine_raw.lower()
+        valid_engines = ("llm", "cross_encoder", "none")
+        if reranker_engine not in valid_engines:
+            raise ConfigurationError(
+                f"Invalid RERANKER_ENGINE: '{reranker_engine}'. "
+                f"Valid options: {', '.join(valid_engines)}"
+            )
+
+        # Determine LLM provider (used by SmartReplacer and LLMReranker)
+        llm_provider_raw = os.environ.get("LLM_PROVIDER", "anthropic")
+        llm_provider = llm_provider_raw.lower()
+        valid_llm_providers = ("openai", "anthropic")
+        if llm_provider not in valid_llm_providers:
+            raise ConfigurationError(
+                f"Invalid LLM_PROVIDER: '{llm_provider}'. "
+                f"Valid options: {', '.join(valid_llm_providers)}"
+            )
+
+        return {
+            "reranker_engine": reranker_engine,
+            "llm_provider": llm_provider,
+            "llm_model": os.environ.get("LLM_MODEL", "x-ai/grok-4.1-fast"),
+            "search_score_threshold": float(
+                os.environ.get("SEARCH_SCORE_THRESHOLD", "0.5")
+            ),
+            "rerank_max_concurrency": max(
+                1, int(os.environ.get("RERANK_MAX_CONCURRENCY", "10"))
+            ),
+            "cross_encoder_model": os.environ.get(
+                "CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
+            ),
+            "cross_encoder_top_k": int(os.environ.get("CROSS_ENCODER_TOP_K", "20")),
+            "cross_encoder_device": os.environ.get("CROSS_ENCODER_DEVICE", "cpu"),
+            "cross_encoder_batch_size": int(
+                os.environ.get("CROSS_ENCODER_BATCH_SIZE", "32")
+            ),
+            "cross_encoder_score_threshold": float(
+                os.environ.get("CROSS_ENCODER_SCORE_THRESHOLD", "0.5")
+            ),
+            "cross_encoder_use_fp16": os.environ.get(
+                "CROSS_ENCODER_USE_FP16", "true"
+            ).lower()
+            == "true",
+            "cross_encoder_normalize": os.environ.get(
+                "CROSS_ENCODER_NORMALIZE", "true"
+            ).lower()
+            == "true",
+            "cross_encoder_max_length": int(
+                os.environ.get("CROSS_ENCODER_MAX_LENGTH", "512")
+            ),
+            "reranker_min_results": max(
+                0, int(os.environ.get("RERANKER_MIN_RESULTS", "0"))
+            ),
+            "reranker_batch_normalize": os.environ.get(
+                "RERANKER_BATCH_NORMALIZE", "true"
+            ).lower()
+            == "true",
+            "enable_recency_boost": os.environ.get(
+                "ENABLE_RECENCY_BOOST", "true"
+            ).lower()
+            == "true",
+            "recency_decay_rate": max(
+                0.0, float(os.environ.get("RECENCY_DECAY_RATE", "0.01"))
+            ),
+        }
+
+    @staticmethod
+    def _parse_message_config() -> dict[str, Any]:
+        """Parse message-related configuration from environment variables."""
+        return {
+            "max_message_length": int(os.environ.get("MAX_MESSAGE_LENGTH", "30720")),
+            "min_message_length": int(os.environ.get("MIN_MESSAGE_LENGTH", "1")),
+            "deduplicate_messages": os.environ.get(
+                "DEDUPLICATE_MESSAGES", "true"
+            ).lower()
+            == "true",
+        }
+
+    @staticmethod
+    def _parse_smart_replace_config() -> dict[str, Any]:
+        """Parse smart replacement configuration from environment variables."""
+        return {
+            "enable_smart_replace": os.environ.get(
+                "ENABLE_SMART_REPLACE", "true"
+            ).lower()
+            == "true",
+            "smart_replace_threshold": float(
+                os.environ.get("SMART_REPLACE_THRESHOLD", "0.7")
+            ),
+            "smart_replace_min_similarity": float(
+                os.environ.get("SMART_REPLACE_MIN_SIMILARITY", "0.9")
+            ),
+            "smart_replace_candidate_limit": max(
+                1, int(os.environ.get("SMART_REPLACE_CANDIDATE_LIMIT", "3"))
+            ),
+            "smart_replace_archive_ttl_days": max(
+                0, int(os.environ.get("SMART_REPLACE_ARCHIVE_TTL_DAYS", "30"))
+            ),
+            "smart_replace_max_retries": max(
+                1, int(os.environ.get("SMART_REPLACE_MAX_RETRIES", "3"))
+            ),
+            "smart_replace_retry_delay": max(
+                0.1, float(os.environ.get("SMART_REPLACE_RETRY_DELAY", "1.0"))
+            ),
+        }
+
+    @staticmethod
+    def _parse_init_config() -> dict[str, Any]:
+        """Parse initialization-related configuration from environment variables."""
+        return {
+            "add_max_concurrency": max(
+                1, int(os.environ.get("ADD_MAX_CONCURRENCY", "4"))
+            ),
+            "eager_initialization": os.environ.get(
+                "EAGER_INITIALIZATION", "true"
+            ).lower()
+            == "true",
+            "eager_initialize_search_engines": _parse_optional_bool(
+                os.environ.get("EAGER_INITIALIZE_SEARCH_ENGINES")
+            ),
+            "eager_initialize_reranker": _parse_optional_bool(
+                os.environ.get("EAGER_INITIALIZE_RERANKER")
+            ),
+            "eager_initialize_smart_replacer": _parse_optional_bool(
+                os.environ.get("EAGER_INITIALIZE_SMART_REPLACER")
+            ),
+        }
+
+    @staticmethod
+    def _parse_logging_config() -> dict[str, Any]:
+        """Parse logging-related configuration from environment variables."""
+        return {
+            "log_level": os.environ.get("LOG_LEVEL", "INFO"),
+            "log_search_results_verbose": os.environ.get(
+                "LOG_SEARCH_RESULTS_VERBOSE", "false"
+            ).lower()
+            == "true",
+            "log_search_result_limit": int(
+                os.environ.get("LOG_SEARCH_RESULT_LIMIT", "3")
+            ),
+        }
+
+    @staticmethod
+    def _parse_allowed_tools() -> tuple[str, ...] | None:
+        """Parse allowed tools configuration from environment variables."""
+
         def _normalize_tool_token(raw_token: str) -> str:
             """Normalize tool identifiers to snake_case."""
             token = raw_token.strip()
@@ -299,237 +509,90 @@ class Config:
                             seen[token] = None
                     allowed_tools = tuple(seen.keys())
 
-            # If ALLOWED_TOOLS was set to an empty/blank value, respect it
-            if allowed_tools_env.strip() == "":
-                allowed_tools = tuple()
+        # If ALLOWED_TOOLS was set to an empty/blank value, respect it
+        if allowed_tools_env is not None and allowed_tools_env.strip() == "":
+            allowed_tools = tuple()
 
-        # Determine reranker engine
-        reranker_engine_raw = os.environ.get("RERANKER_ENGINE", "llm")
-        reranker_engine = reranker_engine_raw.lower()
-        valid_engines = ("llm", "cross_encoder", "none")
-        if reranker_engine not in valid_engines:
+        return allowed_tools
+
+    @classmethod
+    def from_environment(cls) -> "Config":
+        """Create configuration from environment variables.
+
+        This method centralizes environment parsing and performs strict validation
+        for all critical settings. It fails fast with clear, non-secret-leaking
+        error messages when configuration is invalid.
+
+        Raises:
+            ConfigurationError: If required environment variables are missing or invalid.
+        """
+        # Validate required environment variables
+        project_id = os.environ.get("PROJECT_ID")
+        if not project_id:
             raise ConfigurationError(
-                f"Invalid RERANKER_ENGINE: '{reranker_engine}'. "
-                f"Valid options: {', '.join(valid_engines)}"
+                "The PROJECT_ID environment variable has not been configured."
             )
 
-        # Determine LLM provider (used by SmartReplacer and LLMReranker)
-        llm_provider_raw = os.environ.get("LLM_PROVIDER", "anthropic")
-        llm_provider = llm_provider_raw.lower()
-        valid_llm_providers = ("openai", "anthropic")
-        if llm_provider not in valid_llm_providers:
+        # Enforce a safe PROJECT_ID format to avoid path traversal and
+        # filesystem issues. Keep the rule intentionally strict.
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", project_id):
             raise ConfigurationError(
-                f"Invalid LLM_PROVIDER: '{llm_provider}'. "
-                f"Valid options: {', '.join(valid_llm_providers)}"
+                "Invalid PROJECT_ID: only A-Za-z0-9_.- allowed, max length 64."
             )
 
-        return cls(
-            # Required
+        # Check for path traversal patterns (not caught by regex)
+        if ".." in project_id or project_id.startswith("/"):
+            raise ConfigurationError(
+                f"Invalid PROJECT_ID: path traversal patterns not allowed: {project_id}"
+            )
+
+        openrouter_api_key_raw = os.environ.get("OPENROUTER_API_KEY")
+        if not openrouter_api_key_raw:
+            raise ConfigurationError(
+                "The OPENROUTER_API_KEY environment variable has not been configured."
+            )
+        # Wrap in SecretString to prevent accidental logging
+        openrouter_api_key = SecretString(openrouter_api_key_raw)
+
+        # Parse configuration sections using helper methods
+        transport_config = cls._parse_transport_config()
+        embedding_config = cls._parse_embedding_config()
+        search_config = cls._parse_search_config()
+        tantivy_config = cls._parse_tantivy_config()
+        reranker_config = cls._parse_reranker_config()
+        message_config = cls._parse_message_config()
+        smart_replace_config = cls._parse_smart_replace_config()
+        init_config = cls._parse_init_config()
+        logging_config = cls._parse_logging_config()
+        allowed_tools = cls._parse_allowed_tools()
+
+        # Create Config instance with all parsed settings
+        config = cls(
+            # Required settings
             project_id=project_id,
             openrouter_api_key=openrouter_api_key,
-            # Transport
-            transport=transport,
-            port=int(os.environ.get("PORT", os.environ.get("MCP_PORT", "9103"))),
-            host=os.environ.get("MCP_HOST", "127.0.0.1"),
-            path=os.environ.get("MCP_PATH", "/mcp"),
-            # API
-            openrouter_base_url=os.environ.get(
-                "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
-            ),
-            # Embeddings
-            embedder_provider=os.environ.get("EMBEDDER_PROVIDER", "openai"),
-            embedding_model=os.environ.get(
-                "EMBEDDING_MODEL", "openai/text-embedding-3-large"
-            ),
-            embedding_dims=int(os.environ.get("EMBEDDING_DIMS", "3072")),
-            qwen_embedding_dims=int(os.environ.get("QWEN_EMBEDDING_DIMS", "4096")),
-            # Embedding performance
-            embedding_batch_size=max(
-                1, int(os.environ.get("EMBEDDING_BATCH_SIZE", "512"))
-            ),
-            embedding_max_concurrent_batches=max(
-                1, int(os.environ.get("EMBEDDING_MAX_CONCURRENT_BATCHES", "4"))
-            ),
-            embedding_cache_enabled=os.environ.get(
-                "EMBEDDING_CACHE_ENABLED", "true"
-            ).lower()
-            == "true",
-            embedding_cache_size=max(
-                1, int(os.environ.get("EMBEDDING_CACHE_SIZE", "100"))
-            ),
-            # Search
-            search_limit=int(os.environ.get("SEARCH_LIMIT", "5")),
-            remove_search_limit=int(os.environ.get("REMOVE_SEARCH_LIMIT", "5")),
-            # Hybrid search settings
-            enable_hybrid_search=os.environ.get("ENABLE_HYBRID_SEARCH", "true").lower()
-            == "true",
-            tantivy_index_path_template="indexes/{project_id}/tantivy",
-            overfetch_multiplier=max(
-                1, int(os.environ.get("OVERFETCH_MULTIPLIER", "3"))
-            ),
-            overfetch_adaptive=os.environ.get("OVERFETCH_ADAPTIVE", "true").lower()
-            == "true",
-            overfetch_min_multiplier=max(
-                1.0, float(os.environ.get("OVERFETCH_MIN_MULTIPLIER", "1.5"))
-            ),
-            overfetch_max_multiplier=max(
-                1.0, float(os.environ.get("OVERFETCH_MAX_MULTIPLIER", "3.0"))
-            ),
-            # Tantivy soft-delete settings
-            tantivy_soft_delete_enabled=os.environ.get(
-                "TANTIVY_SOFT_DELETE_ENABLED", "true"
-            ).lower()
-            == "true",
-            tantivy_compaction_threshold_ratio=max(
-                0.01,
-                min(
-                    1.0,
-                    float(os.environ.get("TANTIVY_COMPACTION_THRESHOLD_RATIO", "0.2")),
-                ),
-            ),
-            tantivy_compaction_max_tombstones=max(
-                100, int(os.environ.get("TANTIVY_COMPACTION_MAX_TOMBSTONES", "10000"))
-            ),
-            tantivy_tombstone_ttl_days=max(
-                0, int(os.environ.get("TANTIVY_TOMBSTONE_TTL_DAYS", "7"))
-            ),
-            # Tantivy BM25 score normalization
-            tantivy_normalize_scores=os.environ.get(
-                "TANTIVY_NORMALIZE_SCORES", "true"
-            ).lower()
-            == "true",
-            # USearch exact search settings
-            usearch_exact_search=os.environ.get("USEARCH_EXACT_SEARCH", "true").lower()
-            == "true",
-            usearch_exact_search_threshold=max(
-                0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "10000"))
-            ),
-            # Fusion settings (ranx-based)
-            fusion_method=os.environ.get("FUSION_METHOD", "rrf").lower(),
-            fusion_normalization=os.environ.get("FUSION_NORMALIZATION") or None,
-            fusion_rrf_k=int(os.environ.get("FUSION_RRF_K", "60")),
-            fusion_ranking_threshold=float(
-                os.environ.get("FUSION_RANKING_THRESHOLD", "0.8")
-            ),
-            enable_rrf_fusion=os.environ.get("ENABLE_RRF_FUSION", "true").lower()
-            == "true",
-            # Message validation
-            max_message_length=int(os.environ.get("MAX_MESSAGE_LENGTH", "30720")),
-            min_message_length=int(os.environ.get("MIN_MESSAGE_LENGTH", "1")),
-            # LLM inference
-            enable_llm_infer=os.environ.get("ENABLE_LLM_INFER", "false").lower()
-            == "true",
-            # Reranker engine selection
-            reranker_engine=reranker_engine,
-            # LLM reranking settings
-            llm_model=os.environ.get("LLM_MODEL", "x-ai/grok-4.1-fast"),
-            search_score_threshold=float(
-                os.environ.get("SEARCH_SCORE_THRESHOLD", "0.5")
-            ),
-            rerank_max_concurrency=max(
-                1, int(os.environ.get("RERANK_MAX_CONCURRENCY", "10"))
-            ),
-            # Cross-encoder reranking settings (FlagReranker)
-            cross_encoder_model=os.environ.get(
-                "CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
-            ),
-            cross_encoder_top_k=int(os.environ.get("CROSS_ENCODER_TOP_K", "20")),
-            cross_encoder_device=os.environ.get("CROSS_ENCODER_DEVICE", "cpu"),
-            cross_encoder_batch_size=int(
-                os.environ.get("CROSS_ENCODER_BATCH_SIZE", "32")
-            ),
-            cross_encoder_score_threshold=float(
-                os.environ.get("CROSS_ENCODER_SCORE_THRESHOLD", "0.5")
-            ),
-            cross_encoder_use_fp16=os.environ.get(
-                "CROSS_ENCODER_USE_FP16", "true"
-            ).lower()
-            == "true",
-            cross_encoder_normalize=os.environ.get(
-                "CROSS_ENCODER_NORMALIZE", "true"
-            ).lower()
-            == "true",
-            cross_encoder_max_length=int(
-                os.environ.get("CROSS_ENCODER_MAX_LENGTH", "512")
-            ),
-            # Unified reranker settings
-            reranker_min_results=max(
-                0, int(os.environ.get("RERANKER_MIN_RESULTS", "0"))
-            ),
-            reranker_batch_normalize=os.environ.get(
-                "RERANKER_BATCH_NORMALIZE", "true"
-            ).lower()
-            == "true",
-            # Temporal-aware reranking settings (recency boost for memories)
-            enable_recency_boost=os.environ.get("ENABLE_RECENCY_BOOST", "true").lower()
-            == "true",
-            recency_decay_rate=max(
-                0.0, float(os.environ.get("RECENCY_DECAY_RATE", "0.01"))
-            ),
-            # Memory behavior
-            deduplicate_messages=os.environ.get("DEDUPLICATE_MESSAGES", "true").lower()
-            == "true",
-            # Smart memory replacement settings
-            enable_smart_replace=os.environ.get("ENABLE_SMART_REPLACE", "true").lower()
-            == "true",
-            smart_replace_threshold=float(
-                os.environ.get("SMART_REPLACE_THRESHOLD", "0.7")
-            ),
-            smart_replace_min_similarity=float(
-                os.environ.get("SMART_REPLACE_MIN_SIMILARITY", "0.9")
-            ),
-            smart_replace_candidate_limit=max(
-                1, int(os.environ.get("SMART_REPLACE_CANDIDATE_LIMIT", "3"))
-            ),
-            smart_replace_archive_ttl_days=max(
-                0, int(os.environ.get("SMART_REPLACE_ARCHIVE_TTL_DAYS", "30"))
-            ),
-            smart_replace_max_retries=max(
-                1, int(os.environ.get("SMART_REPLACE_MAX_RETRIES", "3"))
-            ),
-            smart_replace_retry_delay=max(
-                0.1, float(os.environ.get("SMART_REPLACE_RETRY_DELAY", "1.0"))
-            ),
-            llm_provider=llm_provider,
-            # Concurrency settings
-            add_max_concurrency=max(1, int(os.environ.get("ADD_MAX_CONCURRENCY", "4"))),
-            # Initialization settings
-            eager_initialization=os.environ.get("EAGER_INITIALIZATION", "true").lower()
-            == "true",
-            # Granular eager initialization (overrides eager_initialization when set)
-            eager_initialize_search_engines=_parse_optional_bool(
-                os.environ.get("EAGER_INITIALIZE_SEARCH_ENGINES")
-            ),  # Default: true if eager_initialization
-            eager_initialize_reranker=_parse_optional_bool(
-                os.environ.get("EAGER_INITIALIZE_RERANKER")
-            ),  # Default: false (lazy load)
-            eager_initialize_smart_replacer=_parse_optional_bool(
-                os.environ.get("EAGER_INITIALIZE_SMART_REPLACER")
-            ),  # Default: false (lazy load)
-            # Logging
-            log_level=os.environ.get("LOG_LEVEL", "INFO"),
-            log_search_results_verbose=os.environ.get(
-                "LOG_SEARCH_RESULTS_VERBOSE", "false"
-            ).lower()
-            == "true",
-            log_search_result_limit=int(os.environ.get("LOG_SEARCH_RESULT_LIMIT", "3")),
-            # Tools
+            # Parsed configuration sections
+            **transport_config,
+            **embedding_config,
+            **search_config,
+            **tantivy_config,
+            **reranker_config,
+            **message_config,
+            **smart_replace_config,
+            **init_config,
+            **logging_config,
             allowed_tools=allowed_tools,
-            # Circuit breaker
-            circuit_breaker_enabled=os.environ.get(
-                "CIRCUIT_BREAKER_ENABLED", "false"
-            ).lower()
-            == "true",
-            circuit_breaker_failure_threshold=max(
-                1, int(os.environ.get("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"))
-            ),
-            circuit_breaker_timeout=max(
-                1.0, float(os.environ.get("CIRCUIT_BREAKER_TIMEOUT", "60.0"))
-            ),
-            circuit_breaker_success_threshold=max(
-                1, int(os.environ.get("CIRCUIT_BREAKER_SUCCESS_THRESHOLD", "2"))
-            ),
         )
+
+        # Validate the parsed configuration
+        errors = validate_config(config)
+        if errors:
+            raise ConfigurationError(
+                "Configuration validation failed:\n"
+                + "\n".join(f"  - {error}" for error in errors)
+            )
+
+        return config
 
 
 # Thread-safe lazy singleton pattern - config is only created when first accessed

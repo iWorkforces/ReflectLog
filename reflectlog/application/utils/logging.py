@@ -24,12 +24,31 @@ class StructuredLogger:
         """Merge default extra fields with provided extras.
 
         Performance optimized: avoids dict copying when possible.
+        Automatically redacts sensitive patterns in extra fields.
         """
         if extra is None:
-            # Return reference directly - logging doesn't modify extra dict
-            return self.default_extra
-        # Use unpacking for efficient merge (faster than copy + update)
-        return {**self.default_extra, **extra}
+            # Return copy to prevent accidental mutation of default
+            return self.default_extra.copy() if self.default_extra else {}
+
+        # Merge and redact sensitive data
+        merged = {**self.default_extra, **extra}
+        return self._redact_sensitive_data(merged)
+
+    def _redact_sensitive_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Redact sensitive patterns in log data.
+
+        Integrates with redact_dict_secrets to automatically redact
+        API keys, passwords, and other sensitive patterns.
+
+        Args:
+            data: Dictionary potentially containing sensitive data.
+
+        Returns:
+            Dictionary with sensitive values redacted.
+        """
+        from .security import redact_dict_secrets
+
+        return redact_dict_secrets(data)
 
     def isEnabledFor(self, level: int) -> bool:
         """Check if logger is enabled for the given level.
@@ -104,14 +123,19 @@ class StructuredLogger:
             self.info(f"Completed {operation_name}", extra=context)
         except Exception as e:
             context["error"] = str(e)
-            self.error(f"Failed {operation_name}: {e}", extra=context)
-            raise
+            context["error_type"] = type(e).__name__
+            self.error(f"Failed {operation_name}: {e}", extra=context, exc_info=True)
+            # Re-raise with operation context in the exception message
+            raise RuntimeError(f"Operation '{operation_name}' failed: {e}") from e
 
 
 def create_logger(
     name: str, project_id: str, log_level: str = "INFO"
 ) -> StructuredLogger:
     """Create a structured logger with default configuration.
+
+    This function wraps fastmcp's logger to provide consistent structured logging
+    across the application. The wrapper adds project context to all log messages.
 
     Args:
         name: Logger name (usually __name__).
@@ -120,12 +144,20 @@ def create_logger(
 
     Returns:
         Configured StructuredLogger instance.
+
+    Note:
+        fastmcp Logger Integration: This function uses fastmcp's get_logger()
+        and sets the log level directly on it. This approach works with the current
+        fastmcp version but may conflict if fastmcp changes its logger management
+        in future versions. The setLevel() call ensures our configuration is
+        respected, but fastmcp may override this in some scenarios.
     """
     # Use fastmcp's logger which is already properly configured with handlers
     from fastmcp.utilities.logging import get_logger
 
     logger = get_logger(name)
-    # Note: fastmcp logger may have its own level management, but we respect the config
+    # Set log level: fastmcp logger may have its own level management
+    # We set it here to ensure our configuration is respected
     logger.setLevel(getattr(logging, log_level.upper()))
 
     return StructuredLogger(logger, default_extra={"project_id": project_id})
