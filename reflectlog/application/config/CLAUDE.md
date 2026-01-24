@@ -8,7 +8,8 @@ This directory contains configuration management and system prompts for ReflectL
 config/
 ├── __init__.py          # Configuration exports
 ├── settings.py          # Config dataclass from environment variables
-└── prompts.py           # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
+├── prompts.py           # MCP_INSTRUCTIONS, SCORING_PROMPT, SCORING_PROMPT_WITH_AGE, REPLACEMENT_DETECTION_PROMPT
+└── validation.py        # ConfigurationValidator for config validation
 ```
 
 ## Purpose

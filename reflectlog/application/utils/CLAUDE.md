@@ -11,7 +11,9 @@ utils/
 ├── numba_utils.py       # Numba JIT-compiled numerical utilities
 ├── retry.py             # Retry decorator with exponential backoff
 ├── security.py          # Secret redaction and secure logging
-└── validation.py        # Input validation helpers
+├── validation.py        # Input validation helpers
+├── circuit_breaker.py   # CircuitBreaker for external service resilience
+└── metrics.py           # Prometheus-style metrics collection
 ```
 
 ## Purpose

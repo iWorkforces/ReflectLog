@@ -47,7 +47,9 @@ tests/
 └── integration/              # Integration tests (with real dependencies)
     ├── test_memory_manager_usearch.py
     ├── test_mcp_workflows.py
-    └── test_qwen_embeddings_integration.py
+    ├── test_qwen_embeddings_integration.py
+    ├── test_concurrent_operations.py
+    └── test_thread_safety.py
 ```
 
 ## Test Organization Philosophy

@@ -9,6 +9,7 @@ memory/
 ├── __init__.py          # Package exports
 ├── manager.py           # MemoryManager (USearch + Tantivy hybrid engine)
 ├── protocols.py         # Search engine protocols (ISemanticSearchEngine)
+├── match_utils.py       # Escape Tantivy queries, exact match detection
 ├── search_strategies.py # SearchPipeline, SearchContext, SearchResult
 ├── add_phases.py        # AddPipeline, DuplicateDetectionPhase, SmartReplacementPhase, StoragePhase
 ├── fusion/              # Hybrid ranking
