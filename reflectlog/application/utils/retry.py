@@ -88,10 +88,11 @@ def async_retry_with_backoff(
                     # If this is the last attempt, raise the exception
                     if attempt >= max_retries:
                         if logger:
+                            func_name = getattr(func, "__name__", "<unknown>")
                             logger.warning(
-                                f"All {max_retries} retry attempts exhausted for {func.__name__}",
+                                f"All {max_retries} retry attempts exhausted for {func_name}",
                                 extra={
-                                    "function": func.__name__,
+                                    "function": func_name,
                                     "final_error": str(e),
                                     "error_type": type(e).__name__,
                                 },
@@ -110,10 +111,11 @@ def async_retry_with_backoff(
 
                     # Log retry attempt
                     if logger:
+                        func_name = getattr(func, "__name__", "<unknown>")
                         logger.info(
-                            f"Retry attempt {attempt + 1}/{max_retries} for {func.__name__} after {delay:.2f}s delay",
+                            f"Retry attempt {attempt + 1}/{max_retries} for {func_name} after {delay:.2f}s delay",
                             extra={
-                                "function": func.__name__,
+                                "function": func_name,
                                 "attempt": attempt + 1,
                                 "max_retries": max_retries,
                                 "delay": delay,

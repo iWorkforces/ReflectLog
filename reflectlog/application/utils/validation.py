@@ -2,6 +2,7 @@
 
 import re
 import string
+import unicodedata
 from typing import Any, Optional
 
 # SQL injection patterns for basic detection
@@ -72,7 +73,7 @@ def validate_messages(
 
         # Check for disallowed control characters
         for char in msg:
-            if char in string.control_characters and char not in _ALLOWED_CONTROL_CHARS:
+            if unicodedata.category(char) == "Cc" and char not in _ALLOWED_CONTROL_CHARS:
                 return (
                     False,
                     f"Message at index {i} contains control characters at position {msg.index(char)}",
