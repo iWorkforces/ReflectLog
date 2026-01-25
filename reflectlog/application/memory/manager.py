@@ -1,11 +1,40 @@
-"""Memory management wrapper for hybrid search integration."""
+"""Memory management wrapper for hybrid search integration.
+
+This module provides the MemoryManager class that orchestrates all memory
+operations. It combines semantic vector search (USearch) with full-text
+search (Tantivy) using Reciprocal Rank Fusion (RRF) for intelligent
+result ranking.
+
+Protocol Compliance:
+    MemoryManager implements the IMemoryManager protocol from core/memory.py.
+    This enables:
+    - Dependency injection with mock implementations for testing
+    - Runtime component substitution (different backends)
+    - Type-safe interaction with the memory system
+
+Example:
+    from reflectlog.core.memory import IMemoryManager
+    from reflectlog.core.config_adapters import ConfigAdapter
+
+    # Protocol-based usage
+    manager: IMemoryManager = MemoryManager(config, logger)
+
+    # With dependency injection
+    mock_backend = create_mock_backend()
+    manager = MemoryManager(
+        config=config,
+        logger=logger,
+        semantic_backend=mock_backend,
+    )
+"""
 
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from reflectlog.application.constants import LOG_ADD_MESSAGE_PREVIEW_LIMIT
 from reflectlog.application.types import ISemanticSearchEngine
+from reflectlog.core.memory import IMemoryManager
 from reflectlog.infrastructure import (
     CachedEmbeddings,
     CrossEncoderConfig,
@@ -85,7 +114,7 @@ class MemoryManager:
         #       with self._write_lock:
 
         # Startup timing metrics (set by server.py after initialization)
-        self._startup_metrics: Dict[str, float] | None = None
+        self._startup_metrics: dict[str, float] | None = None
 
         # Hybrid mode enabled by default
         self.is_hybrid_search = self.config.enable_hybrid_search
