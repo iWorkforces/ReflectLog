@@ -78,7 +78,7 @@ class LinuxCredentialRetriever(CredentialRetriever):
     def _get_from_secret_tool(self) -> str | None:
         """Retrieve from GNOME Keyring via secret-tool."""
         try:
-            result = subprocess.run(
+            result: subprocess.CompletedProcess = subprocess.run(
                 ["secret-tool", "lookup", "service", self.service_name],
                 capture_output=True,
                 text=True,
