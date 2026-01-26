@@ -3,7 +3,7 @@
 This module provides the public API for ReflectLogMCP.
 """
 
-__version__ = "0.1.7"
+from reflectlog.version import __version__
 
 # Export exception hierarchy for error handling
 from reflectlog.application.exceptions import (
@@ -34,7 +34,6 @@ def __getattr__(name: str):
 
 __all__ = [
     "__version__",
-    "main",
     "ReflectLogError",
     "ConfigurationError",
     "ValidationError",
