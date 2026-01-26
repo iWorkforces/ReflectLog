@@ -55,10 +55,10 @@ class TestStructuredLogger:
         assert result == {"project_id": "override"}
 
     def test_is_enabled_for(self, mock_logger: MagicMock) -> None:
-        """Test isEnabledFor delegates to underlying logger."""
+        """Test is_enabled_for delegates to underlying logger."""
         mock_logger.isEnabledFor.return_value = True
         logger = StructuredLogger(logger=mock_logger)
-        assert logger.isEnabledFor(logging.DEBUG) is True
+        assert logger.is_enabled_for(logging.DEBUG) is True
         mock_logger.isEnabledFor.assert_called_once_with(logging.DEBUG)
 
     def test_info(
@@ -264,12 +264,12 @@ class TestFormatFusionScoreStatus:
 
     def test_score_at_threshold_exact(self) -> None:
         """Test score exactly at threshold."""
-        status, interpretation = format_fusion_score_status(0.5, 0.5)
+        status, _interpretation = format_fusion_score_status(0.5, 0.5)
         assert status == "KEEP"
 
     def test_score_just_below_threshold(self) -> None:
         """Test score just below threshold."""
-        status, interpretation = format_fusion_score_status(0.499, 0.5)
+        status, _interpretation = format_fusion_score_status(0.499, 0.5)
         assert status == "FILTER"
 
     def test_zero_score(self) -> None:

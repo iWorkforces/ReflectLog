@@ -109,13 +109,15 @@ def init_credentials(verbose: bool = True) -> str | None:
             os.environ["ANTHROPIC_AUTH_TOKEN"] = oauth_token
             if verbose:
                 print(
-                    f"ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}... (retrieved from keychain)"
+                    f"ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}... "
+                    "(retrieved from keychain)"
                 )
         elif keychain_token:
             # It's a regular API key, not an OAuth token
             if verbose:
                 print(
-                    "Found API key in keychain, but it is not an OAuth token (sk-ant-oat01-*)."
+                    "Found API key in keychain, but it is not an "
+                    "OAuth token (sk-ant-oat01-*)."
                 )
                 print(
                     "OAuth tokens are only available with Claude Pro/Max subscriptions."
@@ -177,8 +179,7 @@ async def generate_content(
             for block in message.content:
                 if isinstance(block, TextBlock):
                     result_text += block.text
-        elif isinstance(message, ResultMessage):
-            if message.is_error:
-                raise RuntimeError(f"Query failed: {message.subtype}")
+        elif isinstance(message, ResultMessage) and message.is_error:
+            raise RuntimeError(f"Query failed: {message.subtype}")
 
     return result_text.strip()

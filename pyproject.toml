@@ -234,6 +234,8 @@ reportAny = "none"
 [tool.ruff]
 # Target Python 3.14
 target-version = "py314"
+
+[tool.ruff.lint]
 # Enable pyupgrade rules for Python 3.14+ syntax
 select = [
     "E",     # pycodestyle errors
@@ -247,14 +249,14 @@ select = [
     "SIM",   # flake8-simplify
     "RUF",   # Ruff-specific rules
 ]
-
-[tool.ruff.lint]
 # Fixable rules (can be auto-fixed with --fix)
 fixable = ["UP", "I", "N", "F", "E", "W"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*" = ["UP", "N", "SIM"]
-
+"tests/**/*" = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "E501"]
+"reflectlog/**/*" = ["E501"]
+"stubs/**/*" = ["E501"]
+ 
 [tool.ruff.lint.isort]
 single-line-exclusions = ["typing", "collections.abc"]
 known-first-party = ["reflectlog"]

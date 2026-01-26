@@ -21,7 +21,6 @@ from reflectlog.infrastructure.smart_replacer import (
 
 __all__ = [
     "AnthropicReplacementProvider",
-    "create_replacement_provider",
     "IReplacementProvider",
     "MessageRecord",
     "MessageStore",
@@ -29,4 +28,5 @@ __all__ = [
     "ReplacementDecision",
     "SmartReplacer",
     "SmartReplacerConfig",
+    "create_replacement_provider",
 ]

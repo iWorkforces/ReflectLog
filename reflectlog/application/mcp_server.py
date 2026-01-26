@@ -50,16 +50,18 @@ class FastMCPServer:
         )
 
         # Log initialization
+        init_msg = (
+            f"Initializing reflectlog MCP server [project_id={self.config.project_id}]"
+        )
+        self.logger.info(init_msg)
+
         self.logger.info(
-            f"Initializing reflectlog MCP server [project_id={self.config.project_id}, "
             f"transport={self.config.transport}, port={self.config.port}, "
-            f"log_level={self.config.log_level}, embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}]",
-            extra={
-                "transport": self.config.transport,
-                "port": self.config.port,
-                "embedding_dims": self.config.embedding_dims,
-                "log_level": self.config.log_level,
-            },
+            f"log_level={self.config.log_level}"
+        )
+
+        self.logger.info(
+            f"embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}"
         )
 
         # Initialize memory manager

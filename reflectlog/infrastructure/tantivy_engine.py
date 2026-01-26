@@ -103,11 +103,12 @@ class TantivyEngine(BaseModel):
     _index: tantivy.Index | None = PrivateAttr(default=None)
     _writer: tantivy.IndexWriter | None = PrivateAttr(default=None)
     _searcher: tantivy.Searcher | None = PrivateAttr(default=None)
-    # Instance-level locks for thread-safe operations (prevents cross-instance contention)
-    # Note: Using RLock (re-entrant) because add() holds lock and calls self.writer property
+    # Instance-level locks for thread-safe operations
+    # Note: Using RLock (re-entrant) because add() holds lock and
+    # calls self.writer property
     _writer_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
-    _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
-    # Bounded in-memory tombstone cache for O(1) lookup after first search
+    # Bounded in-memory tombstone cache for O(1) lookup
+    # after first search
     # Uses OrderedDict for LRU eviction when size exceeds tombstone_cache_max_size
     # Key: project_id, Value: set of tombstoned message contents
     _tombstone_cache: OrderedDict[str, set[str]] = PrivateAttr(

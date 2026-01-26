@@ -187,7 +187,9 @@ class ISemanticSearchEngine(Protocol):
     Example:
         ```python
         # Application layer code depends on the protocol
-        def search_memories(engine: ISemanticSearchEngine, query: str) -> list[tuple[str, float]]:
+        def search_memories(
+            engine: ISemanticSearchEngine, query: str
+        ) -> list[tuple[str, float]]:
             return engine.search(query=query, project_id="project", limit=5)
         ```
     """

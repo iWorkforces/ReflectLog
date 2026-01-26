@@ -168,7 +168,7 @@ class RRFFusionStage:
 
         # Aggregate scores across backends
         aggregated: dict[str, float] = {}
-        for backend_name, backend_rankings in rankings.items():
+        for _backend_name, backend_rankings in rankings.items():
             for content, score in backend_rankings.items():
                 if content not in aggregated:
                     aggregated[content] = 0.0

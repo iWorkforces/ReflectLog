@@ -19,7 +19,6 @@ from .search_strategies import SearchContext, SearchPipeline, SearchResult
 __all__ = [
     "AddPipeline",
     "AddResult",
-    "create_fusion_engine",
     "DuplicateDetectionPhase",
     "FusionEngine",
     "MemoryManager",
@@ -34,4 +33,5 @@ __all__ = [
     "SearchResult",
     "SmartReplacementPhase",
     "StoragePhase",
+    "create_fusion_engine",
 ]

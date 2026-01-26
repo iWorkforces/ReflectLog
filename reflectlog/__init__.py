@@ -32,7 +32,6 @@ def __getattr__(name: str):
 
 
 __all__ = [
-    "__version__",
     "ConfigurationError",
     "DuplicateError",
     "EmbeddingError",
@@ -43,4 +42,5 @@ __all__ = [
     "SearchError",
     "StorageError",
     "ValidationError",
+    "__version__",
 ]

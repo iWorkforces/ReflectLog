@@ -75,7 +75,8 @@ class MemoryManager:
     """Manages memory storage and retrieval using USearch with SQLite backend."""
 
     def __init__(self, config: Config, logger: StructuredLogger):
-        """Initialize Hybrid MemoryManager with USearch semantic & Tantivy full-text engines.
+        """Initialize Hybrid MemoryManager with USearch semantic
+        & Tantivy full-text engines.
 
         Args:
             config: Application configuration.
@@ -86,18 +87,21 @@ class MemoryManager:
         self.project_id = config.project_id
 
         # Thread-safety: RLock for protecting concurrent operations
-        # RLock (re-entrant) because some methods may call other protected methods
+        # RLock (re-entrant) because some methods may call other
+        # protected methods
         self._lock = threading.RLock()
-        # Serialize write operations across async and sync calls (USearch is not thread-safe)
+        # Serialize write operations across async and sync calls
+        # (USearch is not thread-safe)
         self._write_lock = threading.Lock()
-        # Lock for lazy reranker initialization (separate from main lock to avoid deadlock)
+        # Lock for lazy reranker initialization
+        # (separate from main lock to avoid deadlock)
         self._reranker_lock = threading.Lock()
         self._smart_replacer_lock = threading.Lock()
 
-        # Lock hierarchy (outer to inner) - ALWAYS follow this order to prevent deadlocks:
+        # Lock hierarchy (outer to inner) - ALWAYS follow
+        # this order to prevent deadlocks:
         # 1. _write_lock - for all write operations across async/sync boundary
         # 2. _lock (RLock) - for state consistency within operations
-        #
         # Usage pattern:
         # - Read operations: use _lock only
         # - Write operations: acquire _write_lock first, then _lock if needed
@@ -181,7 +185,8 @@ class MemoryManager:
             )
         elif self.config.reranker_engine == "cross_encoder":
             self.logger.info(
-                f"CrossEncoder reranker configured (lazy init) [model={config.cross_encoder_model}]",
+                f"CrossEncoder reranker configured (lazy init) "
+                f"[model={config.cross_encoder_model}]",
                 extra={
                     "reranker_engine": "cross_encoder",
                     "model": config.cross_encoder_model,
@@ -258,20 +263,10 @@ class MemoryManager:
             f"semantic_backend=usearch, "
             f"hybrid_search={self.is_hybrid_search}, "
             f"embedding_model={self.config.embedding_model}, "
+        )
+        self.logger.info(
             f"tantivy_index={self.config.tantivy_index_path_template.format(project_id=self.project_id)}, "
-            f"embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}, "
             f"embedder={config.embedder_provider}]",
-            extra={
-                "project_id": self.project_id,
-                "semantic_backend": "usearch",
-                "hybrid_search": self.is_hybrid_search,
-                "embedding_model": config.embedding_model,
-                "tantivy_index_path": self.config.tantivy_index_path_template.format(
-                    project_id=self.project_id
-                ),
-                "embedding_dims": config.embedding_dims,
-                "embedder": config.embedder_provider,
-            },
         )
 
         # 6. Eager initialization (pre-warm engines if enabled)
@@ -298,7 +293,8 @@ class MemoryManager:
         start_time = time.time()
 
         # Determine which components to initialize
-        # Priority: granular setting > general eager_initialization > default (search only)
+        # Priority: granular setting > general eager initialization
+        # > default (search only)
         should_init_search = (
             self.config.eager_initialize_search_engines
             if self.config.eager_initialize_search_engines is not None

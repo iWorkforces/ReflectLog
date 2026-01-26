@@ -25,13 +25,13 @@ from reflectlog.infrastructure.llm_reranker import (
 
 __all__ = [
     "AnthropicRerankerProvider",
-    "create_reranker_provider",
     "CrossEncoderConfig",
     "CrossEncoderReranker",
-    "format_memory_age",
     "IRerankerProvider",
     "LLMReranker",
     "LLMRerankerConfig",
     "OpenAIRerankerProvider",
     "RelevanceScore",
+    "create_reranker_provider",
+    "format_memory_age",
 ]

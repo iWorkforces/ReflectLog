@@ -224,7 +224,7 @@ class RanxFusionEngine:
             return []
 
         # Validate score ranges and log unusual inputs (debug level)
-        if self.logger and self.logger.isEnabledFor(logging.DEBUG):
+        if self.logger and self.logger.is_enabled_for(logging.DEBUG):
             for i, result_set in enumerate(non_empty):
                 scores = [score for _, score in result_set]
                 if not scores:

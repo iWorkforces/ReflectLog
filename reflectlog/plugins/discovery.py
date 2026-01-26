@@ -71,7 +71,8 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
         try:
             eps = importlib.metadata.entry_points(group=self._group)
         except TypeError:
-            # Python 3.9 compatibility - entry_points() returns dict-like SelectableGroups
+            # Python 3.9 compatibility - entry_points() returns dict-like
+            # SelectableGroups
             eps = importlib.metadata.entry_points()
             # Filter to our group if SelectableGroups
             if hasattr(eps, "select"):
@@ -144,7 +145,7 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
                 pkg_path = Path(pkg_file).parent
 
                 # Find all modules matching the pattern
-                for finder, name, ispkg in pkgutil.iter_modules(
+                for _finder, name, ispkg in pkgutil.iter_modules(
                     [str(pkg_path)],
                     prefix=f"{package_name}.",
                 ):

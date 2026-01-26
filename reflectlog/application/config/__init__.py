@@ -17,20 +17,20 @@ from .validation import (
 )
 
 __all__ = [
-    # Configuration
-    "Config",
-    "TransportMode",
-    "config",
-    # Prompts
+    # SCREAMING_SNAKE_CASE
     "INSTRUCTIONS_HEADER",
     "MCP_INSTRUCTIONS",
     "REPLACEMENT_DETECTION_PROMPT",
     "SCORING_PROMPT",
     "SCORING_PROMPT_WITH_AGE",
     "TOOL_ORDER",
-    "build_instructions",
-    # Validation
+    # CamelCase
+    "Config",
     "ConfigurationValidator",
+    "TransportMode",
     "ValidationError",
+    # snake_case
+    "build_instructions",
+    "config",
     "validate_config",
 ]

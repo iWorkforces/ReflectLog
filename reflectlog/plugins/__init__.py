@@ -50,24 +50,23 @@ from .registry import (
 )
 
 __all__ = [
-    # Discovery
+    # CamelCase
     "CompositeDiscovery",
     "DirectoryScanDiscovery",
     "DiscoveredPlugin",
     "EntryPointDiscovery",
-    "load_plugin",
-    "PluginDiscoverer",
-    "PluginDiscoveryStrategy",
-    "StaticRegistration",
-    # Loading
+    "IPluggable",
     "IPluginLifecycle",
     "LifecycleHooks",
-    "PluginLoader",
-    # Registry
-    "IPluggable",
     "PluginCapability",
+    "PluginDiscoverer",
+    "PluginDiscoveryStrategy",
+    "PluginLoader",
     "PluginMetadata",
     "PluginRegistry",
     "PluginState",
+    "StaticRegistration",
     "ToolRegistry",
+    # snake_case
+    "load_plugin",
 ]

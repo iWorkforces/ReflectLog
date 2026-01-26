@@ -396,7 +396,7 @@ class TestUSearchEngineExactSearch:
     ) -> None:
         """Default config should use exact (brute-force) search for small databases."""
         config, embedder, _ = temp_engine
-        # Note: temp_engine fixture uses explicit config, so we need to test with default
+        # Note: temp_engine uses explicit config, so we test with default config
         # The default USearchConfig has exact_search=True
         default_config = USearchConfig(
             project_id=config.project_id,

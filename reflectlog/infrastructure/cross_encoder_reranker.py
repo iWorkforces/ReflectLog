@@ -240,7 +240,8 @@ class CrossEncoderReranker(BaseModel):
             - If candidates is empty, returns empty list
             - With normalize=True, scores are in [0, 1] range (sigmoid applied)
             - With normalize=False, scores can be any real number
-            - Recency decay is applied after normalization when enable_recency_boost=True
+            - Recency decay is applied after normalization when
+              enable_recency_boost=True
         """
         if not candidates:
             return []
@@ -284,7 +285,9 @@ class CrossEncoderReranker(BaseModel):
             scored = normalize_reranker_scores(scored)
             if self.logger:
                 self.logger.info(
-                    f"   Batch normalization: enabled (raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} -> normalized: 0.0-1.0)",
+                    f"   Batch normalization: enabled "
+                    f"(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} "
+                    f"-> normalized: 0.0-1.0)",
                     extra={
                         "batch_normalize": True,
                         "raw_min": min(raw_scores),
@@ -312,7 +315,7 @@ class CrossEncoderReranker(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    f"Recency decay: applied (rate={self.config.recency_decay_rate}, "
+                    f"Recency decay: applied (rate={self.config.recency_decay_rate}), "
                     f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
                     f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
                     extra={
@@ -327,7 +330,8 @@ class CrossEncoderReranker(BaseModel):
         if self.logger:
             threshold = self.config.score_threshold
             self.logger.info(
-                f"   FlagReranker scoring (threshold: {threshold:.2f}, normalize: {self.config.normalize}, batch_norm: {self.config.batch_normalize}):",
+                f"   FlagReranker scoring (threshold: {threshold:.2f}), "
+                f"normalize: {self.config.normalize}, batch_norm: {self.config.batch_normalize}):",
                 extra={
                     "threshold": threshold,
                     "normalize": self.config.normalize,
@@ -371,7 +375,9 @@ class CrossEncoderReranker(BaseModel):
             kept = len(scored)
             filtered = pre_filter_count - kept
             self.logger.info(
-                f"   Score threshold filtering: {kept}/{pre_filter_count} passed (threshold: {self.config.score_threshold:.2f}, min_results: {self.config.min_results})",
+                f"   Score threshold filtering: {kept}/{pre_filter_count} "
+                f"passed (threshold: {self.config.score_threshold:.2f}), "
+                f"min_results: {self.config.min_results})",
                 extra={
                     "threshold": self.config.score_threshold,
                     "min_results": self.config.min_results,

@@ -649,6 +649,7 @@ class _LazyConfig:
         return f"_LazyConfig(initialized={_config is not None})"
 
 
-# Note: This is typed as Any to allow type checkers to accept it where Config is expected
+# Note: This is typed as Any to allow type checkers to accept it
+# where Config is expected
 # The actual Config object is accessed lazily through __getattr__
 config: Config = _LazyConfig()  # type: ignore[assignment]

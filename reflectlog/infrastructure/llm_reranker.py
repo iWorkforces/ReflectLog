@@ -541,7 +541,8 @@ class LLMReranker(BaseModel):
         # Score all candidates in parallel with concurrency limit
         async with anyio.create_task_group() as tg:
             for idx, (document, fusion_score) in enumerate(candidates):
-                # Get memory age from timestamp_map if available and recency boost is enabled
+                # Get memory age from timestamp_map if available and
+                # recency boost is enabled
                 memory_age = None
                 if (
                     self.config.enable_recency_boost
@@ -569,8 +570,9 @@ class LLMReranker(BaseModel):
             scored_results = normalize_reranker_scores(scored_results)
             if self.logger:
                 self.logger.debug(
-                    f"Batch normalization: enabled (raw range: "
-                    f"{min(raw_scores):.4f}-{max(raw_scores):.4f} -> normalized: 0.0-1.0)",
+                    f"Batch normalization: enabled "
+                    f"(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} "
+                    f"-> normalized: 0.0-1.0)",
                     extra={
                         "batch_normalize": True,
                         "raw_min": min(raw_scores),
@@ -598,7 +600,7 @@ class LLMReranker(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    f"Recency decay: applied (rate={self.config.recency_decay_rate}, "
+                    f"Recency decay: applied (rate={self.config.recency_decay_rate}), "
                     f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
                     f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
                     extra={

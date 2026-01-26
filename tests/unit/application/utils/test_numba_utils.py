@@ -114,14 +114,14 @@ class TestFilterScoresByThreshold:
     def test_exact_threshold(self) -> None:
         """Test scores exactly at threshold."""
         scores = np.array([0.5, 0.5, 0.5], dtype=np.float64)
-        indices, filtered = filter_scores_by_threshold(scores, 0.5)
+        indices, _filtered = filter_scores_by_threshold(scores, 0.5)
         # >= threshold, so should pass
         np.testing.assert_array_equal(indices, [0, 1, 2])
 
     def test_zero_threshold(self) -> None:
         """Test with zero threshold."""
         scores = np.array([0.0, 0.1, 0.5], dtype=np.float64)
-        indices, filtered = filter_scores_by_threshold(scores, 0.0)
+        indices, _filtered = filter_scores_by_threshold(scores, 0.0)
         np.testing.assert_array_equal(indices, [0, 1, 2])
 
     def test_one_threshold(self) -> None:
@@ -290,7 +290,7 @@ class TestWarmupNumbaFunctions:
         scores = np.array([0.1, 0.5, 0.9], dtype=np.float64)
         assert len(normalize_scores_minmax(scores)) == 3
 
-        indices, filtered = filter_scores_by_threshold(scores, 0.5)
+        indices, _filtered = filter_scores_by_threshold(scores, 0.5)
         assert len(indices) > 0
 
         ranks = np.array([[1, 2]], dtype=np.int64)

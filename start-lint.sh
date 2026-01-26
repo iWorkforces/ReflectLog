@@ -138,6 +138,7 @@ find_python_files() {
         -not -path "./__pycache__/*" \
         -not -path "./.pytest_cache/*" \
         -not -path "./node_modules/*" \
+        -not -path "./tests/*" \
         | sort)
 
     if [ -z "$PYTHON_FILES" ]; then
@@ -174,8 +175,8 @@ run_check() {
     echo -e "${BLUE}🔍 Running ruff check (dry run)...${NC}"
     echo ""
 
-    # Run ruff check with detailed output
-    if uv run ruff check . --output-format=full; then
+    # Run ruff check with detailed output (only reflectlog directory, tests excluded)
+    if uv run ruff check reflectlog --output-format=full; then
         echo ""
         echo -e "${GREEN}✅ No linting issues found!${NC}"
         return 0
@@ -191,14 +192,14 @@ run_check_stats() {
     echo -e "${BLUE}📊 Linting Statistics:${NC}"
     echo ""
 
-    # Get statistics by rule
+    # Get statistics by rule (only reflectlog directory, tests excluded)
     echo -e "${CYAN}Issues by rule:${NC}"
-    uv run ruff check . --output-format=concise | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c | sort -nr || true
+    uv run ruff check reflectlog --output-format=concise | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c | sort -nr || true
     echo ""
 
     # Get statistics by file
     echo -e "${CYAN}Files with issues:${NC}"
-    uv run ruff check . --output-format=concise | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
+    uv run ruff check reflectlog --output-format=concise | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
     echo ""
 }
 
@@ -207,8 +208,8 @@ run_fix() {
     echo -e "${BLUE}🔧 Running ruff fix (automatic fixes)...${NC}"
     echo ""
 
-    # Run ruff with --fix flag
-    if uv run ruff check . --fix; then
+    # Run ruff with --fix flag (only reflectlog directory, tests excluded)
+    if uv run ruff check reflectlog --fix; then
         echo ""
         echo -e "${GREEN}✅ Automatic fixes applied successfully${NC}"
     else
@@ -219,7 +220,7 @@ run_fix() {
     # Show remaining issues
     echo ""
     echo -e "${BLUE}🔍 Checking for remaining issues...${NC}"
-    if uv run ruff check . --output-format=concise; then
+    if uv run ruff check reflectlog --output-format=concise; then
         echo -e "${GREEN}✅ All fixable issues have been resolved${NC}"
     else
         echo -e "${YELLOW}⚠️  Some issues require manual attention${NC}"
@@ -269,8 +270,8 @@ run_format() {
     echo -e "${BLUE}🎨 Running ruff format...${NC}"
     echo ""
 
-    # Run ruff format (ignore failures, whitespace will be stripped anyway)
-    uv run ruff format . || true
+    # Run ruff format (only reflectlog directory, tests excluded; ignore failures)
+    uv run ruff format reflectlog || true
 
     # Remove trailing whitespace in all Python files
     find_python_files
@@ -332,7 +333,7 @@ run_migration_check() {
     fi
     echo ""
 
-    # Check 4: Triple quotes enforcement
+    # Check 4: Triple quotes enforcement (only reflectlog directory, tests excluded)
     echo -e "${CYAN}4. Checking for triple double quotes (should be single)...${NC}"
     DOUBLE_QUOTES=$(grep -r '"""' reflectlog --include="*.py" 2>/dev/null | grep -v "^Binary" | head -5 || true)
     if [ -n "$DOUBLE_QUOTES" ]; then
@@ -345,7 +346,7 @@ run_migration_check() {
 
     # Check 5: Run ruff UP rules for Python 3.14 suggestions
     echo -e "${CYAN}5. Running ruff pyupgrade rules (UP006, UP007, UP035, UP040)...${NC}"
-    UP_ISSUES=$(uv run ruff check . --select=UP --output-format=concise 2>&1 | grep "UP" || true)
+    UP_ISSUES=$(uv run ruff check reflectlog --select=UP --output-format=concise 2>&1 | grep "UP" || true)
     if [ -n "$UP_ISSUES" ]; then
         echo -e "${YELLOW}⚠️  Python 3.14 upgrade suggestions found:${NC}"
         echo "$UP_ISSUES" | head -20

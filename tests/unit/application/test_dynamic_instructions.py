@@ -217,7 +217,7 @@ class TestDynamicInstructionsIntegration:
 
     def test_instructions_include_all_tools_when_no_restriction(self, monkeypatch):
         """Instructions should include all tools when ALLOWED_TOOLS is not set."""
-        server, instructions = self._build_server_and_capture_instructions(
+        _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, None
         )
 
@@ -228,7 +228,7 @@ class TestDynamicInstructionsIntegration:
 
     def test_instructions_include_only_allowed_tools(self, monkeypatch):
         """Instructions should only document tools that are allowed."""
-        server, instructions = self._build_server_and_capture_instructions(
+        _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "add,search"
         )
 
@@ -239,7 +239,7 @@ class TestDynamicInstructionsIntegration:
 
     def test_instructions_single_tool(self, monkeypatch):
         """Instructions should work correctly with single tool."""
-        server, instructions = self._build_server_and_capture_instructions(
+        _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "get_all"
         )
 
@@ -250,7 +250,7 @@ class TestDynamicInstructionsIntegration:
 
     def test_instructions_show_no_tools_message_when_none_enabled(self, monkeypatch):
         """Instructions should indicate no tools when none are enabled."""
-        server, instructions = self._build_server_and_capture_instructions(
+        _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "none"
         )
 
@@ -259,7 +259,7 @@ class TestDynamicInstructionsIntegration:
 
     def test_instructions_header_always_present(self, monkeypatch):
         """Server description header should always be included."""
-        server, instructions = self._build_server_and_capture_instructions(
+        _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "add"
         )
 

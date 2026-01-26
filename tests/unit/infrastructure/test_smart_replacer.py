@@ -254,7 +254,7 @@ class TestOpenAIReplacementProvider:
             return_value=mock_response
         )
 
-        should_replace, confidence, reason = await mock_provider.detect_replacement(
+        should_replace, confidence, _reason = await mock_provider.detect_replacement(
             prompt="test prompt",
             max_retries=3,
             retry_delay=1.0,
@@ -284,7 +284,7 @@ class TestOpenAIReplacementProvider:
             return_value=mock_response
         )
 
-        should_replace, confidence, reason = await mock_provider.detect_replacement(
+        should_replace, confidence, _reason = await mock_provider.detect_replacement(
             prompt="test prompt",
             max_retries=3,
             retry_delay=1.0,
@@ -347,7 +347,7 @@ class TestOpenAIReplacementProvider:
         mock_logger = MagicMock()
         mock_provider._logger = mock_logger
 
-        should_replace, confidence, reason = await mock_provider.detect_replacement(
+        should_replace, confidence, _reason = await mock_provider.detect_replacement(
             prompt="test prompt",
             max_retries=3,
             retry_delay=1.0,
@@ -377,7 +377,7 @@ class TestOpenAIReplacementProvider:
         mock_logger = MagicMock()
         mock_provider._logger = mock_logger
 
-        should_replace, confidence, reason = await mock_provider.detect_replacement(
+        should_replace, confidence, _reason = await mock_provider.detect_replacement(
             prompt="test prompt",
             max_retries=2,
             retry_delay=0.01,  # Fast retries for testing
@@ -427,7 +427,7 @@ That's my assessment."""
         with patch("reflectlog.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        response = 'The result is {"should_replace": false, "confidence": 0.3, "reason": "Different topics"} done.'
+        response = 'Result: {"should_replace": false, "confidence": 0.3} done.'
 
         result = provider._extract_json_from_response(response)
 
@@ -457,7 +457,7 @@ That's my assessment."""
                 }
             )
 
-            should_replace, confidence, reason = await provider.detect_replacement(
+            should_replace, confidence, _reason = await provider.detect_replacement(
                 prompt="test prompt",
                 max_retries=3,
                 retry_delay=1.0,
@@ -485,7 +485,7 @@ That's my assessment."""
 {"should_replace": true, "confidence": 0.92, "reason": "Preference changed"}
 ```"""
 
-            should_replace, confidence, reason = await provider.detect_replacement(
+            should_replace, confidence, _reason = await provider.detect_replacement(
                 prompt="test prompt",
                 max_retries=3,
                 retry_delay=1.0,
@@ -506,7 +506,7 @@ That's my assessment."""
             mock_logger = MagicMock()
             provider._logger = mock_logger
 
-            should_replace, confidence, reason = await provider.detect_replacement(
+            should_replace, confidence, _reason = await provider.detect_replacement(
                 prompt="test prompt",
                 max_retries=2,
                 retry_delay=0.01,
@@ -667,7 +667,7 @@ class TestCheckReplacement:
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        should_replace, confidence, reason = await mock_replacer.check_replacement(
+        should_replace, confidence, _reason = await mock_replacer.check_replacement(
             new_memory="I like dogs",
             existing_memory="I like cats",
         )
@@ -841,7 +841,7 @@ class TestSmartReplacerIntegration:
                 return_value=mock_response
             )
 
-            should_replace, confidence, reason = await replacer.check_replacement(
+            should_replace, confidence, _reason = await replacer.check_replacement(
                 new_memory="The weather is nice today",
                 existing_memory="I like cats",
             )

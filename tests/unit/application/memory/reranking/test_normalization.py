@@ -101,7 +101,7 @@ class TestNormalizeRerankerScores:
         result = normalize_reranker_scores(scored)
 
         assert len(result) == 3
-        for doc, score in result:
+        for _doc, score in result:
             assert score == 1.0
 
     def test_preserves_document_order(self) -> None:

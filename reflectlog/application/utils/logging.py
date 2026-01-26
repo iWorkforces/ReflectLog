@@ -50,13 +50,13 @@ class StructuredLogger:
 
         return redact_dict_secrets(data)
 
-    def isEnabledFor(self, level: int) -> bool:
+    def is_enabled_for(self, level: int) -> bool:
         """Check if logger is enabled for the given level.
 
         Use this to guard expensive logging operations.
 
         Example:
-            if logger.isEnabledFor(logging.DEBUG):
+            if logger.is_enabled_for(logging.DEBUG):
                 logger.debug("Expensive: %s", expensive_computation())
         """
         return self.logger.isEnabledFor(level)

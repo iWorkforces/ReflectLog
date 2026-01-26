@@ -6,25 +6,26 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
-# Add the current directory to Python path for direct execution
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path for direct script execution
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Configure numba environment before imports
+for key, value in [
+    ("NUMBA_CACHE_DIR", os.path.join(os.getcwd(), ".numba_cache")),
+    ("NUMBA_THREADING_LAYER", "workqueue"),
+    ("NUMBA_DEBUG", "0"),
+    ("NUMBA_FASTMATH", "1"),
+]:
+    _ = os.environ.setdefault(key, value)
 
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite
 
-# Configure numba before any imports that use it
-# Enable caching for JIT-compiled functions to avoid recompilation on restart
-_ = os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(os.getcwd(), ".numba_cache"))
-# Use threading backend for parallel execution
-_ = os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
-# Disable JIT debugging in production for better performance
-_ = os.environ.setdefault("NUMBA_DEBUG", "0")
-# Enable fastmath for additional floating-point optimizations
-_ = os.environ.setdefault("NUMBA_FASTMATH", "1")
-
-from reflectlog.application.mcp_server import FastMCPServer
-from reflectlog.application.utils.numba_utils import warmup_numba_functions
-from reflectlog.version import __version__
+from reflectlog.application.mcp_server import FastMCPServer  # noqa: E402
+from reflectlog.application.utils.numba_utils import (  # noqa: E402
+    warmup_numba_functions,
+)
+from reflectlog.version import __version__  # noqa: E402
 
 
 def warmup_numba_with_config(
@@ -36,8 +37,9 @@ def warmup_numba_with_config(
 
     Args:
         enabled: Whether to perform JIT warmup at all.
-        mode: Execution mode - "sync" (default), "async" (background thread), or "background" (daemon thread).
-        output_stream: Stream to print progress messages (stderr for stdio, stdout otherwise).
+        mode: Execution mode - "sync" (default), "async" (background thread),
+            or "background" (daemon thread).
+        output_stream: Stream to print progress (stderr for stdio, stdout otherwise).
 
     Returns:
         Thread object if mode is "async" or "background", None otherwise.
@@ -52,8 +54,9 @@ def warmup_numba_with_config(
 
     valid_modes = ("sync", "async", "background")
     if mode not in valid_modes:
+        modes_str = ", ".join(valid_modes)
         raise ValueError(
-            f"Invalid NUMBA_WARMUP_MODE: '{mode}'. Valid options: {', '.join(valid_modes)}"
+            f"Invalid NUMBA_WARMUP_MODE: '{mode}'. Valid options: {modes_str}"
         )
 
     if mode == "sync":
@@ -130,7 +133,7 @@ Environment Variables:
         "--transport",
         type=str,
         choices=["stdio", "http", "sse", "streamable-http"],
-        help="Transport protocol (default: stdio for tool usage, or from settings.toml)",
+        help="Transport protocol (default: stdio for tool usage, or from settings)",
     )
 
     _ = parser.add_argument(
@@ -200,7 +203,7 @@ def main() -> None:
     # Pre-compile numba JIT functions to avoid first-call latency (configurable)
     # Environment variables:
     #   NUMBA_WARMUP: Enable/disable JIT warmup (default: true)
-    #   NUMBA_WARMUP_MODE: Execution mode - sync, async, background (default: background)
+    #   NUMBA_WARMUP_MODE: Execution mode - sync, async, background (default: bg)
     numba_warmup_enabled = os.environ.get("NUMBA_WARMUP", "true").lower() == "true"
     numba_warmup_mode = os.environ.get("NUMBA_WARMUP_MODE", "background").lower()
 
@@ -265,7 +268,7 @@ def main() -> None:
                 print(f"  {phase}: {duration * 1000:.1f}ms", file=output_stream)
 
         # Store startup metrics on memory manager for health check
-        server._memory_manager._startup_metrics = startup_phases  # noqa: SLF001
+        server._memory_manager._startup_metrics = startup_phases
 
         server.run()
     except KeyboardInterrupt:
