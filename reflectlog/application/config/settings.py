@@ -4,7 +4,7 @@ import os
 import re
 import threading
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, TypeAlias, cast
+from typing import Any, Literal, TypeAlias
 
 from ..exceptions import ConfigurationError
 from ..utils.security import SecretString
@@ -106,7 +106,7 @@ class Config:
 
     # Fusion settings (ranx-based)
     fusion_method: str = "rrf"  # rrf, sum, mnz, max, bordafuse
-    fusion_normalization: Optional[str] = None  # min-max, max, sum, zmuv, rank, borda
+    fusion_normalization: str | None = None  # min-max, max, sum, zmuv, rank, borda
     fusion_rrf_k: int = 60  # RRF k parameter (lower = more weight to top ranks)
     fusion_ranking_threshold: float = 0.8  # Min normalized RRF score to keep (0-1)
     enable_rrf_fusion: bool = True  # Enable RRF fusion (false = concatenate results)
@@ -207,7 +207,7 @@ class Config:
         if transport_raw not in valid_transports:
             transport: TransportMode = "stdio"
         else:
-            transport = cast(TransportMode, transport_raw)
+            transport = transport_raw
 
         return {
             "transport": transport,

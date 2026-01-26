@@ -40,7 +40,8 @@ class ConfigurationValidator:
     VALID_FUSION_METHODS = {"rrf", "sum", "mnz", "max", "bordafuse"}
 
     def __init__(self) -> None:
-        """Initialize the validator with an empty list of errors."""
+        """Initialize validator with an empty list of errors."""
+        super().__init__()
         self.errors: list[ValidationError] = []
 
     def reset(self) -> None:
@@ -449,17 +450,17 @@ def validate_config(config: object) -> list[ValidationError]:
     # Validate project_id
     project_id = get_attr("project_id")
     if project_id:
-        validator.validate_project_id(project_id)
+        _ = validator.validate_project_id(project_id)
 
     # Validate transport
     transport = get_attr("transport")
     if transport:
-        validator.validate_transport(transport)
+        _ = validator.validate_transport(transport)
 
     # Validate port
     port = get_attr("port")
     if port is not None:
-        validator.validate_port(port)
+        _ = validator.validate_port(port)
 
     # Validate percentage values
     percentage_fields = [
@@ -475,7 +476,7 @@ def validate_config(config: object) -> list[ValidationError]:
     for attr_name, field_name in percentage_fields:
         value = get_attr(attr_name)
         if value is not None:
-            validator.validate_percentage(field_name, value)
+            _ = validator.validate_percentage(field_name, value)
 
     # Validate positive integers
     positive_int_fields = [
@@ -493,38 +494,38 @@ def validate_config(config: object) -> list[ValidationError]:
     for attr_name, field_name, min_val in positive_int_fields:
         value = get_attr(attr_name)
         if value is not None:
-            validator.validate_positive_int(field_name, value, min_val)
+            _ = validator.validate_positive_int(field_name, value, min_val)
 
     # Validate reranker engine
     reranker_engine = get_attr("reranker_engine")
     if reranker_engine:
-        validator.validate_reranker_engine(reranker_engine)
+        _ = validator.validate_reranker_engine(reranker_engine)
 
     # Validate LLM provider
     llm_provider = get_attr("llm_provider")
     if llm_provider:
-        validator.validate_llm_provider(llm_provider)
+        _ = validator.validate_llm_provider(llm_provider)
 
     # Validate cross-encoder device
     cross_encoder_device = get_attr("cross_encoder_device")
     if cross_encoder_device:
-        validator.validate_cross_encoder_device(cross_encoder_device)
+        _ = validator.validate_cross_encoder_device(cross_encoder_device)
 
     # Validate fusion method
     fusion_method = get_attr("fusion_method")
     if fusion_method:
-        validator.validate_fusion_method(fusion_method)
+        _ = validator.validate_fusion_method(fusion_method)
 
     # Validate message lengths
     min_length = get_attr("min_message_length")
     max_length = get_attr("max_message_length")
     if min_length is not None and max_length is not None:
-        validator.validate_message_lengths(min_length, max_length)
+        _ = validator.validate_message_lengths(min_length, max_length)
 
     # Validate dependencies
     enable_hybrid_search = get_attr("enable_hybrid_search")
     enable_rrf_fusion = get_attr("enable_rrf_fusion")
-    validator.validate_dependencies(
+    _ = validator.validate_dependencies(
         enable_hybrid_search if enable_hybrid_search is not None else True,
         enable_rrf_fusion if enable_rrf_fusion is not None else True,
         reranker_engine if reranker_engine else "llm",
@@ -533,7 +534,7 @@ def validate_config(config: object) -> list[ValidationError]:
     # Validate circuit breaker settings
     circuit_breaker_enabled = get_attr("circuit_breaker_enabled")
     if circuit_breaker_enabled:
-        validator.validate_circuit_breaker_settings(
+        _ = validator.validate_circuit_breaker_settings(
             circuit_breaker_enabled,
             get_attr("circuit_breaker_failure_threshold") or 5,
             get_attr("circuit_breaker_timeout") or 60.0,

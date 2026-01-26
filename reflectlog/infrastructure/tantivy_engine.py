@@ -9,13 +9,21 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, cast
+
+if TYPE_CHECKING:
+    from typing import TypeGuard
 
 import numpy as np
 import tantivy
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.exceptions import SearchError
+
+
+def _is_dict_config(config: object) -> "TypeGuard[dict[str, Any]]":
+    """Type guard to check if config is a dict."""
+    return isinstance(config, dict)
 
 
 @dataclass(frozen=True)
@@ -41,6 +49,32 @@ class TantivyConfig:
     tombstone_ttl_days: int = 7
     tombstone_cache_max_size: int = 100
     normalize_scores: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TantivyConfig":
+        """Create TantivyConfig from a dictionary with validation.
+
+        This method properly validates dict contents and returns a typed instance,
+        avoiding the type: ignore needed when using **dict unpacking.
+
+        Args:
+            data: Dictionary with configuration values.
+
+        Returns:
+            Validated TantivyConfig instance.
+        """
+        return cls(
+            project_id=data.get("project_id", "") or "",
+            index_path=data.get("index_path", "") or "",
+            soft_delete_enabled=bool(data.get("soft_delete_enabled", True)),
+            compaction_threshold_ratio=float(
+                data.get("compaction_threshold_ratio", 0.2)
+            ),
+            compaction_max_tombstones=int(data.get("compaction_max_tombstones", 10000)),
+            tombstone_ttl_days=int(data.get("tombstone_ttl_days", 7)),
+            tombstone_cache_max_size=int(data.get("tombstone_cache_max_size", 100)),
+            normalize_scores=bool(data.get("normalize_scores", True)),
+        )
 
 
 # Schema version constant (V2 only - soft-delete support)
@@ -97,8 +131,8 @@ class TantivyEngine(BaseModel):
         Raises:
             RuntimeError: If index initialization fails.
         """
-        if isinstance(config, dict):
-            config = TantivyConfig(**cast(dict[str, Any], config))
+        if _is_dict_config(config):
+            config = TantivyConfig.from_dict(config)
 
         super().__init__(config=config, logger=logger, **kwargs)
         self._initialize_index()

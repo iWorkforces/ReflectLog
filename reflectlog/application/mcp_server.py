@@ -42,10 +42,8 @@ class FastMCPServer:
 
         Args:
             server_config: Configuration instance (defaults to singleton).
-
-        Raises:
-            RuntimeError: If required configuration is missing.
         """
+        super().__init__()
         self.config = server_config
 
         # Initialize structured logger

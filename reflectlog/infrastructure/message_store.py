@@ -119,10 +119,10 @@ class MessageStore(BaseModel):
                         check_same_thread=False,
                         timeout=self.timeout,
                     )
-                    self._conn.execute("PRAGMA journal_mode=WAL")
-                    self._conn.execute("PRAGMA synchronous=NORMAL")
+                    _ = self._conn.execute("PRAGMA journal_mode=WAL")
+                    _ = self._conn.execute("PRAGMA synchronous=NORMAL")
                     # Set busy timeout to handle concurrent access gracefully
-                    self._conn.execute(
+                    _ = self._conn.execute(
                         f"PRAGMA busy_timeout = {int(self.timeout * 1000)}"
                     )
                     self._create_schema()
@@ -144,7 +144,7 @@ class MessageStore(BaseModel):
         """Create database schema if it doesn't exist."""
         cursor = self.connection.cursor()
         # Main messages table
-        cursor.execute(
+        _ = cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,15 +154,15 @@ class MessageStore(BaseModel):
             )
         """
         )
-        cursor.execute(
+        _ = cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_project_id ON messages(project_id)"
         )
-        cursor.execute(
+        _ = cursor.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_dedup ON messages(project_id, message)"
         )
 
         # Archived messages table (for smart replacement recovery)
-        cursor.execute(
+        _ = cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS archived_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,10 +176,10 @@ class MessageStore(BaseModel):
             )
         """
         )
-        cursor.execute(
+        _ = cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_archived_project_id ON archived_messages(project_id)"
         )
-        cursor.execute(
+        _ = cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_archived_at ON archived_messages(archived_at)"
         )
         cursor.close()
@@ -200,7 +200,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute(
+                _ = cursor.execute(
                     "INSERT INTO messages (project_id, message) VALUES (?, ?)",
                     (project_id, message),
                 )
@@ -266,10 +266,10 @@ class MessageStore(BaseModel):
             inserted: list[tuple[str, int]] = []
             skipped = 0
             try:
-                cursor.execute("BEGIN")
+                _ = cursor.execute("BEGIN")
                 for message in messages:
                     try:
-                        cursor.execute(
+                        _ = cursor.execute(
                             "INSERT INTO messages (project_id, message) VALUES (?, ?)",
                             (project_id, message),
                         )
@@ -334,7 +334,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute(
+                _ = cursor.execute(
                     "SELECT id, project_id, message, created_at FROM messages WHERE id = ?",
                     (message_id,),
                 )
@@ -383,7 +383,7 @@ class MessageStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 placeholders = ",".join("?" * len(message_ids))
-                cursor.execute(
+                _ = cursor.execute(
                     f"SELECT id, project_id, message, created_at FROM messages WHERE id IN ({placeholders})",
                     message_ids,
                 )
@@ -424,7 +424,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute(
+                _ = cursor.execute(
                     "SELECT message FROM messages WHERE project_id = ? ORDER BY id",
                     (project_id,),
                 )
@@ -457,7 +457,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+                _ = cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
                 deleted = cursor.rowcount > 0
                 self.connection.commit()
 
@@ -507,7 +507,7 @@ class MessageStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 placeholders = ",".join("?" * len(message_ids))
-                cursor.execute(
+                _ = cursor.execute(
                     f"DELETE FROM messages WHERE id IN ({placeholders})",
                     message_ids,
                 )
@@ -551,7 +551,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute(
+                _ = cursor.execute(
                     "SELECT 1 FROM messages WHERE project_id = ? AND message = ? LIMIT 1",
                     (project_id, message),
                 )
@@ -584,7 +584,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute(
+                _ = cursor.execute(
                     "SELECT id FROM messages WHERE project_id = ? AND message = ? LIMIT 1",
                     (project_id, message),
                 )
@@ -629,7 +629,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute(
+                _ = cursor.execute(
                     """
                     INSERT INTO archived_messages
                         (original_id, project_id, message, replaced_by, reason, confidence)
@@ -680,7 +680,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute(
+                _ = cursor.execute(
                     """
                     SELECT id, original_id, project_id, message, replaced_by,
                            reason, confidence, archived_at
@@ -733,7 +733,7 @@ class MessageStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 # Get the archived record
-                cursor.execute(
+                _ = cursor.execute(
                     """
                     SELECT project_id, message FROM archived_messages WHERE id = ?
                     """,
@@ -752,14 +752,14 @@ class MessageStore(BaseModel):
                 project_id, message = row[0], row[1]
 
                 # Insert back into messages table
-                cursor.execute(
+                _ = cursor.execute(
                     "INSERT INTO messages (project_id, message) VALUES (?, ?)",
                     (project_id, message),
                 )
                 new_id = cursor.lastrowid
 
                 # Delete from archive
-                cursor.execute(
+                _ = cursor.execute(
                     "DELETE FROM archived_messages WHERE id = ?",
                     (archive_id,),
                 )
@@ -806,7 +806,7 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                cursor.execute(
+                _ = cursor.execute(
                     """
                     DELETE FROM archived_messages
                     WHERE archived_at < datetime('now', '-' || ? || ' days')
