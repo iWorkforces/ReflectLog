@@ -1,0 +1,6 @@
+{
+  "tmux": {
+    "enabled": true,
+    "layout": "main-vertical"
+  }
+}

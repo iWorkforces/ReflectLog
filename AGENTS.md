@@ -1,162 +1,115 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
+# ReflectLogMCP Knowledge Base
 
-These instructions are for AI assistants working in this project.
+**Generated:** 2026-01-26
+**Commit:** current
+**Branch:** main
 
-## Always open `@/openspec/AGENTS.md` when the request
+## OVERVIEW
 
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
+MCP server providing persistent, project-based semantic memory storage for AI agents. Combines USearch vector search with Tantivy full-text search using RRF fusion, with optional LLM/cross-encoder reranking and smart memory replacement.
 
-## Use `@/openspec/AGENTS.md` to learn
+## STRUCTURE
 
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
+```
+./
+├── reflectlog/              # Main package
+│   ├── core/              # Protocol definitions (8 files)
+│   ├── application/         # Business logic (42 files)
+│   ├── infrastructure/      # External integrations (16 files)
+│   ├── plugins/           # Plugin system (4 files)
+│   └── utility/           # Platform utilities
+├── tests/                # Unit + integration tests
+├── stubs/               # Type stubs for third-party libs
+├── indexes/              # Persistent index data
+├── scripts/              # Build/CI scripts (no CI/CD)
+└── *.sh                  # Custom wrapper scripts
+```
 
-## Leverages MCP (Model Context Protocol) servers for enhanced capabilities
+## WHERE TO LOOK
 
-1. **Sequential Thinking Tools MCP** (`mcp__sequentialthinking-tools__sequentialthinking_tools`)
-   - Used for structured analysis and validation
-   - Provides step-by-step reasoning for impact scoring and recommendations
+| Task | Location | Notes |
+|-------|-----------|--------|
+| Memory operations | `reflectlog/application/memory/manager.py` | 3-phase add, 4-step search pipeline |
+| Search configuration | `reflectlog/application/config/settings.py` | 60+ env vars |
+| Protocol interfaces | `reflectlog/core/` | All abstractions defined here |
+| Infrastructure wrappers | `reflectlog/infrastructure/` | USearch, Tantivy, LLM providers |
+| Build commands | `start-type-check.sh`, `start-lint.sh`, `start-unittest.sh` | Custom wrappers, no CI/CD |
 
-2. **Tavily MCP** (`mcp__tavily-mcp__tavily-search`, `mcp__tavily-mcp__tavily-extract`)
-   - Used for researching industry best practices and standards
-   - Provides real-time validation against OWASP, NIST, WCAG, and other standards
-   - Enables anti-pattern detection and production readiness checks
+## CONVENTIONS
 
-3. **Context7 MCP** (`mcp__context7__resolve-library-id`, `mcp__context7__get-library-docs`)
-   - Used for technology-specific guidance
-   - Provides framework and library best practices
-   - Enables stack-aware question generation
+**Python 3.14+ Required** - No legacy typing syntax (`Optional[str]` forbidden). Use native unions (`str | None`).
 
-Keep this managed block so 'openspec update' can refresh the instructions.
+**Protocol-Based Design** - Components depend on protocols from `core/`, not concrete implementations. Enables runtime substitution and test mocking.
 
-<!-- OPENSPEC:END -->
+**Lazy Initialization** - Expensive resources (embedders, rerankers) initialized on-demand with thread-safe patterns.
 
-# ReflectLogMCP - Agent Coding Guidelines
+**Lock Hierarchy** - `_write_lock` before `_lock`. USearch not thread-safe; serialize writes.
 
-## Build / Lint / Test Commands
+**RRF Fusion** - `score(doc) = sum(1/(k+rank))` with `k=60` default. Normalized to 0-1 range.
+
+**No CI/CD** - No `.github/workflows`. Manual testing with custom shell wrappers (`start-*.sh`).
+
+**90% Coverage Minimum** - Enforced by test runner (unusually high).
+
+## ANTI-PATTERNS (THIS PROJECT)
+
+- Never use `@type: ignore`, `@ts-expect-error`, `as any` (type safety strict)
+- Never use bare `except:` - catch specific exceptions
+- Never use legacy typing imports (`List`, `Optional`, `Union`) - use native syntax
+- Never acquire locks in wrong order (always `_write_lock` before `_lock`)
+- Never suppress type errors in CI - build fails on type violations
+
+## UNIQUE STYLES
+
+**Triple Single Quotes** - Docstrings use `'''not """`. Enforced by lint script.
+
+**Custom Build Wrappers** - All dev commands in bash scripts with auto-installation (`uv`, `ty`, `ruff`, `pytest`).
+
+**Git Hooks in VCS** - Hooks stored in `scripts/git-hooks/` (not `.git/hooks`) for version control.
+
+**Color-Coded Output** - All scripts use ANSI colors for human + CI readability.
+
+**Stubs Directory** - Custom `reflectlog/stubs/` path for type stubs (pyproject.toml).
+
+**Plugin Discovery** - Three mechanisms: entry points, directory scan, static registration.
+
+**Adaptive Overfetch** - Multiplier adjusts 1.5-3x based on index size.
+
+**Temporal Scoring** - Recency decay with configurable rate (`0.01` = ~69hr half-life).
+
+## COMMANDS
 
 ```bash
-# Install dependencies
+# Install
 uv sync
 
-# Type checking (ty - strict mypy alternative)
+# Type check (ty - strict)
 ./start-type-check.sh
 
-# Linting (ruff)
-./start-lint.sh --all        # Check, fix, and format
+# Lint (ruff)
+./start-lint.sh --all        # Check + fix + format
 ./start-lint.sh --check      # Check only
-./start-lint.sh --fix        # Fix issues automatically
+./start-lint.sh --fix        # Fix auto-fixable
 
-# Testing
-./start-unittest.sh                      # Run all tests
-./start-unittest.sh --coverage           # With coverage report
-./start-unittest.sh --parallel           # Parallel execution
-./start-unittest.sh --file tests/unit/application/test_memory_manager.py  # Single file
-./start-unittest.sh --pattern test_add   # Tests matching pattern
+# Test (pytest)
+./start-unittest.sh                      # Run all
+./start-unittest.sh --coverage           # With 90% threshold
+./start-unittest.sh --parallel           # pytest-xdist
+./start-unittest.sh --pattern test_add   # Filter tests
 
-# Run server
+# Server
 uv run reflectlog --transport http --port 9103
 ```
 
-## Code Style Guidelines
+## NOTES
 
-### Imports
-- Use absolute imports: `from reflectlog.application.config import Config`
-- Group imports: stdlib → third-party → local (separated by blank lines)
-- Use `TYPE_CHECKING` guard for type-only imports
-
-### Formatting
-- Line length: 120 characters (ruff default)
-- Use triple single quotes for docstrings: `'''docstring'''`
-- Run `./start-lint.sh --format` before committing
-
-### Types
-- Python 3.14+ required (no type union syntax like `List[str] | None`, use `str | None`)
-- Use `ty` for static type checking (strict mode)
-- Avoid `Any`, `Union`, `Optional` where native union syntax works
-- Private attributes use `PrivateAttr` in Pydantic models
-
-### Naming Conventions
-- **Classes**: `PascalCase` (e.g., `MemoryManager`, `SearchError`)
-- **Functions/Methods**: `snake_case` (e.g., `get_messages()`, `_init_engine()`)
-- **Constants**: `UPPER_SNAKE_CASE` (e.g., `LOG_ADD_MESSAGE_PREVIEW_LIMIT`)
-- **Private members**: Leading underscore (e.g., `_lock`, `_client`)
-- **Type variables**: `PascalCase` with `T` prefix (e.g., `TResult`, `TConfig`)
-
-### Error Handling
-- Use custom exception hierarchy (see `reflectlog/application/exceptions.py`)
-- Always chain exceptions with `from e`: `raise XError(...) from e`
-- Never use bare `except:` - catch specific exceptions
-- Log errors with `StructuredLogger` before raising
-
-### Async Code
-- Use `asyncio_mode = auto` in pytest
-- Lazy initialization for expensive resources (embedders, rerankers)
-- Use `anyio` for cross-platform async operations
-
-### Thread Safety
-- Follow lock hierarchy: `_write_lock` before `_lock` (see `MemoryManager` docstring)
-- USearch is not thread-safe: serialize writes with `_write_lock`
-- RLock for methods that may call other protected methods
-
-### Testing
-- Test files: `tests/unit/` and `tests/integration/`
-- Use `pytest.mark.unit` / `pytest.mark.integration` markers
-- Fixtures in `conftest.py` at test directory root
-- Mock external services (LLM APIs, embedding services)
-
-### Project Structure
-```
-reflectlog/
-├── core/              # Protocol definitions and abstractions
-│   ├── __init__.py    # Package exports
-│   ├── config.py      # Configuration protocols (IServerConfig, ISearchConfig, etc.)
-│   ├── config_adapters.py  # Config adapters for protocol-based DI
-│   ├── memory.py      # Memory operation protocols (IMemoryStore, IMemoryManager)
-│   ├── search.py      # Search engine protocols (ISearchBackend, IFusionAlgorithm)
-│   ├── reranking.py   # Reranker protocols (IReranker, IRerankerProvider)
-│   ├── tools.py       # Tool registration protocols (ITool, IToolRegistry)
-│   └── logging.py     # Logging protocols (ILoggingService, LogLevel)
-│
-├── application/       # Business logic (depends on core)
-│   ├── mcp_server.py  # MCP server orchestration
-│   ├── memory/        # Memory management
-│   │   ├── manager.py              # MemoryManager (facade)
-│   │   ├── engine_factory.py       # Engine factory for search engines
-│   │   ├── search_pipeline.py      # Search pipeline with pluggable stages
-│   │   ├── add_pipeline.py         # Add pipeline with pluggable phases
-│   │   ├── fusion/                 # RRF fusion algorithms
-│   │   ├── search_strategies.py    # Original search strategies
-│   │   ├── add_phases.py           # Original add phases
-│   │   └── match_utils.py          # Match utilities
-│   ├── tools/        # MCP tool implementations
-│   ├── config/       # Configuration
-│   └── utils/        # Utilities
-│
-├── infrastructure/   # Implementations (depend on core)
-│   ├── search/       # Search engine implementations (re-exports from parent)
-│   ├── embeddings/   # Embedding provider implementations
-│   ├── reranking/    # Reranker implementations
-│   ├── memory/       # Memory storage implementations
-│   └── llm/          # LLM provider implementations
-│
-├── plugins/          # Plugin system for extensibility
-│   ├── discovery.py  # Plugin discovery mechanisms
-│   ├── registry.py   # Plugin registry
-│   └── loading.py    # Plugin loading and lifecycle
-│
-├── utility/          # Platform-specific utilities
-└── server.py         # CLI entry point
-```
-
-### Key Patterns
-
-1. **Protocol-Based Design**: Components depend on protocols from `core/` rather than concrete implementations
-2. **Pluggable Pipelines**: Search and add operations use composable stages with protocol interfaces
-3. **Plugin Architecture**: Discovery via entry points, directory scan, or static registration
-4. **Factory Pattern**: EngineFactory creates and configures search engines
-5. **Dependency Injection**: Components receive dependencies through constructor parameters
+- **Source of Truth**: `get_all()` returns from USearchEngine (semantic backend). Both engines must stay in sync.
+- **Tantivy Soft-Delete**: O(1) vs O(n) rebuild. Compacts at 20% tombstones.
+- **Smart Replacement**: LLM detects memory updates with `0.7` confidence threshold. Archives replaced for 30 days.
+- **Exact Match Fallback**: Database lookup when semantic search misses exact text match.
+- **Custom Exception Hierarchy**: All errors chain with `from e` to preserve tracebacks.
+- **Type Checker**: Uses `ty` (not mypy). `reportAny = "none"` - completely ignores `Any` types.
+- **Coverage Precision**: 2 decimal places, reports even covered lines (`skip_covered = false`).
+- **Concurrent LLM Calls**: Smart replacement checks run in parallel with semaphore limiting.
+- **Three Transport Modes**: stdio, http, sse, streamable-http (not just stdio).
+- **Query Embedding Cache**: LRU cache (default 100 entries) reduces API calls.
