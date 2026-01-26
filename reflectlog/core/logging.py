@@ -5,7 +5,7 @@ abstractions enable different logging implementations while providing
 a consistent interface for structured logging.
 """
 
-from typing import Protocol, runtime_checkable, Optional, Any
+from typing import Protocol, runtime_checkable, Any
 from enum import Enum
 from datetime import datetime
 

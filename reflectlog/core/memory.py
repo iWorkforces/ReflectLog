@@ -7,7 +7,6 @@ consistent interface to the application layer.
 """
 
 from typing import Protocol, runtime_checkable, Optional
-from datetime import datetime
 
 
 @runtime_checkable

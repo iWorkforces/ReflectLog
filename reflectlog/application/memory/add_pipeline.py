@@ -8,7 +8,7 @@ This module provides the AddPipeline class that orchestrates the
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol
 import threading
 import logging
 
@@ -191,7 +191,7 @@ class DefaultStoragePhase:
 
             if self._fulltext is not None:
                 for msg in stored:
-                    await self._fulltext.add(project_id, [msg])
+                    await self._fulltext.add(project_id, msg)
 
             return len(stored)
 

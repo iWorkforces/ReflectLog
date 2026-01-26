@@ -19,7 +19,6 @@ Example:
 """
 
 from typing import Protocol, runtime_checkable, Literal
-from datetime import datetime
 
 
 @runtime_checkable

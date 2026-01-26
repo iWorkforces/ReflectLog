@@ -6,7 +6,7 @@ or "find reranker plugins".
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Generic, TypeVar, Protocol, runtime_checkable, cast
+from typing import Optional, Generic, TypeVar, Protocol, runtime_checkable
 from enum import Enum
 from datetime import datetime, timezone
 

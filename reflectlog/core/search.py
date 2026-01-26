@@ -5,9 +5,8 @@ enables different search backends—vector search, full-text search, hybrid
 approaches—while presenting a consistent interface to the search pipeline.
 """
 
-from typing import Protocol, runtime_checkable, Optional, Any
+from typing import Protocol, runtime_checkable, Any
 from dataclasses import dataclass, field
-from datetime import datetime
 
 
 @dataclass(frozen=True)

@@ -8,14 +8,13 @@ This module provides the SearchPipeline class that orchestrates the
 4. Reranking (LLM, cross-encoder, or none)
 """
 
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol
 from dataclasses import dataclass
 import anyio
 import logging
 
 from reflectlog.application.config import Config
 from reflectlog.application.utils import StructuredLogger
-from reflectlog.core.memory import IMemoryBackend
 from reflectlog.core.reranking import IReranker
 from reflectlog.core.search import (
     ISearchBackend,
@@ -127,10 +126,11 @@ class DefaultBackendExecutor:
             tg.start_soon(search_semantic)
 
             # Full-text search (if enabled)
-            if self._fulltext is not None and context.enable_hybrid_search:
+            fulltext_backend = self._fulltext
+            if fulltext_backend is not None and context.enable_hybrid_search:
 
                 async def search_fulltext():
-                    fulltext_results = await self._fulltext.search(
+                    fulltext_results = await fulltext_backend.search(
                         query=context.query,
                         project_id=context.project_id,
                         limit=context.overfetch_limit,

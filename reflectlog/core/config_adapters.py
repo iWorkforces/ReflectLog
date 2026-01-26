@@ -30,7 +30,7 @@ Example:
         service = SearchService(search_config=SearchConfigAdapter(config))
 """
 
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal
 
 from reflectlog.core.config import (
     IAppConfig,

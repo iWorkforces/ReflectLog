@@ -4,14 +4,12 @@ This module provides the PluginLoader class that handles plugin lifecycle:
 loading, initialization, activation, deactivation, and unloading.
 """
 
-import asyncio
 from dataclasses import dataclass
 from typing import Optional, Generic, TypeVar, Protocol, Callable, runtime_checkable
-from datetime import datetime
 import logging
 
 from .discovery import PluginDiscoveryStrategy, DiscoveredPlugin, PluginDiscoverer
-from .registry import PluginRegistry, PluginMetadata, PluginState
+from .registry import PluginRegistry, PluginState
 
 
 T = TypeVar("T")
