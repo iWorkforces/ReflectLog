@@ -32,7 +32,7 @@ Use this skill when you need:
 Set it in your local shell or runtime environment, for example:
 
 ```bash
-export TAVILY_API_KEY="tvly-xxxxx"
+export TAVILY_API_KEY=tvly-IVcxxxHk
 ```
 
 ---
@@ -60,7 +60,7 @@ Write to `/tmp/tavily_request.json`:
 
 ```json
 {
-  "query": "2025 AI Trending",
+  "query": "2025/2026 AI Trending",
   "search_depth": "basic",
   "max_results": 5
 }
