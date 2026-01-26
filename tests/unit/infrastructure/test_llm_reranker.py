@@ -196,7 +196,7 @@ class TestOpenAIRerankerProvider:
             return_value=mock_response
         )
 
-        _doc, score = await mock_provider.score_document(
+        doc, score = await mock_provider.score_document(
             query="Python tutorials",
             document="Learn Python programming basics",
             fallback_score=0.5,
@@ -455,7 +455,7 @@ class TestAnthropicRerankerProvider:
         with patch("reflectlog.utility.generate_content") as mock_generate:
             mock_generate.return_value = '{"score": 0.85}'
 
-            _doc, score = await mock_provider.score_document(
+            doc, score = await mock_provider.score_document(
                 query="Python tutorials",
                 document="Learn Python programming basics",
                 fallback_score=0.5,

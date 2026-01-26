@@ -254,7 +254,7 @@ class TestOpenAIReplacementProvider:
             return_value=mock_response
         )
 
-        should_replace, confidence, _reason = await mock_provider.detect_replacement(
+        should_replace, confidence, reason = await mock_provider.detect_replacement(
             prompt="test prompt",
             max_retries=3,
             retry_delay=1.0,
@@ -284,7 +284,7 @@ class TestOpenAIReplacementProvider:
             return_value=mock_response
         )
 
-        should_replace, confidence, _reason = await mock_provider.detect_replacement(
+        should_replace, confidence, reason = await mock_provider.detect_replacement(
             prompt="test prompt",
             max_retries=3,
             retry_delay=1.0,
@@ -377,7 +377,7 @@ class TestOpenAIReplacementProvider:
         mock_logger = MagicMock()
         mock_provider._logger = mock_logger
 
-        should_replace, confidence, _reason = await mock_provider.detect_replacement(
+        should_replace, confidence, reason = await mock_provider.detect_replacement(
             prompt="test prompt",
             max_retries=2,
             retry_delay=0.01,  # Fast retries for testing
@@ -457,7 +457,7 @@ That's my assessment."""
                 }
             )
 
-            should_replace, confidence, _reason = await provider.detect_replacement(
+            should_replace, confidence, reason = await provider.detect_replacement(
                 prompt="test prompt",
                 max_retries=3,
                 retry_delay=1.0,
@@ -506,7 +506,7 @@ That's my assessment."""
             mock_logger = MagicMock()
             provider._logger = mock_logger
 
-            should_replace, confidence, _reason = await provider.detect_replacement(
+            should_replace, confidence, reason = await provider.detect_replacement(
                 prompt="test prompt",
                 max_retries=2,
                 retry_delay=0.01,

@@ -115,6 +115,7 @@ class TantivyEngine(BaseModel):
         default_factory=OrderedDict
     )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
 
     def __init__(
         self,
