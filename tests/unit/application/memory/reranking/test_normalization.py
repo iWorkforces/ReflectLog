@@ -7,8 +7,8 @@ Tests cover:
 - apply_recency_decay: Apply decay to scored results
 """
 
-import math
 from datetime import datetime, timedelta, timezone
+import math
 
 import pytest
 

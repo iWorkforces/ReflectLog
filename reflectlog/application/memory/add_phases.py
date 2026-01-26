@@ -10,9 +10,9 @@ Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
 """
 
+from dataclasses import dataclass, field
 import threading
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 import anyio
@@ -91,7 +91,7 @@ class Phase2Result:
         duration: Time taken for phase 2 execution.
     """
 
-    replacement_map: Dict[str, List[ReplacementInfo]]
+    replacement_map: dict[str, list[ReplacementInfo]]
     total_replacements: int
     duration: float
 
@@ -109,7 +109,7 @@ class Phase3Result:
 
     stored_count: int
     replaced_count: int
-    replacements: List[ReplacementInfo]
+    replacements: list[ReplacementInfo]
     duration: float
 
 
@@ -143,7 +143,7 @@ class DuplicateDetectionPhase:
         self.logger = logger
         self._project_id = config.project_id
 
-    async def execute(self, messages: List[str]) -> Phase1Result:
+    async def execute(self, messages: list[str]) -> Phase1Result:
         """Execute Phase 1: Parallel duplicate detection.
 
         Args:
@@ -291,7 +291,7 @@ class SmartReplacementPhase:
             return None
         return self._memory_manager.smart_replacer
 
-    async def execute(self, messages: List[str]) -> Phase2Result:
+    async def execute(self, messages: list[str]) -> Phase2Result:
         """Execute Phase 2: Parallel smart replacement detection.
 
         Args:
@@ -373,7 +373,7 @@ class SmartReplacementPhase:
             List of ReplacementInfo objects for memories that should be replaced.
             Empty list if no replacements needed.
         """
-        replacements: List[ReplacementInfo] = []
+        replacements: list[ReplacementInfo] = []
 
         try:
             # Step 1: Find top N most similar memories via semantic search
@@ -934,7 +934,7 @@ class AddPipeline:
         self.config = config
         self.logger = logger
 
-    async def execute(self, messages: List[str], dry_run: bool = False) -> AddResult:
+    async def execute(self, messages: list[str], dry_run: bool = False) -> AddResult:
         """Execute the 3-phase add pipeline.
 
         Args:

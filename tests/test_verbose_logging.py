@@ -1,8 +1,9 @@
 """Test to demonstrate verbose logging in the MCP server."""
 
-from fastmcp import Client
-import anyio
 import os
+
+import anyio
+from fastmcp import Client
 import pytest
 
 pytestmark = pytest.mark.skipif(

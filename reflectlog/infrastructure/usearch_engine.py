@@ -10,9 +10,9 @@ Clean Architecture Compliance:
     Dependency Inversion Principle from SOLID.
 """
 
+from dataclasses import dataclass
 import os
 import threading
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
-from usearch.index import Index, BatchMatches
+from usearch.index import BatchMatches, Index
 
 from reflectlog.application.exceptions import StorageError
 from reflectlog.application.types import Embeddings, ISemanticSearchEngine
@@ -29,7 +29,7 @@ from reflectlog.application.utils.security import validate_project_id
 from reflectlog.infrastructure.message_store import MessageStore
 
 
-def _is_dict_config(config: object) -> "TypeGuard[dict[str, Any]]":
+def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
     """Type guard to check if config is a dict."""
     return isinstance(config, dict)
 
@@ -72,7 +72,7 @@ class USearchConfig:
     exact_search_threshold: int = 0
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "USearchConfig":
+    def from_dict(cls, data: dict[str, Any]) -> USearchConfig:
         """Create USearchConfig from a dictionary with validation.
 
         This method properly validates dict contents and returns a typed instance,
@@ -98,7 +98,7 @@ class USearchConfig:
         )
 
     @classmethod
-    def from_app_config(cls, config: Any) -> "USearchConfig":
+    def from_app_config(cls, config: Any) -> USearchConfig:
         """Create USearchConfig from application Config.
 
         Args:
@@ -529,7 +529,7 @@ class USearchEngine(BaseModel):
         query: str,
         project_id: str,
         limit: int,
-    ) -> List[Tuple[str, float, str]]:
+    ) -> list[tuple[str, float, str]]:
         """Execute semantic search.
 
         Supports both exact (brute-force) and approximate (HNSW) search modes:
@@ -599,7 +599,7 @@ class USearchEngine(BaseModel):
             records = self.message_store.get_batch(keys)
 
             # Collect distances for batch conversion (numba-accelerated)
-            filtered_matches: List[Tuple[Any, Any]] = []  # (record, match)
+            filtered_matches: list[tuple[Any, Any]] = []  # (record, match)
             for match in matches:
                 key = int(match.key)
                 record = records.get(key)
@@ -617,7 +617,7 @@ class USearchEngine(BaseModel):
                 similarities = self._distances_to_scores(distances)
 
                 # Build results with converted scores and created_at timestamps
-                results: List[Tuple[str, float, str]] = [
+                results: list[tuple[str, float, str]] = [
                     (record.message, float(similarities[i]), record.created_at)
                     for i, (record, _) in enumerate(filtered_matches)
                 ]
@@ -651,7 +651,7 @@ class USearchEngine(BaseModel):
                 )
             raise RuntimeError(f"USearch search failed: {e}") from e
 
-    def get_all(self, project_id: str) -> List[str]:
+    def get_all(self, project_id: str) -> list[str]:
         """Retrieve all stored messages for a project.
 
         Args:

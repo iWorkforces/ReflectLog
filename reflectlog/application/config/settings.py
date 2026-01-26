@@ -1,9 +1,9 @@
 """Configuration management for ReflectLogMCP Server."""
 
+from dataclasses import dataclass
 import os
 import re
 import threading
-from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
 from ..exceptions import ConfigurationError
@@ -516,7 +516,7 @@ class Config:
         return allowed_tools
 
     @classmethod
-    def from_environment(cls) -> "Config":
+    def from_environment(cls) -> Config:
         """Create configuration from environment variables.
 
         This method centralizes environment parsing and performs strict validation

@@ -20,6 +20,8 @@ This module also re-exports from subpackages:
 """
 
 # Re-export from original module locations (backward compatibility)
+# Re-export from subpackages for new imports
+from . import embeddings, llm, memory, reranking, search
 from .cached_embeddings import CachedEmbeddings
 from .cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
 from .llm_provider_base import BaseOpenAIProvider, IStructuredOutputSchema
@@ -46,13 +48,6 @@ from .smart_replacer import (
 )
 from .tantivy_engine import TantivyConfig, TantivyEngine
 from .usearch_engine import USearchConfig, USearchEngine
-
-# Re-export from subpackages for new imports
-from . import search
-from . import embeddings
-from . import reranking
-from . import memory
-from . import llm
 
 __all__ = [
     # Original exports

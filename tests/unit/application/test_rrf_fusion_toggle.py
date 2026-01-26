@@ -2,8 +2,9 @@
 """Unit tests for ENABLE_RRF_FUSION configuration toggle."""
 
 import os
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 
 from reflectlog.application.config.settings import Config
 

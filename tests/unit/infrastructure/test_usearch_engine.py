@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from reflectlog.application.types import Embeddings
 
+from reflectlog.application.types import Embeddings
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 

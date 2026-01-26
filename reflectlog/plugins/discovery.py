@@ -7,12 +7,11 @@ This module provides mechanisms for discovering plugins from various sources:
 """
 
 from dataclasses import dataclass
-from typing import TypeVar, Generic, Type, cast
 import importlib
 import importlib.metadata
-import pkgutil
 from pathlib import Path
-
+import pkgutil
+from typing import Generic, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -50,7 +49,7 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
     def __init__(
         self,
         group: str,
-        plugin_type: Type[T],
+        plugin_type: type[T],
     ):
         """Initialize entry point discovery.
 
@@ -113,7 +112,7 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
     def __init__(
         self,
         package_names: list[str],
-        plugin_base_class: Type[T],
+        plugin_base_class: type[T],
         module_pattern: str = "plugin_*.py",
     ):
         """Initialize directory scan discovery.
@@ -290,7 +289,7 @@ class PluginDiscoverer(Generic[T]):
         self._discovered = await self._strategy.discover()
         return self._discovered
 
-    async def load_plugin(self, name: str) -> Optional[T]:
+    async def load_plugin(self, name: str) -> T | None:
         """Load a plugin by name.
 
         Args:

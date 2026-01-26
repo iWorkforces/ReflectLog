@@ -1,24 +1,24 @@
 """Type stubs for ranx library."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 class Run:
     """A ranked run containing query-document scores."""
 
-    run: Dict[str, Dict[str, float]]
+    run: dict[str, dict[str, float]]
     name: str
 
     def __init__(
         self,
-        run_dict: Dict[str, Dict[str, float]],
-        name: Optional[str] = None,
+        run_dict: dict[str, dict[str, float]],
+        name: str | None = None,
     ) -> None: ...
 
 def fuse(
-    runs: List[Run],
-    norm: Optional[str] = None,
+    runs: list[Run],
+    norm: str | None = None,
     method: str = "rrf",
-    params: Optional[Dict[str, Any]] = None,
+    params: dict[str, Any] | None = None,
 ) -> Run:
     """Fuse multiple runs into a single combined run.
 

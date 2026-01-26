@@ -1,7 +1,7 @@
 """Structured logging utilities for ReflectLogMCP Server."""
 
-import logging
 from contextlib import contextmanager
+import logging
 from typing import Any
 
 

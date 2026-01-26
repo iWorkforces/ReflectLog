@@ -6,7 +6,8 @@ specifically the CrossEncoder class used for reranking.
 Reference: https://www.sbert.net/docs/cross_encoder/
 """
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray

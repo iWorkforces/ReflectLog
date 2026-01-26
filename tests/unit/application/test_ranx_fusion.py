@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from reflectlog.application.memory.fusion import (
-    RanxFusionEngine,
     SUPPORTED_METHODS,
     SUPPORTED_NORMALIZATIONS,
+    RanxFusionEngine,
     create_fusion_engine,
 )
 

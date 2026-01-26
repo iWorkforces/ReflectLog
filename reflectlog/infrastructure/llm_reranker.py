@@ -1,9 +1,9 @@
 """LLM-based document reranker for search results."""
 
-import json
-import re
 from dataclasses import dataclass
 from datetime import datetime
+import json
+import re
 from typing import Any, Protocol
 
 import anyio
@@ -116,7 +116,7 @@ class LLMRerankerConfig:
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
-    def from_app_config(cls, config: Config) -> "LLMRerankerConfig":
+    def from_app_config(cls, config: Config) -> LLMRerankerConfig:
         """Create LLMRerankerConfig from application Config.
 
         Args:

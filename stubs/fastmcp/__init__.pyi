@@ -1,6 +1,7 @@
 """Type stubs for fastmcp library."""
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 class Tool:
     """FastMCP Tool with registered function."""

@@ -11,12 +11,13 @@ Metrics are tracked for:
 - Cache hit rates
 """
 
+from collections import defaultdict
+from collections.abc import Callable
 import contextlib
+from dataclasses import dataclass
 import threading
 import time
-from collections import defaultdict
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 
 @dataclass

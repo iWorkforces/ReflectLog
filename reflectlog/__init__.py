@@ -3,8 +3,6 @@
 This module provides the public API for ReflectLogMCP.
 """
 
-from reflectlog.version import __version__
-
 # Export exception hierarchy for error handling
 from reflectlog.application.exceptions import (
     ConfigurationError,
@@ -18,6 +16,7 @@ from reflectlog.application.exceptions import (
     StorageError,
     ValidationError,
 )
+from reflectlog.version import __version__
 
 
 # Lazy import for main to avoid circular imports

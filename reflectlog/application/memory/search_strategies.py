@@ -8,9 +8,9 @@ concern-focused module. It implements the 4-step search pipeline:
 4. Reranking (LLM or CrossEncoder)
 """
 
+from dataclasses import dataclass
 import math
 import time
-from dataclasses import dataclass
 from typing import Any
 
 from asyncer import asyncify, create_task_group
@@ -20,7 +20,6 @@ from ..exceptions import SearchError
 from ..types import ISemanticSearchEngine
 from ..utils import StructuredLogger, format_fusion_score_status, truncate_message
 from .fusion import FusionEngine
-
 
 # Constants for magic numbers (documented for maintainability)
 MIN_OVERFETCH_LIMIT = 20  # Minimum docs to fetch for better fusion quality

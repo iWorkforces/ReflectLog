@@ -1,7 +1,5 @@
 """ReflectLogMCP Server - Refactored modular implementation."""
 
-from typing import Type
-
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
 
@@ -18,7 +16,7 @@ from .tools import (
 from .utils import create_logger
 
 # Canonical registry of available MCP tool implementations.
-AVAILABLE_TOOL_CLASSES: dict[str, Type[BaseTool]] = {
+AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {
     "add": AddTool,
     "get_all": GetAllTool,
     "search": SearchTool,

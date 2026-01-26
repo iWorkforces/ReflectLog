@@ -1,6 +1,6 @@
 """Type stubs for tantivy-py library."""
 
-from typing import Any, List, Tuple
+from typing import Any
 
 class FieldEntry:
     """A field entry in the schema."""
@@ -87,7 +87,7 @@ class Document:
 class TopDocs:
     """Search results from a Tantivy query."""
 
-    hits: List[Tuple[float, Any]]
+    hits: list[tuple[float, Any]]
 
 class Searcher:
     """A Tantivy searcher for executing queries."""
@@ -144,7 +144,7 @@ class Index:
         ...
 
     @staticmethod
-    def open(path: str) -> "Index":
+    def open(path: str) -> Index:
         """Open an existing index from disk."""
         ...
 
@@ -160,7 +160,7 @@ class Index:
         self,
         query: str,
         *,
-        default_field_names: List[str] | None = None,
+        default_field_names: list[str] | None = None,
     ) -> Query:
         """Parse a query string."""
         ...

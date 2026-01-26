@@ -8,15 +8,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from reflectlog.application.config import Config
 from reflectlog.application.memory import MemoryManager
+from reflectlog.application.types import Embeddings
 from reflectlog.application.utils import StructuredLogger
 from reflectlog.application.utils.security import SecretString
-from reflectlog.application.types import Embeddings
-
-import numpy as np
 
 
 class MockEmbedder(Embeddings):

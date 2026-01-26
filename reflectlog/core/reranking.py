@@ -5,7 +5,7 @@ Rerankers improve search result quality by re-scoring results using
 additional signals like LLM relevance or cross-encoder similarity.
 """
 
-from typing import Protocol, runtime_checkable, Any
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable

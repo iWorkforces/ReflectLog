@@ -26,27 +26,27 @@ Example:
 """
 
 from .discovery import (
-    DiscoveredPlugin,
-    PluginDiscoveryStrategy,
-    EntryPointDiscovery,
-    DirectoryScanDiscovery,
-    StaticRegistration,
     CompositeDiscovery,
+    DirectoryScanDiscovery,
+    DiscoveredPlugin,
+    EntryPointDiscovery,
     PluginDiscoverer,
+    PluginDiscoveryStrategy,
+    StaticRegistration,
     load_plugin,
 )
+from .loading import (
+    IPluginLifecycle,
+    LifecycleHooks,
+    PluginLoader,
+)
 from .registry import (
-    PluginState,
+    IPluggable,
     PluginCapability,
     PluginMetadata,
-    IPluggable,
     PluginRegistry,
+    PluginState,
     ToolRegistry,
-)
-from .loading import (
-    LifecycleHooks,
-    IPluginLifecycle,
-    PluginLoader,
 )
 
 __all__ = [

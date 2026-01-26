@@ -4,8 +4,8 @@ This module provides comprehensive validation for configuration values,
 ensuring that all settings are valid and consistent before the server starts.
 """
 
-import re
 from dataclasses import dataclass
+import re
 from typing import Any
 
 

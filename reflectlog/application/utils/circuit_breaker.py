@@ -11,10 +11,11 @@ unreliable, preventing the entire memory system from hanging.
 """
 
 import asyncio
-import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, TypeVar
+import time
+from typing import Any, TypeVar
 
 from .logging import StructuredLogger
 

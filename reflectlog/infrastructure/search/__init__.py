@@ -8,8 +8,8 @@ directory. This module re-exports them for backward compatibility.
 """
 
 # Re-export from parent module for backward compatibility
-from reflectlog.infrastructure.usearch_engine import USearchEngine, USearchConfig
-from reflectlog.infrastructure.tantivy_engine import TantivyEngine, TantivyConfig
+from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
+from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 __all__ = [
     "USearchEngine",

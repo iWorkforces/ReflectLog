@@ -7,12 +7,12 @@ and the SQLite row ID is used as the USearch key.
 Uses SQLite with WAL mode for improved concurrent write performance via MVCC.
 """
 
-import os
-import threading
 from dataclasses import dataclass
+import os
+import sqlite3
+import threading
 from typing import Any
 
-import sqlite3
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.exceptions import StorageError
@@ -85,7 +85,7 @@ class MessageStore(BaseModel):
     logger: Any = None
     timeout: float = 30.0  # Database busy timeout in seconds
 
-    _conn: Optional[sqlite3.Connection] = PrivateAttr(default=None)
+    _conn: sqlite3.Connection | None = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _conn_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
 
@@ -319,7 +319,7 @@ class MessageStore(BaseModel):
             finally:
                 cursor.close()
 
-    def get(self, message_id: int) -> Optional[MessageRecord]:
+    def get(self, message_id: int) -> MessageRecord | None:
         """Get a message by its ID.
 
         Args:
@@ -568,7 +568,7 @@ class MessageStore(BaseModel):
             finally:
                 cursor.close()
 
-    def get_id_by_message(self, project_id: str, message: str) -> Optional[int]:
+    def get_id_by_message(self, project_id: str, message: str) -> int | None:
         """Get the ID of a message by its content.
 
         Args:
@@ -609,7 +609,7 @@ class MessageStore(BaseModel):
         replaced_by: str,
         reason: str,
         confidence: float,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Archive a message before deletion (for recovery).
 
         Args:
@@ -717,7 +717,7 @@ class MessageStore(BaseModel):
             finally:
                 cursor.close()
 
-    def restore_from_archive(self, archive_id: int) -> Optional[int]:
+    def restore_from_archive(self, archive_id: int) -> int | None:
         """Restore a message from the archive.
 
         Args:

@@ -15,10 +15,10 @@ Example:
     >>> results = reranker.rerank("Python tutorials", candidates)
 """
 
-import threading
-import warnings
 from dataclasses import dataclass
+import threading
 from typing import Any
+import warnings
 
 from FlagEmbedding import FlagReranker
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -58,7 +58,7 @@ class CrossEncoderConfig:
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
-    def from_app_config(cls, config: Config) -> "CrossEncoderConfig":
+    def from_app_config(cls, config: Config) -> CrossEncoderConfig:
         """Create CrossEncoderConfig from application Config.
 
         Args:

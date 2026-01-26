@@ -353,7 +353,7 @@ class ISemanticSearchEngine(Protocol):
         ...
 
     @property
-    def message_store(self) -> "MessageStore":
+    def message_store(self) -> MessageStore:
         """Get the underlying message store for archive operations.
 
         Returns:

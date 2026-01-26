@@ -8,8 +8,8 @@ directory. This module re-exports them for backward compatibility.
 """
 
 # Re-export from parent module for backward compatibility
-from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 
 __all__ = [
     "LangchainQwenEmbeddings",

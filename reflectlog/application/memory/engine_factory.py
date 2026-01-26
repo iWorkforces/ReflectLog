@@ -9,6 +9,7 @@ modifying the factory interface.
 from dataclasses import dataclass
 
 from reflectlog.application.config import Config
+from reflectlog.application.memory.fusion import FusionEngine, create_fusion_engine
 from reflectlog.application.utils import StructuredLogger
 from reflectlog.infrastructure import (
     CachedEmbeddings,
@@ -24,7 +25,6 @@ from reflectlog.infrastructure import (
     USearchConfig,
     USearchEngine,
 )
-from reflectlog.application.memory.fusion import FusionEngine, create_fusion_engine
 
 
 @dataclass

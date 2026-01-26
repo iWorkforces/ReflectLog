@@ -1,9 +1,9 @@
 """Smart memory replacement detector using LLM."""
 
 import asyncio
+from dataclasses import dataclass
 import json
 import re
-from dataclasses import dataclass
 from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -70,7 +70,7 @@ class SmartReplacerConfig:
     provider: str = "openai"  # Provider: "openai" or "anthropic"
 
     @classmethod
-    def from_app_config(cls, config: Config) -> "SmartReplacerConfig":
+    def from_app_config(cls, config: Config) -> SmartReplacerConfig:
         """Create SmartReplacerConfig from application Config.
 
         Args:
@@ -102,7 +102,7 @@ class IReplacementProvider(Protocol):
         prompt: str,
         max_retries: int,
         retry_delay: float,
-    ) -> Tuple[bool, float, str]:
+    ) -> tuple[bool, float, str]:
         """Detect if replacement should occur.
 
         Args:
@@ -136,7 +136,7 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
     async def _detect_replacement_once(
         self,
         prompt: str,
-    ) -> Tuple[bool, float, str]:
+    ) -> tuple[bool, float, str]:
         """Call LLM with structured output once.
 
         Args:
@@ -169,7 +169,7 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
         prompt: str,
         max_retries: int,
         retry_delay: float,
-    ) -> Tuple[bool, float, str]:
+    ) -> tuple[bool, float, str]:
         """Detect if replacement should occur using OpenAI API.
 
         Args:
@@ -277,7 +277,7 @@ class AnthropicReplacementProvider:
         prompt: str,
         max_retries: int,
         retry_delay: float,
-    ) -> Tuple[bool, float, str]:
+    ) -> tuple[bool, float, str]:
         """Detect if replacement should occur using Anthropic Claude.
 
         Args:
@@ -419,7 +419,7 @@ class SmartReplacer(BaseModel):
         self,
         new_memory: str,
         existing_memory: str,
-    ) -> Tuple[bool, float, str]:
+    ) -> tuple[bool, float, str]:
         """Check if new memory should replace existing memory.
 
         Uses LLM to analyze whether the new memory semantically replaces

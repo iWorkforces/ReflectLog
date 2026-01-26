@@ -7,7 +7,7 @@ credential manager, etc.).
 
 __version__ = "0.1.0"
 
-from .types import ApiKeyResult, OAUTH_TOKEN_PREFIX, TOKEN_PREFIX
+from .types import OAUTH_TOKEN_PREFIX, TOKEN_PREFIX, ApiKeyResult
 from .utility import (
     generate_content,
     get_anthropic_api_key,

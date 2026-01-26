@@ -1,11 +1,12 @@
 from dataclasses import dataclass
-from typing import Any
 import os
 import random
 import time
+from typing import Any
 import warnings
+
 import anyio
-from openai import OpenAI, AsyncOpenAI, DefaultAioHttpClient, DefaultHttpxClient
+from openai import AsyncOpenAI, DefaultAioHttpClient, DefaultHttpxClient, OpenAI
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 
@@ -19,11 +20,11 @@ class EmbedderConfig:
 
     model: str = ""
     embedding_dims: int = 1536
-    api_key: Optional[str] = None
-    openai_base_url: Optional[str] = None
+    api_key: str | None = None
+    openai_base_url: str | None = None
     timeout: float = 60.0  # 60 seconds default for embedding requests
-    batch_size: Optional[int] = None
-    max_concurrent_batches: Optional[int] = None
+    batch_size: int | None = None
+    max_concurrent_batches: int | None = None
 
 
 class LangchainQwenEmbeddings(BaseModel):
@@ -32,7 +33,7 @@ class LangchainQwenEmbeddings(BaseModel):
     _client: OpenAI | None = PrivateAttr(default=None)
     _async_client: AsyncOpenAI | None = PrivateAttr(default=None)
 
-    def __init__(self, config: Optional[EmbedderConfig | dict[str, Any]] = None):
+    def __init__(self, config: EmbedderConfig | dict[str, Any] | None = None):
         super().__init__(config=config or {})
 
         if isinstance(self.config, dict):

@@ -4,24 +4,24 @@ This module provides a wrapper around the Tantivy full-text search library,
 following the same patterns as qwen3_embedding.py for consistency.
 """
 
+from collections import OrderedDict
+from dataclasses import dataclass
 import os
 import threading
 import time
-from collections import OrderedDict
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from typing import TypeGuard
 
 import numpy as np
-import tantivy
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+import tantivy
 
 from reflectlog.application.exceptions import SearchError
 
 
-def _is_dict_config(config: object) -> "TypeGuard[dict[str, Any]]":
+def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
     """Type guard to check if config is a dict."""
     return isinstance(config, dict)
 
@@ -51,7 +51,7 @@ class TantivyConfig:
     normalize_scores: bool = True
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TantivyConfig":
+    def from_dict(cls, data: dict[str, Any]) -> TantivyConfig:
         """Create TantivyConfig from a dictionary with validation.
 
         This method properly validates dict contents and returns a typed instance,
@@ -100,9 +100,9 @@ class TantivyEngine(BaseModel):
     config: TantivyConfig
     logger: Any = None  # StructuredLogger - using Any to avoid circular imports
 
-    _index: Optional[tantivy.Index] = PrivateAttr(default=None)
-    _writer: Optional[tantivy.IndexWriter] = PrivateAttr(default=None)
-    _searcher: Optional[tantivy.Searcher] = PrivateAttr(default=None)
+    _index: tantivy.Index | None = PrivateAttr(default=None)
+    _writer: tantivy.IndexWriter | None = PrivateAttr(default=None)
+    _searcher: tantivy.Searcher | None = PrivateAttr(default=None)
     # Instance-level locks for thread-safe operations (prevents cross-instance contention)
     # Note: Using RLock (re-entrant) because add() holds lock and calls self.writer property
     _writer_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
@@ -118,7 +118,7 @@ class TantivyEngine(BaseModel):
     def __init__(
         self,
         config: TantivyConfig | dict[str, Any],
-        logger: Optional[Any] = None,
+        logger: Any | None = None,
         **kwargs: Any,
     ):
         """Initialize TantivyEngine.
@@ -267,7 +267,7 @@ class TantivyEngine(BaseModel):
         if self._index is not None:
             self._writer = self._index.writer()
 
-    def _get_all_docs(self, project_id: str) -> List[str]:
+    def _get_all_docs(self, project_id: str) -> list[str]:
         """Get all active (non-tombstoned) documents for a project.
 
         Uses cached tombstone set for O(1) post-filtering after first call.
@@ -296,7 +296,7 @@ class TantivyEngine(BaseModel):
             # Get all results (use index doc count to avoid truncation)
             top_docs = self.searcher.search(query=query, limit=doc_limit)
 
-            results: List[str] = []
+            results: list[str] = []
             seen: set[str] = set()  # Track seen messages to avoid duplicates
 
             for _, doc_addr in top_docs.hits:
@@ -322,7 +322,7 @@ class TantivyEngine(BaseModel):
                 )
             return []
 
-    def find_by_exact_match(self, project_id: str, message: str) -> List[str]:
+    def find_by_exact_match(self, project_id: str, message: str) -> list[str]:
         """Find all messages that exactly match the given message text.
 
         Uses Python-level string comparison after fetching all docs for the project.
@@ -339,7 +339,7 @@ class TantivyEngine(BaseModel):
         all_docs = self._get_all_docs(project_id)
         return [doc for doc in all_docs if doc == message]
 
-    def _get_all_docs_all_projects(self) -> List[Tuple[str, str]]:
+    def _get_all_docs_all_projects(self) -> list[tuple[str, str]]:
         """Get all documents from all projects.
 
         Returns:
@@ -356,7 +356,7 @@ class TantivyEngine(BaseModel):
             searcher = self.searcher
 
             # Get all documents by iterating through segment readers
-            results: List[Tuple[str, str]] = []
+            results: list[tuple[str, str]] = []
 
             # Use a query that matches everything - project_id always exists
             # Search for project_id:* doesn't work, so we'll try multiple common project patterns
@@ -478,7 +478,7 @@ class TantivyEngine(BaseModel):
                         extra={"project_id": self.config.project_id},
                     )
 
-    def _invalidate_tombstone_cache(self, project_id: Optional[str] = None) -> None:
+    def _invalidate_tombstone_cache(self, project_id: str | None = None) -> None:
         """Invalidate tombstone cache for a project or all projects.
 
         Thread-safe cache invalidation. Call this after any operation that
@@ -584,8 +584,8 @@ class TantivyEngine(BaseModel):
             return set()
 
     def _normalize_scores(
-        self, results: List[Tuple[str, float]]
-    ) -> List[Tuple[str, float]]:
+        self, results: list[tuple[str, float]]
+    ) -> list[tuple[str, float]]:
         """Normalize BM25 scores to 0-1 range using batch min-max.
 
         Uses the existing JIT-optimized normalize_scores_minmax function.
@@ -615,7 +615,7 @@ class TantivyEngine(BaseModel):
 
     def search(
         self, query: str, project_id: str, limit: int
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Execute full-text search.
 
         Uses cached tombstone set for O(1) post-filtering after first search.
@@ -678,7 +678,7 @@ class TantivyEngine(BaseModel):
                     )
 
             top_docs = self.searcher.search(query=parsed_query, limit=search_limit)
-            results: List[Tuple[str, float]] = []
+            results: list[tuple[str, float]] = []
 
             for score, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
@@ -976,7 +976,7 @@ class TantivyEngine(BaseModel):
                 )
             return False
 
-    def _rebuild_index_with_docs(self, docs_to_keep: List[Tuple[str, str]]) -> None:
+    def _rebuild_index_with_docs(self, docs_to_keep: list[tuple[str, str]]) -> None:
         """Rebuild the index with the specified documents from all projects.
 
         This destroys the existing index and creates a new one with all
@@ -1233,8 +1233,8 @@ class TantivyEngine(BaseModel):
             top_docs = self.searcher.search(query=query, limit=100000)
 
             # Collect all documents with metadata
-            all_docs: List[
-                Tuple[str, str, int]
+            all_docs: list[
+                tuple[str, str, int]
             ] = []  # (project_id, message, is_deleted)
             tombstoned_messages: set[str] = set()
 
@@ -1253,7 +1253,7 @@ class TantivyEngine(BaseModel):
                         tombstoned_messages.add(cast(str, message))
 
             # Filter to keep only active messages that don't have tombstones
-            docs_to_keep: List[Tuple[str, str]] = []
+            docs_to_keep: list[tuple[str, str]] = []
             removed_originals = 0
             removed_tombstones = 0
 

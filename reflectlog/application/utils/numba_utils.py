@@ -17,8 +17,8 @@ Note:
     - All functions operate on numpy arrays for maximum efficiency
 """
 
-import numpy as np
 from numba import jit, prange
+import numpy as np
 from numpy.typing import NDArray
 
 

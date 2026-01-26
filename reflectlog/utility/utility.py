@@ -17,7 +17,7 @@ from claude_agent_sdk import (
 )
 
 from .platforms import get_platform_retriever
-from .types import ApiKeyResult, OAUTH_TOKEN_PREFIX
+from .types import OAUTH_TOKEN_PREFIX, ApiKeyResult
 
 
 def get_claude_code_api_key(verbose: bool = False) -> str | None:

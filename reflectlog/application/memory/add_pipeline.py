@@ -8,15 +8,14 @@ This module provides the AddPipeline class that orchestrates the
 """
 
 from dataclasses import dataclass, field
-from typing import Protocol
-import threading
 import logging
+import threading
+from typing import Protocol
 
 from reflectlog.application.config import Config
 from reflectlog.application.utils import StructuredLogger
 from reflectlog.core.memory import IMemoryBackend
 from reflectlog.core.reranking import IReranker
-
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +107,7 @@ class DefaultDuplicateDetectionPhase:
     def __init__(
         self,
         semantic_backend: IMemoryBackend,
-        fulltext_backend: Optional[IMemoryBackend],
+        fulltext_backend: IMemoryBackend | None,
         deduplicate_enabled: bool,
     ):
         self._semantic = semantic_backend
@@ -170,7 +169,7 @@ class DefaultStoragePhase:
     def __init__(
         self,
         semantic_backend: IMemoryBackend,
-        fulltext_backend: Optional[IMemoryBackend],
+        fulltext_backend: IMemoryBackend | None,
         write_lock: threading.Lock,
     ):
         self._semantic = semantic_backend
@@ -294,8 +293,8 @@ class AddPipeline:
 
 def create_default_pipeline(
     semantic_backend: IMemoryBackend,
-    fulltext_backend: Optional[IMemoryBackend],
-    replace_detector: Optional[IReranker],
+    fulltext_backend: IMemoryBackend | None,
+    replace_detector: IReranker | None,
     config: Config,
     logger: StructuredLogger,
     write_lock: threading.Lock,

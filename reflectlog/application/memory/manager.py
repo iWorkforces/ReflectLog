@@ -55,19 +55,19 @@ from ..utils import (
     StructuredLogger,
     truncate_message,
 )
-from .fusion import FusionEngine, create_fusion_engine
-from .search_strategies import (
-    SearchContext,
-    SearchPipeline,
-    calculate_adaptive_overfetch,
-)
-from .match_utils import has_exact_match
 from .add_phases import (
     AddPipeline,
     AddResult,
     DuplicateDetectionPhase,
     SmartReplacementPhase,
     StoragePhase,
+)
+from .fusion import FusionEngine, create_fusion_engine
+from .match_utils import has_exact_match
+from .search_strategies import (
+    SearchContext,
+    SearchPipeline,
+    calculate_adaptive_overfetch,
 )
 
 
@@ -150,7 +150,7 @@ class MemoryManager:
         )
 
         # 2. Initialize Tantivy full-text engine (hybrid companion)
-        self._tantivy_engine: Optional[TantivyEngine] = None
+        self._tantivy_engine: TantivyEngine | None = None
         if self.is_hybrid_search:
             tantivy_config = TantivyConfig(
                 project_id=self.project_id,
@@ -564,7 +564,7 @@ class MemoryManager:
         except Exception as e:
             raise StorageError(f"Failed to add message to hybrid storage: {e}") from e
 
-    def add_messages(self, messages: List[str]) -> int:
+    def add_messages(self, messages: list[str]) -> int:
         """Add multiple messages to memory store (thread-safe).
 
         Thread-safe: Uses RLock to ensure consistent state during batch addition.
@@ -581,7 +581,7 @@ class MemoryManager:
         with self._write_lock:
             with self._lock:
                 stored_count = 0
-                messages_to_add: List[str] = []
+                messages_to_add: list[str] = []
                 seen_messages: set[str] = set()
 
                 log_limit = min(len(messages), LOG_ADD_MESSAGE_PREVIEW_LIMIT)
@@ -694,7 +694,7 @@ class MemoryManager:
                 return stored_count
 
     async def add_messages_async(
-        self, messages: List[str], dry_run: bool = False
+        self, messages: list[str], dry_run: bool = False
     ) -> AddResult:
         """Add multiple messages with phased parallel processing (Sprint 2.2).
 
@@ -721,7 +721,7 @@ class MemoryManager:
         """
         return await self._add_pipeline.execute(messages, dry_run)
 
-    def get_all(self) -> List[str]:
+    def get_all(self) -> list[str]:
         """Retrieve all stored messages with cross-engine consistency check (thread-safe).
 
         Thread-safe: Uses RLock to ensure consistent state during retrieval.
@@ -752,8 +752,8 @@ class MemoryManager:
     async def search(
         self,
         query: str,
-        limit: Optional[int] = None,
-    ) -> List[str]:
+        limit: int | None = None,
+    ) -> list[str]:
         """Hybrid semantic + full-text search with RRF ranking (async).
 
         This async method uses the SearchPipeline to execute a 4-step search:
@@ -802,8 +802,8 @@ class MemoryManager:
         return result.messages
 
     def search_for_removal(
-        self, query: str, limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+        self, query: str, limit: int | None = None
+    ) -> list[dict[str, Any]]:
         """Search for messages to potentially remove using direct database lookup.
 
         Uses O(log n) indexed database lookup instead of O(n) iteration through
@@ -826,7 +826,7 @@ class MemoryManager:
         _ = limit  # Unused, kept for API compatibility
 
         try:
-            candidates: List[Dict[str, Any]] = []
+            candidates: list[dict[str, Any]] = []
 
             # Direct database lookup - O(log n) instead of O(n) get_all() + iteration
             msg_id = self._semantic_engine.get_id_by_message(self.project_id, query)

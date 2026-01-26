@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Test to demonstrate score filtering with 5 relevant documents where only 2 pass threshold."""
 
-from fastmcp import Client
-from fastmcp.client.client import CallToolResult
-import anyio
 import json
 import os
+
+import anyio
+from fastmcp import Client
+from fastmcp.client.client import CallToolResult
 import pytest
 
 pytestmark = pytest.mark.skipif(

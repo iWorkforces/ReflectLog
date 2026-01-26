@@ -18,7 +18,7 @@ Example:
         ...
 """
 
-from typing import Protocol, runtime_checkable, Literal
+from typing import Literal, Protocol, runtime_checkable
 
 
 @runtime_checkable

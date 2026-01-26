@@ -14,7 +14,7 @@ from .add_phases import (
 from .fusion import FusionEngine, RanxFusionEngine, create_fusion_engine
 from .manager import MemoryManager
 from .protocols import SearchEngine
-from .search_strategies import SearchContext, SearchResult, SearchPipeline
+from .search_strategies import SearchContext, SearchPipeline, SearchResult
 
 __all__ = [
     "AddResult",

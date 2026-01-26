@@ -1,8 +1,7 @@
-import io
-import sys
-import os
 import argparse
+import os
 import signal
+import sys
 import time
 
 # Add the current directory to Python path for direct execution
@@ -20,9 +19,9 @@ os.environ.setdefault("NUMBA_FASTMATH", "1")
 
 import threading
 
-from reflectlog.version import __version__
 from reflectlog.application.mcp_server import FastMCPServer
 from reflectlog.application.utils.numba_utils import warmup_numba_functions
+from reflectlog.version import __version__
 
 
 def warmup_numba_with_config(

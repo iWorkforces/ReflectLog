@@ -5,8 +5,8 @@ correctly, including race conditions, duplicate detection, and data consistency.
 """
 
 import asyncio
-import os
 from collections import Counter
+import os
 from unittest.mock import MagicMock
 
 import numpy as np

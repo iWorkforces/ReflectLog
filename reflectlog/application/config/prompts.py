@@ -200,10 +200,10 @@ and RRF fusion ranking.
 Available Tools:"""
 
 # Canonical ordering for consistent instruction generation
-TOOL_ORDER: List[str] = ["add", "get_all", "search", "remove", "health_check"]
+TOOL_ORDER: list[str] = ["add", "get_all", "search", "remove", "health_check"]
 
 
-def build_instructions(tool_snippets: List[Tuple[str, str]]) -> str:
+def build_instructions(tool_snippets: list[tuple[str, str]]) -> str:
     """Build MCP instructions dynamically from tool snippets.
 
     Assembles the complete MCP_INSTRUCTIONS string by combining the header
@@ -225,7 +225,7 @@ def build_instructions(tool_snippets: List[Tuple[str, str]]) -> str:
         return f"{INSTRUCTIONS_HEADER}\n    (No tools available)"
 
     # Sort by predefined order; unknown tools appear at end alphabetically
-    def sort_key(item: Tuple[str, str]) -> Tuple[int, str]:
+    def sort_key(item: tuple[str, str]) -> tuple[int, str]:
         name = item[0]
         if name in TOOL_ORDER:
             return (TOOL_ORDER.index(name), name)

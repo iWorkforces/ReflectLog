@@ -35,8 +35,8 @@ from typing import TYPE_CHECKING, Literal
 from reflectlog.core.config import (
     IAppConfig,
     IEmbedderConfig,
-    IRerankerConfig,
     IReplacementConfig,
+    IRerankerConfig,
     ISearchConfig,
     IServerConfig,
     IStorageConfig,
@@ -65,7 +65,7 @@ class ConfigAdapter[IAppConfig]:
         assert isinstance(adapter, IAppConfig)  # True
     """
 
-    def __init__(self, config: "Config") -> None:
+    def __init__(self, config: Config) -> None:
         """Initialize adapter with Config instance.
 
         Args:
@@ -276,7 +276,7 @@ class ServerConfigAdapter[IServerConfig]:
         start_server(transport=server_adapter.transport, port=server_adapter.port)
     """
 
-    def __init__(self, config: "Config") -> None:
+    def __init__(self, config: Config) -> None:
         self._config = config
 
     @property
@@ -313,7 +313,7 @@ class SearchConfigAdapter[ISearchConfig]:
         config: The application Config instance to adapt.
     """
 
-    def __init__(self, config: "Config") -> None:
+    def __init__(self, config: Config) -> None:
         self._config = config
 
     @property
@@ -362,7 +362,7 @@ class StorageConfigAdapter[IStorageConfig]:
         config: The application Config instance to adapt.
     """
 
-    def __init__(self, config: "Config") -> None:
+    def __init__(self, config: Config) -> None:
         self._config = config
 
     @property
@@ -395,7 +395,7 @@ class RerankerConfigAdapter[IRerankerConfig]:
         config: The application Config instance to adapt.
     """
 
-    def __init__(self, config: "Config") -> None:
+    def __init__(self, config: Config) -> None:
         self._config = config
 
     @property
@@ -428,7 +428,7 @@ class EmbedderConfigAdapter[IEmbedderConfig]:
         config: The application Config instance to adapt.
     """
 
-    def __init__(self, config: "Config") -> None:
+    def __init__(self, config: Config) -> None:
         self._config = config
 
     @property
@@ -469,7 +469,7 @@ class ReplacementConfigAdapter[IReplacementConfig]:
         config: The application Config instance to adapt.
     """
 
-    def __init__(self, config: "Config") -> None:
+    def __init__(self, config: Config) -> None:
         self._config = config
 
     @property
@@ -489,7 +489,7 @@ class ReplacementConfigAdapter[IReplacementConfig]:
         return self._config.smart_replace_candidate_limit
 
 
-def create_config_adapter(config: "Config") -> ConfigAdapter[IAppConfig]:
+def create_config_adapter(config: Config) -> ConfigAdapter[IAppConfig]:
     """Factory function to create a full ConfigAdapter.
 
     Args:
@@ -502,7 +502,7 @@ def create_config_adapter(config: "Config") -> ConfigAdapter[IAppConfig]:
 
 
 def create_server_config_adapter(
-    config: "Config",
+    config: Config,
 ) -> ServerConfigAdapter[IServerConfig]:
     """Factory function to create a ServerConfigAdapter.
 
@@ -516,7 +516,7 @@ def create_server_config_adapter(
 
 
 def create_search_config_adapter(
-    config: "Config",
+    config: Config,
 ) -> SearchConfigAdapter[ISearchConfig]:
     """Factory function to create a SearchConfigAdapter.
 
@@ -530,7 +530,7 @@ def create_search_config_adapter(
 
 
 def create_storage_config_adapter(
-    config: "Config",
+    config: Config,
 ) -> StorageConfigAdapter[IStorageConfig]:
     """Factory function to create a StorageConfigAdapter.
 
@@ -544,7 +544,7 @@ def create_storage_config_adapter(
 
 
 def create_reranker_config_adapter(
-    config: "Config",
+    config: Config,
 ) -> RerankerConfigAdapter[IRerankerConfig]:
     """Factory function to create a RerankerConfigAdapter.
 
@@ -558,7 +558,7 @@ def create_reranker_config_adapter(
 
 
 def create_embedder_config_adapter(
-    config: "Config",
+    config: Config,
 ) -> EmbedderConfigAdapter[IEmbedderConfig]:
     """Factory function to create an EmbedderConfigAdapter.
 
@@ -572,7 +572,7 @@ def create_embedder_config_adapter(
 
 
 def create_replacement_config_adapter(
-    config: "Config",
+    config: Config,
 ) -> ReplacementConfigAdapter[IReplacementConfig]:
     """Factory function to create a ReplacementConfigAdapter.
 

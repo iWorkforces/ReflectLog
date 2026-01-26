@@ -8,19 +8,19 @@ directory. This module re-exports them for backward compatibility.
 """
 
 # Re-export from parent module for backward compatibility
+from reflectlog.infrastructure.cross_encoder_reranker import (
+    CrossEncoderConfig,
+    CrossEncoderReranker,
+)
 from reflectlog.infrastructure.llm_reranker import (
+    AnthropicRerankerProvider,
+    IRerankerProvider,
     LLMReranker,
     LLMRerankerConfig,
-    IRerankerProvider,
     OpenAIRerankerProvider,
-    AnthropicRerankerProvider,
     RelevanceScore,
     create_reranker_provider,
     format_memory_age,
-)
-from reflectlog.infrastructure.cross_encoder_reranker import (
-    CrossEncoderReranker,
-    CrossEncoderConfig,
 )
 
 __all__ = [

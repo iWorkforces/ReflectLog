@@ -6,9 +6,9 @@ or "find reranker plugins".
 """
 
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar, Protocol, runtime_checkable
+from datetime import UTC, datetime
 from enum import Enum
-from datetime import datetime, timezone
+from typing import Generic, Protocol, TypeVar, runtime_checkable
 
 
 def utc_now() -> datetime:
@@ -17,7 +17,7 @@ def utc_now() -> datetime:
     This function replaces the deprecated datetime.utcnow() and returns
     a timezone-aware datetime object in UTC.
     """
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class PluginState(Enum):

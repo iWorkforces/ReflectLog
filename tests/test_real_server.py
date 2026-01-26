@@ -1,10 +1,11 @@
 """Real server integration test using fastmcp.Client (refactored from plain HTTP)."""
 
-from fastmcp import Client
-from fastmcp.client.client import CallToolResult
-import anyio
 import json
 import os
+
+import anyio
+from fastmcp import Client
+from fastmcp.client.client import CallToolResult
 import pytest
 
 pytestmark = pytest.mark.skipif(

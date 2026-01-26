@@ -4,7 +4,8 @@ This provides type hints for the numba JIT compiler decorators and functions
 used in reflectlog.application.utils.numba_utils.
 """
 
-from typing import Any, Callable, TypeVar, overload
+from collections.abc import Callable
+from typing import Any, TypeVar, overload
 
 # Type variable for generic function signatures
 F = TypeVar("F", bound=Callable[..., Any])

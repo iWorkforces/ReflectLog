@@ -1,8 +1,8 @@
 """Cached embeddings wrapper for query embedding LRU caching."""
 
+from collections import OrderedDict
 import hashlib
 import threading
-from collections import OrderedDict
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -54,7 +54,7 @@ class CachedEmbeddings(BaseModel):
     logger: Any = None
 
     # Private cache state
-    _cache: OrderedDict[str, List[float]] = PrivateAttr(default_factory=OrderedDict)
+    _cache: OrderedDict[str, list[float]] = PrivateAttr(default_factory=OrderedDict)
     _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _hits: int = PrivateAttr(default=0)
     _misses: int = PrivateAttr(default=0)
@@ -72,7 +72,7 @@ class CachedEmbeddings(BaseModel):
         """
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-    def _get_cached(self, cache_key: str) -> Optional[List[float]]:
+    def _get_cached(self, cache_key: str) -> list[float] | None:
         """Get cached embedding if exists (LRU access).
 
         Args:
@@ -90,7 +90,7 @@ class CachedEmbeddings(BaseModel):
             self._misses += 1
             return None
 
-    def _set_cached(self, cache_key: str, embedding: List[float]) -> None:
+    def _set_cached(self, cache_key: str, embedding: list[float]) -> None:
         """Cache an embedding with LRU eviction.
 
         Args:
@@ -111,7 +111,7 @@ class CachedEmbeddings(BaseModel):
             while len(self._cache) > self.cache_size:
                 self._cache.popitem(last=False)
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> list[float]:
         """Embed query text with LRU caching.
 
         Args:
@@ -155,7 +155,7 @@ class CachedEmbeddings(BaseModel):
 
         return embedding
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed documents (not cached - pass through to wrapped embedder).
 
         Document embeddings are typically computed once during ingestion,
@@ -169,7 +169,7 @@ class CachedEmbeddings(BaseModel):
         """
         return self.embedder.embed_documents(texts)
 
-    async def aembed_query(self, text: str) -> List[float]:
+    async def aembed_query(self, text: str) -> list[float]:
         """Async version of embed_query with LRU caching.
 
         Args:
@@ -213,7 +213,7 @@ class CachedEmbeddings(BaseModel):
 
         return embedding
 
-    async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         """Async version of embed_documents (not cached - pass through).
 
         Args:

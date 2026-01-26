@@ -5,8 +5,10 @@ The tool abstraction enables discoverable, configurable tools that can
 be added without modifying core application logic.
 """
 
-from typing import Protocol, runtime_checkable, Any, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any, Protocol, runtime_checkable
+
 from pydantic import BaseModel
 
 

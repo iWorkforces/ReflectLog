@@ -1,7 +1,7 @@
 # https://github.com/jlowin/fastmcp?tab=readme-ov-file#mcp-clients
 # https://github.com/StevenBtw/uv-docs-mcp/blob/main/src/uv_docs/server.py
-from fastmcp import Client
 import anyio
+from fastmcp import Client
 from fastmcp.client.client import CallToolResult
 
 
