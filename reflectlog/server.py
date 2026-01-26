@@ -1,9 +1,9 @@
+import io
 import sys
 import os
 import argparse
 import signal
 import time
-from typing import Optional
 
 # Add the current directory to Python path for direct execution
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -28,7 +28,7 @@ from reflectlog.application.utils.numba_utils import warmup_numba_functions
 def warmup_numba_with_config(
     enabled: bool = True,
     mode: str = "sync",
-    output_stream=None,
+    output_stream: object = None,
 ) -> threading.Thread | None:
     """Warm up numba JIT functions with configurable execution mode.
 
@@ -216,7 +216,7 @@ def main() -> None:
     startup_phases["numba_warmup"] = time.time() - numba_start
 
     # Create server with dependency injection
-    server: Optional[FastMCPServer] = None
+    server: FastMCPServer | None = None
 
     def graceful_shutdown(signum: int, frame: object) -> None:
         """Signal handler for graceful shutdown.

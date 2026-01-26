@@ -10,7 +10,7 @@ Uses SQLite with WAL mode for improved concurrent write performance via MVCC.
 import os
 import threading
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import sqlite3
 from pydantic import BaseModel, ConfigDict, PrivateAttr

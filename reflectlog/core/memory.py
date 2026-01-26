@@ -6,7 +6,7 @@ databases, document stores, or hybrid approaches—while presenting a
 consistent interface to the application layer.
 """
 
-from typing import Protocol, runtime_checkable, Optional
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -21,7 +21,7 @@ class IMemoryStore(Protocol):
         self,
         project_id: str,
         message: str,
-        metadata: Optional[dict] = None,
+        metadata: dict[str, object] | None = None,
     ) -> str:
         """Add a memory entry to the store.
 
@@ -39,7 +39,7 @@ class IMemoryStore(Protocol):
         self,
         project_id: str,
         memory_id: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Retrieve a memory entry by ID.
 
         Args:
@@ -86,7 +86,7 @@ class IMemoryStore(Protocol):
         project_id: str,
         memory_id: str,
         message: str,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> bool:
         """Update a memory entry.
 
@@ -105,7 +105,7 @@ class IMemoryStore(Protocol):
         self,
         project_id: str,
         message: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Find a memory by exact content match.
 
         Args:
@@ -202,7 +202,7 @@ class IMemoryBackend(IMemoryStore, Protocol):
         self,
         project_id: str,
         message: str,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Get internal ID by message content.
 
         Args:
@@ -266,7 +266,7 @@ class IMemoryManager(Protocol):
     async def search(
         self,
         query: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
     ) -> list[str]:
         """Search memories.
 

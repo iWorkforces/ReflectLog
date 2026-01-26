@@ -3,8 +3,6 @@
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
-    Optional,
     Protocol,
     TypeAlias,
     runtime_checkable,
@@ -28,15 +26,15 @@ if TYPE_CHECKING:
 # before timestamp tracking was implemented.
 
 # Memory operation types
-MemoryRecord: TypeAlias = Dict[str, Any]
-SearchResult: TypeAlias = Dict[str, list[MemoryRecord]]
+MemoryRecord: TypeAlias = dict[str, Any]
+SearchResult: TypeAlias = dict[str, list[MemoryRecord]]
 MessageList: TypeAlias = list[str]
 
 # Tool result types
 ToolResult: TypeAlias = None | MessageList
 
 # Extra logging context
-LogContext: TypeAlias = Dict[str, Any]
+LogContext: TypeAlias = dict[str, Any]
 
 
 # Clean Architecture: Application layer defines interfaces
@@ -324,7 +322,7 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
-    def get_id_by_message(self, project_id: str, message: str) -> Optional[int]:
+    def get_id_by_message(self, project_id: str, message: str) -> int | None:
         """Get the ID of a message by its content.
 
         Args:

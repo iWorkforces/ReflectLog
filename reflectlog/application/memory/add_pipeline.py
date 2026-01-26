@@ -8,7 +8,7 @@ This module provides the AddPipeline class that orchestrates the
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Protocol
+from typing import Protocol
 import threading
 import logging
 

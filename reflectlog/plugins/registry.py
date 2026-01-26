@@ -6,7 +6,7 @@ or "find reranker plugins".
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Generic, TypeVar, Protocol, runtime_checkable
+from typing import Generic, TypeVar, Protocol, runtime_checkable
 from enum import Enum
 from datetime import datetime, timezone
 
@@ -50,10 +50,10 @@ class PluginMetadata:
     capabilities: list[PluginCapability] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
     state: PluginState = PluginState.DISCOVERED
-    error_message: Optional[str] = None
+    error_message: str | None = None
     discovered_at: datetime = field(default_factory=utc_now)
-    loaded_at: Optional[datetime] = None
-    activated_at: Optional[datetime] = None
+    loaded_at: datetime | None = None
+    activated_at: datetime | None = None
 
 
 T = TypeVar("T")
@@ -94,7 +94,7 @@ class PluginRegistry(Generic[T]):
     def register(
         self,
         plugin: T,
-        metadata: Optional[PluginMetadata] = None,
+        metadata: PluginMetadata | None = None,
     ) -> PluginMetadata:
         """Register a plugin instance.
 
@@ -149,7 +149,7 @@ class PluginRegistry(Generic[T]):
 
         return True
 
-    def get(self, name: str) -> Optional[T]:
+    def get(self, name: str) -> T | None:
         """Get a plugin instance by name.
 
         Args:
@@ -160,7 +160,7 @@ class PluginRegistry(Generic[T]):
         """
         return self._instances.get(name)
 
-    def get_metadata(self, name: str) -> Optional[PluginMetadata]:
+    def get_metadata(self, name: str) -> PluginMetadata | None:
         """Get plugin metadata by name.
 
         Args:
@@ -362,7 +362,7 @@ class ToolRegistry(PluginRegistry[T]):
         self._tool_names.discard(name)
         return self.unregister(name)
 
-    def get_tool(self, name: str) -> Optional[T]:
+    def get_tool(self, name: str) -> T | None:
         """Get a tool by name.
 
         Args:

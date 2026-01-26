@@ -30,7 +30,7 @@ Example:
 
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from reflectlog.application.constants import LOG_ADD_MESSAGE_PREVIEW_LIMIT
 from reflectlog.application.types import ISemanticSearchEngine

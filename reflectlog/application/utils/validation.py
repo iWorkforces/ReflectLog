@@ -2,7 +2,7 @@
 
 import re
 import unicodedata
-from typing import Any, Optional
+from typing import Any
 
 # SQL injection patterns for basic detection
 _SQL_INJECTION_PATTERNS = [

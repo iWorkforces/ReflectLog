@@ -3,7 +3,7 @@
 import hashlib
 import threading
 from collections import OrderedDict
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 

@@ -1,6 +1,6 @@
 """ReflectLogMCP Server - Refactored modular implementation."""
 
-from typing import Dict, List, Tuple, Type
+from typing import Type
 
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
@@ -18,7 +18,7 @@ from .tools import (
 from .utils import create_logger
 
 # Canonical registry of available MCP tool implementations.
-AVAILABLE_TOOL_CLASSES: Dict[str, Type[BaseTool]] = {
+AVAILABLE_TOOL_CLASSES: dict[str, Type[BaseTool]] = {
     "add": AddTool,
     "get_all": GetAllTool,
     "search": SearchTool,
@@ -100,7 +100,7 @@ class FastMCPServer:
             )
 
         # Initialize each permitted tool with dependencies
-        self.tools: List[BaseTool] = []
+        self.tools: list[BaseTool] = []
         for tool_name in selected_names:
             tool_class = AVAILABLE_TOOL_CLASSES[tool_name]
             tool = tool_class(
@@ -165,8 +165,8 @@ class FastMCPServer:
         return instructions
 
     def _determine_tool_selection(
-        self, available_names: List[str]
-    ) -> Tuple[List[str], List[str]]:
+        self, available_names: list[str]
+    ) -> tuple[list[str], list[str]]:
         """Determine which tools should be initialized based on configuration.
 
         Args:
@@ -181,8 +181,8 @@ class FastMCPServer:
             return available_names, []
 
         available_set = set(available_names)
-        selected: List[str] = []
-        invalid: List[str] = []
+        selected: list[str] = []
+        invalid: list[str] = []
 
         for token in allowed:
             canonical = self._canonicalize_tool_token(token, available_set)

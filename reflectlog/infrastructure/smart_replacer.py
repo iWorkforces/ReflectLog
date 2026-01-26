@@ -4,7 +4,7 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Protocol, Tuple
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 

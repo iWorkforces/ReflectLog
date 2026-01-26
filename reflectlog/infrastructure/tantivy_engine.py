@@ -9,7 +9,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from typing import TypeGuard

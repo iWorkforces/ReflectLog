@@ -1,7 +1,6 @@
 """Prompts and text constants for ReflectLogMCP Server."""
 
 from string import Template
-from typing import List, Tuple
 
 # Security: Jailbreak protection for all LLM prompts
 _JAILBREAK_PROTECTION = """

@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Protocol
 
 import anyio
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -151,7 +151,7 @@ class IRerankerProvider(Protocol):
         document: str,
         fallback_score: float,
         memory_age: str | None = None,
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """Score a document's relevance to the query.
 
         Args:
@@ -185,7 +185,7 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
         document: str,
         fallback_score: float,
         memory_age: str | None = None,
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """Score a document's relevance using OpenAI API.
 
         Args:
@@ -326,7 +326,7 @@ class AnthropicRerankerProvider:
         document: str,
         fallback_score: float,
         memory_age: str | None = None,
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """Score a document's relevance using Anthropic Claude.
 
         Args:
@@ -472,7 +472,7 @@ class LLMReranker(BaseModel):
         document: str,
         fallback_score: float,
         memory_age: str | None = None,
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """Score a single document's relevance to the query.
 
         Delegates to the configured provider for actual scoring.
@@ -500,9 +500,9 @@ class LLMReranker(BaseModel):
     async def rerank(
         self,
         query: str,
-        candidates: List[Tuple[str, float]],
-        timestamp_map: Dict[str, str] | None = None,
-    ) -> List[Tuple[str, float]]:
+        candidates: list[tuple[str, float]],
+        timestamp_map: dict[str, str] | None = None,
+    ) -> list[tuple[str, float]]:
         """Rerank candidates by LLM relevance scores.
 
         Scores each candidate document against the query using the LLM,
@@ -527,7 +527,7 @@ class LLMReranker(BaseModel):
 
         # Use semaphore to limit concurrent LLM calls
         semaphore = anyio.Semaphore(self.config.max_concurrency)
-        results: List[Optional[Tuple[str, float]]] = [None] * len(candidates)
+        results: list[tuple[str, float] | None] = [None] * len(candidates)
 
         async def score_with_semaphore(
             idx: int, doc: str, fallback: float, memory_age: str | None
@@ -554,7 +554,7 @@ class LLMReranker(BaseModel):
                 )
 
         # Collect all scored results (filter out None results)
-        scored_results: List[Tuple[str, float]] = []
+        scored_results: list[tuple[str, float]] = []
         for result in results:
             if result is not None:
                 scored_results.append(result)

@@ -1,7 +1,6 @@
 """Add tool implementation for ReflectLogMCP Server."""
 
 import time
-from typing import List
 
 from ..constants import (
     LOG_ADD_MESSAGE_PREVIEW_LIMIT,
@@ -30,7 +29,7 @@ class AddTool(BaseTool):
     def get_handler(self):
         """Get the async tool handler function."""
 
-        async def add(messages: List[str], dry_run: bool = False) -> None:
+        async def add(messages: list[str], dry_run: bool = False) -> None:
             """Add messages to the message store with parallel processing (async).
 
             This tool stores one or more text messages in the memory store using

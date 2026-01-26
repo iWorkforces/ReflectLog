@@ -11,7 +11,7 @@ concern-focused module. It implements the 4-step search pipeline:
 import math
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from asyncer import asyncify, create_task_group
 
@@ -62,10 +62,10 @@ class SearchResult:
         tantivy_results: Original Tantivy search results.
     """
 
-    messages: List[str]
-    timestamp_map: Dict[str, str]
-    semantic_results: List[Tuple[str, float, str]]
-    tantivy_results: List[Tuple[str, float]]
+    messages: list[str]
+    timestamp_map: dict[str, str]
+    semantic_results: list[tuple[str, float, str]]
+    tantivy_results: list[tuple[str, float]]
 
 
 class SearchPipeline:
@@ -167,7 +167,7 @@ class SearchPipeline:
         semantic_results, tantivy_results = await self._step1_parallel_search(context)
 
         # Build timestamp map from semantic results
-        timestamp_map: Dict[str, str] = {
+        timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
         }
 
@@ -223,7 +223,7 @@ class SearchPipeline:
 
     async def _step1_parallel_search(
         self, context: SearchContext
-    ) -> Tuple[List[Tuple[str, float, str]], List[Tuple[str, float]]]:
+    ) -> tuple[list[tuple[str, float, str]], list[tuple[str, float]]]:
         """Step 1: Execute parallel search on both engines."""
         self.logger.info(
             "STEP 1: Executing parallel search engines...",
@@ -261,7 +261,7 @@ class SearchPipeline:
 
     def _search_semantic(
         self, query: str, limit: int, project_id: str
-    ) -> List[Tuple[str, float, str]]:
+    ) -> list[tuple[str, float, str]]:
         """Execute semantic search on USearchEngine.
 
         Falls back to empty list on error, relying on Tantivy results.
@@ -290,7 +290,7 @@ class SearchPipeline:
 
     def _search_tantivy(
         self, query: str, limit: int, project_id: str
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Execute full-text search on Tantivy engine."""
         if self._tantivy_engine is None:
             return []
@@ -299,9 +299,9 @@ class SearchPipeline:
     async def _step2_fusion_or_concatenate(
         self,
         context: SearchContext,
-        semantic_results: List[Tuple[str, float, str]],
-        tantivy_results: List[Tuple[str, float]],
-    ) -> List[Tuple[str, float]]:
+        semantic_results: list[tuple[str, float, str]],
+        tantivy_results: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
         """Step 2: Combine results using RRF fusion or concatenation."""
         # Convert semantic_results from 3-tuples to 2-tuples for fusion
         semantic_results_2tuple = [(msg, score) for msg, score, _ in semantic_results]
@@ -318,9 +318,9 @@ class SearchPipeline:
     async def _fuse_rrf(
         self,
         context: SearchContext,
-        semantic_results: List[Tuple[str, float]],
-        tantivy_results: List[Tuple[str, float]],
-    ) -> List[Tuple[str, float]]:
+        semantic_results: list[tuple[str, float]],
+        tantivy_results: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
         """Fuse results using RRF algorithm."""
         self.logger.info(
             "STEP 2: RRF Fusion (combining results)...",
@@ -347,10 +347,10 @@ class SearchPipeline:
 
     def _concatenate_results(
         self,
-        semantic_results: List[Tuple[str, float]],
-        tantivy_results: List[Tuple[str, float]],
+        semantic_results: list[tuple[str, float]],
+        tantivy_results: list[tuple[str, float]],
         limit: int,
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Concatenate semantic + tantivy results without RRF fusion."""
         self.logger.info(
             "STEP 2: Concatenate results (RRF fusion disabled)...",
@@ -358,7 +358,7 @@ class SearchPipeline:
         )
 
         seen_messages: set[str] = set()
-        combined: List[Tuple[str, float]] = []
+        combined: list[tuple[str, float]] = []
 
         # Add semantic results first (higher priority)
         for msg, score in semantic_results:
@@ -394,8 +394,8 @@ class SearchPipeline:
         return combined
 
     async def _step3_fusion_threshold(
-        self, context: SearchContext, results: List[Tuple[str, float]]
-    ) -> List[Tuple[str, float]]:
+        self, context: SearchContext, results: list[tuple[str, float]]
+    ) -> list[tuple[str, float]]:
         """Step 3: Filter by fusion threshold."""
         self.logger.info(
             f"STEP 3: Filtering (threshold >= {self.config.fusion_ranking_threshold})...",
@@ -410,8 +410,8 @@ class SearchPipeline:
         )
 
     def _filter_by_fusion_threshold(
-        self, results: List[Tuple[str, float]], threshold: float, query: str
-    ) -> List[Tuple[str, float]]:
+        self, results: list[tuple[str, float]], threshold: float, query: str
+    ) -> list[tuple[str, float]]:
         """Filter fusion results by fusion score threshold."""
         if not results:
             return results
@@ -461,10 +461,10 @@ class SearchPipeline:
     async def _step4_reranking(
         self,
         context: SearchContext,
-        results: List[Tuple[str, float]],
-        timestamp_map: Dict[str, str],
+        results: list[tuple[str, float]],
+        timestamp_map: dict[str, str],
         step_num: int,
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Step 4: Rerank results using LLM or CrossEncoder."""
         reranker_type, reranker = self._get_reranker()
 
@@ -483,11 +483,11 @@ class SearchPipeline:
     async def _rerank_llm(
         self,
         context: SearchContext,
-        results: List[Tuple[str, float]],
-        timestamp_map: Dict[str, str],
+        results: list[tuple[str, float]],
+        timestamp_map: dict[str, str],
         step_num: int,
         llm_reranker=None,  # Optional parameter to use provided reranker
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Rerank using LLM."""
         # Use provided reranker or fetch via _get_reranker
         if llm_reranker is None:
@@ -530,10 +530,10 @@ class SearchPipeline:
     async def _rerank_cross_encoder(
         self,
         context: SearchContext,
-        results: List[Tuple[str, float]],
+        results: list[tuple[str, float]],
         step_num: int,
         cross_encoder_reranker=None,  # Optional parameter to use provided reranker
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Rerank using CrossEncoder."""
         # Use provided reranker or fetch via _get_reranker
         if cross_encoder_reranker is None:
@@ -589,8 +589,8 @@ class SearchPipeline:
     def _log_search_results(
         self,
         context: SearchContext,
-        semantic_results: List[Tuple[str, float, str]],
-        tantivy_results: List[Tuple[str, float]],
+        semantic_results: list[tuple[str, float, str]],
+        tantivy_results: list[tuple[str, float]],
     ) -> None:
         """Log search results from both engines."""
         self.logger.info("─" * 50, extra={"section": "search_engines"})

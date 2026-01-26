@@ -13,7 +13,7 @@ produces outputs for the next phase.
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import anyio
 from asyncer import asyncify, create_task_group
@@ -61,7 +61,7 @@ class AddResult:
     stored_count: int = 0
     skipped_count: int = 0
     replaced_count: int = 0
-    replacements: List[ReplacementInfo] = field(default_factory=list)
+    replacements: list[ReplacementInfo] = field(default_factory=list)
 
 
 @dataclass
@@ -75,8 +75,8 @@ class Phase1Result:
         duration: Time taken for phase 1 execution.
     """
 
-    unique_messages: List[str]
-    storage_duplicates: List[str]
+    unique_messages: list[str]
+    storage_duplicates: list[str]
     batch_duplicates_count: int
     duration: float
 
@@ -155,9 +155,9 @@ class DuplicateDetectionPhase:
         phase_start = time.perf_counter()
 
         # Step 1: Deduplicate within the batch itself (preserve order, keep first)
-        seen: Dict[str, int] = {}
-        unique_messages: List[str] = []
-        batch_duplicate_indices: List[int] = []
+        seen: dict[str, int] = {}
+        unique_messages: list[str] = []
+        batch_duplicate_indices: list[int] = []
 
         for idx, msg in enumerate(messages):
             if msg in seen:
@@ -177,10 +177,10 @@ class DuplicateDetectionPhase:
             )
 
         # Step 2: Parallel duplicate detection against existing storage
-        duplicate_flags: Dict[str, bool] = {}
+        duplicate_flags: dict[str, bool] = {}
         semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
-        async def check_duplicate(msg: str) -> Tuple[str, bool]:
+        async def check_duplicate(msg: str) -> tuple[str, bool]:
             """Check if message is duplicate (with semaphore for concurrency control)."""
             async with semaphore:
                 is_dup = await asyncify(self._has_exact_match)(msg)
@@ -188,7 +188,7 @@ class DuplicateDetectionPhase:
 
         # Run all duplicate checks in parallel
         async with create_task_group() as tg:
-            results: List[Tuple[str, bool]] = []
+            results: list[tuple[str, bool]] = []
 
             async def collect_result(msg: str) -> None:
                 res = await check_duplicate(msg)
@@ -202,8 +202,8 @@ class DuplicateDetectionPhase:
             duplicate_flags[msg] = is_dup
 
         # Separate duplicates from non-duplicates
-        storage_duplicates: List[str] = []
-        non_duplicate_messages: List[str] = []
+        storage_duplicates: list[str] = []
+        non_duplicate_messages: list[str] = []
 
         for msg in unique_messages:
             if duplicate_flags.get(msg, False):
@@ -303,7 +303,7 @@ class SmartReplacementPhase:
         phase_start = time.perf_counter()
 
         # Map: message -> list of replacement infos
-        replacement_map: Dict[str, List[ReplacementInfo]] = {}
+        replacement_map: dict[str, list[ReplacementInfo]] = {}
 
         # Get SmartReplacer (lazy loaded via memory_manager if available)
         smart_replacer = self._get_smart_replacer()
@@ -322,7 +322,7 @@ class SmartReplacementPhase:
         semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
         async with create_task_group() as tg:
-            replacement_results: List[Tuple[str, List[ReplacementInfo]]] = []
+            replacement_results: list[tuple[str, list[ReplacementInfo]]] = []
 
             async def check_replacement_for_msg(msg: str) -> None:
                 """Check replacement for a single message."""
@@ -358,7 +358,7 @@ class SmartReplacementPhase:
 
     async def _check_for_replacement(
         self, new_memory: str, smart_replacer: Any
-    ) -> List[ReplacementInfo]:
+    ) -> list[ReplacementInfo]:
         """Check if new memory should replace existing memories.
 
         Uses semantic search to find the most similar existing memories,
@@ -432,7 +432,7 @@ class SmartReplacementPhase:
 
             async def check_single_candidate(
                 existing_memory: str, similarity_score: float
-            ) -> Optional[ReplacementInfo]:
+            ) -> ReplacementInfo | None:
                 """Check a single candidate for replacement (with semaphore)."""
                 async with semaphore:
                     try:
@@ -493,7 +493,7 @@ class SmartReplacementPhase:
                         return None
 
             # Run all candidate checks in parallel
-            results: List[Optional[ReplacementInfo]] = []
+            results: list[ReplacementInfo | None] = []
 
             async def collect_result(
                 existing_memory: str, similarity_score: float
@@ -558,8 +558,8 @@ class StoragePhase:
 
     async def execute(
         self,
-        messages: List[str],
-        replacement_map: Dict[str, List[ReplacementInfo]],
+        messages: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
         dry_run: bool = False,
     ) -> Phase3Result:
         """Execute Phase 3: Sequential storage.
@@ -576,8 +576,8 @@ class StoragePhase:
 
         stored_count = 0
         replaced_count = 0
-        replacements: List[ReplacementInfo] = []
-        messages_to_add: List[str] = []
+        replacements: list[ReplacementInfo] = []
+        messages_to_add: list[str] = []
 
         # Process each message sequentially
         for idx, message in enumerate(messages):
@@ -706,7 +706,7 @@ class StoragePhase:
             duration=duration,
         )
 
-    def _add_messages_batch(self, messages: List[str]) -> List[str]:
+    def _add_messages_batch(self, messages: list[str]) -> list[str]:
         """Add multiple messages to both semantic and full-text engines.
 
         Args:

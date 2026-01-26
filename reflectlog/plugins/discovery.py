@@ -7,7 +7,7 @@ This module provides mechanisms for discovering plugins from various sources:
 """
 
 from dataclasses import dataclass
-from typing import Optional, TypeVar, Generic, Type, cast
+from typing import TypeVar, Generic, Type, cast
 import importlib
 import importlib.metadata
 import pkgutil
@@ -25,7 +25,7 @@ class DiscoveredPlugin:
     module_path: str
     class_name: str
     version: str = "0.0.0"
-    entry_point: Optional[str] = None
+    entry_point: str | None = None
 
 
 class PluginDiscoveryStrategy(Generic[T]):

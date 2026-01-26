@@ -1,6 +1,6 @@
 """Base protocol for fusion engines."""
 
-from typing import List, Optional, Protocol, Tuple
+from typing import Protocol
 
 
 class FusionEngine(Protocol):
@@ -16,14 +16,14 @@ class FusionEngine(Protocol):
         ...
 
     @property
-    def normalization(self) -> Optional[str]:
+    def normalization(self) -> str | None:
         """Return the normalization strategy (e.g., 'min-max', 'rank')."""
         ...
 
     def fuse(
         self,
-        *result_sets: List[Tuple[str, float]],
-    ) -> List[Tuple[str, float]]:
+        *result_sets: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
         """Fuse multiple ranked lists into a single ranking.
 
         Args:

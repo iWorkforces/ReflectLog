@@ -5,7 +5,7 @@ loading, initialization, activation, deactivation, and unloading.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Generic, TypeVar, Protocol, Callable, runtime_checkable
+from typing import Generic, TypeVar, Protocol, Callable, runtime_checkable
 import logging
 
 from .discovery import PluginDiscoveryStrategy, DiscoveredPlugin, PluginDiscoverer
@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 class LifecycleHooks:
     """Hooks for plugin lifecycle events."""
 
-    on_load: Optional[Callable[[str], None]] = None
-    on_initialize: Optional[Callable[[str], None]] = None
-    on_activate: Optional[Callable[[str], None]] = None
-    on_deactivate: Optional[Callable[[str], None]] = None
-    on_unload: Optional[Callable[[str], None]] = None
+    on_load: Callable[[str], None] | None = None
+    on_initialize: Callable[[str], None] | None = None
+    on_activate: Callable[[str], None] | None = None
+    on_deactivate: Callable[[str], None] | None = None
+    on_unload: Callable[[str], None] | None = None
 
 
 @runtime_checkable

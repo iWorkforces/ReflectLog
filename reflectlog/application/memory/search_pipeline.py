@@ -8,7 +8,7 @@ This module provides the SearchPipeline class that orchestrates the
 4. Reranking (LLM, cross-encoder, or none)
 """
 
-from typing import Optional, Protocol
+from typing import Protocol
 from dataclasses import dataclass
 import anyio
 import logging
