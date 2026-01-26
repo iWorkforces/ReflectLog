@@ -1,7 +1,9 @@
-__version__ = "0.1.7"
+"""ReflectLogMCP - An Agentic Memory Layer For Coding Agents.
 
-# Export main components for programmatic access
-from reflectlog.server import main
+This module provides the public API for ReflectLogMCP.
+"""
+
+from reflectlog.version import __version__
 
 # Export exception hierarchy for error handling
 from reflectlog.application.exceptions import (
@@ -17,8 +19,20 @@ from reflectlog.application.exceptions import (
     ValidationError,
 )
 
+
+# Lazy import for main to avoid circular imports
+# main is only needed when the module is used as a server entry point
+# Using __getattr__ for lazy loading
+def __getattr__(name: str):
+    """Lazy import for server.main to avoid circular imports."""
+    if name == "main":
+        from reflectlog.server import main
+
+        return main
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
-    "main",
     "__version__",
     "ReflectLogError",
     "ConfigurationError",

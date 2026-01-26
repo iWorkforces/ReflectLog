@@ -10,8 +10,16 @@ This module provides:
 - TantivyEngine: Full-text search engine wrapper
 - USearchEngine: USearch-based semantic search engine
 - MessageStore: SQLite-backed message storage for USearch
+
+This module also re-exports from subpackages:
+- infrastructure.search: Search engine implementations
+- infrastructure.embeddings: Embedding provider implementations
+- infrastructure.reranking: Reranker implementations
+- infrastructure.memory: Memory storage implementations
+- infrastructure.llm: LLM provider implementations
 """
 
+# Re-export from original module locations (backward compatibility)
 from .cached_embeddings import CachedEmbeddings
 from .cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
 from .llm_provider_base import BaseOpenAIProvider, IStructuredOutputSchema
@@ -39,7 +47,15 @@ from .smart_replacer import (
 from .tantivy_engine import TantivyConfig, TantivyEngine
 from .usearch_engine import USearchConfig, USearchEngine
 
+# Re-export from subpackages for new imports
+from . import search
+from . import embeddings
+from . import reranking
+from . import memory
+from . import llm
+
 __all__ = [
+    # Original exports
     "AnthropicRerankerProvider",
     "AnthropicReplacementProvider",
     "BaseOpenAIProvider",
@@ -67,4 +83,10 @@ __all__ = [
     "TantivyEngine",
     "USearchConfig",
     "USearchEngine",
+    # Subpackage modules
+    "search",
+    "embeddings",
+    "reranking",
+    "memory",
+    "llm",
 ]

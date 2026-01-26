@@ -20,7 +20,7 @@ os.environ.setdefault("NUMBA_FASTMATH", "1")
 
 import threading
 
-from reflectlog import __version__
+from reflectlog.version import __version__
 from reflectlog.application.mcp_server import FastMCPServer
 from reflectlog.application.utils.numba_utils import warmup_numba_functions
 
