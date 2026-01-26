@@ -11,7 +11,7 @@ import importlib
 import importlib.metadata
 from pathlib import Path
 import pkgutil
-from typing import Generic, TypeVar, cast
+from typing import TypeVar, cast
 
 T = TypeVar("T")
 
@@ -27,7 +27,7 @@ class DiscoveredPlugin:
     entry_point: str | None = None
 
 
-class PluginDiscoveryStrategy(Generic[T]):
+class PluginDiscoveryStrategy[T]:
     """Base class for plugin discovery strategies."""
 
     async def discover(self) -> list[DiscoveredPlugin]:
@@ -257,7 +257,7 @@ async def load_plugin(plugin: DiscoveredPlugin) -> T:
         return cast(T, module)
 
 
-class PluginDiscoverer(Generic[T]):
+class PluginDiscoverer[T]:
     """Main class for plugin discovery and loading.
 
     This class orchestrates plugin discovery using configured strategies

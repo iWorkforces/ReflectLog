@@ -75,7 +75,10 @@ def normalize_reranker_scores(
     # This handles edge cases like all-equal scores (returns 1.0 for all)
     normalized = normalize_scores_minmax(scores)
 
-    return [(doc, float(norm_score)) for doc, norm_score in zip(documents, normalized)]
+    return [
+        (doc, float(norm_score))
+        for doc, norm_score in zip(documents, normalized, strict=True)
+    ]
 
 
 def apply_threshold_with_safety_net(

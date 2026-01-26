@@ -12,6 +12,6 @@ from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 
 __all__ = [
-    "LangchainQwenEmbeddings",
     "CachedEmbeddings",
+    "LangchainQwenEmbeddings",
 ]

@@ -18,7 +18,7 @@ class config:
     CACHE_DIR: str
 
 @overload
-def jit(
+def jit[F: Callable[..., Any]](
     func: F,
 ) -> F: ...
 @overload
@@ -31,7 +31,7 @@ def jit(
     nogil: bool = False,
     forceobj: bool = False,
 ) -> Callable[[F], F]: ...
-def jit(
+def jit[F: Callable[..., Any]](
     func: F | None = None,
     *,
     nopython: bool = False,
@@ -58,7 +58,7 @@ def jit(
     ...
 
 @overload
-def njit(
+def njit[F: Callable[..., Any]](
     func: F,
 ) -> F: ...
 @overload
@@ -69,7 +69,7 @@ def njit(
     parallel: bool = False,
     nogil: bool = False,
 ) -> Callable[[F], F]: ...
-def njit(
+def njit[F: Callable[..., Any]](
     func: F | None = None,
     *,
     cache: bool = False,

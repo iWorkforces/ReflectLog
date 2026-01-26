@@ -74,47 +74,47 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
-    # Configuration protocols
-    "IAppConfig",
-    "IServerConfig",
-    "ISearchConfig",
-    "IStorageConfig",
-    "IRerankerConfig",
-    "IEmbedderConfig",
-    "IReplacementConfig",
     # Configuration adapters
     "ConfigAdapter",
-    "ServerConfigAdapter",
-    "SearchConfigAdapter",
-    "StorageConfigAdapter",
-    "RerankerConfigAdapter",
     "EmbedderConfigAdapter",
     "ReplacementConfigAdapter",
+    "RerankerConfigAdapter",
+    "SearchConfigAdapter",
+    "ServerConfigAdapter",
+    "StorageConfigAdapter",
     "create_config_adapter",
-    "create_server_config_adapter",
-    "create_search_config_adapter",
-    "create_storage_config_adapter",
-    "create_reranker_config_adapter",
     "create_embedder_config_adapter",
     "create_replacement_config_adapter",
+    "create_reranker_config_adapter",
+    "create_search_config_adapter",
+    "create_server_config_adapter",
+    "create_storage_config_adapter",
+    # Configuration protocols
+    "IAppConfig",
+    "IEmbedderConfig",
+    "IReplacementConfig",
+    "IRerankerConfig",
+    "ISearchConfig",
+    "IServerConfig",
+    "IStorageConfig",
+    # Logging protocols
+    "ILogSink",
+    "ILoggingService",
+    "LogLevel",
     # Memory protocols
-    "IMemoryStore",
     "IMemoryBackend",
     "IMemoryManager",
-    # Search protocols
-    "ISearchBackend",
-    "ISearchResult",
-    "IFusionAlgorithm",
+    "IMemoryStore",
     # Reranking protocols
-    "IReranker",
+    "IRanker",
     "IRerankerProvider",
     "IRankingResult",
+    # Search protocols
+    "IFusionAlgorithm",
+    "ISearchBackend",
+    "ISearchResult",
     # Tool protocols
     "ITool",
     "IToolRegistry",
     "IToolResult",
-    # Logging protocols
-    "ILoggingService",
-    "ILogSink",
-    "LogLevel",
 ]

@@ -17,11 +17,13 @@ from .validation import (
 )
 
 __all__ = [
+    # Configuration
     "Config",
     "TransportMode",
     "config",
-    "MCP_INSTRUCTIONS",
+    # Prompts
     "INSTRUCTIONS_HEADER",
+    "MCP_INSTRUCTIONS",
     "REPLACEMENT_DETECTION_PROMPT",
     "SCORING_PROMPT",
     "SCORING_PROMPT_WITH_AGE",

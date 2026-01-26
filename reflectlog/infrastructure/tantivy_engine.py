@@ -611,7 +611,7 @@ class TantivyEngine(BaseModel):
         # Use existing JIT-optimized normalization
         normalized = normalize_scores_minmax(scores)
 
-        return list(zip(messages, normalized.tolist()))
+        return list(zip(messages, normalized.tolist(), strict=True))
 
     def search(
         self, query: str, project_id: str, limit: int

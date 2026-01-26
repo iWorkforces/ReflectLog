@@ -578,120 +578,116 @@ class MemoryManager:
         Raises:
             RuntimeError: If storage operation fails.
         """
-        with self._write_lock:
-            with self._lock:
-                stored_count = 0
-                messages_to_add: list[str] = []
-                seen_messages: set[str] = set()
+        with self._write_lock, self._lock:
+            stored_count = 0
+            messages_to_add: list[str] = []
+            seen_messages: set[str] = set()
 
-                log_limit = min(len(messages), LOG_ADD_MESSAGE_PREVIEW_LIMIT)
-                for idx, message in enumerate(messages, 1):
+            log_limit = min(len(messages), LOG_ADD_MESSAGE_PREVIEW_LIMIT)
+            for idx, message in enumerate(messages, 1):
+                if idx <= log_limit:
+                    preview = truncate_message(message, max_length=60)
+                    self.logger.info(
+                        f"  ⏳ [{idx}/{len(messages)}] Processing: {preview}",
+                        extra={
+                            "message_index": idx,
+                            "total_messages": len(messages),
+                            "message_length": len(message),
+                        },
+                    )
+                if message in seen_messages:
                     if idx <= log_limit:
-                        preview = truncate_message(message, max_length=60)
                         self.logger.info(
-                            f"  ⏳ [{idx}/{len(messages)}] Processing: {preview}",
+                            "    Skipped (duplicate in batch)",
                             extra={
                                 "message_index": idx,
-                                "total_messages": len(messages),
-                                "message_length": len(message),
+                                "reason": "batch_duplicate",
                             },
                         )
-                    if message in seen_messages:
-                        if idx <= log_limit:
-                            self.logger.info(
-                                "    Skipped (duplicate in batch)",
-                                extra={
-                                    "message_index": idx,
-                                    "reason": "batch_duplicate",
-                                },
-                            )
-                        continue
-                    seen_messages.add(message)
+                    continue
+                seen_messages.add(message)
 
-                    if self.config.deduplicate_messages and self._has_exact_match(
-                        message
-                    ):
-                        if idx <= log_limit:
-                            self.logger.info(
-                                "    Skipped (duplicate detected)",
-                                extra={"message_index": idx, "reason": "duplicate"},
-                            )
-                        continue
+                if self.config.deduplicate_messages and self._has_exact_match(message):
+                    if idx <= log_limit:
+                        self.logger.info(
+                            "    Skipped (duplicate detected)",
+                            extra={"message_index": idx, "reason": "duplicate"},
+                        )
+                    continue
 
-                    messages_to_add.append(message)
-                if len(messages) > log_limit:
+                messages_to_add.append(message)
+            if len(messages) > log_limit:
+                self.logger.info(
+                    f"  ... {len(messages) - log_limit} more message(s) omitted from logs",
+                    extra={
+                        "omitted_count": len(messages) - log_limit,
+                        "total_messages": len(messages),
+                    },
+                )
+
+            if messages_to_add:
+                inserted_messages = self._semantic_engine.add_batch(
+                    project_id=self.project_id,
+                    messages=messages_to_add,
+                    infer=self.config.enable_llm_infer,
+                )
+
+                if self._tantivy_engine is not None:
+                    for message in inserted_messages:
+                        self._tantivy_engine.add(self.project_id, message)
+
+                stored_count = len(inserted_messages)
+                inserted_set = set(inserted_messages)
+
+                stored_log_limit = min(
+                    len(messages_to_add), LOG_ADD_MESSAGE_PREVIEW_LIMIT
+                )
+                for idx, message in enumerate(messages_to_add, 1):
+                    if idx > stored_log_limit:
+                        break
+                    if message in inserted_set:
+                        self.logger.info(
+                            "    Stored in USearch (semantic) + Tantivy (full-text)",
+                            extra={
+                                "message_index": idx,
+                                "engines": ["usearch", "tantivy"]
+                                if self._tantivy_engine
+                                else ["usearch"],
+                            },
+                        )
+                    else:
+                        self.logger.warning(
+                            "    Skipped during batch insert",
+                            extra={
+                                "message_index": idx,
+                                "reason": "batch_insert_skipped",
+                            },
+                        )
+                if len(messages_to_add) > stored_log_limit:
                     self.logger.info(
-                        f"  ... {len(messages) - log_limit} more message(s) omitted from logs",
+                        f"  ... {len(messages_to_add) - stored_log_limit} more result(s) omitted from logs",
                         extra={
-                            "omitted_count": len(messages) - log_limit,
-                            "total_messages": len(messages),
+                            "omitted_count": len(messages_to_add) - stored_log_limit,
+                            "total_messages": len(messages_to_add),
                         },
                     )
 
-                if messages_to_add:
-                    inserted_messages = self._semantic_engine.add_batch(
-                        project_id=self.project_id,
-                        messages=messages_to_add,
-                        infer=self.config.enable_llm_infer,
-                    )
-
-                    if self._tantivy_engine is not None:
-                        for message in inserted_messages:
-                            self._tantivy_engine.add(self.project_id, message)
-
-                    stored_count = len(inserted_messages)
-                    inserted_set = set(inserted_messages)
-
-                    stored_log_limit = min(
-                        len(messages_to_add), LOG_ADD_MESSAGE_PREVIEW_LIMIT
-                    )
-                    for idx, message in enumerate(messages_to_add, 1):
-                        if idx > stored_log_limit:
-                            break
-                        if message in inserted_set:
-                            self.logger.info(
-                                "    Stored in USearch (semantic) + Tantivy (full-text)",
-                                extra={
-                                    "message_index": idx,
-                                    "engines": ["usearch", "tantivy"]
-                                    if self._tantivy_engine
-                                    else ["usearch"],
-                                },
-                            )
-                        else:
-                            self.logger.warning(
-                                "    Skipped during batch insert",
-                                extra={
-                                    "message_index": idx,
-                                    "reason": "batch_insert_skipped",
-                                },
-                            )
-                    if len(messages_to_add) > stored_log_limit:
-                        self.logger.info(
-                            f"  ... {len(messages_to_add) - stored_log_limit} more result(s) omitted from logs",
-                            extra={
-                                "omitted_count": len(messages_to_add)
-                                - stored_log_limit,
-                                "total_messages": len(messages_to_add),
-                            },
-                        )
-
-                # Commit Tantivy changes after batch
-                if self._tantivy_engine is not None:
-                    self._tantivy_engine.commit()
-                    self.logger.info(
-                        "  Tantivy index committed",
-                        extra={"engine": "tantivy"},
-                    )
-
-                # Commit USearch semantic engine changes
-                self._semantic_engine.commit()
+            # Commit Tantivy changes after batch
+            if self._tantivy_engine is not None:
+                self._tantivy_engine.commit()
                 self.logger.info(
-                    "  USearch index committed",
-                    extra={"engine": "usearch"},
+                    "  Tantivy index committed",
+                    extra={"engine": "tantivy"},
                 )
 
-                return stored_count
+            # Commit USearch semantic engine changes
+            self._semantic_engine.commit()
+            self.logger.info(
+                "  USearch index committed",
+                extra={"engine": "usearch"},
+            )
+
+            return stored_count
 
     async def add_messages_async(
         self, messages: list[str], dry_run: bool = False
@@ -884,65 +880,64 @@ class MemoryManager:
         Raises:
             RuntimeError: If deletion fails or results in inconsistent state.
         """
-        with self._write_lock:
-            with self._lock:
-                try:
-                    # 1. Look up the SQLite ID from the message content
-                    msg_id = self._semantic_engine.get_id_by_message(
-                        self.project_id, message
-                    )
+        with self._write_lock, self._lock:
+            try:
+                # 1. Look up the SQLite ID from the message content
+                msg_id = self._semantic_engine.get_id_by_message(
+                    self.project_id, message
+                )
 
-                    if msg_id is None:
-                        self.logger.debug(
-                            "Message not found for deletion",
-                            extra={
-                                "project_id": self.project_id,
-                                "message_preview": message[:50],
-                            },
-                        )
-                        return False
-
-                    # 2. Delete from USearch semantic engine using the numeric ID
-                    self._semantic_engine.delete(memory_id=str(msg_id))
-
-                    # 3. Delete from Tantivy full-text engine
-                    # If this fails after USearch deletion, we have inconsistent state
-                    if self._tantivy_engine is not None:
-                        try:
-                            # delete() commits internally for both soft-delete and rebuild modes
-                            self._tantivy_engine.delete(self.project_id, message)
-                        except Exception as tantivy_error:
-                            # Log critical error - state is now inconsistent
-                            self.logger.error(
-                                "Tantivy deletion failed after USearch deletion - INCONSISTENT STATE",
-                                extra={
-                                    "project_id": self.project_id,
-                                    "message_id": msg_id,
-                                    "error": str(tantivy_error),
-                                },
-                            )
-                            raise InconsistentStateError(
-                                "USearch deletion succeeded but Tantivy deletion failed: "
-                                f"{tantivy_error}"
-                            ) from tantivy_error
-
+                if msg_id is None:
                     self.logger.debug(
-                        "Message deleted from hybrid storage",
+                        "Message not found for deletion",
                         extra={
                             "project_id": self.project_id,
-                            "message_id": msg_id,
-                            "engines": ["usearch", "tantivy"]
-                            if self._tantivy_engine
-                            else ["usearch"],
+                            "message_preview": message[:50],
                         },
                     )
+                    return False
 
-                    return True
+                # 2. Delete from USearch semantic engine using the numeric ID
+                self._semantic_engine.delete(memory_id=str(msg_id))
 
-                except InconsistentStateError:
-                    raise  # Re-raise inconsistent state errors with full context
-                except Exception as e:
-                    raise StorageError(f"Failed to delete message: {e}") from e
+                # 3. Delete from Tantivy full-text engine
+                # If this fails after USearch deletion, we have inconsistent state
+                if self._tantivy_engine is not None:
+                    try:
+                        # delete() commits internally for both soft-delete and rebuild modes
+                        self._tantivy_engine.delete(self.project_id, message)
+                    except Exception as tantivy_error:
+                        # Log critical error - state is now inconsistent
+                        self.logger.error(
+                            "Tantivy deletion failed after USearch deletion - INCONSISTENT STATE",
+                            extra={
+                                "project_id": self.project_id,
+                                "message_id": msg_id,
+                                "error": str(tantivy_error),
+                            },
+                        )
+                        raise InconsistentStateError(
+                            "USearch deletion succeeded but Tantivy deletion failed: "
+                            f"{tantivy_error}"
+                        ) from tantivy_error
+
+                self.logger.debug(
+                    "Message deleted from hybrid storage",
+                    extra={
+                        "project_id": self.project_id,
+                        "message_id": msg_id,
+                        "engines": ["usearch", "tantivy"]
+                        if self._tantivy_engine
+                        else ["usearch"],
+                    },
+                )
+
+                return True
+
+            except InconsistentStateError:
+                raise  # Re-raise inconsistent state errors with full context
+            except Exception as e:
+                raise StorageError(f"Failed to delete message: {e}") from e
 
     def _has_exact_match(self, message: str) -> bool:
         """Check whether the exact message already exists in storage.
@@ -974,53 +969,52 @@ class MemoryManager:
         Should be called during graceful shutdown (e.g., on SIGINT/SIGTERM)
         to prevent data loss.
         """
-        with self._write_lock:
-            with self._lock:
-                self.logger.info(
-                    "Closing MemoryManager - persisting data to disk...",
-                    extra={"project_id": self.project_id},
-                )
+        with self._write_lock, self._lock:
+            self.logger.info(
+                "Closing MemoryManager - persisting data to disk...",
+                extra={"project_id": self.project_id},
+            )
 
-                # 1. Close Tantivy engine first (if enabled)
-                if self._tantivy_engine is not None:
-                    try:
-                        # Use flush() to commit and wait for all merge threads
-                        self._tantivy_engine.flush()
-                        self._tantivy_engine.close()
-                        self.logger.info(
-                            "Tantivy engine closed successfully",
-                            extra={"project_id": self.project_id, "engine": "tantivy"},
-                        )
-                    except Exception as e:
-                        self.logger.error(
-                            f"Error closing Tantivy engine: {e}",
-                            extra={
-                                "project_id": self.project_id,
-                                "engine": "tantivy",
-                                "error": str(e),
-                            },
-                        )
-
-                # 2. Close USearch semantic engine
+            # 1. Close Tantivy engine first (if enabled)
+            if self._tantivy_engine is not None:
                 try:
-                    # Commit to save USearch index to disk
-                    self._semantic_engine.commit()
-                    self._semantic_engine.close()
+                    # Use flush() to commit and wait for all merge threads
+                    self._tantivy_engine.flush()
+                    self._tantivy_engine.close()
                     self.logger.info(
-                        "USearch engine closed successfully",
-                        extra={"project_id": self.project_id, "engine": "usearch"},
+                        "Tantivy engine closed successfully",
+                        extra={"project_id": self.project_id, "engine": "tantivy"},
                     )
                 except Exception as e:
                     self.logger.error(
-                        f"Error closing USearch engine: {e}",
+                        f"Error closing Tantivy engine: {e}",
                         extra={
                             "project_id": self.project_id,
-                            "engine": "usearch",
+                            "engine": "tantivy",
                             "error": str(e),
                         },
                     )
 
+            # 2. Close USearch semantic engine
+            try:
+                # Commit to save USearch index to disk
+                self._semantic_engine.commit()
+                self._semantic_engine.close()
                 self.logger.info(
-                    "MemoryManager closed - all data persisted",
-                    extra={"project_id": self.project_id},
+                    "USearch engine closed successfully",
+                    extra={"project_id": self.project_id, "engine": "usearch"},
                 )
+            except Exception as e:
+                self.logger.error(
+                    f"Error closing USearch engine: {e}",
+                    extra={
+                        "project_id": self.project_id,
+                        "engine": "usearch",
+                        "error": str(e),
+                    },
+                )
+
+            self.logger.info(
+                "MemoryManager closed - all data persisted",
+                extra={"project_id": self.project_id},
+            )

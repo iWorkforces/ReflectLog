@@ -6,7 +6,7 @@ ensuring that all settings are valid and consistent before the server starts.
 
 from dataclasses import dataclass
 import re
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -30,14 +30,14 @@ class ConfigurationValidator:
     """
 
     # Regex patterns
-    PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+    PROJECT_ID_PATTERN: ClassVar = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
     # Valid values for enums
-    VALID_TRANSPORTS = {"stdio", "http", "sse", "streamable-http"}
-    VALID_RERANKER_ENGINES = {"llm", "cross_encoder", "none"}
-    VALID_LLM_PROVIDERS = {"openai", "anthropic"}
-    VALID_CROSS_ENCODER_DEVICES = {"cpu", "cuda", "mps"}
-    VALID_FUSION_METHODS = {"rrf", "sum", "mnz", "max", "bordafuse"}
+    VALID_TRANSPORTS: ClassVar = {"stdio", "http", "sse", "streamable-http"}
+    VALID_RERANKER_ENGINES: ClassVar = {"llm", "cross_encoder", "none"}
+    VALID_LLM_PROVIDERS: ClassVar = {"openai", "anthropic"}
+    VALID_CROSS_ENCODER_DEVICES: ClassVar = {"cpu", "cuda", "mps"}
+    VALID_FUSION_METHODS: ClassVar = {"rrf", "sum", "mnz", "max", "bordafuse"}
 
     def __init__(self) -> None:
         """Initialize validator with an empty list of errors."""
@@ -545,7 +545,7 @@ def validate_config(config: object) -> list[ValidationError]:
 
 
 __all__ = [
-    "ValidationError",
     "ConfigurationValidator",
+    "ValidationError",
     "validate_config",
 ]

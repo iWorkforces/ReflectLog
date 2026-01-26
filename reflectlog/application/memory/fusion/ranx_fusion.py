@@ -200,7 +200,10 @@ class RanxFusionEngine:
         normalized_scores = normalize_scores_minmax(scores)
 
         # Reconstruct result tuples with normalized scores
-        return [(msg, float(score)) for msg, score in zip(messages, normalized_scores)]
+        return [
+            (msg, float(score))
+            for msg, score in zip(messages, normalized_scores, strict=True)
+        ]
 
     def fuse(
         self,

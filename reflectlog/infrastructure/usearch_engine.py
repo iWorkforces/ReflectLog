@@ -316,12 +316,11 @@ class USearchEngine(BaseModel):
         """
         msg_id = None  # Track msg_id for rollback on embedding failure
         try:
-            if infer:
-                if self.logger:
-                    self.logger.warning(
-                        "infer=True not supported by USearchEngine, proceeding as infer=False",
-                        extra={"project_id": self.config.project_id},
-                    )
+            if infer and self.logger:
+                self.logger.warning(
+                    "infer=True not supported by USearchEngine, proceeding as infer=False",
+                    extra={"project_id": self.config.project_id},
+                )
 
             # Insert into SQLite (relies on UNIQUE INDEX for dedup - no pre-check needed)
             msg_id = self.message_store.insert(project_id, message)
@@ -403,12 +402,11 @@ class USearchEngine(BaseModel):
         if not messages:
             return []
 
-        if infer:
-            if self.logger:
-                self.logger.warning(
-                    "infer=True not supported by USearchEngine, proceeding as infer=False",
-                    extra={"project_id": self.config.project_id},
-                )
+        if infer and self.logger:
+            self.logger.warning(
+                "infer=True not supported by USearchEngine, proceeding as infer=False",
+                extra={"project_id": self.config.project_id},
+            )
 
         inserted = []  # Track successfully inserted (message, msg_id) pairs
         inserted_ids = []  # Track IDs for rollback on embedding failure

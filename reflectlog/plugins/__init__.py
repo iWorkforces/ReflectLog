@@ -51,23 +51,23 @@ from .registry import (
 
 __all__ = [
     # Discovery
-    "DiscoveredPlugin",
-    "PluginDiscoveryStrategy",
-    "EntryPointDiscovery",
-    "DirectoryScanDiscovery",
-    "StaticRegistration",
     "CompositeDiscovery",
-    "PluginDiscoverer",
+    "DirectoryScanDiscovery",
+    "DiscoveredPlugin",
+    "EntryPointDiscovery",
     "load_plugin",
+    "PluginDiscoverer",
+    "PluginDiscoveryStrategy",
+    "StaticRegistration",
+    # Loading
+    "IPluginLifecycle",
+    "LifecycleHooks",
+    "PluginLoader",
     # Registry
-    "PluginState",
+    "IPluggable",
     "PluginCapability",
     "PluginMetadata",
-    "IPluggable",
     "PluginRegistry",
+    "PluginState",
     "ToolRegistry",
-    # Loading
-    "LifecycleHooks",
-    "IPluginLifecycle",
-    "PluginLoader",
 ]

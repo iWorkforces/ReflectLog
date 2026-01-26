@@ -263,6 +263,8 @@ def warmup_numba_functions() -> bool:
         import warnings
 
         warnings.warn(
-            f"Numba JIT warmup failed: {e}. First calls will be slower.", RuntimeWarning
+            f"Numba JIT warmup failed: {e}. First calls will be slower.",
+            RuntimeWarning,
+            stacklevel=2,
         )
         return False

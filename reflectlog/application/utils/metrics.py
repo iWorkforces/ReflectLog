@@ -108,7 +108,7 @@ class MetricsRegistry:
         with self._lock:
             self._counters[name][label_key] += value
             # Track label keys for export
-            for key in labels.keys():
+            for key in labels:
                 self._label_keys[name].add(key)
 
     def set(
@@ -133,7 +133,7 @@ class MetricsRegistry:
         with self._lock:
             self._gauges[name][label_key] = value
             # Track label keys for export
-            for key in labels.keys():
+            for key in labels:
                 self._label_keys[name].add(key)
 
     def observe(
@@ -158,7 +158,7 @@ class MetricsRegistry:
         with self._lock:
             self._histograms[name][label_key].append(value)
             # Track label keys for export
-            for key in labels.keys():
+            for key in labels:
                 self._label_keys[name].add(key)
 
     @contextlib.contextmanager

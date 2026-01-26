@@ -54,6 +54,7 @@ class LangchainQwenEmbeddings(BaseModel):
                 "The environment variable 'OPENAI_API_BASE' is deprecated and will be removed in the 0.1.80. "
                 "Please use 'OPENROUTER_BASE_URL' instead.",
                 DeprecationWarning,
+                stacklevel=2,
             )
 
         # Initialize synchronous client for sync methods
@@ -282,6 +283,7 @@ class LangchainQwenEmbeddings(BaseModel):
                 warnings.warn(
                     f"Embedding batch {start_idx} failed: {e}",
                     RuntimeWarning,
+                    stacklevel=2,
                 )
                 # Results at failed batch indices remain as empty lists
 

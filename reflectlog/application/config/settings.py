@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import os
 import re
 import threading
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 from ..exceptions import ConfigurationError
 from ..utils.security import SecretString
@@ -14,7 +14,7 @@ from .validation import validate_config
 # to avoid unnecessary initialization when not using langchain provider
 
 # Type definitions
-TransportMode: TypeAlias = Literal["stdio", "http", "sse", "streamable-http"]
+type TransportMode = Literal["stdio", "http", "sse", "streamable-http"]
 
 
 def _parse_optional_bool(value: str | None) -> bool | None:
@@ -500,7 +500,7 @@ class Config:
                 if normalized and all(
                     token in {"none", "disabled"} for token in normalized
                 ):
-                    allowed_tools = tuple()
+                    allowed_tools = ()
                 else:
                     # Preserve order while removing duplicates
                     seen: dict[str, None] = {}
@@ -511,7 +511,7 @@ class Config:
 
         # If ALLOWED_TOOLS was set to an empty/blank value, respect it
         if allowed_tools_env is not None and allowed_tools_env.strip() == "":
-            allowed_tools = tuple()
+            allowed_tools = ()
 
         return allowed_tools
 

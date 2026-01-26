@@ -32,4 +32,4 @@ class Client:
         self, tool_name: str, arguments: dict[str, Any] | None = None
     ) -> Any: ...
 
-__all__ = ["FastMCP", "Tool", "ToolManager", "Client"]
+__all__ = ["Client", "FastMCP", "Tool", "ToolManager"]

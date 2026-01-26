@@ -7,7 +7,7 @@ loading, initialization, activation, deactivation, and unloading.
 from collections.abc import Callable
 from dataclasses import dataclass
 import logging
-from typing import Generic, Protocol, TypeVar, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
 
 from .discovery import DiscoveredPlugin, PluginDiscoverer, PluginDiscoveryStrategy
 from .registry import PluginRegistry, PluginState
@@ -49,7 +49,7 @@ class IPluginLifecycle(Protocol):
         ...
 
 
-class PluginLoader(Generic[T]):
+class PluginLoader[T]:
     """Loader for managing plugin lifecycle.
 
     This class handles the full plugin lifecycle: discovery, loading,

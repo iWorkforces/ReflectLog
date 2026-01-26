@@ -4,7 +4,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Protocol,
-    TypeAlias,
     runtime_checkable,
 )
 
@@ -26,15 +25,15 @@ if TYPE_CHECKING:
 # before timestamp tracking was implemented.
 
 # Memory operation types
-MemoryRecord: TypeAlias = dict[str, Any]
-SearchResult: TypeAlias = dict[str, list[MemoryRecord]]
-MessageList: TypeAlias = list[str]
+type MemoryRecord = dict[str, Any]
+type SearchResult = dict[str, list[MemoryRecord]]
+type MessageList = list[str]
 
 # Tool result types
-ToolResult: TypeAlias = None | MessageList
+type ToolResult = None | MessageList
 
 # Extra logging context
-LogContext: TypeAlias = dict[str, Any]
+type LogContext = dict[str, Any]
 
 
 # Clean Architecture: Application layer defines interfaces

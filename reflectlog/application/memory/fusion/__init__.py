@@ -44,14 +44,14 @@ def create_fusion_engine(
 
 
 __all__ = [
-    # Protocol
-    "FusionEngine",
-    # Implementation
-    "RanxFusionEngine",
-    # Factory
-    "create_fusion_engine",
     # Constants
+    "DEFAULT_NORMALIZATIONS",
     "SUPPORTED_METHODS",
     "SUPPORTED_NORMALIZATIONS",
-    "DEFAULT_NORMALIZATIONS",
+    # Factory
+    "create_fusion_engine",
+    # Implementation
+    "RanxFusionEngine",
+    # Protocol
+    "FusionEngine",
 ]

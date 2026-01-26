@@ -74,20 +74,20 @@ DEFAULT_RETRY_BASE_DELAY: float = 1.0
 # =============================================================================
 
 __all__ = [
-    # Search and Fusion
-    "MIN_OVERFETCH_LIMIT",
-    "TANTIVY_SCORE_DIVISOR",
-    # Logging
-    "LOG_QUERY_TRUNCATE_LENGTH",
-    "LOG_ADD_MESSAGE_PREVIEW_LIMIT",
-    "LOG_SEPARATOR_LENGTH",
-    # Index Size Thresholds
-    "ADAPTIVE_OVERFETCH_SMALL_INDEX_THRESHOLD",
-    "ADAPTIVE_OVERFETCH_LARGE_INDEX_THRESHOLD",
-    # Score Ranges
-    "MIN_PERCENTAGE_THRESHOLD",
-    "MAX_PERCENTAGE_THRESHOLD",
     # API and Retry
     "DEFAULT_MAX_RETRIES",
     "DEFAULT_RETRY_BASE_DELAY",
+    # Index Size Thresholds
+    "ADAPTIVE_OVERFETCH_LARGE_INDEX_THRESHOLD",
+    "ADAPTIVE_OVERFETCH_SMALL_INDEX_THRESHOLD",
+    # Logging
+    "LOG_ADD_MESSAGE_PREVIEW_LIMIT",
+    "LOG_QUERY_TRUNCATE_LENGTH",
+    "LOG_SEPARATOR_LENGTH",
+    # Score Ranges
+    "MAX_PERCENTAGE_THRESHOLD",
+    "MIN_PERCENTAGE_THRESHOLD",
+    # Search and Fusion
+    "MIN_OVERFETCH_LIMIT",
+    "TANTIVY_SCORE_DIVISOR",
 ]

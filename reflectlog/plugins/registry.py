@@ -8,7 +8,7 @@ or "find reranker plugins".
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Generic, Protocol, TypeVar, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
 
 
 def utc_now() -> datetime:
@@ -74,7 +74,7 @@ class IPluggable(Protocol):
         ...
 
 
-class PluginRegistry(Generic[T]):
+class PluginRegistry[T]:
     """Registry for managing plugins and their capabilities.
 
     This class provides methods for registering, unregistering, and

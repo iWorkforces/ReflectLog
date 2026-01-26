@@ -134,7 +134,7 @@ class SearchPipeline:
                     "error": str(e),
                 },
             )
-            raise SearchError(f"Failed to execute search: {str(e)}") from e
+            raise SearchError(f"Failed to execute search: {e}") from e
 
     async def _execute_semantic_only(self, context: SearchContext) -> SearchResult:
         """Execute semantic-only search (hybrid disabled)."""

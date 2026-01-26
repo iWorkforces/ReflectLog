@@ -2,22 +2,25 @@ import argparse
 import os
 import signal
 import sys
+import threading
 import time
+from typing import TYPE_CHECKING
 
 # Add the current directory to Python path for direct execution
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+if TYPE_CHECKING:
+    from _typeshed import SupportsWrite
+
 # Configure numba before any imports that use it
 # Enable caching for JIT-compiled functions to avoid recompilation on restart
-os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(os.getcwd(), ".numba_cache"))
+_ = os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(os.getcwd(), ".numba_cache"))
 # Use threading backend for parallel execution
-os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
+_ = os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
 # Disable JIT debugging in production for better performance
-os.environ.setdefault("NUMBA_DEBUG", "0")
+_ = os.environ.setdefault("NUMBA_DEBUG", "0")
 # Enable fastmath for additional floating-point optimizations
-os.environ.setdefault("NUMBA_FASTMATH", "1")
-
-import threading
+_ = os.environ.setdefault("NUMBA_FASTMATH", "1")
 
 from reflectlog.application.mcp_server import FastMCPServer
 from reflectlog.application.utils.numba_utils import warmup_numba_functions
@@ -27,7 +30,7 @@ from reflectlog.version import __version__
 def warmup_numba_with_config(
     enabled: bool = True,
     mode: str = "sync",
-    output_stream: object = None,
+    output_stream: SupportsWrite[str] | None = None,
 ) -> threading.Thread | None:
     """Warm up numba JIT functions with configurable execution mode.
 
@@ -56,7 +59,7 @@ def warmup_numba_with_config(
     if mode == "sync":
         if output_stream:
             print("Warming up numba JIT functions (synchronous)...", file=output_stream)
-        warmup_numba_functions()
+        _ = warmup_numba_functions()
         if output_stream:
             print("Numba functions compiled and cached", file=output_stream)
         return None
@@ -71,7 +74,7 @@ def warmup_numba_with_config(
 
         def warmup_worker():
             try:
-                warmup_numba_functions()
+                _ = warmup_numba_functions()
                 if output_stream:
                     print(
                         "Numba functions compiled and cached (background complete)",
@@ -116,33 +119,33 @@ Environment Variables:
         """,
     )
 
-    parser.add_argument(
+    _ = parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
         help="Show version and exit",
     )
 
-    parser.add_argument(
+    _ = parser.add_argument(
         "--transport",
         type=str,
         choices=["stdio", "http", "sse", "streamable-http"],
         help="Transport protocol (default: stdio for tool usage, or from settings.toml)",
     )
 
-    parser.add_argument(
+    _ = parser.add_argument(
         "--port",
         type=int,
         help="Server port for non-stdio transports (default: 9103)",
     )
 
-    parser.add_argument(
+    _ = parser.add_argument(
         "--host",
         type=str,
         help="Server host for non-stdio transports (default: 127.0.0.1)",
     )
 
-    parser.add_argument(
+    _ = parser.add_argument(
         "--path",
         type=str,
         help="Server path for non-stdio transports (default: /mcp)",
@@ -207,7 +210,7 @@ def main() -> None:
 
     # Phase: Numba JIT warmup
     numba_start = time.time()
-    warmup_numba_with_config(
+    _ = warmup_numba_with_config(
         enabled=numba_warmup_enabled,
         mode=numba_warmup_mode,
         output_stream=output_stream,
@@ -238,8 +241,8 @@ def main() -> None:
     # Register signal handlers for graceful shutdown
     # SIGINT: Ctrl+C from terminal
     # SIGTERM: Standard termination signal (e.g., from process managers)
-    signal.signal(signal.SIGINT, graceful_shutdown)
-    signal.signal(signal.SIGTERM, graceful_shutdown)
+    _ = signal.signal(signal.SIGINT, graceful_shutdown)
+    _ = signal.signal(signal.SIGTERM, graceful_shutdown)
 
     try:
         # Phase: Server initialization
@@ -262,7 +265,7 @@ def main() -> None:
                 print(f"  {phase}: {duration * 1000:.1f}ms", file=output_stream)
 
         # Store startup metrics on memory manager for health check
-        server._memory_manager._startup_metrics = startup_phases
+        server._memory_manager._startup_metrics = startup_phases  # noqa: SLF001
 
         server.run()
     except KeyboardInterrupt:

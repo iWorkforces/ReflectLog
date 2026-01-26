@@ -12,8 +12,8 @@ from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngin
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 __all__ = [
-    "USearchEngine",
-    "USearchConfig",
-    "TantivyEngine",
     "TantivyConfig",
+    "TantivyEngine",
+    "USearchConfig",
+    "USearchEngine",
 ]
