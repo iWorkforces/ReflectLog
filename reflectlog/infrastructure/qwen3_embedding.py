@@ -1,12 +1,15 @@
 from dataclasses import dataclass
-from typing import Any, Optional
 import os
 import random
 import time
+from typing import Any
 import warnings
+
 import anyio
-from openai import OpenAI, AsyncOpenAI, DefaultAioHttpClient, DefaultHttpxClient
+from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+
+from reflectlog.application.utils.http_client import HttpClientFactory
 
 
 @dataclass
@@ -19,11 +22,11 @@ class EmbedderConfig:
 
     model: str = ""
     embedding_dims: int = 1536
-    api_key: Optional[str] = None
-    openai_base_url: Optional[str] = None
+    api_key: str | None = None
+    openai_base_url: str | None = None
     timeout: float = 60.0  # 60 seconds default for embedding requests
-    batch_size: Optional[int] = None
-    max_concurrent_batches: Optional[int] = None
+    batch_size: int | None = None
+    max_concurrent_batches: int | None = None
 
 
 class LangchainQwenEmbeddings(BaseModel):
@@ -32,7 +35,7 @@ class LangchainQwenEmbeddings(BaseModel):
     _client: OpenAI | None = PrivateAttr(default=None)
     _async_client: AsyncOpenAI | None = PrivateAttr(default=None)
 
-    def __init__(self, config: Optional[EmbedderConfig | dict[str, Any]] = None):
+    def __init__(self, config: EmbedderConfig | dict[str, Any] | None = None):
         super().__init__(config=config or {})
 
         if isinstance(self.config, dict):
@@ -53,26 +56,27 @@ class LangchainQwenEmbeddings(BaseModel):
                 "The environment variable 'OPENAI_API_BASE' is deprecated and will be removed in the 0.1.80. "
                 "Please use 'OPENROUTER_BASE_URL' instead.",
                 DeprecationWarning,
+                stacklevel=2,
             )
 
         # Initialize synchronous client for sync methods
+        httpx_client = HttpClientFactory.get_httpx_client(http2=True)
         self._client = OpenAI(
             api_key=api_key,
             base_url=base_url,
-            http_client=DefaultHttpxClient(http2=True),
+            http_client=httpx_client,
             timeout=self.config.timeout,
         )
 
-        # Async client is initialized lazily to avoid unused aiohttp sessions
+        # Async client is initialized lazily to avoid unused sessions
 
     def _get_async_client(self) -> AsyncOpenAI:
-        """Get or initialize the async OpenAI client."""
         if self._async_client is None:
-            # Note: aiohttp does not support HTTP/2, so we don't enable it
+            httpx_client = HttpClientFactory.get_async_httpx_client(http2=False)
             self._async_client = AsyncOpenAI(
                 api_key=self.config.api_key,
                 base_url=self.config.openai_base_url,
-                http_client=DefaultAioHttpClient(),
+                http_client=httpx_client,
                 timeout=self.config.timeout,
             )
         return self._async_client
@@ -281,6 +285,7 @@ class LangchainQwenEmbeddings(BaseModel):
                 warnings.warn(
                     f"Embedding batch {start_idx} failed: {e}",
                     RuntimeWarning,
+                    stacklevel=2,
                 )
                 # Results at failed batch indices remain as empty lists
 

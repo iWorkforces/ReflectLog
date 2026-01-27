@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Test to demonstrate ENABLE_LLM_INFER functionality."""
 
-import subprocess
 import json
+import os
+import subprocess
+
+import anyio
 from fastmcp import Client
 from fastmcp.client.client import CallToolResult
-import anyio
-import os
 import pytest
 
 pytestmark = pytest.mark.skipif(

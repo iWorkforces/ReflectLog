@@ -1,15 +1,15 @@
 """Structured logging utilities for ReflectLogMCP Server."""
 
-import logging
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+import logging
+from typing import Any
 
 
 class StructuredLogger:
     """Wrapper for structured logging with consistent formatting."""
 
     def __init__(
-        self, logger: logging.Logger, default_extra: Optional[Dict[str, Any]] = None
+        self, logger: logging.Logger, default_extra: dict[str, Any] | None = None
     ):
         """Initialize structured logger.
 
@@ -20,7 +20,7 @@ class StructuredLogger:
         self.logger = logger
         self.default_extra = default_extra or {}
 
-    def _merge_extra(self, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _merge_extra(self, extra: dict[str, Any] | None = None) -> dict[str, Any]:
         """Merge default extra fields with provided extras.
 
         Performance optimized: avoids dict copying when possible.
@@ -34,7 +34,7 @@ class StructuredLogger:
         merged = {**self.default_extra, **extra}
         return self._redact_sensitive_data(merged)
 
-    def _redact_sensitive_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _redact_sensitive_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """Redact sensitive patterns in log data.
 
         Integrates with redact_dict_secrets to automatically redact
@@ -50,13 +50,13 @@ class StructuredLogger:
 
         return redact_dict_secrets(data)
 
-    def isEnabledFor(self, level: int) -> bool:
+    def is_enabled_for(self, level: int) -> bool:
         """Check if logger is enabled for the given level.
 
         Use this to guard expensive logging operations.
 
         Example:
-            if logger.isEnabledFor(logging.DEBUG):
+            if logger.is_enabled_for(logging.DEBUG):
                 logger.debug("Expensive: %s", expensive_computation())
         """
         return self.logger.isEnabledFor(level)
@@ -64,7 +64,7 @@ class StructuredLogger:
     def info(
         self,
         message: str,
-        extra: Optional[Dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
         """Log info message with structured data."""
@@ -73,7 +73,7 @@ class StructuredLogger:
     def error(
         self,
         message: str,
-        extra: Optional[Dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
         """Log error message with structured data."""
@@ -82,7 +82,7 @@ class StructuredLogger:
     def warning(
         self,
         message: str,
-        extra: Optional[Dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
         """Log warning message with structured data."""
@@ -91,7 +91,7 @@ class StructuredLogger:
     def debug(
         self,
         message: str,
-        extra: Optional[Dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
         """Log debug message with structured data."""

@@ -32,8 +32,8 @@ from .normalization import (
 )
 
 __all__ = [
-    "normalize_reranker_scores",
+    "apply_recency_decay",
     "apply_threshold_with_safety_net",
     "calculate_recency_factor",
-    "apply_recency_decay",
+    "normalize_reranker_scores",
 ]

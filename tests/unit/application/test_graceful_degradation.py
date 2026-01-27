@@ -329,7 +329,7 @@ class TestSmartReplacerDegradation:
         )
 
         # Should return safe defaults
-        should_replace, confidence, reason = result
+        should_replace, confidence, _reason = result
         assert should_replace is False
         assert confidence == 0.0
 
@@ -385,7 +385,7 @@ class TestSmartReplacerDegradation:
             )
 
             # Should return expected values
-            should_replace, confidence, reason = result
+            should_replace, confidence, _reason = result
             assert should_replace == expected_should_replace, (
                 f"For JSON '{json_response}': expected {expected_should_replace}, got {should_replace}"
             )
@@ -466,6 +466,6 @@ class TestSmartReplacerDegradation:
         )
 
         # Should return safe defaults (likely due to timeout)
-        should_replace, confidence, reason = result
+        should_replace, _confidence, _reason = result
         # Should default to False on error
         assert should_replace is False

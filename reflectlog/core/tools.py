@@ -5,8 +5,10 @@ The tool abstraction enables discoverable, configurable tools that can
 be added without modifying core application logic.
 """
 
-from typing import Protocol, runtime_checkable, Optional, Any, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any, Protocol, runtime_checkable
+
 from pydantic import BaseModel
 
 
@@ -119,7 +121,7 @@ class IToolRegistry(Protocol):
         """
         ...
 
-    def get(self, name: str) -> Optional[ITool]:
+    def get(self, name: str) -> ITool | None:
         """Get a tool by name.
 
         Args:

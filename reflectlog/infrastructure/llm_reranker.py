@@ -1,10 +1,10 @@
 """LLM-based document reranker for search results."""
 
-import json
-import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+import json
+import re
+from typing import Any, Protocol
 
 import anyio
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -116,7 +116,7 @@ class LLMRerankerConfig:
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
-    def from_app_config(cls, config: Config) -> "LLMRerankerConfig":
+    def from_app_config(cls, config: Config) -> LLMRerankerConfig:
         """Create LLMRerankerConfig from application Config.
 
         Args:
@@ -151,7 +151,7 @@ class IRerankerProvider(Protocol):
         document: str,
         fallback_score: float,
         memory_age: str | None = None,
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """Score a document's relevance to the query.
 
         Args:
@@ -185,7 +185,7 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
         document: str,
         fallback_score: float,
         memory_age: str | None = None,
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """Score a document's relevance using OpenAI API.
 
         Args:
@@ -326,7 +326,7 @@ class AnthropicRerankerProvider:
         document: str,
         fallback_score: float,
         memory_age: str | None = None,
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """Score a document's relevance using Anthropic Claude.
 
         Args:
@@ -472,7 +472,7 @@ class LLMReranker(BaseModel):
         document: str,
         fallback_score: float,
         memory_age: str | None = None,
-    ) -> Tuple[str, float]:
+    ) -> tuple[str, float]:
         """Score a single document's relevance to the query.
 
         Delegates to the configured provider for actual scoring.
@@ -500,9 +500,9 @@ class LLMReranker(BaseModel):
     async def rerank(
         self,
         query: str,
-        candidates: List[Tuple[str, float]],
-        timestamp_map: Dict[str, str] | None = None,
-    ) -> List[Tuple[str, float]]:
+        candidates: list[tuple[str, float]],
+        timestamp_map: dict[str, str] | None = None,
+    ) -> list[tuple[str, float]]:
         """Rerank candidates by LLM relevance scores.
 
         Scores each candidate document against the query using the LLM,
@@ -527,7 +527,7 @@ class LLMReranker(BaseModel):
 
         # Use semaphore to limit concurrent LLM calls
         semaphore = anyio.Semaphore(self.config.max_concurrency)
-        results: List[Optional[Tuple[str, float]]] = [None] * len(candidates)
+        results: list[tuple[str, float] | None] = [None] * len(candidates)
 
         async def score_with_semaphore(
             idx: int, doc: str, fallback: float, memory_age: str | None
@@ -541,7 +541,8 @@ class LLMReranker(BaseModel):
         # Score all candidates in parallel with concurrency limit
         async with anyio.create_task_group() as tg:
             for idx, (document, fusion_score) in enumerate(candidates):
-                # Get memory age from timestamp_map if available and recency boost is enabled
+                # Get memory age from timestamp_map if available and
+                # recency boost is enabled
                 memory_age = None
                 if (
                     self.config.enable_recency_boost
@@ -554,7 +555,7 @@ class LLMReranker(BaseModel):
                 )
 
         # Collect all scored results (filter out None results)
-        scored_results: List[Tuple[str, float]] = []
+        scored_results: list[tuple[str, float]] = []
         for result in results:
             if result is not None:
                 scored_results.append(result)
@@ -569,8 +570,9 @@ class LLMReranker(BaseModel):
             scored_results = normalize_reranker_scores(scored_results)
             if self.logger:
                 self.logger.debug(
-                    f"Batch normalization: enabled (raw range: "
-                    f"{min(raw_scores):.4f}-{max(raw_scores):.4f} -> normalized: 0.0-1.0)",
+                    f"Batch normalization: enabled "
+                    f"(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} "
+                    f"-> normalized: 0.0-1.0)",
                     extra={
                         "batch_normalize": True,
                         "raw_min": min(raw_scores),
@@ -598,7 +600,7 @@ class LLMReranker(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    f"Recency decay: applied (rate={self.config.recency_decay_rate}, "
+                    f"Recency decay: applied (rate={self.config.recency_decay_rate}), "
                     f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
                     f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
                     extra={

@@ -1,7 +1,5 @@
 """Get all tool implementation for ReflectLogMCP Server."""
 
-from typing import List
-
 from asyncer import asyncify
 
 from ..exceptions import StorageError
@@ -26,7 +24,7 @@ class GetAllTool(BaseTool):
     def get_handler(self):
         """Get the async tool handler function."""
 
-        async def get_all() -> List[str]:
+        async def get_all() -> list[str]:
             """Retrieve all stored messages (async).
 
             Returns all messages currently in the memory store. Order is determined

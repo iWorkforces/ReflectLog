@@ -25,8 +25,8 @@ Recency decay formula:
 - Older memories get progressively lower factors
 """
 
+from datetime import UTC, datetime
 import math
-from datetime import datetime, timezone
 
 import numpy as np
 from numpy.typing import NDArray
@@ -75,7 +75,10 @@ def normalize_reranker_scores(
     # This handles edge cases like all-equal scores (returns 1.0 for all)
     normalized = normalize_scores_minmax(scores)
 
-    return [(doc, float(norm_score)) for doc, norm_score in zip(documents, normalized)]
+    return [
+        (doc, float(norm_score))
+        for doc, norm_score in zip(documents, normalized, strict=True)
+    ]
 
 
 def apply_threshold_with_safety_net(
@@ -156,14 +159,14 @@ def calculate_recency_factor(
         >>> # factor ≈ 0.50 (exp(-0.01 * 69))
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     # Parse ISO timestamp
     try:
         created_at = datetime.fromisoformat(timestamp_iso)
         # Ensure timezone-aware
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
+            created_at = created_at.replace(tzinfo=UTC)
     except (ValueError, TypeError):
         # If timestamp is invalid, return factor of 1.0 (no decay)
         return 1.0
@@ -211,7 +214,7 @@ def apply_recency_decay(
         return []
 
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     decayed_results: list[tuple[str, float]] = []
 

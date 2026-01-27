@@ -110,7 +110,7 @@ class TestTantivyEngineOperations:
 
         # Search for user-1 should only return user-1's messages
         results = engine.search("Message", "user-1", limit=10)
-        for msg, score in results:
+        for msg, _score in results:
             assert "user 1" in msg or results == []
 
     def test_search_respects_limit(self, engine: TantivyEngine) -> None:

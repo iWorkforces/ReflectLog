@@ -1,6 +1,7 @@
 """Type stubs for fastmcp library."""
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 class Tool:
     """FastMCP Tool with registered function."""
@@ -31,4 +32,4 @@ class Client:
         self, tool_name: str, arguments: dict[str, Any] | None = None
     ) -> Any: ...
 
-__all__ = ["FastMCP", "Tool", "ToolManager", "Client"]
+__all__ = ["Client", "FastMCP", "Tool", "ToolManager"]

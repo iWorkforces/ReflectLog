@@ -7,12 +7,11 @@ This module provides mechanisms for discovering plugins from various sources:
 """
 
 from dataclasses import dataclass
-from typing import Optional, TypeVar, Generic, Type, cast
 import importlib
 import importlib.metadata
-import pkgutil
 from pathlib import Path
-
+import pkgutil
+from typing import TypeVar, cast
 
 T = TypeVar("T")
 
@@ -25,10 +24,10 @@ class DiscoveredPlugin:
     module_path: str
     class_name: str
     version: str = "0.0.0"
-    entry_point: Optional[str] = None
+    entry_point: str | None = None
 
 
-class PluginDiscoveryStrategy(Generic[T]):
+class PluginDiscoveryStrategy[T]:
     """Base class for plugin discovery strategies."""
 
     async def discover(self) -> list[DiscoveredPlugin]:
@@ -50,7 +49,7 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
     def __init__(
         self,
         group: str,
-        plugin_type: Type[T],
+        plugin_type: type[T],
     ):
         """Initialize entry point discovery.
 
@@ -72,7 +71,8 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
         try:
             eps = importlib.metadata.entry_points(group=self._group)
         except TypeError:
-            # Python 3.9 compatibility - entry_points() returns dict-like SelectableGroups
+            # Python 3.9 compatibility - entry_points() returns dict-like
+            # SelectableGroups
             eps = importlib.metadata.entry_points()
             # Filter to our group if SelectableGroups
             if hasattr(eps, "select"):
@@ -113,7 +113,7 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
     def __init__(
         self,
         package_names: list[str],
-        plugin_base_class: Type[T],
+        plugin_base_class: type[T],
         module_pattern: str = "plugin_*.py",
     ):
         """Initialize directory scan discovery.
@@ -145,7 +145,7 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
                 pkg_path = Path(pkg_file).parent
 
                 # Find all modules matching the pattern
-                for finder, name, ispkg in pkgutil.iter_modules(
+                for _finder, name, ispkg in pkgutil.iter_modules(
                     [str(pkg_path)],
                     prefix=f"{package_name}.",
                 ):
@@ -258,7 +258,7 @@ async def load_plugin(plugin: DiscoveredPlugin) -> T:
         return cast(T, module)
 
 
-class PluginDiscoverer(Generic[T]):
+class PluginDiscoverer[T]:
     """Main class for plugin discovery and loading.
 
     This class orchestrates plugin discovery using configured strategies
@@ -290,7 +290,7 @@ class PluginDiscoverer(Generic[T]):
         self._discovered = await self._strategy.discover()
         return self._discovered
 
-    async def load_plugin(self, name: str) -> Optional[T]:
+    async def load_plugin(self, name: str) -> T | None:
         """Load a plugin by name.
 
         Args:

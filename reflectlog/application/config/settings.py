@@ -1,20 +1,20 @@
 """Configuration management for ReflectLogMCP Server."""
 
+from dataclasses import dataclass
 import os
 import re
 import threading
-from dataclasses import dataclass
-from typing import Any, Literal, Optional, TypeAlias, cast
+from typing import Any, Literal
 
 from ..exceptions import ConfigurationError
 from ..utils.security import SecretString
-from .validation import validate_config
+from .presets import apply_preset_to_env, get_active_preset
 
 # Note: LangchainQwenEmbeddings is imported lazily in MemoryManager
 # to avoid unnecessary initialization when not using langchain provider
 
 # Type definitions
-TransportMode: TypeAlias = Literal["stdio", "http", "sse", "streamable-http"]
+type TransportMode = Literal["stdio", "http", "sse", "streamable-http"]
 
 
 def _parse_optional_bool(value: str | None) -> bool | None:
@@ -106,7 +106,7 @@ class Config:
 
     # Fusion settings (ranx-based)
     fusion_method: str = "rrf"  # rrf, sum, mnz, max, bordafuse
-    fusion_normalization: Optional[str] = None  # min-max, max, sum, zmuv, rank, borda
+    fusion_normalization: str | None = None  # min-max, max, sum, zmuv, rank, borda
     fusion_rrf_k: int = 60  # RRF k parameter (lower = more weight to top ranks)
     fusion_ranking_threshold: float = 0.8  # Min normalized RRF score to keep (0-1)
     enable_rrf_fusion: bool = True  # Enable RRF fusion (false = concatenate results)
@@ -207,7 +207,7 @@ class Config:
         if transport_raw not in valid_transports:
             transport: TransportMode = "stdio"
         else:
-            transport = cast(TransportMode, transport_raw)
+            transport = transport_raw
 
         return {
             "transport": transport,
@@ -500,7 +500,7 @@ class Config:
                 if normalized and all(
                     token in {"none", "disabled"} for token in normalized
                 ):
-                    allowed_tools = tuple()
+                    allowed_tools = ()
                 else:
                     # Preserve order while removing duplicates
                     seen: dict[str, None] = {}
@@ -511,12 +511,12 @@ class Config:
 
         # If ALLOWED_TOOLS was set to an empty/blank value, respect it
         if allowed_tools_env is not None and allowed_tools_env.strip() == "":
-            allowed_tools = tuple()
+            allowed_tools = ()
 
         return allowed_tools
 
     @classmethod
-    def from_environment(cls) -> "Config":
+    def from_environment(cls) -> Config:
         """Create configuration from environment variables.
 
         This method centralizes environment parsing and performs strict validation
@@ -545,6 +545,10 @@ class Config:
             raise ConfigurationError(
                 f"Invalid PROJECT_ID: path traversal patterns not allowed: {project_id}"
             )
+
+        preset = get_active_preset()
+        if preset:
+            apply_preset_to_env(preset)
 
         openrouter_api_key_raw = os.environ.get("OPENROUTER_API_KEY")
         if not openrouter_api_key_raw:
@@ -583,14 +587,6 @@ class Config:
             **logging_config,
             allowed_tools=allowed_tools,
         )
-
-        # Validate the parsed configuration
-        errors = validate_config(config)
-        if errors:
-            raise ConfigurationError(
-                "Configuration validation failed:\n"
-                + "\n".join(f"  - {error}" for error in errors)
-            )
 
         return config
 
@@ -649,6 +645,20 @@ class _LazyConfig:
         return f"_LazyConfig(initialized={_config is not None})"
 
 
-# Note: This is typed as Any to allow type checkers to accept it where Config is expected
+def setup_config_reload():
+    """Setup runtime configuration reload via SIGHUP.
+
+    Must be called after Config singleton is initialized.
+    """
+    from ..utils.config_reload import setup_signal_handler
+
+    config = Config.from_environment()
+    setup_signal_handler(lambda: Config.from_environment())
+
+    return config
+
+
+# Note: This is typed as Any to allow type checkers to accept it
+# where Config is expected
 # The actual Config object is accessed lazily through __getattr__
 config: Config = _LazyConfig()  # type: ignore[assignment]

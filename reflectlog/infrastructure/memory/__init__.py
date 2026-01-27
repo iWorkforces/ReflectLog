@@ -8,25 +8,25 @@ directory. This module re-exports them for backward compatibility.
 """
 
 # Re-export from parent module for backward compatibility
-from reflectlog.infrastructure.message_store import MessageStore, MessageRecord
+from reflectlog.infrastructure.message_store import MessageRecord, MessageStore
 from reflectlog.infrastructure.smart_replacer import (
-    SmartReplacer,
-    SmartReplacerConfig,
+    AnthropicReplacementProvider,
     IReplacementProvider,
     OpenAIReplacementProvider,
-    AnthropicReplacementProvider,
     ReplacementDecision,
+    SmartReplacer,
+    SmartReplacerConfig,
     create_replacement_provider,
 )
 
 __all__ = [
-    "MessageStore",
+    "AnthropicReplacementProvider",
+    "IReplacementProvider",
     "MessageRecord",
+    "MessageStore",
+    "OpenAIReplacementProvider",
+    "ReplacementDecision",
     "SmartReplacer",
     "SmartReplacerConfig",
-    "IReplacementProvider",
-    "OpenAIReplacementProvider",
-    "AnthropicReplacementProvider",
-    "ReplacementDecision",
     "create_replacement_provider",
 ]

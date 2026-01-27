@@ -1,9 +1,10 @@
 """Real server integration test using fastmcp.Client - SIMPLIFIED APPROACH."""
 
+import os
+
+import anyio
 from fastmcp import Client
 from fastmcp.client.client import CallToolResult
-import anyio
-import os
 import pytest
 
 pytestmark = pytest.mark.skipif(

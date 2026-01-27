@@ -17,8 +17,8 @@ Note:
     - All functions operate on numpy arrays for maximum efficiency
 """
 
-import numpy as np
 from numba import jit, prange
+import numpy as np
 from numpy.typing import NDArray
 
 
@@ -263,6 +263,8 @@ def warmup_numba_functions() -> bool:
         import warnings
 
         warnings.warn(
-            f"Numba JIT warmup failed: {e}. First calls will be slower.", RuntimeWarning
+            f"Numba JIT warmup failed: {e}. First calls will be slower.",
+            RuntimeWarning,
+            stacklevel=2,
         )
         return False

@@ -26,48 +26,47 @@ Example:
 """
 
 from .discovery import (
-    DiscoveredPlugin,
-    PluginDiscoveryStrategy,
-    EntryPointDiscovery,
-    DirectoryScanDiscovery,
-    StaticRegistration,
     CompositeDiscovery,
+    DirectoryScanDiscovery,
+    DiscoveredPlugin,
+    EntryPointDiscovery,
     PluginDiscoverer,
+    PluginDiscoveryStrategy,
+    StaticRegistration,
     load_plugin,
 )
+from .loading import (
+    IPluginLifecycle,
+    LifecycleHooks,
+    PluginLoader,
+)
 from .registry import (
-    PluginState,
+    IPluggable,
     PluginCapability,
     PluginMetadata,
-    IPluggable,
     PluginRegistry,
+    PluginState,
     ToolRegistry,
-)
-from .loading import (
-    LifecycleHooks,
-    IPluginLifecycle,
-    PluginLoader,
 )
 
 __all__ = [
-    # Discovery
-    "DiscoveredPlugin",
-    "PluginDiscoveryStrategy",
-    "EntryPointDiscovery",
-    "DirectoryScanDiscovery",
-    "StaticRegistration",
+    # CamelCase
     "CompositeDiscovery",
-    "PluginDiscoverer",
-    "load_plugin",
-    # Registry
-    "PluginState",
-    "PluginCapability",
-    "PluginMetadata",
+    "DirectoryScanDiscovery",
+    "DiscoveredPlugin",
+    "EntryPointDiscovery",
     "IPluggable",
-    "PluginRegistry",
-    "ToolRegistry",
-    # Loading
-    "LifecycleHooks",
     "IPluginLifecycle",
+    "LifecycleHooks",
+    "PluginCapability",
+    "PluginDiscoverer",
+    "PluginDiscoveryStrategy",
     "PluginLoader",
+    "PluginMetadata",
+    "PluginRegistry",
+    "PluginState",
+    "StaticRegistration",
+    "ToolRegistry",
+    # snake_case
+    "load_plugin",
 ]

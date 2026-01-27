@@ -27,7 +27,7 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
 
         # Get tool functions
-        from typing import Callable, Any
+        from typing import Any, Callable
 
         add_func: Callable[..., Any] | None = None
         get_all_func: Callable[..., Any] | None = None

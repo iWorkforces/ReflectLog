@@ -8,10 +8,11 @@ This module provides the SearchPipeline class that orchestrates the
 4. Reranking (LLM, cross-encoder, or none)
 """
 
-from typing import Optional, Protocol
 from dataclasses import dataclass
-import anyio
 import logging
+from typing import Protocol
+
+import anyio
 
 from reflectlog.application.config import Config
 from reflectlog.application.utils import StructuredLogger
@@ -19,9 +20,10 @@ from reflectlog.core.reranking import IReranker
 from reflectlog.core.search import (
     ISearchBackend,
     ISearchResult,
+)
+from reflectlog.core.search import (
     SearchContext as CoreSearchContext,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +103,7 @@ class DefaultBackendExecutor:
     def __init__(
         self,
         semantic_backend: ISearchBackend,
-        fulltext_backend: Optional[ISearchBackend],
+        fulltext_backend: ISearchBackend | None,
     ):
         self._semantic = semantic_backend
         self._fulltext = fulltext_backend
@@ -166,7 +168,7 @@ class RRFFusionStage:
 
         # Aggregate scores across backends
         aggregated: dict[str, float] = {}
-        for backend_name, backend_rankings in rankings.items():
+        for _backend_name, backend_rankings in rankings.items():
             for content, score in backend_rankings.items():
                 if content not in aggregated:
                     aggregated[content] = 0.0
@@ -311,7 +313,7 @@ class SearchPipeline:
         self,
         query: str,
         project_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
     ) -> list[str]:
         """Execute the full search pipeline.
 
@@ -388,8 +390,8 @@ class SearchPipeline:
 
 def create_default_pipeline(
     semantic_backend: ISearchBackend,
-    fulltext_backend: Optional[ISearchBackend],
-    reranker: Optional[IReranker],
+    fulltext_backend: ISearchBackend | None,
+    reranker: IReranker | None,
     config: Config,
     logger: StructuredLogger,
 ) -> SearchPipeline:

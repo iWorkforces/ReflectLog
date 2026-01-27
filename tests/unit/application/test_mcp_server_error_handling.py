@@ -2,8 +2,9 @@
 # mypy: disable-error-code="misc,var-annotated,method-assign"
 
 import os
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from reflectlog.application.exceptions import (
     ConfigurationError,

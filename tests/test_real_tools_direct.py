@@ -1,10 +1,11 @@
 """Direct integration test - calls real server tools with real USearch and OpenRouter via HTTP/SSE."""
 
-from fastmcp import Client
-from fastmcp.client.client import CallToolResult
-import anyio
 import json
 import os
+
+import anyio
+from fastmcp import Client
+from fastmcp.client.client import CallToolResult
 import pytest
 
 pytestmark = pytest.mark.skipif(

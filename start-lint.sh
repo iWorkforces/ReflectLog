@@ -138,6 +138,7 @@ find_python_files() {
         -not -path "./__pycache__/*" \
         -not -path "./.pytest_cache/*" \
         -not -path "./node_modules/*" \
+        -not -path "./tests/*" \
         | sort)
 
     if [ -z "$PYTHON_FILES" ]; then
@@ -174,8 +175,8 @@ run_check() {
     echo -e "${BLUE}🔍 Running ruff check (dry run)...${NC}"
     echo ""
 
-    # Run ruff check with detailed output
-    if uv run ruff check . --output-format=full; then
+    # Run ruff check with detailed output (only reflectlog directory, tests excluded)
+    if uv run ruff check reflectlog --output-format=full; then
         echo ""
         echo -e "${GREEN}✅ No linting issues found!${NC}"
         return 0
@@ -191,14 +192,14 @@ run_check_stats() {
     echo -e "${BLUE}📊 Linting Statistics:${NC}"
     echo ""
 
-    # Get statistics by rule
+    # Get statistics by rule (only reflectlog directory, tests excluded)
     echo -e "${CYAN}Issues by rule:${NC}"
-    uv run ruff check . --output-format=concise | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c | sort -nr || true
+    uv run ruff check reflectlog --output-format=concise | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c | sort -nr || true
     echo ""
 
     # Get statistics by file
     echo -e "${CYAN}Files with issues:${NC}"
-    uv run ruff check . --output-format=concise | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
+    uv run ruff check reflectlog --output-format=concise | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
     echo ""
 }
 
@@ -207,8 +208,8 @@ run_fix() {
     echo -e "${BLUE}🔧 Running ruff fix (automatic fixes)...${NC}"
     echo ""
 
-    # Run ruff with --fix flag
-    if uv run ruff check . --fix; then
+    # Run ruff with --fix flag (only reflectlog directory, tests excluded)
+    if uv run ruff check reflectlog --fix; then
         echo ""
         echo -e "${GREEN}✅ Automatic fixes applied successfully${NC}"
     else
@@ -219,7 +220,7 @@ run_fix() {
     # Show remaining issues
     echo ""
     echo -e "${BLUE}🔍 Checking for remaining issues...${NC}"
-    if uv run ruff check . --output-format=concise; then
+    if uv run ruff check reflectlog --output-format=concise; then
         echo -e "${GREEN}✅ All fixable issues have been resolved${NC}"
     else
         echo -e "${YELLOW}⚠️  Some issues require manual attention${NC}"
@@ -269,8 +270,8 @@ run_format() {
     echo -e "${BLUE}🎨 Running ruff format...${NC}"
     echo ""
 
-    # Run ruff format (ignore failures, whitespace will be stripped anyway)
-    uv run ruff format . || true
+    # Run ruff format (only reflectlog directory, tests excluded; ignore failures)
+    uv run ruff format reflectlog || true
 
     # Remove trailing whitespace in all Python files
     find_python_files
@@ -289,6 +290,83 @@ run_format() {
     echo -e "${GREEN}✅ Code formatting and trailing space removal completed${NC}"
 }
 
+# Function to check Python 3.14 migration status
+run_migration_check() {
+    echo -e "${BLUE}🐍 Python 3.14 Migration Check${NC}"
+    echo -e "${BLUE}=======================================${NC}"
+    echo ""
+
+    local HAS_ERRORS=0
+
+    # Check 1: Find legacy typing imports (List, Dict, Optional, Union, Tuple - excluding valid ones)
+    echo -e "${CYAN}1. Checking for legacy typing imports (List, Dict, Optional, Union, Tuple)...${NC}"
+    LEGACY_IMPORTS=$(grep -r "from typing import.*List\|from typing import.*Dict\|from typing import.*Optional\|from typing import.*Union\|from typing import.*Tuple" reflectlog --include="*.py" 2>/dev/null | grep -v "TYPE_CHECKING" | grep -v "Literal\|TypedDict\|Protocol\|Callable\|TypeVar\|Generic\|TypeAlias\|Annotated\|Any" || true)
+    if [ -n "$LEGACY_IMPORTS" ]; then
+        echo -e "${RED}❌ Found legacy typing imports:${NC}"
+        echo "$LEGACY_IMPORTS" | head -10
+        HAS_ERRORS=1
+    else
+        echo -e "${GREEN}✅ No legacy typing imports found${NC}"
+    fi
+    echo ""
+
+    # Check 2: Find legacy type annotations in code (excluding comments)
+    echo -e "${CYAN}2. Checking for legacy type annotations (List[ Dict[ Optional[ Union[ Tuple[ )...${NC}"
+    LEGACY_ANNOTATIONS=$(grep -r "List\[\|Dict\[\|Optional\[\|Union\[\|Tuple\[" reflectlog --include="*.py" 2>/dev/null | grep -v "^[^:]*:#" | grep -v "OrderedDict" | grep -v "defaultdict" || true)
+    if [ -n "$LEGACY_ANNOTATIONS" ]; then
+        echo -e "${RED}❌ Found legacy type annotations:${NC}"
+        echo "$LEGACY_ANNOTATIONS" | head -10
+        HAS_ERRORS=1
+    else
+        echo -e "${GREEN}✅ No legacy type annotations found${NC}"
+    fi
+    echo ""
+
+    # Check 3: Verify only valid typing imports remain
+    echo -e "${CYAN}3. Checking for required typing imports...${NC}"
+    NEEDED_IMPORTS=$(grep -r "from typing import" reflectlog --include="*.py" 2>/dev/null | grep -v "TYPE_CHECKING" | grep -v "Protocol\|Literal\|Callable\|TypeVar\|Generic\|TypeAlias\|Annotated\|Any" || true)
+    if [ -n "$NEEDED_IMPORTS" ]; then
+        echo -e "${YELLOW}⚠️  Found typing imports that should be reviewed:${NC}"
+        echo "$NEEDED_IMPORTS" | head -10
+    else
+        echo -e "${GREEN}✅ All typing imports are valid for Python 3.14${NC}"
+    fi
+    echo ""
+
+    # Check 4: Triple quotes enforcement (only reflectlog directory, tests excluded)
+    echo -e "${CYAN}4. Checking for triple double quotes (should be single)...${NC}"
+    DOUBLE_QUOTES=$(grep -r '"""' reflectlog --include="*.py" 2>/dev/null | grep -v "^Binary" | head -5 || true)
+    if [ -n "$DOUBLE_QUOTES" ]; then
+        echo -e "${YELLOW}⚠️  Found triple double quotes (should use single quotes for docstrings):${NC}"
+        echo "$DOUBLE_QUOTES" | head -5
+    else
+        echo -e "${GREEN}✅ No triple double quotes found${NC}"
+    fi
+    echo ""
+
+    # Check 5: Run ruff UP rules for Python 3.14 suggestions
+    echo -e "${CYAN}5. Running ruff pyupgrade rules (UP006, UP007, UP035, UP040)...${NC}"
+    UP_ISSUES=$(uv run ruff check reflectlog --select=UP --output-format=concise 2>&1 | grep "UP" || true)
+    if [ -n "$UP_ISSUES" ]; then
+        echo -e "${YELLOW}⚠️  Python 3.14 upgrade suggestions found:${NC}"
+        echo "$UP_ISSUES" | head -20
+        # Don't fail on UP rules as they're suggestions
+        echo -e "${CYAN}💡 Run '$0 --fix' to apply some automatic fixes${NC}"
+    else
+        echo -e "${GREEN}✅ No pyupgrade suggestions needed${NC}"
+    fi
+    echo ""
+
+    if [ $HAS_ERRORS -eq 1 ]; then
+        echo -e "${RED}❌ Migration check completed with errors${NC}"
+        echo -e "${YELLOW}💡 See .claude/docs/migration-checklist.md for migration steps${NC}"
+        return 1
+    else
+        echo -e "${GREEN}✅ Migration check completed successfully${NC}"
+        return 0
+    fi
+}
+
 # Function to show detailed help
 show_help() {
     echo "Usage: $0 [OPTIONS]"
@@ -298,6 +376,7 @@ show_help() {
     echo "  --fix         Run linting check and apply automatic fixes"
     echo "  --format      Run code formatting (ruff format)"
     echo "  --quotes      Replace triple double quotes with single quotes"
+    echo "  --migrate     Check Python 3.14 migration status"
     echo "  --all         Run check, fix, and format"
     echo "  --stats       Show detailed linting statistics"
     echo "  --config      Show ruff configuration"
@@ -310,6 +389,7 @@ show_help() {
     echo "  $0 --fix             # Fix issues automatically"
     echo "  $0 --format          # Format code"
     echo "  $0 --quotes          # Replace triple double quotes"
+    echo "  $0 --migrate         # Check Python 3.14 migration status"
     echo "  $0 --all             # Check, fix, and format"
     echo "  $0 --stats           # Show statistics"
     echo ""
@@ -323,7 +403,7 @@ show_help() {
     echo "  F             pyflakes"
     echo "  I             isort (import sorting)"
     echo "  N             pep8-naming"
-    echo "  UP            pyupgrade"
+    echo "  UP            pyupgrade (Python 3.14+ modernizations)"
     echo "  B             flake8-bugbear"
     echo "  C4            flake8-comprehensions"
     echo "  SIM           flake8-simplify"
@@ -392,6 +472,10 @@ main() {
                 ;;
             --quotes)
                 ACTION="quotes"
+                shift
+                ;;
+            --migrate)
+                ACTION="migrate"
                 shift
                 ;;
             --all)
@@ -466,6 +550,9 @@ main() {
         "quotes")
             replace_triple_quotes
             echo -e "${GREEN}🎉 Triple quote replacement completed${NC}"
+            ;;
+        "migrate")
+            run_migration_check
             ;;
         "all")
             echo -e "${PURPLE}🚀 Running complete linting workflow...${NC}"

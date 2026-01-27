@@ -1,7 +1,7 @@
 """Search tool implementation for ReflectLogMCP Server."""
 
 import time
-from typing import Annotated, List
+from typing import Annotated
 
 from pydantic import Field
 
@@ -37,7 +37,7 @@ class SearchTool(BaseTool):
                     description="Search query for semantic matching",
                 ),
             ],
-        ) -> List[str]:
+        ) -> list[str]:
             """Search for messages using semantic matching (async).
 
             This tool performs hybrid semantic + full-text search to find messages

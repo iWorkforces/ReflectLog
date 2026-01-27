@@ -20,6 +20,8 @@ This module also re-exports from subpackages:
 """
 
 # Re-export from original module locations (backward compatibility)
+# Re-export from subpackages for new imports
+from . import embeddings, llm, memory, reranking, search
 from .cached_embeddings import CachedEmbeddings
 from .cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
 from .llm_provider_base import BaseOpenAIProvider, IStructuredOutputSchema
@@ -47,34 +49,23 @@ from .smart_replacer import (
 from .tantivy_engine import TantivyConfig, TantivyEngine
 from .usearch_engine import USearchConfig, USearchEngine
 
-# Re-export from subpackages for new imports
-from . import search
-from . import embeddings
-from . import reranking
-from . import memory
-from . import llm
-
 __all__ = [
-    # Original exports
-    "AnthropicRerankerProvider",
     "AnthropicReplacementProvider",
+    "AnthropicRerankerProvider",
     "BaseOpenAIProvider",
     "CachedEmbeddings",
-    "IStructuredOutputSchema",
-    "create_reranker_provider",
-    "create_replacement_provider",
     "CrossEncoderConfig",
     "CrossEncoderReranker",
-    "format_memory_age",
-    "IRerankerProvider",
     "IReplacementProvider",
-    "LangchainQwenEmbeddings",
+    "IRerankerProvider",
+    "IStructuredOutputSchema",
     "LLMReranker",
     "LLMRerankerConfig",
+    "LangchainQwenEmbeddings",
     "MessageRecord",
     "MessageStore",
-    "OpenAIRerankerProvider",
     "OpenAIReplacementProvider",
+    "OpenAIRerankerProvider",
     "RelevanceScore",
     "ReplacementDecision",
     "SmartReplacer",
@@ -83,10 +74,12 @@ __all__ = [
     "TantivyEngine",
     "USearchConfig",
     "USearchEngine",
-    # Subpackage modules
-    "search",
+    "create_replacement_provider",
+    "create_reranker_provider",
     "embeddings",
-    "reranking",
-    "memory",
+    "format_memory_age",
     "llm",
+    "memory",
+    "reranking",
+    "search",
 ]

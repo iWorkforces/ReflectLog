@@ -2,7 +2,7 @@
 
 import logging
 import math
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import numpy as np
 from ranx import Run
@@ -12,15 +12,15 @@ from reflectlog.application.utils.numba_utils import normalize_scores_minmax
 
 # Supported fusion methods (unsupervised, no training data required)
 # Note: ranx uses 'sum', 'mnz', 'max' instead of 'combsum', 'combmnz', 'combmax'
-SUPPORTED_METHODS: Set[str] = {"rrf", "sum", "mnz", "max", "bordafuse"}
+SUPPORTED_METHODS: set[str] = {"rrf", "sum", "mnz", "max", "bordafuse"}
 
 # Supported normalization strategies
-SUPPORTED_NORMALIZATIONS: Set[str] = {"min-max", "max", "sum", "zmuv", "rank", "borda"}
+SUPPORTED_NORMALIZATIONS: set[str] = {"min-max", "max", "sum", "zmuv", "rank", "borda"}
 
 # Default normalization per fusion method (applied to inputs before fusion)
 # Note: We use None for RRF since it works on ranks, not scores
 # Output scores are normalized in _normalize_output_scores()
-DEFAULT_NORMALIZATIONS: Dict[str, Optional[str]] = {
+DEFAULT_NORMALIZATIONS: dict[str, str | None] = {
     "rrf": None,  # RRF uses rank positions, input normalization not needed
     "sum": None,  # CombSUM: Will normalize inputs if scores are incomparable
     "mnz": None,  # CombMNZ: weighted score addition
@@ -58,9 +58,9 @@ class RanxFusionEngine:
     def __init__(
         self,
         method: str = "rrf",
-        normalization: Optional[str] = None,
+        normalization: str | None = None,
         rrf_k: int = 60,
-        logger: Optional[Any] = None,
+        logger: Any | None = None,
     ):
         """Initialize the ranx fusion engine.
 
@@ -100,7 +100,7 @@ class RanxFusionEngine:
         return self._method
 
     @property
-    def normalization(self) -> Optional[str]:
+    def normalization(self) -> str | None:
         """Return the normalization strategy."""
         return self._normalization
 
@@ -109,7 +109,7 @@ class RanxFusionEngine:
         """Return the RRF k parameter."""
         return self._rrf_k
 
-    def _convert_to_run(self, result_set: List[Tuple[str, float]], name: str) -> Run:
+    def _convert_to_run(self, result_set: list[tuple[str, float]], name: str) -> Run:
         """Convert (message, score) tuples to a ranx Run object.
 
         Handles duplicate documents within the same result set by averaging their
@@ -137,8 +137,8 @@ class RanxFusionEngine:
         # Use message content as doc_id, original score as value
         # Handle duplicates within a list by averaging their scores
         # This provides better fusion quality than keeping first occurrence
-        doc_score_sums: Dict[str, float] = {}
-        doc_score_counts: Dict[str, int] = {}
+        doc_score_sums: dict[str, float] = {}
+        doc_score_counts: dict[str, int] = {}
         for msg, score in result_set:
             if msg in doc_score_sums:
                 doc_score_sums[msg] += score
@@ -148,13 +148,13 @@ class RanxFusionEngine:
                 doc_score_counts[msg] = 1
 
         # Compute averaged scores
-        doc_scores: Dict[str, float] = {
+        doc_scores: dict[str, float] = {
             msg: doc_score_sums[msg] / doc_score_counts[msg] for msg in doc_score_sums
         }
 
         return Run({self._QUERY_ID: doc_scores}, name=name)
 
-    def _convert_from_run(self, run: Run) -> List[Tuple[str, float]]:
+    def _convert_from_run(self, run: Run) -> list[tuple[str, float]]:
         """Convert a ranx Run object back to (message, score) tuples.
 
         Args:
@@ -175,8 +175,8 @@ class RanxFusionEngine:
         return results
 
     def _normalize_output_scores(
-        self, results: List[Tuple[str, float]]
-    ) -> List[Tuple[str, float]]:
+        self, results: list[tuple[str, float]]
+    ) -> list[tuple[str, float]]:
         """Normalize output scores to 0-1 range using min-max normalization.
 
         This ensures fusion scores are comparable to threshold values (e.g., 0.8).
@@ -200,12 +200,15 @@ class RanxFusionEngine:
         normalized_scores = normalize_scores_minmax(scores)
 
         # Reconstruct result tuples with normalized scores
-        return [(msg, float(score)) for msg, score in zip(messages, normalized_scores)]
+        return [
+            (msg, float(score))
+            for msg, score in zip(messages, normalized_scores, strict=True)
+        ]
 
     def fuse(
         self,
-        *result_sets: List[Tuple[str, float]],
-    ) -> List[Tuple[str, float]]:
+        *result_sets: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
         """Fuse multiple ranked lists using the configured algorithm.
 
         Args:
@@ -221,7 +224,7 @@ class RanxFusionEngine:
             return []
 
         # Validate score ranges and log unusual inputs (debug level)
-        if self.logger and self.logger.isEnabledFor(logging.DEBUG):
+        if self.logger and self.logger.is_enabled_for(logging.DEBUG):
             for i, result_set in enumerate(non_empty):
                 scores = [score for _, score in result_set]
                 if not scores:
@@ -276,7 +279,7 @@ class RanxFusionEngine:
             return normalized_results
 
         # Build params for ranx.fuse()
-        params: Optional[Dict[str, Any]] = None
+        params: dict[str, Any] | None = None
         if self._method == "rrf":
             params = {"k": self._rrf_k}
 

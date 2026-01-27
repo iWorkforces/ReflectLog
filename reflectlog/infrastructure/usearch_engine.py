@@ -10,20 +10,28 @@ Clean Architecture Compliance:
     Dependency Inversion Principle from SOLID.
 """
 
+from dataclasses import dataclass
 import os
 import threading
-from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from typing import TypeGuard
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
-from usearch.index import Index, BatchMatches
+from usearch.index import BatchMatches, Index
 
 from reflectlog.application.exceptions import StorageError
 from reflectlog.application.types import Embeddings, ISemanticSearchEngine
 from reflectlog.application.utils.numba_utils import distance_to_similarity_cosine
 from reflectlog.application.utils.security import validate_project_id
 from reflectlog.infrastructure.message_store import MessageStore
+
+
+def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
+    """Type guard to check if config is a dict."""
+    return isinstance(config, dict)
 
 
 @dataclass(frozen=True)
@@ -64,7 +72,33 @@ class USearchConfig:
     exact_search_threshold: int = 0
 
     @classmethod
-    def from_app_config(cls, config: Any) -> "USearchConfig":
+    def from_dict(cls, data: dict[str, Any]) -> USearchConfig:
+        """Create USearchConfig from a dictionary with validation.
+
+        This method properly validates dict contents and returns a typed instance,
+        avoiding the type: ignore needed when using **dict unpacking.
+
+        Args:
+            data: Dictionary with configuration values.
+
+        Returns:
+            Validated USearchConfig instance.
+        """
+        return cls(
+            project_id=data.get("project_id", "") or "",
+            index_path=data.get("index_path", "") or "",
+            db_path=data.get("db_path", "") or "",
+            embedding_dims=int(data.get("embedding_dims", 3072)),
+            metric=data.get("metric", "cos") or "cos",
+            connectivity=int(data.get("connectivity", 16)),
+            expansion_add=int(data.get("expansion_add", 128)),
+            expansion_search=int(data.get("expansion_search", 64)),
+            exact_search=bool(data.get("exact_search", True)),
+            exact_search_threshold=int(data.get("exact_search_threshold", 0)),
+        )
+
+    @classmethod
+    def from_app_config(cls, config: Any) -> USearchConfig:
         """Create USearchConfig from application Config.
 
         Args:
@@ -134,8 +168,8 @@ class USearchEngine(BaseModel):
     embedder: Embeddings
     logger: Any = None
 
-    _index: Optional[Index] = PrivateAttr(default=None)
-    _message_store: Optional[MessageStore] = PrivateAttr(default=None)
+    _index: Index | None = PrivateAttr(default=None)
+    _message_store: MessageStore | None = PrivateAttr(default=None)
     # Instance-level lock for thread-safe lazy initialization (prevents cross-instance contention)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
@@ -143,7 +177,7 @@ class USearchEngine(BaseModel):
         self,
         config: USearchConfig | dict[str, Any],
         embedder: Embeddings,
-        logger: Optional[Any] = None,
+        logger: Any | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize USearchEngine.
@@ -154,8 +188,8 @@ class USearchEngine(BaseModel):
             logger: Optional StructuredLogger instance.
             **kwargs: Additional arguments passed to BaseModel.
         """
-        if isinstance(config, dict):
-            config = USearchConfig(**cast(dict[str, Any], config))
+        if _is_dict_config(config):
+            config = USearchConfig.from_dict(config)
 
         super().__init__(config=config, embedder=embedder, logger=logger, **kwargs)
 
@@ -246,10 +280,8 @@ class USearchEngine(BaseModel):
                         f"Failed to initialize USearch index: {exc}"
                     ) from exc
 
-        # After initialization, _index is guaranteed to be non-None
-        # Use explicit check instead of assert (assert can be optimized away with -O flag)
-        if self._index is None:
-            raise RuntimeError("USearch index initialization failed")
+        # _index is guaranteed to be non-None after successful initialization
+        # An exception would have been raised above if initialization failed
         return self._index
 
     @property
@@ -284,12 +316,11 @@ class USearchEngine(BaseModel):
         """
         msg_id = None  # Track msg_id for rollback on embedding failure
         try:
-            if infer:
-                if self.logger:
-                    self.logger.warning(
-                        "infer=True not supported by USearchEngine, proceeding as infer=False",
-                        extra={"project_id": self.config.project_id},
-                    )
+            if infer and self.logger:
+                self.logger.warning(
+                    "infer=True not supported by USearchEngine, proceeding as infer=False",
+                    extra={"project_id": self.config.project_id},
+                )
 
             # Insert into SQLite (relies on UNIQUE INDEX for dedup - no pre-check needed)
             msg_id = self.message_store.insert(project_id, message)
@@ -300,8 +331,7 @@ class USearchEngine(BaseModel):
                 vector_np = np.array(vector, dtype=np.float32)
             except Exception as embed_error:
                 # Rollback SQLite insert if embedding fails to prevent desynchronization
-                if msg_id is not None:
-                    self.message_store.delete(msg_id)
+                _ = self.message_store.delete(msg_id)
                 if self.logger:
                     self.logger.error(
                         "Embedding generation failed, rolled back SQLite insert",
@@ -372,12 +402,11 @@ class USearchEngine(BaseModel):
         if not messages:
             return []
 
-        if infer:
-            if self.logger:
-                self.logger.warning(
-                    "infer=True not supported by USearchEngine, proceeding as infer=False",
-                    extra={"project_id": self.config.project_id},
-                )
+        if infer and self.logger:
+            self.logger.warning(
+                "infer=True not supported by USearchEngine, proceeding as infer=False",
+                extra={"project_id": self.config.project_id},
+            )
 
         inserted = []  # Track successfully inserted (message, msg_id) pairs
         inserted_ids = []  # Track IDs for rollback on embedding failure
@@ -410,7 +439,7 @@ class USearchEngine(BaseModel):
                         },
                     )
                 for msg_id in inserted_ids:
-                    self.message_store.delete(msg_id)
+                    _ = self.message_store.delete(msg_id)
                 raise RuntimeError(
                     f"Failed to generate embeddings for batch: {embed_error}"
                 ) from embed_error
@@ -498,7 +527,7 @@ class USearchEngine(BaseModel):
         query: str,
         project_id: str,
         limit: int,
-    ) -> List[Tuple[str, float, str]]:
+    ) -> list[tuple[str, float, str]]:
         """Execute semantic search.
 
         Supports both exact (brute-force) and approximate (HNSW) search modes:
@@ -568,7 +597,7 @@ class USearchEngine(BaseModel):
             records = self.message_store.get_batch(keys)
 
             # Collect distances for batch conversion (numba-accelerated)
-            filtered_matches: List[Tuple[Any, Any]] = []  # (record, match)
+            filtered_matches: list[tuple[Any, Any]] = []  # (record, match)
             for match in matches:
                 key = int(match.key)
                 record = records.get(key)
@@ -586,7 +615,7 @@ class USearchEngine(BaseModel):
                 similarities = self._distances_to_scores(distances)
 
                 # Build results with converted scores and created_at timestamps
-                results: List[Tuple[str, float, str]] = [
+                results: list[tuple[str, float, str]] = [
                     (record.message, float(similarities[i]), record.created_at)
                     for i, (record, _) in enumerate(filtered_matches)
                 ]
@@ -620,7 +649,7 @@ class USearchEngine(BaseModel):
                 )
             raise RuntimeError(f"USearch search failed: {e}") from e
 
-    def get_all(self, project_id: str) -> List[str]:
+    def get_all(self, project_id: str) -> list[str]:
         """Retrieve all stored messages for a project.
 
         Args:
@@ -751,7 +780,7 @@ class USearchEngine(BaseModel):
         _ = self.index
         self.message_store.ensure_initialized()
 
-    def get_id_by_message(self, project_id: str, message: str) -> Union[int, None]:
+    def get_id_by_message(self, project_id: str, message: str) -> int | None:
         """Get the ID of a message by its content.
 
         Args:
@@ -782,7 +811,12 @@ class USearchEngine(BaseModel):
         self.ensure_initialized()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> bool:
         """Exit context manager.
 
         Ensures resources are cleaned up.
@@ -791,6 +825,9 @@ class USearchEngine(BaseModel):
             exc_type: Exception type if raised
             exc_val: Exception value if raised
             exc_tb: Exception traceback if raised
+
+        Returns:
+            False to not suppress exceptions.
         """
         self.close()
         return False  # Don't suppress exceptions

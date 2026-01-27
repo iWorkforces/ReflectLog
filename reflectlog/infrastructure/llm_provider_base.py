@@ -20,7 +20,9 @@ Example:
 import json
 from typing import Any, Protocol
 
-from openai import AsyncOpenAI, DefaultAioHttpClient
+from openai import AsyncOpenAI
+
+from reflectlog.application.utils.http_client import HttpClientFactory
 
 
 class IStructuredOutputSchema(Protocol):
@@ -68,12 +70,12 @@ class BaseOpenAIProvider:
         self._logger = logger
 
     def _get_client(self) -> AsyncOpenAI:
-        """Get or initialize the AsyncOpenAI client."""
         if self._client is None:
+            httpx_client = HttpClientFactory.get_async_httpx_client(http2=False)
             self._client = AsyncOpenAI(
                 api_key=self._api_key,
                 base_url=self._base_url,
-                http_client=DefaultAioHttpClient(),
+                http_client=httpx_client,
                 timeout=self._timeout,
             )
         return self._client

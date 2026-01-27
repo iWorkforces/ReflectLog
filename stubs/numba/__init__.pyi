@@ -4,7 +4,8 @@ This provides type hints for the numba JIT compiler decorators and functions
 used in reflectlog.application.utils.numba_utils.
 """
 
-from typing import Any, Callable, TypeVar, overload
+from collections.abc import Callable
+from typing import Any, TypeVar, overload
 
 # Type variable for generic function signatures
 F = TypeVar("F", bound=Callable[..., Any])
@@ -17,7 +18,7 @@ class config:
     CACHE_DIR: str
 
 @overload
-def jit(
+def jit[F: Callable[..., Any]](
     func: F,
 ) -> F: ...
 @overload
@@ -30,7 +31,7 @@ def jit(
     nogil: bool = False,
     forceobj: bool = False,
 ) -> Callable[[F], F]: ...
-def jit(
+def jit[F: Callable[..., Any]](
     func: F | None = None,
     *,
     nopython: bool = False,
@@ -57,7 +58,7 @@ def jit(
     ...
 
 @overload
-def njit(
+def njit[F: Callable[..., Any]](
     func: F,
 ) -> F: ...
 @overload
@@ -68,7 +69,7 @@ def njit(
     parallel: bool = False,
     nogil: bool = False,
 ) -> Callable[[F], F]: ...
-def njit(
+def njit[F: Callable[..., Any]](
     func: F | None = None,
     *,
     cache: bool = False,

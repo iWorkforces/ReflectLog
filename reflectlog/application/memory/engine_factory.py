@@ -6,10 +6,10 @@ It enables testing with mock engines and supports new engine types without
 modifying the factory interface.
 """
 
-from typing import Optional
 from dataclasses import dataclass
 
 from reflectlog.application.config import Config
+from reflectlog.application.memory.fusion import FusionEngine, create_fusion_engine
 from reflectlog.application.utils import StructuredLogger
 from reflectlog.infrastructure import (
     CachedEmbeddings,
@@ -25,7 +25,6 @@ from reflectlog.infrastructure import (
     USearchConfig,
     USearchEngine,
 )
-from reflectlog.application.memory.fusion import FusionEngine, create_fusion_engine
 
 
 @dataclass
@@ -33,7 +32,7 @@ class EngineFactoryResult:
     """Result of engine factory initialization."""
 
     semantic_engine: USearchEngine
-    tantivy_engine: Optional[TantivyEngine]
+    tantivy_engine: TantivyEngine | None
     fusion_engine: FusionEngine
     reranker_engine: str
     enable_hybrid_search: bool
@@ -145,7 +144,7 @@ class EngineFactory:
         self,
         config: Config,
         logger: StructuredLogger,
-    ) -> Optional[TantivyEngine]:
+    ) -> TantivyEngine | None:
         """Create Tantivy full-text engine if hybrid search is enabled.
 
         Args:
@@ -192,7 +191,7 @@ class EngineFactory:
 def create_llm_reranker(
     config: Config,
     logger: StructuredLogger,
-) -> Optional[LLMReranker]:
+) -> LLMReranker | None:
     """Create LLM reranker if configured.
 
     Args:
@@ -212,7 +211,7 @@ def create_llm_reranker(
 def create_cross_encoder_reranker(
     config: Config,
     logger: StructuredLogger,
-) -> Optional[CrossEncoderReranker]:
+) -> CrossEncoderReranker | None:
     """Create CrossEncoder reranker if configured.
 
     Args:
@@ -232,7 +231,7 @@ def create_cross_encoder_reranker(
 def create_smart_replacer(
     config: Config,
     logger: StructuredLogger,
-) -> Optional[SmartReplacer]:
+) -> SmartReplacer | None:
     """Create SmartReplacer if enabled.
 
     Args:

@@ -11,10 +11,11 @@ unreliable, preventing the entire memory system from hanging.
 """
 
 import asyncio
-import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, TypeVar
+import time
+from typing import Any, TypeVar
 
 from .logging import StructuredLogger
 
@@ -128,19 +129,21 @@ class CircuitBreaker:
         self._failure_count = 0
         self._last_success_time = time.time()
 
-        if self._state == CircuitState.HALF_OPEN:
-            if self._success_count >= self._config.success_threshold:
-                self._state = CircuitState.CLOSED
-                self._success_count = 0
-                self._logger.info(
-                    f"Circuit breaker '{self._name}' closed after {self._config.success_threshold} "
-                    f"successful call(s) in HALF_OPEN state",
-                    extra={
-                        "circuit_breaker": self._name,
-                        "state": self._state.value,
-                        "success_count": self._success_count,
-                    },
-                )
+        if (
+            self._state == CircuitState.HALF_OPEN
+            and self._success_count >= self._config.success_threshold
+        ):
+            self._state = CircuitState.CLOSED
+            self._success_count = 0
+            self._logger.info(
+                f"Circuit breaker '{self._name}' closed after {self._config.success_threshold} "
+                f"successful call(s) in HALF_OPEN state",
+                extra={
+                    "circuit_breaker": self._name,
+                    "state": self._state.value,
+                    "success_count": self._success_count,
+                },
+            )
 
     def _record_failure(self, exception: BaseException) -> None:
         """Record a failed call.
@@ -333,9 +336,9 @@ def circuit_breaker_decorator(
 
 
 __all__ = [
-    "CircuitState",
+    "CircuitBreaker",
     "CircuitBreakerConfig",
     "CircuitBreakerOpenError",
-    "CircuitBreaker",
+    "CircuitState",
     "circuit_breaker_decorator",
 ]

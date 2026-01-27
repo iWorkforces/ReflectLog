@@ -6,7 +6,7 @@ Only APIs used by ReflectLogMCP are stubbed.
 Reference: https://github.com/unum-cloud/usearch
 """
 
-from typing import Iterator, Sequence
+from collections.abc import Iterator, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -121,7 +121,7 @@ class Index:
         ...
 
     @classmethod
-    def restore(cls, path: str) -> "Index | None":
+    def restore(cls, path: str) -> Index | None:
         """Load an index from disk.
 
         Args:

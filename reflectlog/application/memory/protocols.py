@@ -1,6 +1,6 @@
 """Protocols for search engine implementations."""
 
-from typing import List, Protocol, Tuple
+from typing import Protocol
 
 
 class SearchEngine(Protocol):
@@ -22,7 +22,7 @@ class SearchEngine(Protocol):
 
     def search(
         self, query: str, project_id: str, limit: int
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Search and return (message, score) tuples.
 
         Args:

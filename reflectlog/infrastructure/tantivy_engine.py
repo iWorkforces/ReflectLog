@@ -4,18 +4,26 @@ This module provides a wrapper around the Tantivy full-text search library,
 following the same patterns as qwen3_embedding.py for consistency.
 """
 
+from collections import OrderedDict
+from dataclasses import dataclass
 import os
 import threading
 import time
-from collections import OrderedDict
-from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from typing import TypeGuard
 
 import numpy as np
-import tantivy
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+import tantivy
 
 from reflectlog.application.exceptions import SearchError
+
+
+def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
+    """Type guard to check if config is a dict."""
+    return isinstance(config, dict)
 
 
 @dataclass(frozen=True)
@@ -42,6 +50,32 @@ class TantivyConfig:
     tombstone_cache_max_size: int = 100
     normalize_scores: bool = True
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TantivyConfig:
+        """Create TantivyConfig from a dictionary with validation.
+
+        This method properly validates dict contents and returns a typed instance,
+        avoiding the type: ignore needed when using **dict unpacking.
+
+        Args:
+            data: Dictionary with configuration values.
+
+        Returns:
+            Validated TantivyConfig instance.
+        """
+        return cls(
+            project_id=data.get("project_id", "") or "",
+            index_path=data.get("index_path", "") or "",
+            soft_delete_enabled=bool(data.get("soft_delete_enabled", True)),
+            compaction_threshold_ratio=float(
+                data.get("compaction_threshold_ratio", 0.2)
+            ),
+            compaction_max_tombstones=int(data.get("compaction_max_tombstones", 10000)),
+            tombstone_ttl_days=int(data.get("tombstone_ttl_days", 7)),
+            tombstone_cache_max_size=int(data.get("tombstone_cache_max_size", 100)),
+            normalize_scores=bool(data.get("normalize_scores", True)),
+        )
+
 
 # Schema version constant (V2 only - soft-delete support)
 TANTIVY_SCHEMA_VERSION = 2
@@ -66,25 +100,27 @@ class TantivyEngine(BaseModel):
     config: TantivyConfig
     logger: Any = None  # StructuredLogger - using Any to avoid circular imports
 
-    _index: Optional[tantivy.Index] = PrivateAttr(default=None)
-    _writer: Optional[tantivy.IndexWriter] = PrivateAttr(default=None)
-    _searcher: Optional[tantivy.Searcher] = PrivateAttr(default=None)
-    # Instance-level locks for thread-safe operations (prevents cross-instance contention)
-    # Note: Using RLock (re-entrant) because add() holds lock and calls self.writer property
+    _index: tantivy.Index | None = PrivateAttr(default=None)
+    _writer: tantivy.IndexWriter | None = PrivateAttr(default=None)
+    _searcher: tantivy.Searcher | None = PrivateAttr(default=None)
+    # Instance-level locks for thread-safe operations
+    # Note: Using RLock (re-entrant) because add() holds lock and
+    # calls self.writer property
     _writer_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
-    _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
-    # Bounded in-memory tombstone cache for O(1) lookup after first search
+    # Bounded in-memory tombstone cache for O(1) lookup
+    # after first search
     # Uses OrderedDict for LRU eviction when size exceeds tombstone_cache_max_size
     # Key: project_id, Value: set of tombstoned message contents
     _tombstone_cache: OrderedDict[str, set[str]] = PrivateAttr(
         default_factory=OrderedDict
     )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
 
     def __init__(
         self,
         config: TantivyConfig | dict[str, Any],
-        logger: Optional[Any] = None,
+        logger: Any | None = None,
         **kwargs: Any,
     ):
         """Initialize TantivyEngine.
@@ -97,8 +133,8 @@ class TantivyEngine(BaseModel):
         Raises:
             RuntimeError: If index initialization fails.
         """
-        if isinstance(config, dict):
-            config = TantivyConfig(**cast(dict[str, Any], config))
+        if _is_dict_config(config):
+            config = TantivyConfig.from_dict(config)
 
         super().__init__(config=config, logger=logger, **kwargs)
         self._initialize_index()
@@ -233,7 +269,7 @@ class TantivyEngine(BaseModel):
         if self._index is not None:
             self._writer = self._index.writer()
 
-    def _get_all_docs(self, project_id: str) -> List[str]:
+    def _get_all_docs(self, project_id: str) -> list[str]:
         """Get all active (non-tombstoned) documents for a project.
 
         Uses cached tombstone set for O(1) post-filtering after first call.
@@ -262,7 +298,7 @@ class TantivyEngine(BaseModel):
             # Get all results (use index doc count to avoid truncation)
             top_docs = self.searcher.search(query=query, limit=doc_limit)
 
-            results: List[str] = []
+            results: list[str] = []
             seen: set[str] = set()  # Track seen messages to avoid duplicates
 
             for _, doc_addr in top_docs.hits:
@@ -288,7 +324,7 @@ class TantivyEngine(BaseModel):
                 )
             return []
 
-    def find_by_exact_match(self, project_id: str, message: str) -> List[str]:
+    def find_by_exact_match(self, project_id: str, message: str) -> list[str]:
         """Find all messages that exactly match the given message text.
 
         Uses Python-level string comparison after fetching all docs for the project.
@@ -305,7 +341,7 @@ class TantivyEngine(BaseModel):
         all_docs = self._get_all_docs(project_id)
         return [doc for doc in all_docs if doc == message]
 
-    def _get_all_docs_all_projects(self) -> List[Tuple[str, str]]:
+    def _get_all_docs_all_projects(self) -> list[tuple[str, str]]:
         """Get all documents from all projects.
 
         Returns:
@@ -322,7 +358,7 @@ class TantivyEngine(BaseModel):
             searcher = self.searcher
 
             # Get all documents by iterating through segment readers
-            results: List[Tuple[str, str]] = []
+            results: list[tuple[str, str]] = []
 
             # Use a query that matches everything - project_id always exists
             # Search for project_id:* doesn't work, so we'll try multiple common project patterns
@@ -444,7 +480,7 @@ class TantivyEngine(BaseModel):
                         extra={"project_id": self.config.project_id},
                     )
 
-    def _invalidate_tombstone_cache(self, project_id: Optional[str] = None) -> None:
+    def _invalidate_tombstone_cache(self, project_id: str | None = None) -> None:
         """Invalidate tombstone cache for a project or all projects.
 
         Thread-safe cache invalidation. Call this after any operation that
@@ -550,8 +586,8 @@ class TantivyEngine(BaseModel):
             return set()
 
     def _normalize_scores(
-        self, results: List[Tuple[str, float]]
-    ) -> List[Tuple[str, float]]:
+        self, results: list[tuple[str, float]]
+    ) -> list[tuple[str, float]]:
         """Normalize BM25 scores to 0-1 range using batch min-max.
 
         Uses the existing JIT-optimized normalize_scores_minmax function.
@@ -577,11 +613,11 @@ class TantivyEngine(BaseModel):
         # Use existing JIT-optimized normalization
         normalized = normalize_scores_minmax(scores)
 
-        return list(zip(messages, normalized.tolist()))
+        return list(zip(messages, normalized.tolist(), strict=True))
 
     def search(
         self, query: str, project_id: str, limit: int
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Execute full-text search.
 
         Uses cached tombstone set for O(1) post-filtering after first search.
@@ -644,7 +680,7 @@ class TantivyEngine(BaseModel):
                     )
 
             top_docs = self.searcher.search(query=parsed_query, limit=search_limit)
-            results: List[Tuple[str, float]] = []
+            results: list[tuple[str, float]] = []
 
             for score, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
@@ -942,7 +978,7 @@ class TantivyEngine(BaseModel):
                 )
             return False
 
-    def _rebuild_index_with_docs(self, docs_to_keep: List[Tuple[str, str]]) -> None:
+    def _rebuild_index_with_docs(self, docs_to_keep: list[tuple[str, str]]) -> None:
         """Rebuild the index with the specified documents from all projects.
 
         This destroys the existing index and creates a new one with all
@@ -1199,8 +1235,8 @@ class TantivyEngine(BaseModel):
             top_docs = self.searcher.search(query=query, limit=100000)
 
             # Collect all documents with metadata
-            all_docs: List[
-                Tuple[str, str, int]
+            all_docs: list[
+                tuple[str, str, int]
             ] = []  # (project_id, message, is_deleted)
             tombstoned_messages: set[str] = set()
 
@@ -1219,7 +1255,7 @@ class TantivyEngine(BaseModel):
                         tombstoned_messages.add(cast(str, message))
 
             # Filter to keep only active messages that don't have tombstones
-            docs_to_keep: List[Tuple[str, str]] = []
+            docs_to_keep: list[tuple[str, str]] = []
             removed_originals = 0
             removed_tombstones = 0
 

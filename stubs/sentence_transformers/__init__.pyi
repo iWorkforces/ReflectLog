@@ -6,7 +6,8 @@ specifically the CrossEncoder class used for reranking.
 Reference: https://www.sbert.net/docs/cross_encoder/
 """
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -51,9 +52,11 @@ class CrossEncoder:
 
         Args:
             model_name: Hugging Face model identifier or path to local model.
-            num_labels: Number of labels for classification. Default is 1 for regression.
+            num_labels: Number of labels for classification. Default is 1
+            for regression.
             max_length: Maximum sequence length. Default uses model's max length.
-            device: Device to use ('cpu', 'cuda', 'mps'). Default auto-detects.
+            device: Device to use ('cpu', 'cuda', 'mps').
+            Default auto-detects.
             tokenizer_args: Additional arguments for the tokenizer.
             automodel_args: Additional arguments for the AutoModel.
             trust_remote_code: Whether to trust remote code in the model.

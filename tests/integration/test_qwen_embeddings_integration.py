@@ -245,6 +245,8 @@ class TestSyncVsAsync:
         # Results should be very similar (may have minor floating point differences)
         assert len(sync_result) == len(async_result)
         # Check that most values are very close
-        differences = sum(abs(a - b) for a, b in zip(sync_result, async_result))
+        differences = sum(
+            abs(a - b) for a, b in zip(sync_result, async_result, strict=True)
+        )
         avg_difference = differences / len(sync_result)
         assert avg_difference < 0.01  # Average difference should be very small

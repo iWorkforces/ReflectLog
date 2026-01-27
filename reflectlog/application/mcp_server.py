@@ -1,7 +1,5 @@
 """ReflectLogMCP Server - Refactored modular implementation."""
 
-from typing import Dict, List, Tuple, Type
-
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
 
@@ -18,7 +16,7 @@ from .tools import (
 from .utils import create_logger
 
 # Canonical registry of available MCP tool implementations.
-AVAILABLE_TOOL_CLASSES: Dict[str, Type[BaseTool]] = {
+AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {
     "add": AddTool,
     "get_all": GetAllTool,
     "search": SearchTool,
@@ -42,10 +40,8 @@ class FastMCPServer:
 
         Args:
             server_config: Configuration instance (defaults to singleton).
-
-        Raises:
-            RuntimeError: If required configuration is missing.
         """
+        super().__init__()
         self.config = server_config
 
         # Initialize structured logger
@@ -54,16 +50,18 @@ class FastMCPServer:
         )
 
         # Log initialization
+        init_msg = (
+            f"Initializing reflectlog MCP server [project_id={self.config.project_id}]"
+        )
+        self.logger.info(init_msg)
+
         self.logger.info(
-            f"Initializing reflectlog MCP server [project_id={self.config.project_id}, "
             f"transport={self.config.transport}, port={self.config.port}, "
-            f"log_level={self.config.log_level}, embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}]",
-            extra={
-                "transport": self.config.transport,
-                "port": self.config.port,
-                "embedding_dims": self.config.embedding_dims,
-                "log_level": self.config.log_level,
-            },
+            f"log_level={self.config.log_level}"
+        )
+
+        self.logger.info(
+            f"embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}"
         )
 
         # Initialize memory manager
@@ -102,7 +100,7 @@ class FastMCPServer:
             )
 
         # Initialize each permitted tool with dependencies
-        self.tools: List[BaseTool] = []
+        self.tools: list[BaseTool] = []
         for tool_name in selected_names:
             tool_class = AVAILABLE_TOOL_CLASSES[tool_name]
             tool = tool_class(
@@ -167,8 +165,8 @@ class FastMCPServer:
         return instructions
 
     def _determine_tool_selection(
-        self, available_names: List[str]
-    ) -> Tuple[List[str], List[str]]:
+        self, available_names: list[str]
+    ) -> tuple[list[str], list[str]]:
         """Determine which tools should be initialized based on configuration.
 
         Args:
@@ -183,8 +181,8 @@ class FastMCPServer:
             return available_names, []
 
         available_set = set(available_names)
-        selected: List[str] = []
-        invalid: List[str] = []
+        selected: list[str] = []
+        invalid: list[str] = []
 
         for token in allowed:
             canonical = self._canonicalize_tool_token(token, available_set)

@@ -1,9 +1,9 @@
 """Unit tests for LangchainQwenEmbeddings."""
 
-import anyio
 import os
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
+import anyio
 import pytest
 
 from reflectlog.infrastructure.qwen3_embedding import (

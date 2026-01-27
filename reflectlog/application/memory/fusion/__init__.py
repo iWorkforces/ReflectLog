@@ -1,6 +1,6 @@
 """Fusion strategies for hybrid search."""
 
-from typing import Any, Optional
+from typing import Any
 
 from .base import FusionEngine
 from .ranx_fusion import (
@@ -13,9 +13,9 @@ from .ranx_fusion import (
 
 def create_fusion_engine(
     method: str = "rrf",
-    normalization: Optional[str] = None,
+    normalization: str | None = None,
     rrf_k: int = 60,
-    logger: Optional[Any] = None,
+    logger: Any | None = None,
 ) -> FusionEngine:
     """Factory function to create a fusion engine.
 
@@ -44,14 +44,10 @@ def create_fusion_engine(
 
 
 __all__ = [
-    # Protocol
-    "FusionEngine",
-    # Implementation
-    "RanxFusionEngine",
-    # Factory
-    "create_fusion_engine",
-    # Constants
+    "DEFAULT_NORMALIZATIONS",
     "SUPPORTED_METHODS",
     "SUPPORTED_NORMALIZATIONS",
-    "DEFAULT_NORMALIZATIONS",
+    "FusionEngine",
+    "RanxFusionEngine",
+    "create_fusion_engine",
 ]

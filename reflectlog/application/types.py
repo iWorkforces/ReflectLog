@@ -3,10 +3,7 @@
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
-    Optional,
     Protocol,
-    TypeAlias,
     runtime_checkable,
 )
 
@@ -28,15 +25,15 @@ if TYPE_CHECKING:
 # before timestamp tracking was implemented.
 
 # Memory operation types
-MemoryRecord: TypeAlias = Dict[str, Any]
-SearchResult: TypeAlias = Dict[str, list[MemoryRecord]]
-MessageList: TypeAlias = list[str]
+type MemoryRecord = dict[str, Any]
+type SearchResult = dict[str, list[MemoryRecord]]
+type MessageList = list[str]
 
 # Tool result types
-ToolResult: TypeAlias = None | MessageList
+type ToolResult = None | MessageList
 
 # Extra logging context
-LogContext: TypeAlias = Dict[str, Any]
+type LogContext = dict[str, Any]
 
 
 # Clean Architecture: Application layer defines interfaces
@@ -190,7 +187,9 @@ class ISemanticSearchEngine(Protocol):
     Example:
         ```python
         # Application layer code depends on the protocol
-        def search_memories(engine: ISemanticSearchEngine, query: str) -> list[tuple[str, float]]:
+        def search_memories(
+            engine: ISemanticSearchEngine, query: str
+        ) -> list[tuple[str, float]]:
             return engine.search(query=query, project_id="project", limit=5)
         ```
     """
@@ -324,7 +323,7 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
-    def get_id_by_message(self, project_id: str, message: str) -> Optional[int]:
+    def get_id_by_message(self, project_id: str, message: str) -> int | None:
         """Get the ID of a message by its content.
 
         Args:
@@ -355,7 +354,7 @@ class ISemanticSearchEngine(Protocol):
         ...
 
     @property
-    def message_store(self) -> "MessageStore":
+    def message_store(self) -> MessageStore:
         """Get the underlying message store for archive operations.
 
         Returns:

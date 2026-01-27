@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Unit tests for hybrid MemoryManager (USearch + Tantivy)."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from reflectlog.application.memory.manager import MemoryManager
+import pytest
+
 from reflectlog.application.config.settings import Config
-from reflectlog.application.utils import StructuredLogger
 from reflectlog.application.exceptions import StorageError
+from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.utils import StructuredLogger
 
 
 @pytest.fixture

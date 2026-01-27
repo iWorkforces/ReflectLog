@@ -1,7 +1,7 @@
 """Base class for platform-specific credential retrieval."""
 
-import json
 from abc import ABC, abstractmethod
+import json
 
 from ..types import SERVICE_NAME, TOKEN_PREFIX
 

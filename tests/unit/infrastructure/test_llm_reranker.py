@@ -219,14 +219,14 @@ class TestOpenAIRerankerProvider:
             return_value=mock_response
         )
 
-        doc, score = await mock_provider.score_document(
+        _doc, score = await mock_provider.score_document(
             query="test", document="test doc", fallback_score=0.5
         )
         assert score == 1.0
 
         # Test score < 0.0
         mock_response.choices[0].message.content = '{"score": -0.5}'
-        doc, score = await mock_provider.score_document(
+        _doc, score = await mock_provider.score_document(
             query="test", document="test doc", fallback_score=0.5
         )
         assert score == 0.0
@@ -247,7 +247,7 @@ class TestOpenAIRerankerProvider:
         mock_logger = MagicMock()
         mock_provider._logger = mock_logger
 
-        doc, score = await mock_provider.score_document(
+        _doc, score = await mock_provider.score_document(
             query="test", document="test doc", fallback_score=0.7
         )
 
@@ -270,7 +270,7 @@ class TestOpenAIRerankerProvider:
         mock_logger = MagicMock()
         mock_provider._logger = mock_logger
 
-        doc, score = await mock_provider.score_document(
+        _doc, score = await mock_provider.score_document(
             query="test", document="test doc", fallback_score=0.6
         )
 
@@ -288,7 +288,7 @@ class TestOpenAIRerankerProvider:
         mock_logger = MagicMock()
         mock_provider._logger = mock_logger
 
-        doc, score = await mock_provider.score_document(
+        _doc, score = await mock_provider.score_document(
             query="test", document="test doc", fallback_score=0.8
         )
 
@@ -473,7 +473,7 @@ class TestAnthropicRerankerProvider:
         with patch("reflectlog.utility.generate_content") as mock_generate:
             mock_generate.side_effect = Exception("API Error")
 
-            doc, score = await mock_provider.score_document(
+            _doc, score = await mock_provider.score_document(
                 query="test",
                 document="test doc",
                 fallback_score=0.6,

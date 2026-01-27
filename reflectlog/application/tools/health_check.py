@@ -1,6 +1,6 @@
 """Health check tool implementation for ReflectLogMCP Server."""
 
-from typing import Any, Dict
+from typing import Any
 
 from .base import BaseTool
 
@@ -22,7 +22,7 @@ class HealthCheckTool(BaseTool):
     def get_handler(self):
         """Get the async tool handler function."""
 
-        async def health_check() -> Dict[str, Any]:
+        async def health_check() -> dict[str, Any]:
             """Get server health status (async).
 
             Returns a health status dictionary with information about:

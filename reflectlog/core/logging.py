@@ -5,9 +5,9 @@ abstractions enable different logging implementations while providing
 a consistent interface for structured logging.
 """
 
-from typing import Protocol, runtime_checkable, Any
-from enum import Enum
 from datetime import datetime
+from enum import Enum
+from typing import Any, Protocol, runtime_checkable
 
 
 class LogLevel(Enum):
@@ -140,7 +140,7 @@ class ILoggingService(Protocol):
         """
         ...
 
-    def bind(self, **kwargs: Any) -> "ILoggingService":
+    def bind(self, **kwargs: Any) -> ILoggingService:
         """Create a bound logger with preset context.
 
         Args:

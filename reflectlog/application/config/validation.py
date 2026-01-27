@@ -4,9 +4,9 @@ This module provides comprehensive validation for configuration values,
 ensuring that all settings are valid and consistent before the server starts.
 """
 
-import re
 from dataclasses import dataclass
-from typing import Any
+import re
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -30,17 +30,18 @@ class ConfigurationValidator:
     """
 
     # Regex patterns
-    PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+    PROJECT_ID_PATTERN: ClassVar = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
     # Valid values for enums
-    VALID_TRANSPORTS = {"stdio", "http", "sse", "streamable-http"}
-    VALID_RERANKER_ENGINES = {"llm", "cross_encoder", "none"}
-    VALID_LLM_PROVIDERS = {"openai", "anthropic"}
-    VALID_CROSS_ENCODER_DEVICES = {"cpu", "cuda", "mps"}
-    VALID_FUSION_METHODS = {"rrf", "sum", "mnz", "max", "bordafuse"}
+    VALID_TRANSPORTS: ClassVar = {"stdio", "http", "sse", "streamable-http"}
+    VALID_RERANKER_ENGINES: ClassVar = {"llm", "cross_encoder", "none"}
+    VALID_LLM_PROVIDERS: ClassVar = {"openai", "anthropic"}
+    VALID_CROSS_ENCODER_DEVICES: ClassVar = {"cpu", "cuda", "mps"}
+    VALID_FUSION_METHODS: ClassVar = {"rrf", "sum", "mnz", "max", "bordafuse"}
 
     def __init__(self) -> None:
-        """Initialize the validator with an empty list of errors."""
+        """Initialize validator with an empty list of errors."""
+        super().__init__()
         self.errors: list[ValidationError] = []
 
     def reset(self) -> None:
@@ -406,6 +407,218 @@ class ConfigurationValidator:
 
         return valid
 
+    def validate_query(
+        self: ConfigurationValidator,
+        query: str,
+        max_length: int = 1000,
+    ) -> bool:
+        """Validate search query for security and content.
+
+        Args:
+            self: The validator instance
+            query: The search query to validate
+            max_length: Maximum allowed query length (default: 1000)
+
+        Returns:
+            True if valid, False otherwise
+        """
+        if not query:
+            self.add_error("query", query, "Query cannot be empty")
+            return False
+
+        if len(query) > max_length:
+            self.add_error(
+                "query",
+                query,
+                f"Query length ({len(query)}) exceeds maximum ({max_length})",
+            )
+            return False
+
+        return True
+
+    def sanitize_query(
+        self: ConfigurationValidator,
+        query: str,
+        max_length: int = 1000,
+    ) -> str:
+        """Sanitize search query to prevent injection attacks.
+
+        Args:
+            self: The validator instance
+            query: The search query to sanitize
+            max_length: Maximum allowed query length (default: 1000)
+
+        Returns:
+            Sanitized query string
+
+        This function removes or escapes potentially dangerous characters:
+        - SQL/NoSQL injection patterns
+        - Command injection patterns
+        - Excess whitespace
+        """
+        if not query:
+            return ""
+
+        # Limit length
+        if len(query) > max_length:
+            query = query[:max_length]
+
+        # Remove null bytes and control characters
+        sanitized = "".join(char for char in query if ord(char) >= 32)
+
+        # Remove common SQL injection patterns
+        injection_patterns = [
+            r"';\s*--",
+            r"'\s+or\s+",
+            r"\s+and\s+",
+            r";\s*drop\s+",
+            r";\s*delete\s+",
+            r";\s*insert\s+",
+            r";\s*update\s+",
+            r";\s*exec\s*",
+            r"union\s+select",
+            r"\|\s*select",
+        ]
+
+        for pattern in injection_patterns:
+            sanitized = re.sub(pattern, "", sanitized, flags=re.IGNORECASE)
+
+        # Remove multiple consecutive spaces
+        sanitized = re.sub(r"\s{2,}", " ", sanitized)
+
+        # Trim leading/trailing whitespace
+        sanitized = sanitized.strip()
+
+        return sanitized
+
+    def validate_message(
+        self: ConfigurationValidator,
+        message: str,
+        min_length: int = 1,
+        max_length: int = 30720,
+    ) -> bool:
+        """Validate message content for security and content.
+
+        Args:
+            self: The validator instance
+            message: The message to validate
+            min_length: Minimum allowed length (default: 1)
+            max_length: Maximum allowed length (default: 30720)
+
+        Returns:
+            True if valid, False otherwise
+        """
+        if not message:
+            self.add_error("message", message, "Message cannot be empty")
+            return False
+
+        if len(message) < min_length:
+            self.add_error(
+                "message",
+                message,
+                f"Message length ({len(message)}) below minimum ({min_length})",
+            )
+            return False
+
+        if len(message) > max_length:
+            self.add_error(
+                "message",
+                message,
+                f"Message length ({len(message)}) exceeds maximum ({max_length})",
+            )
+            return False
+
+        # Check for null bytes and control characters (except newline, tab)
+        for char in message:
+            char_code = ord(char)
+            if char_code < 9 or (char_code >= 11 and char_code <= 12):
+                self.add_error(
+                    "message",
+                    message,
+                    "Message contains invalid control characters",
+                )
+                return False
+
+        return True
+
+    def validate_openrouter_api_key_format(
+        self: ConfigurationValidator,
+        api_key: str,
+    ) -> bool:
+        """Validate OpenRouter API key format.
+
+        Args:
+            self: The validator instance
+            api_key: The API key to validate
+
+        Returns:
+            True if valid format, False otherwise
+
+        Expected format: sk-or-v1-XXXXXXXXXXXXXXXX
+        """
+        if not api_key:
+            self.add_error("OPENROUTER_API_KEY", api_key, "API key cannot be empty")
+            return False
+
+        # OpenRouter keys start with 'sk-or-v1-'
+        if not api_key.startswith("sk-or-v1-"):
+            self.add_error(
+                "OPENROUTER_API_KEY",
+                api_key,
+                "API key must start with 'sk-or-v1-'",
+            )
+            return False
+
+        # Check length (typical OpenRouter keys are 51 characters: sk-or-v1- + 39 chars)
+        if len(api_key) < 10 or len(api_key) > 100:
+            self.add_error(
+                "OPENROUTER_API_KEY",
+                api_key,
+                "API key length must be between 10 and 100 characters",
+            )
+            return False
+
+        return True
+
+    def validate_openrouter_api_key(
+        self: ConfigurationValidator,
+        api_key: str,
+    ) -> bool:
+        """Validate OpenRouter API key format.
+
+        Args:
+            self: The validator instance
+            api_key: The API key to validate
+
+        Returns:
+            True if valid format, False otherwise
+
+        Expected format: sk-or-v1-XXXXXXXXXXXXXXXX
+        """
+        if not api_key:
+            self.add_error("OPENROUTER_API_KEY", api_key, "API key cannot be empty")
+            return False
+
+        # OpenRouter keys start with 'sk-or-v1-'
+        if not api_key.startswith("sk-or-v1-"):
+            self.add_error(
+                "OPENROUTER_API_KEY",
+                api_key,
+                "API key must start with 'sk-or-v1-'",
+            )
+            return False
+
+        # Check length (typical OpenRouter keys are 51 characters: sk-or-v1- + 39 chars)
+        if len(api_key) < 10 or len(api_key) > 100:
+            self.add_error(
+                "OPENROUTER_API_KEY",
+                api_key,
+                "API key length must be between 10 and 100 characters",
+            )
+            return False
+
+        return True
+
     def has_errors(self) -> bool:
         """Check if any validation errors have been recorded.
 
@@ -449,17 +662,17 @@ def validate_config(config: object) -> list[ValidationError]:
     # Validate project_id
     project_id = get_attr("project_id")
     if project_id:
-        validator.validate_project_id(project_id)
+        _ = validator.validate_project_id(project_id)
 
     # Validate transport
     transport = get_attr("transport")
     if transport:
-        validator.validate_transport(transport)
+        _ = validator.validate_transport(transport)
 
     # Validate port
     port = get_attr("port")
     if port is not None:
-        validator.validate_port(port)
+        _ = validator.validate_port(port)
 
     # Validate percentage values
     percentage_fields = [
@@ -468,14 +681,17 @@ def validate_config(config: object) -> list[ValidationError]:
         ("cross_encoder_score_threshold", "CROSS_ENCODER_SCORE_THRESHOLD"),
         ("smart_replace_threshold", "SMART_REPLACE_THRESHOLD"),
         ("smart_replace_min_similarity", "SMART_REPLACE_MIN_SIMILARITY"),
-        ("tantivy_compaction_threshold_ratio", "TANTIVY_COMPACTION_THRESHOLD_RATIO"),
+        (
+            "tantivy_compaction_threshold_ratio",
+            "TANTIVY_COMPACTION_THRESHOLD_RATIO",
+        ),
         ("recency_decay_rate", "RECENCY_DECAY_RATE"),
     ]
 
     for attr_name, field_name in percentage_fields:
         value = get_attr(attr_name)
         if value is not None:
-            validator.validate_percentage(field_name, value)
+            _ = validator.validate_percentage(field_name, value)
 
     # Validate positive integers
     positive_int_fields = [
@@ -493,38 +709,39 @@ def validate_config(config: object) -> list[ValidationError]:
     for attr_name, field_name, min_val in positive_int_fields:
         value = get_attr(attr_name)
         if value is not None:
-            validator.validate_positive_int(field_name, value, min_val)
+            _ = validator.validate_positive_int(field_name, value, min_val)
 
     # Validate reranker engine
     reranker_engine = get_attr("reranker_engine")
     if reranker_engine:
-        validator.validate_reranker_engine(reranker_engine)
+        _ = validator.validate_reranker_engine(reranker_engine)
 
     # Validate LLM provider
     llm_provider = get_attr("llm_provider")
     if llm_provider:
-        validator.validate_llm_provider(llm_provider)
+        _ = validator.validate_llm_provider(llm_provider)
 
     # Validate cross-encoder device
     cross_encoder_device = get_attr("cross_encoder_device")
     if cross_encoder_device:
-        validator.validate_cross_encoder_device(cross_encoder_device)
+        _ = validator.validate_cross_encoder_device(cross_encoder_device)
 
     # Validate fusion method
     fusion_method = get_attr("fusion_method")
     if fusion_method:
-        validator.validate_fusion_method(fusion_method)
+        _ = validator.validate_fusion_method(fusion_method)
 
     # Validate message lengths
     min_length = get_attr("min_message_length")
     max_length = get_attr("max_message_length")
     if min_length is not None and max_length is not None:
-        validator.validate_message_lengths(min_length, max_length)
+        _ = validator.validate_message_lengths(min_length, max_length)
 
     # Validate dependencies
     enable_hybrid_search = get_attr("enable_hybrid_search")
     enable_rrf_fusion = get_attr("enable_rrf_fusion")
-    validator.validate_dependencies(
+    reranker_engine = get_attr("reranker_engine")
+    _ = validator.validate_dependencies(
         enable_hybrid_search if enable_hybrid_search is not None else True,
         enable_rrf_fusion if enable_rrf_fusion is not None else True,
         reranker_engine if reranker_engine else "llm",
@@ -533,18 +750,23 @@ def validate_config(config: object) -> list[ValidationError]:
     # Validate circuit breaker settings
     circuit_breaker_enabled = get_attr("circuit_breaker_enabled")
     if circuit_breaker_enabled:
-        validator.validate_circuit_breaker_settings(
+        _ = validator.validate_circuit_breaker_settings(
             circuit_breaker_enabled,
             get_attr("circuit_breaker_failure_threshold") or 5,
             get_attr("circuit_breaker_timeout") or 60.0,
             get_attr("circuit_breaker_success_threshold") or 2,
         )
 
+    # Validate OpenRouter API key format
+    openrouter_api_key = get_attr("openrouter_api_key")
+    if openrouter_api_key:
+        _ = validator.validate_openrouter_api_key_format(openrouter_api_key)
+
     return validator.errors
 
 
 __all__ = [
-    "ValidationError",
     "ConfigurationValidator",
+    "ValidationError",
     "validate_config",
 ]

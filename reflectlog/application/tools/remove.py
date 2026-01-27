@@ -1,6 +1,6 @@
 """Remove tool implementation for ReflectLogMCP Server."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 from asyncer import asyncify
 
@@ -28,7 +28,7 @@ class RemoveTool(BaseTool):
     def get_handler(self):
         """Get the async tool handler function."""
 
-        async def remove(messages: List[str]) -> None:
+        async def remove(messages: list[str]) -> None:
             """Remove messages from the message store using exact string matching (async).
 
             This tool removes messages that exactly match the provided strings.
@@ -100,7 +100,7 @@ class RemoveTool(BaseTool):
                 )
 
             actual_removed = 0
-            messages_not_found: List[str] = []
+            messages_not_found: list[str] = []
 
             try:
                 for msg_idx, message in enumerate(messages, 1):
@@ -184,7 +184,7 @@ class RemoveTool(BaseTool):
         )
 
         # Search for candidates via asyncify (non-blocking)
-        candidates: List[Dict[str, Any]] = await asyncify(
+        candidates: list[dict[str, Any]] = await asyncify(
             self.memory.search_for_removal
         )(message)
 

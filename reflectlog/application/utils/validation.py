@@ -1,8 +1,8 @@
 """Message validation utilities for ReflectLogMCP Server."""
 
 import re
+from typing import Any
 import unicodedata
-from typing import Any, Optional
 
 # SQL injection patterns for basic detection
 _SQL_INJECTION_PATTERNS = [
@@ -26,7 +26,7 @@ _ALLOWED_CONTROL_CHARS = {"\t", "\n", "\r"}
 
 def validate_messages(
     messages: list[Any], min_length: int, max_length: int
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Validate message list for add/remove operations.
 
     Args:

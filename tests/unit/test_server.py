@@ -1,10 +1,11 @@
 """Unit tests for reflectlog/server.py CLI module."""
 
 import os
-import sys
-import pytest
-from unittest.mock import patch, MagicMock
 from pathlib import Path
+import sys
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
