@@ -17,13 +17,15 @@ Example:
 
 from dataclasses import dataclass
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import warnings
 
-from FlagEmbedding import FlagReranker
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.config import Config
+
+if TYPE_CHECKING:
+    pass
 
 
 @dataclass(frozen=True)
@@ -113,11 +115,11 @@ class CrossEncoderReranker(BaseModel):
     config: CrossEncoderConfig
     logger: Any = None
 
-    _model: FlagReranker | None = PrivateAttr(default=None)
+    _model: Any = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     @property
-    def model(self) -> FlagReranker:
+    def model(self) -> Any:
         """Get FlagReranker model (thread-safe lazy initialization).
 
         Returns:
@@ -126,9 +128,58 @@ class CrossEncoderReranker(BaseModel):
         Note:
             The model is loaded on first access and cached. Loading uses a
             lock to ensure thread safety in concurrent environments.
+            FlagEmbedding is imported lazily for performance, not to avoid dependency issues.
         """
         if self._model is not None:
             return self._model
+
+        with self._init_lock:
+            # Double-check locking pattern
+            if self._model is None:
+                if self.logger:
+                    self.logger.info(
+                        f"Loading FlagReranker model: {self.config.model_name}",
+                        extra={
+                            "device": self.config.device,
+                            "use_fp16": self.config.use_fp16,
+                        },
+                    )
+
+                from FlagEmbedding import FlagReranker
+
+                # Suppress tokenizer optimization warning from transformers
+                # ("You're using a XLMRobertaTokenizerFast tokenizer...")
+                # This is an internal FlagEmbedding implementation detail
+                from transformers import logging as hf_logging
+
+                original_verbosity = hf_logging.get_verbosity()
+                hf_logging.set_verbosity_error()
+
+                try:
+                    self._model = FlagReranker(
+                        self.config.model_name,
+                        use_fp16=self.config.use_fp16,
+                        devices=[self.config.device],
+                    )
+
+                    # Suppress "using with `__call__` method is faster" warning
+                    # that appears during compute_score() with fast tokenizers.
+                    # This warning is informational and not actionable since
+                    # FlagReranker handles tokenization internally.
+                    self._suppress_fast_tokenizer_warning()
+                finally:
+                    hf_logging.set_verbosity(original_verbosity)
+
+                if self.logger:
+                    self.logger.info(
+                        "FlagReranker model loaded successfully",
+                        extra={
+                            "model": self.config.model_name,
+                            "use_fp16": self.config.use_fp16,
+                        },
+                    )
+
+        return self._model
 
         with self._init_lock:
             # Double-check locking pattern

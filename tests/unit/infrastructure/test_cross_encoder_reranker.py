@@ -218,7 +218,7 @@ class TestRerank:
     def test_rerank_scores_and_sorts(self, mock_reranker: CrossEncoderReranker) -> None:
         """Test that rerank scores candidates and sorts by score descending."""
         # Mock model.compute_score to return scores (FlagReranker API)
-        mock_reranker._model.compute_score.return_value = [0.3, 0.9, 0.6]  # type: ignore[union-attr]
+        mock_reranker._model.compute_score.return_value = [0.3, 0.9, 0.6]
 
         candidates = [
             ("doc1", 0.8),
@@ -281,13 +281,13 @@ class TestRerank:
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
         """Test that query-document pairs are built correctly for scoring."""
-        mock_reranker._model.compute_score.return_value = [0.8, 0.7]  # type: ignore[union-attr]
+        mock_reranker._model.compute_score.return_value = [0.8, 0.7]
 
         candidates = [("Python guide", 0.5), ("JavaScript guide", 0.5)]
         mock_reranker.rerank("Python tutorials", candidates)
 
         # Verify compute_score was called with correct pairs (tuples, not lists)
-        call_args = mock_reranker._model.compute_score.call_args  # type: ignore[union-attr]
+        call_args = mock_reranker._model.compute_score.call_args
         pairs = call_args[0][0]
         assert pairs == [
             ("Python tutorials", "Python guide"),
@@ -388,7 +388,7 @@ class TestRerankAsync:
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
         """Test that rerank_async wraps the sync rerank method."""
-        mock_reranker._model.compute_score.return_value = [0.9, 0.7]  # type: ignore[union-attr]
+        mock_reranker._model.compute_score.return_value = [0.9, 0.7]
 
         candidates = [("doc1", 0.8), ("doc2", 0.6)]
         result = await mock_reranker.rerank_async("test query", candidates)
