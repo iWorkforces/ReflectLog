@@ -1,8 +1,8 @@
 # ReflectLogMCP Knowledge Base
 
 **Generated:** 2026-01-27
-**Commit:** current
-**Branch:** main
+**Commit:** 94d13da
+**Branch:** develop
 
 ## OVERVIEW
 
@@ -12,17 +12,17 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 ```
 ./
-├── reflectlog/              # Main package (125 .py files)
+├── reflectlog/              # Main package (77 .py files)
 │   ├── core/              # Protocol definitions (8 files)
-│   ├── application/         # Business logic (42 files)
-│   ├── infrastructure/      # External integrations (10 files)
+│   ├── application/         # Business logic (41 files)
+│   ├── infrastructure/      # External integrations (16 files)
 │   ├── plugins/           # Plugin system (4 files)
 │   └── utility/           # Platform utilities (8 files)
-├── tests/                # Unit + integration tests (36 test files)
+├── tests/                # Unit + integration tests (49 files)
 ├── stubs/               # Type stubs for third-party libs
 ├── indexes/              # Persistent index data
-├── scripts/              # Build/CI scripts (no CI/CD)
-└── *.sh                  # Custom wrapper scripts (6 scripts)
+├── scripts/              # Build/CI scripts (3 scripts)
+└── *.sh                  # Custom wrapper scripts (3 scripts)
 ```
 
 ## WHERE TO LOOK
@@ -34,6 +34,16 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 | Protocol interfaces | `reflectlog/core/` | All abstractions defined here |
 | Infrastructure wrappers | `reflectlog/infrastructure/` | USearch, Tantivy, LLM providers |
 | Build commands | `start-type-check.sh`, `start-lint.sh`, `start-unittest.sh` | Custom wrappers, no CI/CD |
+
+## CODE MAP
+
+| Symbol | Type | Location | Refs | Role |
+|---------|------|----------|--------|------|
+| MemoryManager | Class | application/memory/manager.py | High | Facade for all memory operations |
+| Config | Dataclass | application/config/settings.py | High | Centralized configuration |
+| ISearchBackend | Protocol | core/search.py | Medium | Abstract search engine interface |
+| USearchEngine | Class | infrastructure/search/usearch_engine.py | Medium | Semantic vector search backend |
+| TantivyEngine | Class | infrastructure/search/tantivy_engine.py | Medium | Full-text search backend |
 
 ## CONVENTIONS
 
@@ -118,10 +128,10 @@ uv run reflectlog --transport http --port 9103
 
 | Path | Score | Reason |
 |-------|--------|--------|
-| `reflectlog/` | 30 | High complexity (125 files, 8 packages) |
+| `reflectlog/` | 30 | High complexity (77 files, 5 packages) |
 | `reflectlog/core/` | 14 | Protocol definitions (8 files) |
-| `reflectlog/application/` | 16 | Business logic (42 files) |
-| `reflectlog/infrastructure/` | 14 | External integrations (10 files) |
-| `reflectlog/application/memory/` | 12 | Memory management (9 files) |
-| `tests/` | 10 | Test suite (13 files) |
+| `reflectlog/application/` | 16 | Business logic (41 files) |
+| `reflectlog/infrastructure/` | 14 | External integrations (16 files) |
+| `reflectlog/application/memory/` | 12 | Memory management (11 files) |
+| `tests/` | 10 | Test suite (49 files) |
 | `reflectlog/application/utils/` | 8 | Utilities (8 files) |
