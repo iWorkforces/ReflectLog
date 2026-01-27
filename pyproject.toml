@@ -42,15 +42,15 @@ dependencies = [
     "ranx>=0.3.21",
     "httpx[http2]>=0.28.1",
     "jinja2>=3.1.6",
-    "python-multipart>=0.0.21",
+    "python-multipart>=0.0.22",
     "itsdangerous>=2.2.0",
     "pyyaml>=6.0.3",
     "llvmlite==0.46.0",
     "h2>=4.3.0",
     "hpack>=4.1.0",
-    "sentence-transformers>=5.2.0",
+    "sentence-transformers>=5.2.1",
     "flagembedding>=1.3.5",
-    "claude-agent-sdk>=0.1.22",
+    "claude-agent-sdk>=0.1.23",
     "pydantic-core>=2.41.5",
 ]
 
@@ -77,7 +77,7 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.8.0",
-    "ty>=0.0.13",
+    "ty>=0.0.14",
     "pyright>=1.1.408",
 ]
 
@@ -256,7 +256,7 @@ fixable = ["UP", "I", "N", "F", "E", "W"]
 "tests/**/*" = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "E501"]
 "reflectlog/**/*" = ["E501"]
 "stubs/**/*" = ["E501"]
- 
+
 [tool.ruff.lint.isort]
 single-line-exclusions = ["typing", "collections.abc"]
 known-first-party = ["reflectlog"]
