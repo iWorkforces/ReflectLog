@@ -1,6 +1,6 @@
 # ReflectLogMCP Knowledge Base
 
-**Generated:** 2026-01-26
+**Generated:** 2026-01-27
 **Commit:** current
 **Branch:** main
 
@@ -12,17 +12,17 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 ```
 ./
-├── reflectlog/              # Main package
+├── reflectlog/              # Main package (125 .py files)
 │   ├── core/              # Protocol definitions (8 files)
 │   ├── application/         # Business logic (42 files)
-│   ├── infrastructure/      # External integrations (16 files)
+│   ├── infrastructure/      # External integrations (10 files)
 │   ├── plugins/           # Plugin system (4 files)
-│   └── utility/           # Platform utilities
-├── tests/                # Unit + integration tests
+│   └── utility/           # Platform utilities (8 files)
+├── tests/                # Unit + integration tests (36 test files)
 ├── stubs/               # Type stubs for third-party libs
 ├── indexes/              # Persistent index data
 ├── scripts/              # Build/CI scripts (no CI/CD)
-└── *.sh                  # Custom wrapper scripts
+└── *.sh                  # Custom wrapper scripts (6 scripts)
 ```
 
 ## WHERE TO LOOK
@@ -113,3 +113,15 @@ uv run reflectlog --transport http --port 9103
 - **Concurrent LLM Calls**: Smart replacement checks run in parallel with semaphore limiting.
 - **Three Transport Modes**: stdio, http, sse, streamable-http (not just stdio).
 - **Query Embedding Cache**: LRU cache (default 100 entries) reduces API calls.
+
+## SUBDIRECTORIES WITH AGENTS.md
+
+| Path | Score | Reason |
+|-------|--------|--------|
+| `reflectlog/` | 30 | High complexity (125 files, 8 packages) |
+| `reflectlog/core/` | 14 | Protocol definitions (8 files) |
+| `reflectlog/application/` | 16 | Business logic (42 files) |
+| `reflectlog/infrastructure/` | 14 | External integrations (10 files) |
+| `reflectlog/application/memory/` | 12 | Memory management (9 files) |
+| `tests/` | 10 | Test suite (13 files) |
+| `reflectlog/application/utils/` | 8 | Utilities (8 files) |
