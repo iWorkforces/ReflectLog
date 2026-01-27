@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from ..exceptions import ConfigurationError
 from ..utils.security import SecretString
-from .validation import validate_config
+from .presets import apply_preset_to_env, get_active_preset
 
 # Note: LangchainQwenEmbeddings is imported lazily in MemoryManager
 # to avoid unnecessary initialization when not using langchain provider
@@ -546,6 +546,10 @@ class Config:
                 f"Invalid PROJECT_ID: path traversal patterns not allowed: {project_id}"
             )
 
+        preset = get_active_preset()
+        if preset:
+            apply_preset_to_env(preset)
+
         openrouter_api_key_raw = os.environ.get("OPENROUTER_API_KEY")
         if not openrouter_api_key_raw:
             raise ConfigurationError(
@@ -583,14 +587,6 @@ class Config:
             **logging_config,
             allowed_tools=allowed_tools,
         )
-
-        # Validate the parsed configuration
-        errors = validate_config(config)
-        if errors:
-            raise ConfigurationError(
-                "Configuration validation failed:\n"
-                + "\n".join(f"  - {error}" for error in errors)
-            )
 
         return config
 
@@ -647,6 +643,19 @@ class _LazyConfig:
 
     def __repr__(self) -> str:
         return f"_LazyConfig(initialized={_config is not None})"
+
+
+def setup_config_reload():
+    """Setup runtime configuration reload via SIGHUP.
+
+    Must be called after Config singleton is initialized.
+    """
+    from ..utils.config_reload import setup_signal_handler
+
+    config = Config.from_environment()
+    setup_signal_handler(lambda: Config.from_environment())
+
+    return config
 
 
 # Note: This is typed as Any to allow type checkers to accept it

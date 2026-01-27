@@ -58,9 +58,13 @@ def async_retry_with_backoff(
 
     Example:
         ```python
+        from reflectlog.application.utils.http_client import get_pooled_aiohttp_client
+
+        session = get_pooled_aiohttp_client()
+
         @async_retry_with_backoff(max_retries=3, base_delay=1.0)
         async def fetch_data(url: str) -> dict:
-            async with aiohttp.get(url) as response:
+            async with session.get(url) as response:
                 return await response.json()
         ```
     """

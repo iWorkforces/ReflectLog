@@ -7,6 +7,7 @@ from .circuit_breaker import (
     CircuitState,
     circuit_breaker_decorator,
 )
+from .config_reload import ConfigReloadManager, setup_signal_handler
 from .logging import (
     StructuredLogger,
     create_logger,
@@ -33,6 +34,7 @@ __all__ = [
     "CircuitBreakerConfig",
     "CircuitBreakerOpenError",
     "CircuitState",
+    "ConfigReloadManager",
     "MetricValue",
     "MetricsRegistry",
     "SecretString",
@@ -47,6 +49,7 @@ __all__ = [
     "normalize_scores_minmax",
     "redact_dict_secrets",
     "sanitize_for_logging",
+    "setup_signal_handler",
     "timed",
     "truncate_message",
     "validate_messages",

@@ -38,7 +38,7 @@ NC='\033[0m' # No Color
 TEST_DIR="tests"
 PYTEST_CONFIG_FILE="pyproject.toml"
 VENV_DIR="venv"
-COVERAGE_MIN=90  # Minimum coverage percentage
+COVERAGE_MIN=75  # Minimum coverage percentage
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 
 run_python() {

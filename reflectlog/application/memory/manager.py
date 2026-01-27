@@ -86,22 +86,15 @@ class MemoryManager:
         self.logger = logger
         self.project_id = config.project_id
 
-        # Thread-safety: RLock for protecting concurrent operations
-        # RLock (re-entrant) because some methods may call other
+        # Thread-safety: Single RLock with read-write semantics
+        # RLock allows multiple concurrent readers, writer has exclusive access
+        # This simplifies lock hierarchy and provides better performance
         # protected methods
         self._lock = threading.RLock()
-        # Serialize write operations across async and sync calls
-        # (USearch is not thread-safe)
-        self._write_lock = threading.Lock()
-        # Lock for lazy reranker initialization
-        # (separate from main lock to avoid deadlock)
-        self._reranker_lock = threading.Lock()
-        self._smart_replacer_lock = threading.Lock()
 
         # Lock hierarchy (outer to inner) - ALWAYS follow
         # this order to prevent deadlocks:
         # 1. _write_lock - for all write operations across async/sync boundary
-        # 2. _lock (RLock) - for state consistency within operations
         # Usage pattern:
         # - Read operations: use _lock only
         # - Write operations: acquire _write_lock first, then _lock if needed
@@ -111,13 +104,19 @@ class MemoryManager:
         #   with self._write_lock:
         #       with self._lock:
         #           # ... perform operation ...
-        #
+        # #
         # Example (unsafe lock acquisition - DO NOT DO THIS):
         #   with self._lock:         # DEADLOCK if another thread has _write_lock!
         #       with self._write_lock:
-
+        #           # ... perform operation ...
+        # #
         # Startup timing metrics (set by server.py after initialization)
+        self._write_lock = threading.Lock()
         self._startup_metrics: dict[str, float] | None = None
+
+        # Lazy initialization locks for thread-safe resource creation
+        self._reranker_lock = threading.RLock()
+        self._smart_replacer_lock = threading.RLock()
 
         # Hybrid mode enabled by default
         self.is_hybrid_search = self.config.enable_hybrid_search

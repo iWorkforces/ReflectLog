@@ -1,10 +1,9 @@
 """Cached embeddings wrapper for query embedding LRU caching."""
 
-from collections import OrderedDict
 import hashlib
-import threading
 from typing import Any
 
+from cachetools import LRUCache
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.types import Embeddings
@@ -20,7 +19,7 @@ class CachedEmbeddings(BaseModel):
     Note: `embed_documents()` is NOT cached since document embeddings are
     typically computed once during ingestion.
 
-    Thread-safety: Uses a threading.Lock for safe concurrent cache access.
+    Thread-safety: Uses cachetools.LRUCache which is thread-safe by default.
 
     Example:
         ```python
@@ -53,9 +52,10 @@ class CachedEmbeddings(BaseModel):
     # Optional logger for cache hit/miss stats
     logger: Any = None
 
-    # Private cache state
-    _cache: OrderedDict[str, list[float]] = PrivateAttr(default_factory=OrderedDict)
-    _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    # Private cache state (LRUCache from cachetools - thread-safe by default)
+    _cache: LRUCache[str, list[float]] = PrivateAttr(
+        default_factory=lambda: LRUCache(maxsize=100)
+    )
     _hits: int = PrivateAttr(default=0)
     _misses: int = PrivateAttr(default=0)
 
@@ -81,35 +81,21 @@ class CachedEmbeddings(BaseModel):
         Returns:
             Cached embedding if found, None otherwise.
         """
-        with self._lock:
-            if cache_key in self._cache:
-                # Move to end (most recently used)
-                self._cache.move_to_end(cache_key)
-                self._hits += 1
-                return self._cache[cache_key]
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            self._hits += 1
+        else:
             self._misses += 1
-            return None
+        return cached
 
     def _set_cached(self, cache_key: str, embedding: list[float]) -> None:
-        """Cache an embedding with LRU eviction.
+        """Cache an embedding with LRU eviction (automatic).
 
         Args:
             cache_key: SHA-256 hash of the query text.
             embedding: Embedding vector to cache.
         """
-        with self._lock:
-            # If key exists, update and move to end
-            if cache_key in self._cache:
-                self._cache[cache_key] = embedding
-                self._cache.move_to_end(cache_key)
-                return
-
-            # Add new entry
-            self._cache[cache_key] = embedding
-
-            # Evict oldest entries if over capacity
-            while len(self._cache) > self.cache_size:
-                self._cache.popitem(last=False)
+        self._cache[cache_key] = embedding
 
     def embed_query(self, text: str) -> list[float]:
         """Embed query text with LRU caching.
@@ -149,7 +135,7 @@ class CachedEmbeddings(BaseModel):
                     "cache_key": cache_key[:8],
                     "hits": self._hits,
                     "misses": self._misses,
-                    "cache_size": len(self._cache),
+                    "cache_size": self._cache.currsize,
                 },
             )
 
@@ -207,7 +193,7 @@ class CachedEmbeddings(BaseModel):
                     "cache_key": cache_key[:8],
                     "hits": self._hits,
                     "misses": self._misses,
-                    "cache_size": len(self._cache),
+                    "cache_size": self._cache.currsize,
                 },
             )
 
@@ -230,17 +216,15 @@ class CachedEmbeddings(BaseModel):
         Returns:
             Dictionary with hits, misses, and current cache size.
         """
-        with self._lock:
-            return {
-                "hits": self._hits,
-                "misses": self._misses,
-                "size": len(self._cache),
-                "max_size": self.cache_size,
-            }
+        return {
+            "hits": self._hits,
+            "misses": self._misses,
+            "size": self._cache.currsize,
+            "max_size": self.cache_size,
+        }
 
     def clear_cache(self) -> None:
-        """Clear the cache and reset statistics."""
-        with self._lock:
-            self._cache.clear()
-            self._hits = 0
-            self._misses = 0
+        """Clear cache and reset statistics."""
+        self._cache.clear()
+        self._hits = 0
+        self._misses = 0

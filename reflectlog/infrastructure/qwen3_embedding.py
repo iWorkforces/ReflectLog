@@ -6,8 +6,10 @@ from typing import Any
 import warnings
 
 import anyio
-from openai import AsyncOpenAI, DefaultAioHttpClient, DefaultHttpxClient, OpenAI
+from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+
+from reflectlog.application.utils.http_client import HttpClientFactory
 
 
 @dataclass
@@ -58,23 +60,23 @@ class LangchainQwenEmbeddings(BaseModel):
             )
 
         # Initialize synchronous client for sync methods
+        httpx_client = HttpClientFactory.get_httpx_client(http2=True)
         self._client = OpenAI(
             api_key=api_key,
             base_url=base_url,
-            http_client=DefaultHttpxClient(http2=True),
+            http_client=httpx_client,
             timeout=self.config.timeout,
         )
 
-        # Async client is initialized lazily to avoid unused aiohttp sessions
+        # Async client is initialized lazily to avoid unused sessions
 
     def _get_async_client(self) -> AsyncOpenAI:
-        """Get or initialize the async OpenAI client."""
         if self._async_client is None:
-            # Note: aiohttp does not support HTTP/2, so we don't enable it
+            httpx_client = HttpClientFactory.get_async_httpx_client(http2=False)
             self._async_client = AsyncOpenAI(
                 api_key=self.config.api_key,
                 base_url=self.config.openai_base_url,
-                http_client=DefaultAioHttpClient(),
+                http_client=httpx_client,
                 timeout=self.config.timeout,
             )
         return self._async_client
