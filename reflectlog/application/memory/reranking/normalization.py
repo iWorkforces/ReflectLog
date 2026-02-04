@@ -167,7 +167,7 @@ def calculate_recency_factor(
         # Ensure timezone-aware
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         # If timestamp is invalid, return factor of 1.0 (no decay)
         return 1.0
 

@@ -64,7 +64,7 @@ def format_memory_age(created_at: str | None) -> str | None:
             months = int(total_seconds / 2592000)
             return f"{months} month{'s' if months != 1 else ''} ago"
 
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
