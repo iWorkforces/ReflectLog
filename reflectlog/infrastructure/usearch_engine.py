@@ -237,7 +237,7 @@ class USearchEngine(BaseModel):
                                     "size": len(loaded_index),
                                 },
                             )
-                    except (RuntimeError, FileNotFoundError, OSError):
+                    except RuntimeError, FileNotFoundError, OSError:
                         # Index doesn't exist or is corrupted, create new one
                         if self.logger:
                             self.logger.debug(

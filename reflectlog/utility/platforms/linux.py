@@ -90,5 +90,5 @@ class LinuxCredentialRetriever(CredentialRetriever):
 
             return self.parse_credential(result.stdout)
 
-        except (subprocess.SubprocessError, OSError, FileNotFoundError):
+        except subprocess.SubprocessError, OSError, FileNotFoundError:
             return None

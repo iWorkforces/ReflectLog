@@ -35,5 +35,5 @@ class WindowsCredentialRetriever(CredentialRetriever):
 
             return self.parse_credential(result.stdout)
 
-        except (subprocess.SubprocessError, OSError):
+        except subprocess.SubprocessError, OSError:
             return None
