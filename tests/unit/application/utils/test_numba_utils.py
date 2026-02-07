@@ -1,6 +1,9 @@
 """Unit tests for reflectlog.application.utils.numba_utils module."""
 
+from typing import cast
+
 import numpy as np
+from numpy.typing import NDArray
 
 from reflectlog.application.utils.numba_utils import (
     compute_rrf_scores_batch,
@@ -213,7 +216,10 @@ class TestComputeRrfScoresBatch:
         """Test with larger matrix."""
         # 100 docs, 5 rankings
         n_docs, n_rankings = 100, 5
-        ranks = np.random.randint(0, 50, size=(n_docs, n_rankings), dtype=np.int64)
+        ranks = cast(
+            NDArray[np.int64],
+            np.random.randint(0, 50, size=(n_docs, n_rankings), dtype=np.int64),
+        )
         scores = compute_rrf_scores_batch(ranks, k=60)
 
         assert len(scores) == n_docs

@@ -21,6 +21,7 @@ import json
 from typing import Any, Protocol
 
 from openai import AsyncOpenAI
+from openai.types.chat.completion_create_params import ResponseFormatJSONSchema
 
 from reflectlog.application.utils.http_client import HttpClientFactory
 
@@ -104,14 +105,14 @@ class BaseOpenAIProvider:
         """
         # Build structured output response format using Pydantic schema
         schema_name = response_schema.__name__.lower()
-        structured_response_format: dict[str, Any] = {
-            "type": "json_schema",
-            "json_schema": {
+        structured_response_format = ResponseFormatJSONSchema(
+            type="json_schema",
+            json_schema={
                 "name": schema_name,
                 "strict": True,
                 "schema": response_schema.model_json_schema(),
             },
-        }
+        )
 
         try:
             # Try structured outputs first (guaranteed schema compliance)
