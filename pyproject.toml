@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "fastmcp>=2.14.5",
     "pydantic>=2.12.5",
-    "fastapi[standard]>=0.128.3",
+    "fastapi[standard]>=0.128.4",
     "uvicorn[standard]>=0.40.0",
     "asyncer>=0.0.12",
     "anyio>=4.12.1",
@@ -51,7 +51,7 @@ dependencies = [
     "sentence-transformers>=5.2.2",
     "flagembedding>=1.3.5",
     "transformers<=5.1.0",
-    "claude-agent-sdk>=0.1.31",
+    "claude-agent-sdk>=0.1.33",
     "pydantic-core>=2.41.5",
 ]
 
