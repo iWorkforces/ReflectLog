@@ -92,7 +92,7 @@ class TestNormalizeRerankerScores:
         assert doc2_result[1] == pytest.approx(0.75)
 
     def test_all_equal_scores(self) -> None:
-        """All equal scores should become 1.0 (all equally good)."""
+        """All equal scores should become 0.5 (neutral midpoint with no range)."""
         scored = [
             ("doc1", 0.5),
             ("doc2", 0.5),
@@ -102,7 +102,8 @@ class TestNormalizeRerankerScores:
 
         assert len(result) == 3
         for _doc, score in result:
-            assert score == 1.0
+            # Zero range means no differentiation, so normalized to 0.5 (neutral midpoint)
+            assert score == 0.5
 
     def test_preserves_document_order(self) -> None:
         """Document order should be preserved."""

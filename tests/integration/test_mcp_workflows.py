@@ -441,6 +441,8 @@ class TestMCPWorkflows:
     @pytest.mark.asyncio
     async def test_special_characters_workflow(self, mcp_server, create_search_results):
         """Test workflow with messages containing special characters."""
+        from unittest.mock import AsyncMock, MagicMock
+
         special_messages = [
             "Email: user@example.com",
             "Price: $100.00",
@@ -461,7 +463,17 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
 
-        # Get tool functions
+        async def pipeline_search_side_effect(context, **kwargs):
+            query_str = context.query if hasattr(context, "query") else str(context)
+            matching = [msg for msg in stored_messages if query_str in msg]
+            mock_result = MagicMock()
+            mock_result.messages = matching
+            return mock_result
+
+        mcp_server.memory_manager._search_pipeline.execute = AsyncMock(
+            side_effect=pipeline_search_side_effect
+        )
+
         add_func = None
         search_func = None
         for tool in mcp_server.mcp._tool_manager._tools.values():
@@ -470,12 +482,10 @@ class TestMCPWorkflows:
             elif tool.name == "search":
                 search_func = tool.fn
 
-        # Add messages with special characters
         assert add_func is not None
         assert search_func is not None
         await add_func(special_messages)
 
-        # Search for special characters
         email_results = await search_func("@")
         assert len(email_results) == 1
         assert "user@example.com" in email_results[0]
@@ -487,6 +497,8 @@ class TestMCPWorkflows:
     @pytest.mark.asyncio
     async def test_unicode_workflow(self, mcp_server, create_search_results):
         """Test workflow with unicode messages."""
+        from unittest.mock import AsyncMock, MagicMock
+
         unicode_messages = [
             "Hello in Chinese: 你好",
             "Hello in Japanese: こんにちは",
@@ -507,7 +519,19 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
 
-        # Get tool functions
+        async def pipeline_search_side_effect(context, **kwargs):
+            query_str = context.query if hasattr(context, "query") else str(context)
+            matching = [
+                msg for msg in stored_messages if query_str.lower() in msg.lower()
+            ]
+            mock_result = MagicMock()
+            mock_result.messages = matching
+            return mock_result
+
+        mcp_server.memory_manager._search_pipeline.execute = AsyncMock(
+            side_effect=pipeline_search_side_effect
+        )
+
         add_func = None
         search_func = None
         for tool in mcp_server.mcp._tool_manager._tools.values():
@@ -516,12 +540,10 @@ class TestMCPWorkflows:
             elif tool.name == "search":
                 search_func = tool.fn
 
-        # Add unicode messages
         assert add_func is not None
         assert search_func is not None
         await add_func(unicode_messages)
 
-        # Search for unicode
         chinese_results = await search_func("你好")
         assert len(chinese_results) == 1
 

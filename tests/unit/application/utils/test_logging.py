@@ -65,10 +65,11 @@ class TestStructuredLogger:
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
         """Test info method logs at INFO level."""
-        structured_logger.info("test message", extra={"key": "value"})
+        # Use a non-sensitive key name to avoid redaction by redact_dict_secrets
+        structured_logger.info("test message", extra={"custom_field": "value"})
         mock_logger.info.assert_called_once_with(
             "test message",
-            extra={"project_id": "test-project", "key": "value"},
+            extra={"project_id": "test-project", "custom_field": "value"},
             exc_info=False,
         )
 
@@ -167,7 +168,10 @@ class TestStructuredLoggerOperation:
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
         """Test operation context manager logs error on exception."""
-        with pytest.raises(ValueError):
+        # The implementation wraps the original exception in RuntimeError
+        with pytest.raises(
+            RuntimeError, match="Operation 'failing_op' failed: Test error"
+        ):
             with structured_logger.operation("failing_op"):
                 raise ValueError("Test error")
 

@@ -1,0 +1,1322 @@
+#!/usr/bin/env python3
+"""Unit tests for add_phases.py - 3-phase parallel add pipeline.
+
+Covers uncovered lines: 291, 417-524, 588-663, 670, 676, 719,
+723-731, 759-768, 782-815, 824, 850-900.
+"""
+
+import threading
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
+
+from reflectlog.application.config.settings import Config
+from reflectlog.application.exceptions import StorageError
+from reflectlog.application.memory.add_phases import (
+    AddPipeline,
+    AddResult,
+    DuplicateDetectionPhase,
+    Phase1Result,
+    Phase2Result,
+    Phase3Result,
+    ReplacementInfo,
+    SmartReplacementPhase,
+    StoragePhase,
+)
+from reflectlog.application.utils import StructuredLogger
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_config() -> Config:
+    """Minimal mock Config for add_phases tests."""
+    config = Mock(spec=Config)
+    config.project_id = "test_project"
+    config.add_max_concurrency = 4
+    config.rerank_max_concurrency = 5
+    config.smart_replace_candidate_limit = 3
+    config.smart_replace_min_similarity = 0.5
+    config.enable_llm_infer = False
+    config.deduplicate_messages = True
+    return config
+
+
+@pytest.fixture
+def mock_logger():
+    """Mock structured logger."""
+    return Mock(spec=StructuredLogger)
+
+
+@pytest.fixture
+def mock_semantic_engine():
+    """Mock ISemanticSearchEngine."""
+    engine = MagicMock()
+    engine.add = MagicMock(return_value=None)
+    engine.add_batch = MagicMock(
+        side_effect=lambda project_id, messages, infer: messages
+    )
+    engine.search = MagicMock(return_value=[])
+    engine.delete = MagicMock(return_value=None)
+    engine.commit = MagicMock(return_value=None)
+    engine.get_id_by_message = MagicMock(return_value=None)
+    engine.message_store = MagicMock()
+    return engine
+
+
+@pytest.fixture
+def mock_tantivy_engine():
+    """Mock TantivyEngine."""
+    engine = MagicMock()
+    engine.add = MagicMock(return_value=None)
+    engine.delete = MagicMock(return_value=None)
+    engine.commit = MagicMock(return_value=None)
+    engine.search = MagicMock(return_value=[])
+    return engine
+
+
+# ---------------------------------------------------------------------------
+# Dataclass Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestDataclasses:
+    """Tests for dataclass constructors and defaults."""
+
+    def test_replacement_info_defaults(self):
+        """ReplacementInfo should have default similarity_score of 0.0."""
+        info = ReplacementInfo(
+            old_memory="old",
+            new_memory="new",
+            confidence=0.9,
+            reason="updated",
+        )
+        assert info.similarity_score == 0.0
+        assert info.old_memory == "old"
+        assert info.confidence == 0.9
+
+    def test_add_result_defaults(self):
+        """AddResult defaults should be zero counts and empty list."""
+        result = AddResult()
+        assert result.stored_count == 0
+        assert result.skipped_count == 0
+        assert result.replaced_count == 0
+        assert result.replacements == []
+
+    def test_phase1_result_fields(self):
+        """Phase1Result should store all fields."""
+        result = Phase1Result(
+            unique_messages=["a", "b"],
+            storage_duplicates=["c"],
+            batch_duplicates_count=1,
+            duration=0.5,
+        )
+        assert len(result.unique_messages) == 2
+        assert result.batch_duplicates_count == 1
+
+    def test_phase2_result_fields(self):
+        """Phase2Result should store all fields."""
+        result = Phase2Result(
+            replacement_map={},
+            total_replacements=0,
+            duration=0.1,
+        )
+        assert result.total_replacements == 0
+
+    def test_phase3_result_fields(self):
+        """Phase3Result should store all fields."""
+        result = Phase3Result(
+            stored_count=2,
+            replaced_count=1,
+            replacements=[],
+            duration=0.3,
+        )
+        assert result.stored_count == 2
+        assert result.replaced_count == 1
+
+
+# ---------------------------------------------------------------------------
+# DuplicateDetectionPhase Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestDuplicateDetectionPhase:
+    """Tests for Phase 1: Duplicate Detection."""
+
+    async def test_execute_no_duplicates(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """All unique messages should pass through."""
+        phase = DuplicateDetectionPhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+
+        # No exact match found
+        mock_semantic_engine.get_id_by_message.return_value = None
+        mock_tantivy_engine.search.return_value = []
+
+        result = await phase.execute(["msg1", "msg2"])
+
+        assert len(result.unique_messages) == 2
+        assert result.batch_duplicates_count == 0
+        assert len(result.storage_duplicates) == 0
+
+    async def test_execute_with_batch_duplicates(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Duplicate messages within batch should be deduplicated."""
+        phase = DuplicateDetectionPhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        mock_tantivy_engine.search.return_value = []
+
+        result = await phase.execute(["msg1", "msg2", "msg1", "msg2"])
+
+        assert len(result.unique_messages) == 2
+        assert result.batch_duplicates_count == 2
+        mock_logger.info.assert_called()
+
+    async def test_execute_with_storage_duplicates(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Messages already in storage should be marked as duplicates."""
+        phase = DuplicateDetectionPhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+
+        # Tantivy finds exact match for "existing"
+        def tantivy_search(query, project_id, limit):
+            if "existing" in query:
+                return [("existing", 1.0)]
+            return []
+
+        mock_tantivy_engine.search.side_effect = tantivy_search
+
+        result = await phase.execute(["existing", "new_msg"])
+
+        assert "new_msg" in result.unique_messages
+        assert "existing" in result.storage_duplicates
+
+
+# ---------------------------------------------------------------------------
+# SmartReplacementPhase Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSmartReplacementPhase:
+    """Tests for Phase 2: Smart Replacement Detection."""
+
+    def test_get_smart_replacer_when_memory_manager_is_none(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """_get_smart_replacer returns None when memory_manager is None (line 291)."""
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=None,
+        )
+        assert phase._get_smart_replacer() is None
+
+    def test_get_smart_replacer_returns_replacer(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """_get_smart_replacer should delegate to memory_manager.smart_replacer."""
+        mock_mm = MagicMock()
+        mock_mm.smart_replacer = MagicMock()
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        assert phase._get_smart_replacer() is mock_mm.smart_replacer
+
+    async def test_execute_no_smart_replacer(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Phase 2 should return empty results when no smart replacer (line 311-316)."""
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=None,
+        )
+        result = await phase.execute(["msg1"])
+
+        assert result.total_replacements == 0
+        assert result.replacement_map == {}
+
+    async def test_execute_empty_messages(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Phase 2 should return early on empty messages list."""
+        mock_mm = MagicMock()
+        mock_mm.smart_replacer = MagicMock()
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        result = await phase.execute([])
+
+        assert result.total_replacements == 0
+
+    async def test_check_for_replacement_no_similar_results(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """No similar results from semantic search returns empty list."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        mock_semantic_engine.search.return_value = []
+
+        result = await phase._check_for_replacement("new memory", mock_replacer)
+
+        assert result == []
+
+    async def test_check_for_replacement_below_threshold(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Candidates below similarity threshold should be filtered out."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        # Score 0.3 is below threshold of 0.5
+        mock_semantic_engine.search.return_value = [
+            ("old memory", 0.3, "2024-01-01T00:00:00"),
+        ]
+
+        result = await phase._check_for_replacement("new memory", mock_replacer)
+
+        assert result == []
+
+    async def test_check_for_replacement_same_message_filtered(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Candidates that are identical to new_memory should be filtered out."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        # Same memory with high score - should be filtered (mem != new_memory)
+        mock_semantic_engine.search.return_value = [
+            ("new memory", 1.0, "2024-01-01T00:00:00"),
+        ]
+
+        result = await phase._check_for_replacement("new memory", mock_replacer)
+
+        assert result == []
+
+    async def test_check_for_replacement_should_replace(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """LLM confirms replacement - should return ReplacementInfo (lines 417-471)."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        mock_semantic_engine.search.return_value = [
+            ("old memory about python", 0.85, "2024-01-01T00:00:00"),
+        ]
+        # LLM says replace
+        mock_replacer.check_replacement = AsyncMock(
+            return_value=(True, 0.95, "Updated information")
+        )
+
+        result = await phase._check_for_replacement(
+            "new memory about python", mock_replacer
+        )
+
+        assert len(result) == 1
+        assert result[0].old_memory == "old memory about python"
+        assert result[0].new_memory == "new memory about python"
+        assert result[0].confidence == 0.95
+        assert result[0].reason == "Updated information"
+        assert result[0].similarity_score == 0.85
+
+    async def test_check_for_replacement_should_not_replace(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """LLM says no replacement - returns empty list (lines 472-482)."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        mock_semantic_engine.search.return_value = [
+            ("old memory", 0.85, "2024-01-01T00:00:00"),
+        ]
+        mock_replacer.check_replacement = AsyncMock(
+            return_value=(False, 0.3, "Different topic")
+        )
+
+        result = await phase._check_for_replacement("new memory", mock_replacer)
+
+        assert result == []
+
+    async def test_check_for_replacement_llm_error_graceful(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """LLM call failure should be handled gracefully (lines 483-493)."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        mock_semantic_engine.search.return_value = [
+            ("old memory", 0.85, "2024-01-01T00:00:00"),
+        ]
+        mock_replacer.check_replacement = AsyncMock(
+            side_effect=RuntimeError("LLM API timeout")
+        )
+
+        result = await phase._check_for_replacement("new memory", mock_replacer)
+
+        assert result == []
+        mock_logger.warning.assert_called()
+
+    async def test_check_for_replacement_outer_exception(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Outer exception in _check_for_replacement is caught (lines 514-524)."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        # Semantic search itself throws
+        mock_semantic_engine.search.side_effect = RuntimeError("Search engine failed")
+
+        result = await phase._check_for_replacement("new memory", mock_replacer)
+
+        assert result == []
+        mock_logger.warning.assert_called()
+
+    async def test_execute_with_replacements(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Full execute with replacement detection (lines 417-510)."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        mock_semantic_engine.search.return_value = [
+            ("old memory", 0.85, "2024-01-01T00:00:00"),
+        ]
+        mock_replacer.check_replacement = AsyncMock(
+            return_value=(True, 0.9, "Updated info")
+        )
+
+        result = await phase.execute(["new memory"])
+
+        assert result.total_replacements == 1
+        assert "new memory" in result.replacement_map
+        assert len(result.replacement_map["new memory"]) == 1
+
+    async def test_execute_multiple_candidates(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Multiple candidates above threshold are all checked (lines 505-510)."""
+        mock_mm = MagicMock()
+        mock_replacer = MagicMock()
+        mock_mm.smart_replacer = mock_replacer
+        phase = SmartReplacementPhase(
+            semantic_engine=mock_semantic_engine,
+            config=mock_config,
+            logger=mock_logger,
+            memory_manager=mock_mm,
+        )
+        mock_semantic_engine.search.return_value = [
+            ("candidate 1", 0.9, "2024-01-01T00:00:00"),
+            ("candidate 2", 0.85, "2024-01-02T00:00:00"),
+        ]
+        # First candidate should be replaced, second not
+        call_count = 0
+
+        def mock_check(new_memory, existing_memory):
+            nonlocal call_count
+            call_count += 1
+            if existing_memory == "candidate 1":
+                return (True, 0.95, "Replace this")
+            return (False, 0.2, "Keep this")
+
+        mock_replacer.check_replacement = AsyncMock(side_effect=mock_check)
+
+        result = await phase.execute(["new memory"])
+
+        assert result.total_replacements == 1
+
+
+# ---------------------------------------------------------------------------
+# StoragePhase Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestStoragePhase:
+    """Tests for Phase 3: Sequential Storage."""
+
+    async def test_execute_no_replacements(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Simple storage without replacements."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(["msg1", "msg2"], replacement_map={})
+
+        assert result.stored_count == 2
+        assert result.replaced_count == 0
+        mock_semantic_engine.add_batch.assert_called_once()
+        mock_semantic_engine.commit.assert_called_once()
+        mock_tantivy_engine.commit.assert_called_once()
+
+    async def test_execute_dry_run_no_storage(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Dry run should not write to storage (line 670)."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(["msg1"], replacement_map={}, dry_run=True)
+
+        assert result.stored_count == 1
+        mock_semantic_engine.add_batch.assert_not_called()
+        mock_semantic_engine.commit.assert_not_called()
+        mock_tantivy_engine.commit.assert_not_called()
+
+    async def test_execute_dry_run_with_replacements(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Dry run should record replacements without deleting (lines 660-663)."""
+        replacement_info = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+            similarity_score=0.85,
+        )
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["new msg"],
+            replacement_map={"new msg": [replacement_info]},
+            dry_run=True,
+        )
+
+        assert result.replaced_count == 1
+        assert len(result.replacements) == 1
+        assert result.stored_count == 1
+        # No actual deletes in dry_run
+        mock_semantic_engine.delete.assert_not_called()
+
+    async def test_execute_with_replacement_success(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Replacement flow: archive + delete + add (lines 588-649)."""
+        replacement_info = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+            similarity_score=0.85,
+        )
+        mock_semantic_engine.get_id_by_message.return_value = 42
+        mock_semantic_engine.message_store.archive.return_value = 100
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["new msg"],
+            replacement_map={"new msg": [replacement_info]},
+        )
+
+        assert result.replaced_count == 1
+        assert len(result.replacements) == 1
+        mock_semantic_engine.delete.assert_called_once_with(memory_id="42")
+        mock_tantivy_engine.delete.assert_called_once_with("test_project", "old msg")
+
+    async def test_execute_replacement_old_memory_not_found(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """When old memory ID not found, skip replacement (lines 625-633)."""
+        replacement_info = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+        )
+        mock_semantic_engine.get_id_by_message.return_value = None
+        mock_semantic_engine.message_store.archive.return_value = 100
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["new msg"],
+            replacement_map={"new msg": [replacement_info]},
+        )
+
+        # Replacement skipped because msg_id was None
+        assert result.replaced_count == 0
+        mock_semantic_engine.delete.assert_not_called()
+        mock_logger.warning.assert_called()
+
+    async def test_execute_replacement_delete_error(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Delete error during replacement is caught gracefully (lines 650-659)."""
+        replacement_info = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+        )
+        mock_semantic_engine.get_id_by_message.return_value = 42
+        mock_semantic_engine.message_store.archive.return_value = 100
+        mock_semantic_engine.delete.side_effect = RuntimeError("Delete failed")
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["new msg"],
+            replacement_map={"new msg": [replacement_info]},
+        )
+
+        # Graceful degradation - replacement count stays 0
+        assert result.replaced_count == 0
+        mock_logger.warning.assert_called()
+
+    async def test_execute_batch_stored_fewer_than_expected(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Warning when batch add returns fewer messages (line 676)."""
+        # Clear side_effect from fixture so return_value is used
+        mock_semantic_engine.add_batch.side_effect = None
+        mock_semantic_engine.add_batch.return_value = ["msg1"]
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(["msg1", "msg2"], replacement_map={})
+
+        assert result.stored_count == 1
+        mock_logger.warning.assert_called()
+
+    async def test_execute_no_tantivy(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Storage without tantivy engine should still work."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(["msg1"], replacement_map={})
+
+        assert result.stored_count == 1
+        mock_semantic_engine.commit.assert_called_once()
+
+    # -----------------------------------------------------------------------
+    # _add_messages_batch Tests (lines 709-755)
+    # -----------------------------------------------------------------------
+
+    def test_add_messages_batch_empty(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Empty messages list returns empty (line 719)."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._add_messages_batch([])
+        assert result == []
+
+    def test_add_messages_batch_no_write_lock(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Batch add without write_lock (lines 723-731)."""
+        mock_semantic_engine.add_batch.return_value = ["msg1", "msg2"]
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=None,
+        )
+        result = phase._add_messages_batch(["msg1", "msg2"])
+
+        assert result == ["msg1", "msg2"]
+        mock_semantic_engine.add_batch.assert_called_once_with(
+            project_id="test_project",
+            messages=["msg1", "msg2"],
+            infer=False,
+        )
+        assert mock_tantivy_engine.add.call_count == 2
+
+    def test_add_messages_batch_no_write_lock_no_tantivy(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Batch add without write_lock and no tantivy (line 729-731 skip)."""
+        mock_semantic_engine.add_batch.return_value = ["msg1"]
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=None,
+        )
+        result = phase._add_messages_batch(["msg1"])
+
+        assert result == ["msg1"]
+
+    def test_add_messages_batch_with_write_lock(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Batch add with write_lock (lines 733-742)."""
+        mock_semantic_engine.add_batch.return_value = ["msg1"]
+        lock = threading.Lock()
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=lock,
+        )
+        result = phase._add_messages_batch(["msg1"])
+
+        assert result == ["msg1"]
+        mock_tantivy_engine.add.assert_called_once()
+
+    def test_add_messages_batch_with_write_lock_no_tantivy(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Batch add with write_lock but no tantivy (line 740-742 skip)."""
+        mock_semantic_engine.add_batch.return_value = ["msg1"]
+        lock = threading.Lock()
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=lock,
+        )
+        result = phase._add_messages_batch(["msg1"])
+
+        assert result == ["msg1"]
+
+    def test_add_messages_batch_exception_raises_storage_error(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Exception in batch add raises StorageError (line 754-755)."""
+        mock_semantic_engine.add_batch.side_effect = RuntimeError("DB error")
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        with pytest.raises(StorageError, match="Failed to add message batch"):
+            phase._add_messages_batch(["msg1"])
+
+    # -----------------------------------------------------------------------
+    # _delete_message Tests (lines 757-768)
+    # -----------------------------------------------------------------------
+
+    def test_delete_message_no_write_lock(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Delete without write_lock (lines 759-763)."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=None,
+        )
+        phase._delete_message(memory_id="42", message="old msg")
+
+        mock_semantic_engine.delete.assert_called_once_with(memory_id="42")
+        mock_tantivy_engine.delete.assert_called_once_with("test_project", "old msg")
+
+    def test_delete_message_no_write_lock_no_tantivy(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Delete without write_lock and no tantivy (line 761-762 skip)."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=None,
+        )
+        phase._delete_message(memory_id="42", message="old msg")
+
+        mock_semantic_engine.delete.assert_called_once_with(memory_id="42")
+
+    def test_delete_message_with_write_lock(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Delete with write_lock (lines 765-768)."""
+        lock = threading.Lock()
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=lock,
+        )
+        phase._delete_message(memory_id="42", message="old msg")
+
+        mock_semantic_engine.delete.assert_called_once_with(memory_id="42")
+        mock_tantivy_engine.delete.assert_called_once_with("test_project", "old msg")
+
+    def test_delete_message_with_write_lock_no_tantivy(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Delete with write_lock but no tantivy (line 767-768 skip)."""
+        lock = threading.Lock()
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=lock,
+        )
+        phase._delete_message(memory_id="42", message="old msg")
+
+        mock_semantic_engine.delete.assert_called_once_with(memory_id="42")
+
+    # -----------------------------------------------------------------------
+    # _add_message Tests (lines 770-815)
+    # -----------------------------------------------------------------------
+
+    def test_add_message_success(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Single message add succeeds (lines 792-812)."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._add_message("new msg")
+
+        assert result is True
+        mock_semantic_engine.add.assert_called_once_with(
+            project_id="test_project",
+            message="new msg",
+            infer=False,
+        )
+        mock_tantivy_engine.add.assert_called_once_with("test_project", "new msg")
+
+    def test_add_message_success_no_tantivy(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Single message add without tantivy (line 801 skip)."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._add_message("new msg")
+
+        assert result is True
+        mock_semantic_engine.add.assert_called_once()
+
+    def test_add_message_duplicate_skipped(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Duplicate message returns False (lines 782-790)."""
+        mock_config.deduplicate_messages = True
+        # Tantivy finds exact match
+        mock_tantivy_engine.search.return_value = [("dup msg", 1.0)]
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._add_message("dup msg")
+
+        assert result is False
+        mock_semantic_engine.add.assert_not_called()
+
+    def test_add_message_dedup_disabled(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """When dedup is disabled, message is always added."""
+        mock_config.deduplicate_messages = False
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._add_message("new msg")
+
+        assert result is True
+
+    def test_add_message_exception_raises_storage_error(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Exception in _add_message raises StorageError (lines 814-815)."""
+        mock_semantic_engine.add.side_effect = RuntimeError("Insert failed")
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        with pytest.raises(
+            StorageError, match="Failed to add message to hybrid storage"
+        ):
+            phase._add_message("new msg")
+
+    # -----------------------------------------------------------------------
+    # _has_exact_match Tests (line 824)
+    # -----------------------------------------------------------------------
+
+    def test_has_exact_match_delegates(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """_has_exact_match delegates to match_utils.has_exact_match (line 824)."""
+        mock_tantivy_engine.search.return_value = [("some msg", 1.0)]
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._has_exact_match("some msg")
+
+        assert result is True
+
+    def test_has_exact_match_no_match(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """_has_exact_match returns False when no match found."""
+        mock_tantivy_engine.search.return_value = []
+        mock_semantic_engine.get_id_by_message.return_value = None
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._has_exact_match("nonexistent msg")
+
+        assert result is False
+
+    # -----------------------------------------------------------------------
+    # _archive_for_replacement Tests (lines 832-900)
+    # -----------------------------------------------------------------------
+
+    def test_archive_for_replacement_success(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Successful archive returns True (lines 850-887)."""
+        mock_semantic_engine.get_id_by_message.return_value = 42
+        mock_semantic_engine.message_store.archive.return_value = 100
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._archive_for_replacement(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+        )
+
+        assert result is True
+        mock_semantic_engine.message_store.archive.assert_called_once_with(
+            message_id=42,
+            project_id="test_project",
+            message="old msg",
+            replaced_by="new msg",
+            reason="updated",
+            confidence=0.9,
+        )
+        mock_logger.info.assert_called()
+
+    def test_archive_for_replacement_msg_not_found(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Archive returns False when message not found (lines 856-864)."""
+        mock_semantic_engine.get_id_by_message.return_value = None
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._archive_for_replacement(
+            old_memory="missing msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+        )
+
+        assert result is False
+        mock_logger.warning.assert_called()
+
+    def test_archive_for_replacement_archive_returns_none(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Archive returns False when archive() returns None (line 889)."""
+        mock_semantic_engine.get_id_by_message.return_value = 42
+        mock_semantic_engine.message_store.archive.return_value = None
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._archive_for_replacement(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+        )
+
+        assert result is False
+
+    def test_archive_for_replacement_exception(
+        self, mock_semantic_engine, mock_config, mock_logger
+    ):
+        """Exception during archive returns False (lines 891-900)."""
+        mock_semantic_engine.get_id_by_message.side_effect = RuntimeError("DB error")
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._archive_for_replacement(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+        )
+
+        assert result is False
+        mock_logger.warning.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# AddPipeline Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAddPipeline:
+    """Tests for the AddPipeline orchestrator."""
+
+    async def test_execute_empty_messages(self, mock_config, mock_logger):
+        """Empty messages list returns default AddResult."""
+        phase1 = MagicMock()
+        phase2 = MagicMock()
+        phase2._get_smart_replacer.return_value = None
+        phase3 = MagicMock()
+
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=phase3,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await pipeline.execute([])
+
+        assert result.stored_count == 0
+        assert result.skipped_count == 0
+        phase1.execute.assert_not_called()
+
+    async def test_execute_full_pipeline(self, mock_config, mock_logger):
+        """Full pipeline: Phase 1 → Phase 2 → Phase 3."""
+        phase1 = MagicMock()
+        phase1.execute = AsyncMock(
+            return_value=Phase1Result(
+                unique_messages=["msg1"],
+                storage_duplicates=["dup"],
+                batch_duplicates_count=1,
+                duration=0.1,
+            )
+        )
+
+        phase2 = MagicMock()
+        phase2._get_smart_replacer.return_value = None
+        phase2.execute = AsyncMock(
+            return_value=Phase2Result(
+                replacement_map={},
+                total_replacements=0,
+                duration=0.1,
+            )
+        )
+
+        phase3 = MagicMock()
+        phase3.execute = AsyncMock(
+            return_value=Phase3Result(
+                stored_count=1,
+                replaced_count=0,
+                replacements=[],
+                duration=0.1,
+            )
+        )
+
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=phase3,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await pipeline.execute(["msg1", "dup", "msg1"])
+
+        assert result.stored_count == 1
+        # skipped = storage_duplicates(1) + batch_duplicates(1) = 2
+        assert result.skipped_count == 2
+
+    async def test_execute_pipeline_error_live_mode(self, mock_config, mock_logger):
+        """Pipeline error in live mode raises StorageError (lines 988-1003)."""
+        phase1 = MagicMock()
+        phase1.execute = MagicMock(side_effect=RuntimeError("Phase 1 failed"))
+
+        phase2 = MagicMock()
+        phase2._get_smart_replacer.return_value = None
+        phase3 = MagicMock()
+
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=phase3,
+            config=mock_config,
+            logger=mock_logger,
+        )
+
+        with pytest.raises(StorageError, match="Failed to add messages"):
+            await pipeline.execute(["msg1"], dry_run=False)
+
+        mock_logger.error.assert_called()
+
+    async def test_execute_pipeline_error_dry_run_mode(self, mock_config, mock_logger):
+        """Pipeline error in dry_run mode does not raise (lines 1002-1003)."""
+        phase1 = MagicMock()
+        phase1.execute = MagicMock(side_effect=RuntimeError("Phase 1 failed"))
+
+        phase2 = MagicMock()
+        phase2._get_smart_replacer.return_value = None
+        phase3 = MagicMock()
+
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=phase3,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        # Should NOT raise in dry_run mode
+        result = await pipeline.execute(["msg1"], dry_run=True)
+
+        assert result.stored_count == 0
+        mock_logger.error.assert_called()
+
+    async def test_execute_dry_run_full_pipeline(self, mock_config, mock_logger):
+        """Full pipeline in dry_run mode."""
+        phase1 = MagicMock()
+        phase1.execute = AsyncMock(
+            return_value=Phase1Result(
+                unique_messages=["msg1"],
+                storage_duplicates=[],
+                batch_duplicates_count=0,
+                duration=0.1,
+            )
+        )
+
+        phase2 = MagicMock()
+        phase2._get_smart_replacer.return_value = MagicMock()
+        phase2.execute = AsyncMock(
+            return_value=Phase2Result(
+                replacement_map={},
+                total_replacements=0,
+                duration=0.1,
+            )
+        )
+
+        phase3 = MagicMock()
+        phase3.execute = AsyncMock(
+            return_value=Phase3Result(
+                stored_count=1,
+                replaced_count=0,
+                replacements=[],
+                duration=0.1,
+            )
+        )
+
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=phase3,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await pipeline.execute(["msg1"], dry_run=True)
+
+        assert result.stored_count == 1
+        phase3.execute.assert_called_once()
+
+    async def test_execute_with_replacements(self, mock_config, mock_logger):
+        """Pipeline with replacements propagates results."""
+        replacement = ReplacementInfo(
+            old_memory="old",
+            new_memory="new",
+            confidence=0.9,
+            reason="updated",
+            similarity_score=0.85,
+        )
+
+        phase1 = MagicMock()
+        phase1.execute = AsyncMock(
+            return_value=Phase1Result(
+                unique_messages=["new"],
+                storage_duplicates=[],
+                batch_duplicates_count=0,
+                duration=0.1,
+            )
+        )
+
+        phase2 = MagicMock()
+        phase2._get_smart_replacer.return_value = MagicMock()
+        phase2.execute = AsyncMock(
+            return_value=Phase2Result(
+                replacement_map={"new": [replacement]},
+                total_replacements=1,
+                duration=0.1,
+            )
+        )
+
+        phase3 = MagicMock()
+        phase3.execute = AsyncMock(
+            return_value=Phase3Result(
+                stored_count=1,
+                replaced_count=1,
+                replacements=[replacement],
+                duration=0.1,
+            )
+        )
+
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=phase3,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await pipeline.execute(["new"])
+
+        assert result.stored_count == 1
+        assert result.replaced_count == 1
+        assert len(result.replacements) == 1
+        assert result.replacements[0].old_memory == "old"

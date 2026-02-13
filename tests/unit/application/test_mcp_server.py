@@ -11,6 +11,7 @@ from reflectlog.application.exceptions import (
     SearchError,
     StorageError,
 )
+from reflectlog.application.mcp_server import FastMCPServer
 from reflectlog.application.memory.manager import AddResult
 
 
@@ -216,7 +217,7 @@ class TestAddTool:
                 break
 
         assert add_func is not None
-        with pytest.raises(ValueError, match="too short"):
+        with pytest.raises(ValueError, match="contains only whitespace"):
             await add_func(messages)
 
         mcp_server.memory_manager.memory.add_batch.assert_not_called()
@@ -1224,3 +1225,186 @@ class TestHealthCheckTool:
 
         # Default reranker should be "llm"
         assert result["reranker_engine"] == "llm"
+
+
+@pytest.mark.unit
+class TestCanonicalizeToolToken:
+    """Test suite for FastMCPServer._canonicalize_tool_token edge cases."""
+
+    def test_empty_token_returns_none(self):
+        """Empty string after normalization returns None (line 202)."""
+        available = {"add", "search", "remove"}
+        result = FastMCPServer._canonicalize_tool_token("", available)
+        assert result is None
+
+    def test_whitespace_only_token_returns_none(self):
+        """Whitespace-only token normalizes to empty and returns None."""
+        available = {"add", "search", "remove"}
+        result = FastMCPServer._canonicalize_tool_token("   ", available)
+        assert result is None
+
+    def test_collapsed_underscore_match(self):
+        """Token without underscores matches name with underscores (line 210)."""
+        available = {"health_check", "add", "get_all"}
+        result = FastMCPServer._canonicalize_tool_token("healthcheck", available)
+        assert result == "health_check"
+
+    def test_collapsed_match_get_all(self):
+        """Token "getall" matches "get_all" via collapsed comparison."""
+        available = {"health_check", "add", "get_all"}
+        result = FastMCPServer._canonicalize_tool_token("getall", available)
+        assert result == "get_all"
+
+    def test_collapsed_match_with_hyphens(self):
+        """Hyphenated token "health-check" matches "health_check"."""
+        available = {"health_check", "add"}
+        result = FastMCPServer._canonicalize_tool_token("health-check", available)
+        assert result == "health_check"
+
+
+@pytest.mark.unit
+class TestServerClose:
+    """Test suite for FastMCPServer.close() method."""
+
+    def _build_server(self, monkeypatch):
+        """Helper to create a FastMCPServer with fully mocked dependencies."""
+        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
+        monkeypatch.delenv("ALLOWED_TOOLS", raising=False)
+
+        with (
+            patch("reflectlog.application.mcp_server.FastMCP") as mock_fastmcp,
+            patch(
+                "reflectlog.application.mcp_server.MemoryManager"
+            ) as mock_memory_manager,
+            patch(
+                "reflectlog.application.mcp_server.create_logger"
+            ) as mock_create_logger,
+        ):
+            mock_fastmcp.return_value = MagicMock()
+            mock_mm_instance = MagicMock()
+            mock_memory_manager.return_value = mock_mm_instance
+            mock_logger = MagicMock()
+            mock_create_logger.return_value = mock_logger
+
+            from reflectlog.application.config import Config
+
+            server_config = Config.from_environment()
+            server = FastMCPServer(server_config=server_config)
+
+        return server, mock_mm_instance, mock_logger
+
+    def test_close_success(self, monkeypatch):
+        """close() persists data and logs success (lines 257-261)."""
+        server, mock_mm, mock_logger = self._build_server(monkeypatch)
+
+        server.close()
+
+        mock_mm.close.assert_called_once()
+        mock_logger.info.assert_any_call("Initiating graceful server shutdown...")
+        mock_logger.info.assert_any_call(
+            "Server shutdown complete - all data persisted"
+        )
+
+    def test_close_handles_exception(self, monkeypatch):
+        """close() catches and logs errors from MemoryManager.close() (lines 262-266)."""
+        server, mock_mm, mock_logger = self._build_server(monkeypatch)
+        mock_mm.close.side_effect = RuntimeError("disk full")
+
+        server.close()
+
+        mock_mm.close.assert_called_once()
+        mock_logger.error.assert_called_once()
+        error_msg = mock_logger.error.call_args.args[0]
+        assert "disk full" in error_msg
+
+
+@pytest.mark.unit
+class TestMainFunction:
+    """Test suite for the main() entry point function."""
+
+    def test_main_runtime_error_is_reraised(self, monkeypatch):
+        """main() re-raises RuntimeError after logging (lines 286-288)."""
+        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
+
+        with (
+            patch("reflectlog.application.mcp_server.FastMCPServer") as mock_server_cls,
+            patch("reflectlog.application.mcp_server.get_logger"),
+        ):
+            mock_server_cls.side_effect = RuntimeError("port in use")
+
+            from reflectlog.application.mcp_server import main
+
+            with pytest.raises(RuntimeError, match="port in use"):
+                main()
+
+    def test_main_keyboard_interrupt_calls_close(self, monkeypatch):
+        """main() calls server.close() on KeyboardInterrupt (lines 289-292)."""
+        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
+
+        with (
+            patch("reflectlog.application.mcp_server.FastMCPServer") as mock_server_cls,
+            patch("reflectlog.application.mcp_server.get_logger"),
+        ):
+            mock_instance = MagicMock()
+            mock_server_cls.return_value = mock_instance
+            mock_instance.run.side_effect = KeyboardInterrupt
+
+            from reflectlog.application.mcp_server import main
+
+            main()
+
+            mock_instance.close.assert_called_once()
+
+    def test_main_unexpected_exception_calls_close_and_reraises(self, monkeypatch):
+        """main() calls server.close() then re-raises on unexpected Exception (lines 293-297)."""
+        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
+
+        with (
+            patch("reflectlog.application.mcp_server.FastMCPServer") as mock_server_cls,
+            patch("reflectlog.application.mcp_server.get_logger"),
+        ):
+            mock_instance = MagicMock()
+            mock_server_cls.return_value = mock_instance
+            mock_instance.run.side_effect = ValueError("unexpected")
+
+            from reflectlog.application.mcp_server import main
+
+            with pytest.raises(ValueError, match="unexpected"):
+                main()
+
+            mock_instance.close.assert_called_once()
+
+    def test_main_keyboard_interrupt_before_server_created(self, monkeypatch):
+        """main() handles KeyboardInterrupt when server is None (line 291 branch)."""
+        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
+
+        with (
+            patch("reflectlog.application.mcp_server.FastMCPServer") as mock_server_cls,
+            patch("reflectlog.application.mcp_server.get_logger"),
+        ):
+            mock_server_cls.side_effect = KeyboardInterrupt
+
+            from reflectlog.application.mcp_server import main
+
+            main()
+
+    def test_main_unexpected_exception_before_server_created(self, monkeypatch):
+        """main() re-raises unexpected Exception when server is None (line 295 branch)."""
+        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
+
+        with (
+            patch("reflectlog.application.mcp_server.FastMCPServer") as mock_server_cls,
+            patch("reflectlog.application.mcp_server.get_logger"),
+        ):
+            mock_server_cls.side_effect = TypeError("bad init")
+
+            from reflectlog.application.mcp_server import main
+
+            with pytest.raises(TypeError, match="bad init"):
+                main()

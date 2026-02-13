@@ -1040,3 +1040,220 @@ class TestRerankWithTimestampMap:
 
             # Even with timestamp_map, age should be None when recency boost disabled
             assert captured_ages[0] is None
+
+
+class TestFormatMemoryAgeFutureTimestamp:
+    """Tests for format_memory_age with future timestamps."""
+
+    def test_future_timestamp_returns_just_now(self) -> None:
+        """Test that a future timestamp returns "just now"."""
+        from datetime import datetime, timedelta, timezone
+
+        from reflectlog.infrastructure.llm_reranker import format_memory_age
+
+        future = datetime.now(timezone.utc) + timedelta(minutes=5)
+        result = format_memory_age(future.isoformat())
+        assert result == "just now"
+
+
+class TestOpenAIRerankerProviderWithMemoryAge:
+    """Tests for OpenAIRerankerProvider.score_document with memory_age."""
+
+    @pytest.fixture
+    def mock_provider(self) -> OpenAIRerankerProvider:
+        """Create a mocked OpenAIRerankerProvider with logger."""
+        with patch(
+            "reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"
+        ) as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            provider = OpenAIRerankerProvider(
+                api_key="test-key",
+                base_url="https://openrouter.ai/api/v1",
+                model="x-ai/grok-4.1-fast",
+                logger=MagicMock(),
+            )
+            provider._client = mock_client
+            assert provider._client is not None
+            return provider
+
+    @pytest.mark.asyncio
+    async def test_score_document_with_memory_age(
+        self, mock_provider: OpenAIRerankerProvider
+    ) -> None:
+        """Test that memory_age triggers SCORING_PROMPT_WITH_AGE."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"score": 0.9}'
+
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+            return_value=mock_response
+        )
+
+        doc, score = await mock_provider.score_document(
+            query="Python tutorials",
+            document="Learn Python basics",
+            fallback_score=0.5,
+            memory_age="2 hours ago",
+        )
+
+        assert doc == "Learn Python basics"
+        assert score == 0.9
+        mock_provider._client.chat.completions.create.assert_called_once()  # type: ignore[union-attr]
+
+
+class TestAnthropicExtractJsonEdgeCases:
+    """Tests for _extract_json_from_response edge cases."""
+
+    @pytest.fixture
+    def mock_provider(self) -> AnthropicRerankerProvider:
+        """Create a mocked AnthropicRerankerProvider."""
+        with patch("reflectlog.utility.init_credentials"):
+            return AnthropicRerankerProvider(
+                model="claude-3-sonnet",
+                logger=MagicMock(),
+            )
+
+    def test_markdown_code_block_with_invalid_json(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test markdown code block containing invalid JSON falls through."""
+        response = "```json\n{invalid json here}\n```"
+        with pytest.raises(ValueError, match="Could not extract JSON"):
+            mock_provider._extract_json_from_response(response)
+
+    def test_embedded_json_with_multiple_invalid_matches(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test text with multiple invalid JSON-like objects raises ValueError."""
+        response = "result: {bad json} and also {more bad}"
+        with pytest.raises(ValueError, match="Could not extract JSON"):
+            mock_provider._extract_json_from_response(response)
+
+    def test_markdown_invalid_then_embedded_valid(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test invalid markdown block falls through to valid embedded JSON."""
+        response = '```json\n{not valid}\n```\nBut here is {"score": 0.8} in text.'
+        result = mock_provider._extract_json_from_response(response)
+        assert result["score"] == 0.8
+
+
+class TestAnthropicScoreDocumentWithMemoryAge:
+    """Tests for AnthropicRerankerProvider.score_document with memory_age."""
+
+    @pytest.fixture
+    def mock_provider(self) -> AnthropicRerankerProvider:
+        """Create a mocked AnthropicRerankerProvider with logger."""
+        with patch("reflectlog.utility.init_credentials"):
+            return AnthropicRerankerProvider(
+                model="claude-3-sonnet",
+                logger=MagicMock(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_score_document_with_memory_age(
+        self, mock_provider: AnthropicRerankerProvider
+    ) -> None:
+        """Test that memory_age triggers SCORING_PROMPT_WITH_AGE."""
+        with patch("reflectlog.utility.generate_content") as mock_generate:
+            mock_generate.return_value = '{"score": 0.75}'
+
+            doc, score = await mock_provider.score_document(
+                query="Python tutorials",
+                document="Learn Python basics",
+                fallback_score=0.5,
+                memory_age="3 days ago",
+            )
+
+            assert doc == "Learn Python basics"
+            assert score == 0.75
+            mock_generate.assert_called_once()
+            call_kwargs = mock_generate.call_args
+            prompt_arg = (
+                call_kwargs[1]["prompt"]
+                if "prompt" in call_kwargs[1]
+                else call_kwargs[0][0]
+            )
+            assert "3 days ago" in prompt_arg or "TEMPORAL" in prompt_arg
+
+
+class TestRerankBatchNormalization:
+    """Tests for rerank() with batch_normalize=True."""
+
+    @pytest.fixture
+    def mock_reranker(self) -> LLMReranker:
+        """Create a LLMReranker with batch_normalize=True."""
+        config = LLMRerankerConfig(
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            model="x-ai/grok-4.1-fast",
+            score_threshold=0.0,
+            max_concurrency=5,
+            batch_normalize=True,
+            provider="openai",
+            enable_recency_boost=False,
+        )
+        with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
+            reranker = LLMReranker(config=config, logger=MagicMock())
+            return reranker
+
+    @pytest.mark.asyncio
+    async def test_rerank_with_batch_normalize_enabled(
+        self, mock_reranker: LLMReranker
+    ) -> None:
+        """Test that batch normalization is applied when enabled."""
+
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
+            scores = {"doc1": 0.9, "doc2": 0.6, "doc3": 0.3}
+            return (document, scores.get(document, fallback_score))
+
+        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+
+        candidates = [
+            ("doc1", 0.8),
+            ("doc2", 0.7),
+            ("doc3", 0.6),
+        ]
+
+        with patch(
+            "reflectlog.application.memory.reranking.normalize_reranker_scores"
+        ) as mock_normalize:
+            mock_normalize.return_value = [
+                ("doc1", 1.0),
+                ("doc2", 0.5),
+                ("doc3", 0.0),
+            ]
+
+            result = await mock_reranker.rerank("test query", candidates)
+
+            mock_normalize.assert_called_once()
+            mock_reranker.logger.debug.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_rerank_batch_normalize_logs_range(
+        self, mock_reranker: LLMReranker
+    ) -> None:
+        """Test that batch normalization logs raw score range."""
+
+        async def mock_score_single(query, document, fallback_score, memory_age=None):
+            scores = {"doc1": 0.8, "doc2": 0.4}
+            return (document, scores.get(document, fallback_score))
+
+        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+
+        candidates = [("doc1", 0.5), ("doc2", 0.5)]
+
+        with patch(
+            "reflectlog.application.memory.reranking.normalize_reranker_scores"
+        ) as mock_normalize:
+            mock_normalize.return_value = [("doc1", 1.0), ("doc2", 0.0)]
+
+            await mock_reranker.rerank("test query", candidates)
+
+            debug_calls = mock_reranker.logger.debug.call_args_list
+            batch_log_found = any(
+                "Batch normalization" in (call[0][0] if call[0] else "")
+                for call in debug_calls
+            )
+            assert batch_log_found, "Expected batch normalization debug log"

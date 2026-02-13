@@ -27,7 +27,7 @@ class TestSecretString:
     def test_repr_returns_redacted(self) -> None:
         """Test __repr__ returns redacted representation."""
         secret = SecretString("my-secret-api-key")
-        assert repr(secret) == "SecretString('***REDACTED***')"
+        assert repr(secret) == "***REDACTED***"
 
     def test_bool_true_for_non_empty(self) -> None:
         """Test __bool__ returns True for non-empty secret."""
@@ -84,7 +84,8 @@ class TestSanitizeForLogging:
 
     def test_redact_bearer_token(self) -> None:
         """Test redaction of bearer tokens."""
-        result = sanitize_for_logging("Authorization: Bearer abc123token")
+        # Bearer token pattern requires 20+ characters after "bearer "
+        result = sanitize_for_logging("Authorization: Bearer abc123tokenxyz789def456")
         assert "[BEARER_TOKEN_REDACTED]" in result
 
     def test_redact_password(self) -> None:

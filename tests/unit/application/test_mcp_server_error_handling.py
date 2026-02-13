@@ -182,7 +182,7 @@ class TestAddToolErrorHandling:
         with pytest.raises(ValueError) as exc_info:
             await add_tool([""])
 
-        assert "too short" in str(exc_info.value).lower()
+        assert "contains only whitespace" in str(exc_info.value).lower()
 
 
 @pytest.mark.unit

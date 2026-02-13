@@ -80,7 +80,7 @@ class TestValidateMessages:
         is_valid, error_msg = validate_messages(messages, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
-        assert "too short" in error_msg
+        assert "contains only whitespace" in error_msg
 
     def test_whitespace_only_message_invalid(self, sample_messages):
         """Test that whitespace-only message is invalid."""
@@ -110,7 +110,7 @@ class TestValidateMessages:
         "invalid_message,expected_error",
         [
             (123, "not a string"),
-            (None, "not a string"),
+            (None, "is None"),
             ([], "not a string"),
             ({}, "not a string"),
         ],
@@ -126,7 +126,7 @@ class TestValidateMessages:
     @pytest.mark.parametrize(
         "invalid_message,expected_error",
         [
-            ("", "too short"),
+            ("", "contains only whitespace"),
             ("   ", "only whitespace"),
             ("\n", "only whitespace"),
             ("\t", "only whitespace"),

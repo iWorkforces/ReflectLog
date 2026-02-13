@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from reflectlog.application.exceptions import StorageError
 from reflectlog.application.types import Embeddings
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
@@ -556,3 +557,728 @@ class TestUSearchEngineExactSearch:
 
         assert config.exact_search is True
         assert config.exact_search_threshold == 5000
+
+
+class TestUSearchConfigFromDict:
+    """Tests for USearchConfig.from_dict factory method."""
+
+    def test_from_dict_with_full_data(self) -> None:
+        """from_dict should create config from a complete dictionary."""
+        data = {
+            "project_id": "my-proj",
+            "index_path": "/tmp/index.usearch",
+            "db_path": "/tmp/messages.db",
+            "embedding_dims": 256,
+            "metric": "l2",
+            "connectivity": 32,
+            "expansion_add": 256,
+            "expansion_search": 128,
+            "exact_search": False,
+            "exact_search_threshold": 500,
+        }
+        config = USearchConfig.from_dict(data)
+
+        assert config.project_id == "my-proj"
+        assert config.index_path == "/tmp/index.usearch"
+        assert config.db_path == "/tmp/messages.db"
+        assert config.embedding_dims == 256
+        assert config.metric == "l2"
+        assert config.connectivity == 32
+        assert config.expansion_add == 256
+        assert config.expansion_search == 128
+        assert config.exact_search is False
+        assert config.exact_search_threshold == 500
+
+    def test_from_dict_with_defaults(self) -> None:
+        """from_dict should use defaults for missing keys."""
+        config = USearchConfig.from_dict({})
+
+        assert config.project_id == ""
+        assert config.index_path == ""
+        assert config.db_path == ""
+        assert config.embedding_dims == 3072
+        assert config.metric == "cos"
+        assert config.connectivity == 16
+        assert config.expansion_add == 128
+        assert config.expansion_search == 64
+        assert config.exact_search is True
+        assert config.exact_search_threshold == 0
+
+
+class TestUSearchEngineInitWithDict:
+    """Tests for USearchEngine initialization with dict config."""
+
+    def test_init_with_dict_config(self) -> None:
+        """Engine should accept a dict and convert to USearchConfig."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dict = {
+                "project_id": "test",
+                "index_path": os.path.join(tmpdir, "index.usearch"),
+                "db_path": os.path.join(tmpdir, "messages.db"),
+                "embedding_dims": 128,
+            }
+            embedder = MockEmbedder(dims=128)
+            engine = USearchEngine(config=config_dict, embedder=embedder)
+
+            try:
+                assert isinstance(engine.config, USearchConfig)
+                assert engine.config.project_id == "test"
+            finally:
+                engine.close()
+
+
+class TestUSearchEngineIndexInit:
+    """Tests for USearch index lazy initialization error paths."""
+
+    def test_index_restore_returns_none_creates_new(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """When Index.restore returns None, should create a new index."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            idx = engine.index
+            assert idx is not None
+            logger.info.assert_called()
+        finally:
+            engine.close()
+
+    def test_index_init_failure_raises_runtime_error(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """If both restore and create fail, should raise RuntimeError."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.side_effect = FileNotFoundError("no file")
+            mock_index_cls.side_effect = MemoryError("out of memory")
+
+            with pytest.raises(
+                RuntimeError, match="Failed to initialize USearch index"
+            ):
+                _ = engine.index
+
+            logger.error.assert_called()
+
+    def test_index_init_logs_debug_on_create(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Creating new index should log debug and info messages."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            _ = engine.index
+            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            info_calls = [str(c) for c in logger.info.call_args_list]
+            assert any("not found" in c.lower() for c in debug_calls)
+            assert any("Created new" in c for c in info_calls)
+        finally:
+            engine.close()
+
+    def test_index_loaded_from_existing_file(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Restoring an existing index should log loading info."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+
+        engine1 = USearchEngine(config=config, embedder=embedder)
+        try:
+            engine1.add("test", "Hello", infer=False)
+            engine1.commit()
+        finally:
+            engine1.close()
+
+        engine2 = USearchEngine(config=config, embedder=embedder, logger=logger)
+        try:
+            _ = engine2.index
+            info_calls = [str(c) for c in logger.info.call_args_list]
+            assert any("Loaded existing" in c for c in info_calls)
+        finally:
+            engine2.close()
+
+
+class TestUSearchEngineAddErrorPaths:
+    """Tests for add() error handling paths."""
+
+    def test_add_embedding_failure_rolls_back(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """When embedding fails, the SQLite insert should be rolled back."""
+        config, _, _ = temp_engine
+        failing_embedder = MockEmbedder(dims=128)
+        failing_embedder.embed_query = MagicMock(
+            side_effect=RuntimeError("Embedding API down")
+        )
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
+
+        try:
+            with pytest.raises(RuntimeError, match="Failed to generate embedding"):
+                engine.add("user1", "rollback test", infer=False)
+
+            messages = engine.get_all("user1")
+            assert "rollback test" not in messages
+            logger.error.assert_called()
+        finally:
+            engine.close()
+
+    def test_add_duplicate_via_storage_error(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """StorageError with "Duplicate message" should be silently skipped."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+            mock_store = MagicMock()
+            mock_store.insert.side_effect = StorageError("Duplicate message detected")
+            object.__setattr__(engine, "_message_store", mock_store)
+
+            engine.add("user1", "dup msg", infer=False)
+
+            logger.debug.assert_called()
+        finally:
+            engine.close()
+
+    def test_add_unexpected_exception_wraps_in_runtime_error(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Unexpected exceptions in add should be wrapped in RuntimeError."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+            mock_store = MagicMock()
+            mock_store.insert.side_effect = TypeError("unexpected type error")
+            object.__setattr__(engine, "_message_store", mock_store)
+
+            with pytest.raises(RuntimeError, match="Failed to add message"):
+                engine.add("user1", "error msg", infer=False)
+
+            logger.error.assert_called()
+        finally:
+            engine.close()
+
+    def test_add_non_duplicate_runtime_error_reraises(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """RuntimeError without "Duplicate message" should be re-raised."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+            mock_store = MagicMock()
+            mock_store.insert.side_effect = RuntimeError("connection lost")
+            object.__setattr__(engine, "_message_store", mock_store)
+
+            with pytest.raises(RuntimeError, match="connection lost"):
+                engine.add("user1", "error msg", infer=False)
+
+            logger.error.assert_called()
+        finally:
+            engine.close()
+
+
+class TestUSearchEngineAddBatch:
+    """Tests for add_batch() method."""
+
+    def test_add_batch_empty_list(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """add_batch with empty list should return empty list."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            result = engine.add_batch("user1", [], infer=False)
+            assert result == []
+        finally:
+            engine.close()
+
+    def test_add_batch_success(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """add_batch should add multiple messages and return them."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            messages = ["Batch msg 1", "Batch msg 2", "Batch msg 3"]
+            result = engine.add_batch("user1", messages, infer=False)
+
+            assert len(result) == 3
+            assert set(result) == set(messages)
+
+            all_msgs = engine.get_all("user1")
+            assert len(all_msgs) == 3
+
+            logger.debug.assert_called()
+        finally:
+            engine.close()
+
+    def test_add_batch_with_infer_logs_warning(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """add_batch with infer=True should log a warning."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.add_batch("user1", ["msg"], infer=True)
+            warning_calls = [str(c) for c in logger.warning.call_args_list]
+            assert any("infer=True" in c for c in warning_calls)
+        finally:
+            engine.close()
+
+    def test_add_batch_all_duplicates_returns_empty(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """add_batch where insert_many returns empty should return empty list."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            engine.ensure_initialized()
+            mock_store = MagicMock()
+            mock_store.insert_many.return_value = []
+            object.__setattr__(engine, "_message_store", mock_store)
+
+            result = engine.add_batch("user1", ["dup1", "dup2"], infer=False)
+            assert result == []
+        finally:
+            engine.close()
+
+    def test_add_batch_embedding_failure_rolls_back(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Embedding failure during add_batch should rollback all inserts."""
+        config, _, _ = temp_engine
+        failing_embedder = MockEmbedder(dims=128)
+        failing_embedder.embed_documents = MagicMock(
+            side_effect=RuntimeError("Embedding batch failed")
+        )
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+
+            with pytest.raises(RuntimeError, match="Failed to add message batch"):
+                engine.add_batch("user1", ["rb1", "rb2"], infer=False)
+
+            messages = engine.get_all("user1")
+            assert "rb1" not in messages
+            assert "rb2" not in messages
+        finally:
+            engine.close()
+
+    def test_add_batch_embedding_size_mismatch(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Mismatched embedding batch size should raise RuntimeError."""
+        config, _, _ = temp_engine
+        bad_embedder = MockEmbedder(dims=128)
+        bad_embedder.embed_documents = MagicMock(return_value=[[0.1] * 128])
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=bad_embedder, logger=logger)
+
+        try:
+            with pytest.raises(RuntimeError, match="Failed to add message batch"):
+                engine.add_batch("user1", ["m1", "m2"], infer=False)
+        finally:
+            engine.close()
+
+
+class TestUSearchEngineDistanceScoring:
+    """Tests for _rank_scores and _distances_to_scores methods."""
+
+    def test_rank_scores_empty(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """_rank_scores with count=0 should return empty array."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            scores = engine._rank_scores(0)
+            assert len(scores) == 0
+        finally:
+            engine.close()
+
+    def test_rank_scores_single(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """_rank_scores with count=1 should return [1.0]."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            scores = engine._rank_scores(1)
+            assert len(scores) == 1
+            assert float(scores[0]) == pytest.approx(1.0)
+        finally:
+            engine.close()
+
+    def test_rank_scores_multiple(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """_rank_scores with count>1 should return descending scores."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            scores = engine._rank_scores(5)
+            assert len(scores) == 5
+            assert float(scores[0]) == pytest.approx(1.0)
+            assert float(scores[-1]) == pytest.approx(0.0)
+            for i in range(len(scores) - 1):
+                assert scores[i] >= scores[i + 1]
+        finally:
+            engine.close()
+
+    def test_distances_to_scores_l2_metric(self) -> None:
+        """L2 metric should use 1/(1+d) conversion."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = USearchConfig(
+                project_id="test",
+                index_path=os.path.join(tmpdir, "index.usearch"),
+                db_path=os.path.join(tmpdir, "messages.db"),
+                embedding_dims=128,
+                metric="l2",
+            )
+            embedder = MockEmbedder(dims=128)
+            engine = USearchEngine(config=config, embedder=embedder)
+
+            try:
+                distances = np.array([0.0, 1.0, 4.0], dtype=np.float32)
+                scores = engine._distances_to_scores(distances)
+
+                assert float(scores[0]) == pytest.approx(1.0)
+                assert float(scores[1]) == pytest.approx(0.5)
+                assert float(scores[2]) == pytest.approx(0.2)
+            finally:
+                engine.close()
+
+    def test_distances_to_scores_unknown_metric_uses_rank(self) -> None:
+        """Unknown metric should fall back to rank-based scores."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = USearchConfig(
+                project_id="test",
+                index_path=os.path.join(tmpdir, "index.usearch"),
+                db_path=os.path.join(tmpdir, "messages.db"),
+                embedding_dims=128,
+                metric="ip",
+            )
+            embedder = MockEmbedder(dims=128)
+            logger = MagicMock()
+            engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+            try:
+                distances = np.array([0.1, 0.5, 0.9], dtype=np.float32)
+                scores = engine._distances_to_scores(distances)
+
+                assert len(scores) == 3
+                assert float(scores[0]) == pytest.approx(1.0)
+                assert float(scores[-1]) == pytest.approx(0.0)
+                logger.warning.assert_called()
+            finally:
+                engine.close()
+
+
+class TestUSearchEngineSearchErrorPaths:
+    """Tests for search() error handling and edge cases."""
+
+    def test_search_empty_index_with_logger(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Search on empty index with logger should log debug message."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+            results = engine.search("hello", "user1", limit=5)
+
+            assert results == []
+            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            assert any("empty" in c.lower() for c in debug_calls)
+        finally:
+            engine.close()
+
+    def test_search_no_matching_project_returns_empty(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Search where no results match project_id should return empty."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            engine.add("user1", "Hello world", infer=False)
+
+            results = engine.search("Hello", "nonexistent-project", limit=5)
+            assert results == []
+        finally:
+            engine.close()
+
+    def test_search_exception_wraps_in_runtime_error(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Exceptions during search should be wrapped in RuntimeError."""
+        config, _, _ = temp_engine
+        failing_embedder = MockEmbedder(dims=128)
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
+
+        try:
+            engine.add("user1", "Test msg", infer=False)
+
+            failing_embedder.embed_query = MagicMock(
+                side_effect=RuntimeError("API failure")
+            )
+
+            with pytest.raises(RuntimeError, match="USearch search failed"):
+                engine.search("broken query", "user1", limit=5)
+
+            logger.error.assert_called()
+        finally:
+            engine.close()
+
+
+class TestUSearchEngineGetAllErrorPaths:
+    """Tests for get_all() error handling paths."""
+
+    def test_get_all_with_logger(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """get_all with logger should log message count."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.add("user1", "msg1", infer=False)
+            engine.get_all("user1")
+            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            assert any("Retrieved all" in c for c in debug_calls)
+        finally:
+            engine.close()
+
+    def test_get_all_error_wraps_in_runtime_error(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Exceptions in get_all should be wrapped in RuntimeError."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+            original_store = engine.message_store
+            original_store.close()
+            mock_store = MagicMock()
+            mock_store.get_all.side_effect = OSError("disk read error")
+            object.__setattr__(engine, "_message_store", mock_store)
+
+            with pytest.raises(RuntimeError, match="Failed to retrieve messages"):
+                engine.get_all("user1")
+
+            logger.error.assert_called()
+        finally:
+            engine.close()
+
+
+class TestUSearchEngineDeleteErrorPaths:
+    """Tests for delete() additional error handling."""
+
+    def test_delete_existing_with_logger_logs_debug(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Deleting an existing message with logger should log debug."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.add("user1", "to delete", infer=False)
+            msg_id = engine.message_store.get_id_by_message("user1", "to delete")
+            assert msg_id is not None
+
+            engine.delete(str(msg_id))
+
+            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            assert any("deleted" in c.lower() for c in debug_calls)
+        finally:
+            engine.close()
+
+    def test_delete_invalid_id_with_logger(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Invalid memory_id with logger should log error."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+            with pytest.raises(RuntimeError, match="Invalid memory_id format"):
+                engine.delete("not-a-number")
+            logger.error.assert_called()
+        finally:
+            engine.close()
+
+    def test_delete_general_exception_wraps_in_runtime_error(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Unexpected exceptions in delete should be wrapped in RuntimeError."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+            engine._index = MagicMock()
+            engine._index.__contains__ = MagicMock(
+                side_effect=OSError("corrupted index")
+            )
+
+            with pytest.raises(RuntimeError, match="Failed to delete message"):
+                engine.delete("42")
+
+            logger.error.assert_called()
+        finally:
+            engine.close()
+
+
+class TestUSearchEngineCommitErrorPaths:
+    """Tests for commit() error handling and edge cases."""
+
+    def test_commit_no_index_is_noop(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Commit when _index is None should be a no-op."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            engine.commit()
+        finally:
+            engine.close()
+
+    def test_commit_with_logger(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Commit with logger should log save info."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.add("user1", "commit test", infer=False)
+            engine.commit()
+
+            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            assert any("saved" in c.lower() for c in debug_calls)
+        finally:
+            engine.close()
+
+    def test_commit_error_wraps_in_runtime_error(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Exceptions in commit should be wrapped in RuntimeError."""
+        config, embedder, _ = temp_engine
+        logger = MagicMock()
+        engine = USearchEngine(config=config, embedder=embedder, logger=logger)
+
+        try:
+            engine.ensure_initialized()
+            engine._index = MagicMock()
+            engine._index.save = MagicMock(side_effect=OSError("disk full"))
+
+            with pytest.raises(RuntimeError, match="Failed to save USearch index"):
+                engine.commit()
+
+            logger.error.assert_called()
+        finally:
+            engine.close()
+
+
+class TestUSearchEngineGetIdByMessage:
+    """Tests for get_id_by_message() method."""
+
+    def test_get_id_by_message_found(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """get_id_by_message should return ID for existing message."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            engine.add("user1", "findable msg", infer=False)
+            msg_id = engine.get_id_by_message("user1", "findable msg")
+            assert msg_id is not None
+            assert isinstance(msg_id, int)
+        finally:
+            engine.close()
+
+    def test_get_id_by_message_not_found(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """get_id_by_message should return None for non-existent message."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+
+        try:
+            engine.ensure_initialized()
+            msg_id = engine.get_id_by_message("user1", "nonexistent")
+            assert msg_id is None
+        finally:
+            engine.close()
+
+
+class TestUSearchEngineContextManager:
+    """Tests for context manager protocol (__enter__/__exit__)."""
+
+    def test_context_manager_initializes_and_closes(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Context manager should initialize on enter and close on exit."""
+        config, embedder, _ = temp_engine
+
+        with USearchEngine(config=config, embedder=embedder) as engine:
+            assert engine is not None
+            assert engine.name == "usearch"
+            engine.add("user1", "ctx msg", infer=False)
+
+    def test_context_manager_does_not_suppress_exceptions(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """__exit__ should return False to not suppress exceptions."""
+        config, embedder, _ = temp_engine
+
+        with pytest.raises(ValueError, match="test error"):
+            with USearchEngine(config=config, embedder=embedder) as engine:
+                raise ValueError("test error")
+
+    def test_close_with_no_message_store(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """close() when _message_store is None should be a no-op."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        engine.close()

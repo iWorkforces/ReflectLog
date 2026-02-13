@@ -434,6 +434,62 @@ That's my assessment."""
         assert result["should_replace"] is False
         assert result["confidence"] == 0.3
 
+    def test_extract_json_markdown_block_invalid_json_falls_through(self) -> None:
+        """Test markdown code block with invalid JSON falls through to embedded strategy."""
+        with patch("reflectlog.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        response = """Here's my analysis:
+
+```json
+{not valid json at all!!!}
+```
+
+But the result is {"should_replace": true, "confidence": 0.8, "reason": "Updated"}"""
+
+        result = provider._extract_json_from_response(response)
+
+        assert result["should_replace"] is True
+        assert result["confidence"] == 0.8
+
+    def test_extract_json_markdown_block_invalid_json_no_fallback(self) -> None:
+        """Test markdown code block with invalid JSON and no valid embedded JSON raises."""
+        with patch("reflectlog.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        response = """Here's my analysis:
+
+```json
+{this is not valid json}
+```
+
+No valid JSON anywhere else either."""
+
+        with pytest.raises(ValueError, match="Could not extract JSON"):
+            provider._extract_json_from_response(response)
+
+    def test_extract_json_embedded_invalid_json_continues(self) -> None:
+        """Test embedded JSON patterns with invalid JSON continue to next match."""
+        with patch("reflectlog.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        response = 'Result: {invalid json} but also {"should_replace": false, "confidence": 0.4, "reason": "No match"}'
+
+        result = provider._extract_json_from_response(response)
+
+        assert result["should_replace"] is False
+        assert result["confidence"] == 0.4
+
+    def test_extract_json_all_embedded_invalid_raises(self) -> None:
+        """Test all embedded JSON patterns invalid raises ValueError."""
+        with patch("reflectlog.utility.init_credentials"):
+            provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
+
+        response = "Result: {bad json} and also {more bad} end"
+
+        with pytest.raises(ValueError, match="Could not extract JSON"):
+            provider._extract_json_from_response(response)
+
     def test_extract_json_fails_raises_error(self) -> None:
         """Test that extraction failure raises ValueError."""
         with patch("reflectlog.utility.init_credentials"):
@@ -735,6 +791,92 @@ class TestCheckReplacement:
         assert should_replace is False
         assert confidence == 0.0
         assert "Error" in reason
+
+    @pytest.mark.asyncio
+    async def test_check_replacement_json_decode_error(
+        self, mock_replacer: SmartReplacer
+    ) -> None:
+        """Test handling of JSONDecodeError from provider."""
+        mock_provider = AsyncMock()
+        mock_provider.detect_replacement = AsyncMock(
+            side_effect=json.JSONDecodeError("Expecting value", "doc", 0)
+        )
+        mock_replacer._provider = mock_provider
+
+        mock_logger = MagicMock()
+        mock_replacer.logger = mock_logger
+
+        should_replace, confidence, reason = await mock_replacer.check_replacement(
+            new_memory="test", existing_memory="test2"
+        )
+
+        assert should_replace is False
+        assert confidence == 0.0
+        assert "JSON parse error" in reason
+        mock_logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_check_replacement_json_decode_error_no_logger(
+        self, mock_replacer: SmartReplacer
+    ) -> None:
+        """Test JSONDecodeError handling without logger."""
+        mock_provider = AsyncMock()
+        mock_provider.detect_replacement = AsyncMock(
+            side_effect=json.JSONDecodeError("Expecting value", "doc", 0)
+        )
+        mock_replacer._provider = mock_provider
+        mock_replacer.logger = None
+
+        should_replace, confidence, reason = await mock_replacer.check_replacement(
+            new_memory="test", existing_memory="test2"
+        )
+
+        assert should_replace is False
+        assert confidence == 0.0
+        assert "JSON parse error" in reason
+
+    @pytest.mark.asyncio
+    async def test_check_replacement_generic_exception(
+        self, mock_replacer: SmartReplacer
+    ) -> None:
+        """Test handling of generic Exception from provider."""
+        mock_provider = AsyncMock()
+        mock_provider.detect_replacement = AsyncMock(
+            side_effect=RuntimeError("Unexpected failure")
+        )
+        mock_replacer._provider = mock_provider
+
+        mock_logger = MagicMock()
+        mock_replacer.logger = mock_logger
+
+        should_replace, confidence, reason = await mock_replacer.check_replacement(
+            new_memory="test", existing_memory="test2"
+        )
+
+        assert should_replace is False
+        assert confidence == 0.0
+        assert "Error: Unexpected failure" in reason
+        mock_logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_check_replacement_generic_exception_no_logger(
+        self, mock_replacer: SmartReplacer
+    ) -> None:
+        """Test generic Exception handling without logger."""
+        mock_provider = AsyncMock()
+        mock_provider.detect_replacement = AsyncMock(
+            side_effect=RuntimeError("Unexpected failure")
+        )
+        mock_replacer._provider = mock_provider
+        mock_replacer.logger = None
+
+        should_replace, confidence, reason = await mock_replacer.check_replacement(
+            new_memory="test", existing_memory="test2"
+        )
+
+        assert should_replace is False
+        assert confidence == 0.0
+        assert "Error: Unexpected failure" in reason
 
 
 class TestSmartReplacerIntegration:

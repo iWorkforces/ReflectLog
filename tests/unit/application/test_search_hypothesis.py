@@ -15,12 +15,15 @@ Usage:
     pytest --hypothesis-show-statematrix
 """
 
-from hypothesis import given, settings, strategies as st  # type: ignore[import]
+import pytest
+
+pytest.importorskip("hypothesis")
+
+from hypothesis import given, settings, strategies as st
 from reflectlog.application.config import Config
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils import create_logger
 from reflectlog.application.utils.security import SecretString
-import pytest
 
 
 @given(st.text(min_size=1, max_size=1000))

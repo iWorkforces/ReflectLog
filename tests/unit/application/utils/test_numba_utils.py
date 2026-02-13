@@ -1,11 +1,15 @@
 """Unit tests for reflectlog.application.utils.numba_utils module."""
 
 from typing import cast
+from unittest.mock import patch
 
 import numpy as np
+import pytest
 from numpy.typing import NDArray
 
 from reflectlog.application.utils.numba_utils import (
+    _find_minmax,
+    _normalize_inplace,
     compute_rrf_scores_batch,
     distance_to_similarity_cosine,
     filter_scores_by_threshold,
@@ -33,15 +37,15 @@ class TestNormalizeScoresMinmax:
         """Test handling of single-element array."""
         scores = np.array([0.5], dtype=np.float64)
         result = normalize_scores_minmax(scores)
-        # Single element should be normalized to 1.0 (all same = max)
-        np.testing.assert_array_almost_equal(result, [1.0])
+        # Single element has no range, so normalized to 0.5 (neutral midpoint)
+        np.testing.assert_array_almost_equal(result, [0.5])
 
     def test_all_same_values(self) -> None:
         """Test handling of array with all identical values."""
         scores = np.array([0.5, 0.5, 0.5], dtype=np.float64)
         result = normalize_scores_minmax(scores)
-        # All same values should normalize to 1.0
-        np.testing.assert_array_almost_equal(result, [1.0, 1.0, 1.0])
+        # All same values have no range, so normalized to 0.5 (neutral midpoint)
+        np.testing.assert_array_almost_equal(result, [0.5, 0.5, 0.5])
 
     def test_negative_values(self) -> None:
         """Test normalization with negative values."""
@@ -67,7 +71,8 @@ class TestNormalizeScoresMinmax:
         """Test with min == max (zero range)."""
         scores = np.array([42.0, 42.0, 42.0], dtype=np.float64)
         result = normalize_scores_minmax(scores)
-        np.testing.assert_array_almost_equal(result, [1.0, 1.0, 1.0])
+        # Zero range means no differentiation, so normalized to 0.5 (neutral midpoint)
+        np.testing.assert_array_almost_equal(result, [0.5, 0.5, 0.5])
 
     def test_very_small_range(self) -> None:
         """Test with very small value range."""
@@ -306,3 +311,107 @@ class TestWarmupNumbaFunctions:
         distances = np.array([0.1], dtype=np.float32)
         similarities = distance_to_similarity_cosine(distances)
         assert len(similarities) == 1
+
+
+class TestFindMinmax:
+    """Tests for _find_minmax internal function."""
+
+    def test_empty_array_returns_zeros(self) -> None:
+        """Empty array should return (0.0, 0.0)."""
+        scores = np.array([], dtype=np.float64)
+        min_val, max_val = _find_minmax(scores)
+        assert min_val == 0.0
+        assert max_val == 0.0
+
+    def test_single_element(self) -> None:
+        """Single element returns same value for min and max."""
+        scores = np.array([3.14], dtype=np.float64)
+        min_val, max_val = _find_minmax(scores)
+        assert min_val == pytest.approx(3.14)
+        assert max_val == pytest.approx(3.14)
+
+    def test_sorted_ascending(self) -> None:
+        """Ascending sorted array finds correct min/max."""
+        scores = np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float64)
+        min_val, max_val = _find_minmax(scores)
+        assert min_val == pytest.approx(1.0)
+        assert max_val == pytest.approx(5.0)
+
+    def test_sorted_descending(self) -> None:
+        """Descending sorted array finds correct min/max."""
+        scores = np.array([5.0, 4.0, 3.0, 2.0, 1.0], dtype=np.float64)
+        min_val, max_val = _find_minmax(scores)
+        assert min_val == pytest.approx(1.0)
+        assert max_val == pytest.approx(5.0)
+
+    def test_negative_values(self) -> None:
+        """Handles negative values correctly."""
+        scores = np.array([-10.0, -5.0, 0.0, 5.0, 10.0], dtype=np.float64)
+        min_val, max_val = _find_minmax(scores)
+        assert min_val == pytest.approx(-10.0)
+        assert max_val == pytest.approx(10.0)
+
+    def test_all_same_values(self) -> None:
+        """All identical values returns that value for both min and max."""
+        scores = np.array([7.0, 7.0, 7.0], dtype=np.float64)
+        min_val, max_val = _find_minmax(scores)
+        assert min_val == pytest.approx(7.0)
+        assert max_val == pytest.approx(7.0)
+
+    def test_two_elements(self) -> None:
+        """Two-element array finds correct min/max."""
+        scores = np.array([9.0, 1.0], dtype=np.float64)
+        min_val, max_val = _find_minmax(scores)
+        assert min_val == pytest.approx(1.0)
+        assert max_val == pytest.approx(9.0)
+
+
+class TestNormalizeInplace:
+    """Tests for _normalize_inplace internal function."""
+
+    def test_equal_min_max_sets_half(self) -> None:
+        """When min == max, all values become 0.5."""
+        scores = np.array([3.0, 3.0, 3.0], dtype=np.float64)
+        _normalize_inplace(scores, 3.0, 3.0)
+        np.testing.assert_array_almost_equal(scores, [0.5, 0.5, 0.5])
+
+    def test_standard_normalization(self) -> None:
+        """Standard min-max normalization maps to [0, 1]."""
+        scores = np.array([10.0, 20.0, 30.0], dtype=np.float64)
+        _normalize_inplace(scores, 10.0, 30.0)
+        np.testing.assert_array_almost_equal(scores, [0.0, 0.5, 1.0])
+
+    def test_single_element_equal_range(self) -> None:
+        """Single element with equal min/max becomes 0.5."""
+        scores = np.array([5.0], dtype=np.float64)
+        _normalize_inplace(scores, 5.0, 5.0)
+        np.testing.assert_array_almost_equal(scores, [0.5])
+
+
+class TestWarmupNumbaFunctionsFailure:
+    """Tests for warmup_numba_functions failure path."""
+
+    def test_warmup_returns_true_on_success(self) -> None:
+        """Successful warmup returns True."""
+        result = warmup_numba_functions()
+        assert result is True
+
+    def test_warmup_returns_false_on_exception(self) -> None:
+        """Warmup returns False and emits warning when a function raises."""
+        with patch(
+            "reflectlog.application.utils.numba_utils.normalize_scores_minmax",
+            side_effect=RuntimeError("compilation failed"),
+        ):
+            with pytest.warns(RuntimeWarning, match="Numba JIT warmup failed"):
+                result = warmup_numba_functions()
+            assert result is False
+
+    def test_warmup_returns_false_on_numpy_error(self) -> None:
+        """Warmup returns False when numpy operations fail."""
+        with patch(
+            "reflectlog.application.utils.numba_utils.np.array",
+            side_effect=MemoryError("out of memory"),
+        ):
+            with pytest.warns(RuntimeWarning, match="Numba JIT warmup failed"):
+                result = warmup_numba_functions()
+            assert result is False

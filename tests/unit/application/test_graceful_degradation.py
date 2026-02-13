@@ -260,13 +260,14 @@ class TestSmartReplacerDegradation:
         )
 
         # Mock the LLM client to fail twice, then succeed
+        # Use ConnectionError which is a retryable exception type
         call_count = 0
 
         async def mock_create(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
-                raise Exception("Temporary API error")
+                raise ConnectionError("Temporary API error")
             # Return valid response on third attempt
             mock_response = Mock()
             mock_response.choices = [Mock()]
@@ -275,8 +276,10 @@ class TestSmartReplacerDegradation:
             ].message.content = '{"should_replace": true, "confidence": 0.9, "reason": "User changed preference"}'
             return mock_response
 
-        provider._client = AsyncMock()
-        provider._client.chat.completions.create = AsyncMock(side_effect=mock_create)
+        # Create mock client with proper structure
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=mock_create)
+        provider._client = mock_client
 
         # Mock logger
         provider._logger = Mock()
@@ -288,7 +291,7 @@ class TestSmartReplacerDegradation:
         result = await provider.detect_replacement(
             prompt=prompt,
             max_retries=3,
-            retry_delay=1.0,
+            retry_delay=0.01,  # Use short delay for faster test
         )
 
         # Should succeed after retries

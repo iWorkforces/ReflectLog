@@ -557,3 +557,145 @@ class TestConfigurationPriority:
                 assert sync_kwargs["api_key"] == "env-key"
                 assert embeddings.config.api_key == "env-key"
                 mock_async_client.assert_not_called()
+
+
+class TestAsyncEmbedRetryFailure:
+    @pytest.fixture
+    def mock_embeddings(self) -> LangchainQwenEmbeddings:
+        config = {
+            "model": "qwen/qwen-2.5-3b-instruct",
+            "embedding_dims": 1536,
+            "api_key": "test-key",
+        }
+        with (
+            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+        ):
+            return LangchainQwenEmbeddings(config=config)
+
+    @pytest.mark.asyncio
+    async def test_async_embed_with_retry_raises_after_all_attempts(
+        self, mock_embeddings: LangchainQwenEmbeddings
+    ) -> None:
+        mock_async_client = AsyncMock()
+        mock_async_client.embeddings.create = AsyncMock(
+            side_effect=ConnectionError("network down")
+        )
+        mock_embeddings._async_client = mock_async_client
+
+        with (
+            patch(
+                "reflectlog.infrastructure.qwen3_embedding.anyio.sleep",
+                new_callable=AsyncMock,
+            ),
+            pytest.raises(
+                RuntimeError, match="Async embedding request failed after retries"
+            ),
+        ):
+            await mock_embeddings._async_embed_with_retry(
+                input=["test"],
+                model="qwen/qwen-2.5-3b-instruct",
+                dimensions=1536,
+                encoding_format="float",
+            )
+
+        assert mock_async_client.embeddings.create.call_count == 3
+
+
+class TestAembedDocumentsBatchFailure:
+    @pytest.fixture
+    def mock_embeddings(self) -> LangchainQwenEmbeddings:
+        config = {
+            "model": "qwen/qwen-2.5-3b-instruct",
+            "embedding_dims": 1536,
+            "api_key": "test-key",
+            "batch_size": 1,
+            "max_concurrent_batches": 2,
+        }
+        with (
+            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+        ):
+            return LangchainQwenEmbeddings(config=config)
+
+    @pytest.mark.asyncio
+    async def test_batch_failure_emits_warning_and_leaves_empty_results(
+        self, mock_embeddings: LangchainQwenEmbeddings
+    ) -> None:
+        call_count = 0
+
+        async def mock_create(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            input_texts = kwargs.get("input", [])
+            if input_texts == ["fail_text"]:
+                raise ConnectionError("batch failed")
+            mock_response = MagicMock()
+            mock_response.data = [
+                MagicMock(embedding=[0.1, 0.2, 0.3]) for _ in input_texts
+            ]
+            return mock_response
+
+        mock_embeddings._async_client = AsyncMock()
+        mock_embeddings._async_client.embeddings.create = mock_create
+
+        with (
+            patch(
+                "reflectlog.infrastructure.qwen3_embedding.anyio.sleep",
+                new_callable=AsyncMock,
+            ),
+            pytest.warns(RuntimeWarning, match="Embedding batch .* failed"),
+        ):
+            result = await mock_embeddings.aembed_documents(["good_text", "fail_text"])
+
+        assert len(result) == 2
+        assert result[0] == [0.1, 0.2, 0.3]
+        assert result[1] == []
+
+
+class TestAsyncContextManager:
+    @pytest.fixture
+    def mock_embeddings(self) -> LangchainQwenEmbeddings:
+        config = {
+            "model": "qwen/qwen-2.5-3b-instruct",
+            "embedding_dims": 1536,
+            "api_key": "test-key",
+        }
+        with (
+            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+        ):
+            return LangchainQwenEmbeddings(config=config)
+
+    @pytest.mark.asyncio
+    async def test_aclose_closes_async_client(
+        self, mock_embeddings: LangchainQwenEmbeddings
+    ) -> None:
+        mock_async_client = AsyncMock()
+        mock_embeddings._async_client = mock_async_client
+
+        await mock_embeddings.aclose()
+
+        mock_async_client.close.assert_awaited_once()
+        assert mock_embeddings._async_client is None
+
+    @pytest.mark.asyncio
+    async def test_aclose_noop_when_no_async_client(
+        self, mock_embeddings: LangchainQwenEmbeddings
+    ) -> None:
+        mock_embeddings._async_client = None
+        await mock_embeddings.aclose()
+        assert mock_embeddings._async_client is None
+
+    @pytest.mark.asyncio
+    async def test_context_manager_calls_aclose(
+        self, mock_embeddings: LangchainQwenEmbeddings
+    ) -> None:
+        mock_async_client = AsyncMock()
+        mock_embeddings._async_client = mock_async_client
+
+        async with mock_embeddings as emb:
+            assert emb is mock_embeddings
+
+        mock_async_client.close.assert_awaited_once()
+        assert mock_embeddings._async_client is None
