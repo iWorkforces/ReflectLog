@@ -386,10 +386,10 @@ class MessageStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                ",".join("?" * len(message_ids))
+                placeholders = ",".join("?" * len(message_ids))
                 _ = cursor.execute(
-                    "SELECT id, project_id, message, created_at "
-                    "FROM messages WHERE id IN ({placeholders})",
+                    f"SELECT id, project_id, message, created_at "
+                    f"FROM messages WHERE id IN ({placeholders})",
                     message_ids,
                 )
                 rows = cursor.fetchall()

@@ -17,7 +17,7 @@ SECURITY INSTRUCTIONS:
 # Note: Uses OpenAI Structured Outputs with json_schema for guaranteed JSON format
 # Security: Uses Template.safe_substitute() to prevent prompt injection via braces
 SCORING_PROMPT_TEMPLATE = """You are a relevance scoring system. Score how relevant a document is to a query.
-{_JAILBREAK_PROTECTION}
+$_JAILBREAK_PROTECTION
 OUTPUT FORMAT:
 Return a JSON object with a "score" field containing a float between 0.0 and 1.0.
 Example: {{"score": 0.85}}
@@ -68,7 +68,7 @@ SCORING_PROMPT = format_scoring_prompt(
 # More recent memories may reflect updated preferences/information
 # Security: Uses Template.safe_substitute() to prevent prompt injection via braces
 SCORING_PROMPT_WITH_AGE_TEMPLATE = """You are a relevance scoring system. Score how relevant a document is to a query.
-{_JAILBREAK_PROTECTION}
+$_JAILBREAK_PROTECTION
 OUTPUT FORMAT:
 Return a JSON object with a "score" field containing a float between 0.0 and 1.0.
 Example: {{"score": 0.85}}
@@ -128,7 +128,7 @@ SCORING_PROMPT_WITH_AGE = format_scoring_prompt_with_age(
 # Note: Uses OpenAI Structured Outputs with json_schema for guaranteed JSON format
 # Security: Uses Template.safe_substitute() to prevent prompt injection via braces
 REPLACEMENT_DETECTION_PROMPT_TEMPLATE = """You are a memory replacement detection system. Determine if a new memory should replace an existing one.
-{_JAILBREAK_PROTECTION}
+$_JAILBREAK_PROTECTION
 OUTPUT FORMAT:
 Return a JSON object with the following fields:
 - "should_replace": boolean (true if new memory replaces old, false otherwise)
