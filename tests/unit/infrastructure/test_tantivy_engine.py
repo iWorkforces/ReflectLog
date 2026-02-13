@@ -1789,6 +1789,7 @@ class TestSearchErrorHandling:
                 is_search_query = "test" in query_str and "is_deleted" not in query_str
                 if is_search_query and call_count <= 2:
                     raise ValueError("parse fail on first try")
+                assert original_index is not None  # type guard
                 return original_index.parse_query(**kwargs)
 
             mock_index.parse_query.side_effect = side_effect_parse_query

@@ -17,13 +17,13 @@ class MockEmbedder(Embeddings):
     """Mock embedder for testing."""
 
     def __init__(self, dims: int = 128) -> None:
+        super().__init__()
         self.dims = dims
         self.call_count = 0
 
     def embed_query(self, text: str) -> list[float]:
         """Return deterministic embeddings based on text hash."""
         self.call_count += 1
-        # Create deterministic embedding from text hash
         np.random.seed(hash(text) % (2**32))
         embedding: list[float] = np.random.randn(self.dims).astype(np.float32).tolist()
         return embedding
@@ -31,6 +31,38 @@ class MockEmbedder(Embeddings):
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed a list of documents."""
         return [self.embed_query(text) for text in texts]
+
+    async def aembed_query(self, text: str) -> list[float]:
+        return self.embed_query(text)
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self.embed_documents(texts)
+
+
+class FailingQueryEmbedder(MockEmbedder):
+    def embed_query(self, text: str) -> list[float]:
+        raise RuntimeError("Embedding API down")
+
+
+class FailingBatchEmbedder(MockEmbedder):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("Embedding batch failed")
+
+
+class MismatchedSizeEmbedder(MockEmbedder):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1] * self.dims]
+
+
+class ToggleableFailingQueryEmbedder(MockEmbedder):
+    def __init__(self, dims: int = 128) -> None:
+        super().__init__(dims)
+        self.should_fail = False
+
+    def embed_query(self, text: str) -> list[float]:
+        if self.should_fail:
+            raise RuntimeError("API failure")
+        return super().embed_query(text)
 
 
 @pytest.fixture
@@ -710,12 +742,8 @@ class TestUSearchEngineAddErrorPaths:
     def test_add_embedding_failure_rolls_back(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """When embedding fails, the SQLite insert should be rolled back."""
         config, _, _ = temp_engine
-        failing_embedder = MockEmbedder(dims=128)
-        failing_embedder.embed_query = MagicMock(
-            side_effect=RuntimeError("Embedding API down")
-        )
+        failing_embedder = FailingQueryEmbedder(dims=128)
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
 
@@ -866,12 +894,8 @@ class TestUSearchEngineAddBatch:
     def test_add_batch_embedding_failure_rolls_back(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Embedding failure during add_batch should rollback all inserts."""
         config, _, _ = temp_engine
-        failing_embedder = MockEmbedder(dims=128)
-        failing_embedder.embed_documents = MagicMock(
-            side_effect=RuntimeError("Embedding batch failed")
-        )
+        failing_embedder = FailingBatchEmbedder(dims=128)
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
 
@@ -890,10 +914,8 @@ class TestUSearchEngineAddBatch:
     def test_add_batch_embedding_size_mismatch(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Mismatched embedding batch size should raise RuntimeError."""
         config, _, _ = temp_engine
-        bad_embedder = MockEmbedder(dims=128)
-        bad_embedder.embed_documents = MagicMock(return_value=[[0.1] * 128])
+        bad_embedder = MismatchedSizeEmbedder(dims=128)
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=bad_embedder, logger=logger)
 
@@ -1039,18 +1061,15 @@ class TestUSearchEngineSearchErrorPaths:
     def test_search_exception_wraps_in_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Exceptions during search should be wrapped in RuntimeError."""
         config, _, _ = temp_engine
-        failing_embedder = MockEmbedder(dims=128)
+        failing_embedder = ToggleableFailingQueryEmbedder(dims=128)
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
 
         try:
             engine.add("user1", "Test msg", infer=False)
 
-            failing_embedder.embed_query = MagicMock(
-                side_effect=RuntimeError("API failure")
-            )
+            failing_embedder.should_fail = True
 
             with pytest.raises(RuntimeError, match="USearch search failed"):
                 engine.search("broken query", "user1", limit=5)

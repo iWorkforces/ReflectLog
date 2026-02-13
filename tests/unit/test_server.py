@@ -2,6 +2,7 @@
 
 import io
 import os
+from collections.abc import Callable
 from pathlib import Path
 import signal
 import sys
@@ -493,9 +494,9 @@ class TestGracefulShutdown:
         mock_server_class.return_value = mock_server
 
         # Capture the signal handler registered for SIGINT
-        registered_handlers: dict[int, object] = {}
+        registered_handlers: dict[int, Callable[[int, object], None]] = {}
 
-        def capture_signal(signum, handler):
+        def capture_signal(signum: int, handler: Callable[[int, object], None]) -> None:
             registered_handlers[signum] = handler
 
         with (
@@ -528,9 +529,9 @@ class TestGracefulShutdown:
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
-        registered_handlers: dict[int, object] = {}
+        registered_handlers: dict[int, Callable[[int, object], None]] = {}
 
-        def capture_signal(signum, handler):
+        def capture_signal(signum: int, handler: Callable[[int, object], None]) -> None:
             registered_handlers[signum] = handler
 
         with (
@@ -565,9 +566,9 @@ class TestGracefulShutdown:
         # Make FastMCPServer raise so server stays None when handler runs
         mock_server_class.side_effect = RuntimeError("init failed")
 
-        registered_handlers: dict[int, object] = {}
+        registered_handlers: dict[int, Callable[[int, object], None]] = {}
 
-        def capture_signal(signum, handler):
+        def capture_signal(signum: int, handler: Callable[[int, object], None]) -> None:
             registered_handlers[signum] = handler
 
         with (

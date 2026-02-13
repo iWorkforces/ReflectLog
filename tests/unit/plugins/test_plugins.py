@@ -648,7 +648,7 @@ class TestDirectoryScanDiscovery:
         fake_module.BasePlugin = BasePlugin  # type: ignore[attr-defined]  # should be skipped
 
         fake_pkg = types.ModuleType("fake_pkg")
-        fake_pkg.__file__ = "/fake/fake_pkg/__init__.py"  # type: ignore[attr-defined]
+        fake_pkg.__file__ = "/fake/fake_pkg/__init__.py"
 
         _real_import = importlib.import_module
 
@@ -684,7 +684,7 @@ class TestDirectoryScanDiscovery:
             pass
 
         fake_pkg = types.ModuleType("pkg")
-        fake_pkg.__file__ = "/fake/pkg/__init__.py"  # type: ignore[attr-defined]
+        fake_pkg.__file__ = "/fake/pkg/__init__.py"
 
         _real_import = importlib.import_module
 
@@ -716,7 +716,7 @@ class TestDirectoryScanDiscovery:
             pass
 
         fake_pkg = types.ModuleType("ns_pkg")
-        fake_pkg.__file__ = None  # type: ignore[attr-defined]  # namespace package
+        fake_pkg.__file__ = None  # namespace package
 
         _real_import = importlib.import_module
 
@@ -767,7 +767,7 @@ class TestDirectoryScanDiscovery:
         fake_module.some_int = 42  # type: ignore[attr-defined]
 
         fake_pkg = types.ModuleType("pkg")
-        fake_pkg.__file__ = "/fake/pkg/__init__.py"  # type: ignore[attr-defined]
+        fake_pkg.__file__ = "/fake/pkg/__init__.py"
 
         _real_import = importlib.import_module
 
