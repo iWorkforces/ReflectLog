@@ -1,4 +1,4 @@
-'''Shared utilities for exact-match checks and Tantivy query escaping.'''
+"""Shared utilities for exact-match checks and Tantivy query escaping."""
 
 from typing import Any
 
@@ -7,19 +7,19 @@ from reflectlog.application.utils import StructuredLogger
 
 
 def escape_tantivy_query(query: str) -> str:
-    '''Escape special characters for Tantivy query syntax.
+    """Escape special characters for Tantivy query syntax.
 
     Tantivy uses Lucene-style query syntax where certain characters have
     special meaning. This function escapes them to prevent query injection.
-    '''
+    """
     special_chars = r'+-&|!(){}[]^"~*?:\/'
     escaped: list[str] = []
     for char in query:
         if char in special_chars:
-            escaped.append(f'\\{char}')
+            escaped.append(f"\\{char}")
         else:
             escaped.append(char)
-    return ''.join(escaped)
+    return "".join(escaped)
 
 
 def has_exact_match(
@@ -30,11 +30,11 @@ def has_exact_match(
     content: str,
     logger: StructuredLogger | None,
 ) -> bool:
-    '''Check whether the exact content already exists in storage.
+    """Check whether the exact content already exists in storage.
 
     Uses Tantivy for fast exact phrase matching when available,
     falling back to direct database lookup otherwise.
-    '''
+    """
     if tantivy_engine is not None:
         try:
             escaped_query = escape_tantivy_query(content)
@@ -46,15 +46,15 @@ def has_exact_match(
             has_match = any(msg == content for msg, _ in results)
             if has_match and logger:
                 logger.debug(
-                    'Tantivy found exact duplicate',
-                    extra={'project_id': project_id},
+                    "Tantivy found exact duplicate",
+                    extra={"project_id": project_id},
                 )
             return has_match
         except Exception as e:
             if logger:
                 logger.warning(
-                    'Tantivy duplicate check failed; falling back to database lookup',
-                    extra={'project_id': project_id, 'error': str(e)},
+                    "Tantivy duplicate check failed; falling back to database lookup",
+                    extra={"project_id": project_id, "error": str(e)},
                 )
 
     try:
@@ -62,18 +62,18 @@ def has_exact_match(
         if msg_id is not None:
             if logger:
                 logger.debug(
-                    'Database lookup found exact duplicate',
-                    extra={'project_id': project_id, 'msg_id': msg_id},
+                    "Database lookup found exact duplicate",
+                    extra={"project_id": project_id, "msg_id": msg_id},
                 )
             return True
         return False
     except Exception as e:
         if logger:
             logger.warning(
-                'Duplicate detection failed; proceeding without deduplication',
+                "Duplicate detection failed; proceeding without deduplication",
                 extra={
-                    'project_id': project_id,
-                    'error': str(e),
+                    "project_id": project_id,
+                    "error": str(e),
                 },
             )
         return False

@@ -1,4 +1,4 @@
-'''Search pipeline with pluggable stages.
+"""Search pipeline with pluggable stages.
 
 This module provides the SearchPipeline class that orchestrates the
 4-step search process with pluggable stages for:
@@ -6,7 +6,7 @@ This module provides the SearchPipeline class that orchestrates the
 2. Result fusion (RRF, concatenation)
 3. Threshold filtering
 4. Reranking (LLM, cross-encoder, or none)
-'''
+"""
 
 from dataclasses import dataclass
 import logging
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SearchPipelineConfig:
-    '''Configuration for search pipeline stages.'''
+    """Configuration for search pipeline stages."""
 
     enable_hybrid_search: bool
     enable_rrf_fusion: bool
@@ -40,32 +40,32 @@ class SearchPipelineConfig:
 
 
 class IBackendExecutor(Protocol):
-    '''Protocol for search backend executor stages.'''
+    """Protocol for search backend executor stages."""
 
     async def execute(
         self,
         context: CoreSearchContext,
     ) -> dict[str, list[ISearchResult]]:
-        '''Execute search across configured backends.
+        """Execute search across configured backends.
 
         Args:
             context: Search context with query and configuration.
 
         Returns:
             Dict mapping backend name to results.
-        '''
+        """
         ...
 
 
 class IFusionStage(Protocol):
-    '''Protocol for result fusion stages.'''
+    """Protocol for result fusion stages."""
 
     def fuse(
         self,
         results: dict[str, list[ISearchResult]],
         limit: int,
     ) -> list[ISearchResult]:
-        '''Fuse results from multiple backends.
+        """Fuse results from multiple backends.
 
         Args:
             results: Dict mapping backend name to results.
@@ -73,19 +73,19 @@ class IFusionStage(Protocol):
 
         Returns:
             Fused and ranked results.
-        '''
+        """
         ...
 
 
 class IFilterStage(Protocol):
-    '''Protocol for result filtering stages.'''
+    """Protocol for result filtering stages."""
 
     def filter(
         self,
         results: list[ISearchResult],
         threshold: float,
     ) -> list[ISearchResult]:
-        '''Filter results by score threshold.
+        """Filter results by score threshold.
 
         Args:
             results: Results to filter.
@@ -93,12 +93,12 @@ class IFilterStage(Protocol):
 
         Returns:
             Filtered results.
-        '''
+        """
         ...
 
 
 class DefaultBackendExecutor:
-    '''Default backend executor for semantic + full-text search.'''
+    """Default backend executor for semantic + full-text search."""
 
     def __init__(
         self,
@@ -112,7 +112,7 @@ class DefaultBackendExecutor:
         self,
         context: CoreSearchContext,
     ) -> dict[str, list[ISearchResult]]:
-        '''Execute parallel search across backends.'''
+        """Execute parallel search across backends."""
         results: dict[str, list[ISearchResult]] = {}
 
         async with anyio.create_task_group() as tg:
@@ -123,7 +123,7 @@ class DefaultBackendExecutor:
                     project_id=context.project_id,
                     limit=context.overfetch_limit,
                 )
-                results['semantic'] = semantic_results
+                results["semantic"] = semantic_results
 
             tg.start_soon(search_semantic)
 
@@ -137,7 +137,7 @@ class DefaultBackendExecutor:
                         project_id=context.project_id,
                         limit=context.overfetch_limit,
                     )
-                    results['fulltext'] = fulltext_results
+                    results["fulltext"] = fulltext_results
 
                 tg.start_soon(search_fulltext)
 
@@ -145,7 +145,7 @@ class DefaultBackendExecutor:
 
 
 class RRFFusionStage:
-    '''Reciprocal Rank Fusion implementation.'''
+    """Reciprocal Rank Fusion implementation."""
 
     def __init__(self, k: float = 60.0):
         self._k = k
@@ -155,7 +155,7 @@ class RRFFusionStage:
         results: dict[str, list[ISearchResult]],
         limit: int,
     ) -> list[ISearchResult]:
-        '''Apply RRF to combine rankings.'''
+        """Apply RRF to combine rankings."""
         if not results:
             return []
 
@@ -201,8 +201,8 @@ class RRFFusionStage:
                 ISearchResult(
                     content=content,
                     score=rrf_score,
-                    memory_id='',
-                    metadata={'original_score': original_score},
+                    memory_id="",
+                    metadata={"original_score": original_score},
                 )
             )
 
@@ -210,14 +210,14 @@ class RRFFusionStage:
 
 
 class ConcatenationFusionStage:
-    '''Simple concatenation fusion (no fusion, just combine).'''
+    """Simple concatenation fusion (no fusion, just combine)."""
 
     def fuse(
         self,
         results: dict[str, list[ISearchResult]],
         limit: int,
     ) -> list[ISearchResult]:
-        '''Concatenate results from backends.'''
+        """Concatenate results from backends."""
         if not results:
             return []
 
@@ -241,31 +241,31 @@ class ConcatenationFusionStage:
 
 
 class ThresholdFilterStage:
-    '''Filter results by score threshold.'''
+    """Filter results by score threshold."""
 
     def filter(
         self,
         results: list[ISearchResult],
         threshold: float,
     ) -> list[ISearchResult]:
-        '''Filter results below threshold.'''
+        """Filter results below threshold."""
         return [r for r in results if r.score >= threshold]
 
 
 class NoopRerankerStage:
-    '''No-op reranker (pass-through).'''
+    """No-op reranker (pass-through)."""
 
     async def rerank(
         self,
         query: str,
         results: list[ISearchResult],
     ) -> list[ISearchResult]:
-        '''Return results unchanged.'''
+        """Return results unchanged."""
         return results
 
 
 class SearchPipeline:
-    '''Modular search pipeline with pluggable stages.
+    """Modular search pipeline with pluggable stages.
 
     This pipeline orchestrates the search process with configurable stages:
     1. Backend execution (semantic, full-text)
@@ -281,7 +281,7 @@ class SearchPipeline:
             reranker_stage=NoopRerankerStage(),
         )
         results = await pipeline.execute(context)
-    '''
+    """
 
     def __init__(
         self,
@@ -292,7 +292,7 @@ class SearchPipeline:
         config: SearchPipelineConfig,
         logger: StructuredLogger,
     ):
-        '''Initialize search pipeline.
+        """Initialize search pipeline.
 
         Args:
             backend_executor: Stage for executing backend searches.
@@ -301,7 +301,7 @@ class SearchPipeline:
             reranker_stage: Stage for reranking (optional).
             config: Pipeline configuration.
             logger: Structured logger.
-        '''
+        """
         self._backend_executor = backend_executor
         self._fusion_stage = fusion_stage
         self._filter_stage = filter_stage
@@ -315,7 +315,7 @@ class SearchPipeline:
         project_id: str,
         limit: int | None = None,
     ) -> list[str]:
-        '''Execute the full search pipeline.
+        """Execute the full search pipeline.
 
         Args:
             query: Search query.
@@ -324,7 +324,7 @@ class SearchPipeline:
 
         Returns:
             List of matching memory strings.
-        '''
+        """
         if limit is None:
             limit = self._config.search_limit
 
@@ -366,7 +366,7 @@ class SearchPipeline:
                     ISearchResult(
                         content=r.content,
                         score=r.score,
-                        memory_id='',
+                        memory_id="",
                         metadata=r.metadata,
                     )
                     for r in reranked
@@ -379,7 +379,7 @@ class SearchPipeline:
         return [r.content for r in final_results[:limit]]
 
     def _calculate_overfetch(self, limit: int) -> int:
-        '''Calculate adaptive overfetch limit based on limit.'''
+        """Calculate adaptive overfetch limit based on limit."""
         if limit <= 10:
             return min(limit * 3, 50)
         elif limit <= 50:
@@ -395,7 +395,7 @@ def create_default_pipeline(
     config: Config,
     logger: StructuredLogger,
 ) -> SearchPipeline:
-    '''Create a search pipeline with default configuration.
+    """Create a search pipeline with default configuration.
 
     Args:
         semantic_backend: Semantic search backend (USearch).
@@ -406,7 +406,7 @@ def create_default_pipeline(
 
     Returns:
         Configured SearchPipeline instance.
-    '''
+    """
     # Backend executor
     backend_executor = DefaultBackendExecutor(semantic_backend, fulltext_backend)
 

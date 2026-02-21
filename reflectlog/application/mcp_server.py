@@ -1,4 +1,4 @@
-'''ReflectLogMCP Server - Refactored modular implementation.'''
+"""ReflectLogMCP Server - Refactored modular implementation."""
 
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
@@ -17,30 +17,30 @@ from .utils import create_logger
 
 # Canonical registry of available MCP tool implementations.
 AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {
-    'add': AddTool,
-    'get_all': GetAllTool,
-    'search': SearchTool,
-    'remove': RemoveTool,
-    'health_check': HealthCheckTool,
+    "add": AddTool,
+    "get_all": GetAllTool,
+    "search": SearchTool,
+    "remove": RemoveTool,
+    "health_check": HealthCheckTool,
 }
 
 
 class FastMCPServer:
-    '''Orchestrator for the ReflectLogMCP Server.
+    """Orchestrator for the ReflectLogMCP Server.
 
     This class coordinates the initialization and registration of all components:
     - Configuration management
     - Memory storage
     - MCP tools
     - Server transport
-    '''
+    """
 
     def __init__(self, server_config: Config = config):
-        '''Initialize the MCP server with all components.
+        """Initialize the MCP server with all components.
 
         Args:
             server_config: Configuration instance (defaults to singleton).
-        '''
+        """
         super().__init__()
         self.config = server_config
 
@@ -51,17 +51,17 @@ class FastMCPServer:
 
         # Log initialization
         init_msg = (
-            f'Initializing reflectlog MCP server [project_id={self.config.project_id}]'
+            f"Initializing reflectlog MCP server [project_id={self.config.project_id}]"
         )
         self.logger.info(init_msg)
 
         self.logger.info(
-            f'transport={self.config.transport}, port={self.config.port}, '
-            f'log_level={self.config.log_level}'
+            f"transport={self.config.transport}, port={self.config.port}, "
+            f"log_level={self.config.log_level}"
         )
 
         self.logger.info(
-            f'embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == "langchain" else self.config.embedding_dims}'
+            f"embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}"
         )
 
         # Initialize memory manager
@@ -74,29 +74,29 @@ class FastMCPServer:
         instructions = self._build_dynamic_instructions()
 
         # Initialize FastMCP with dynamic instructions
-        self.mcp = FastMCP(name='reflectlog', instructions=instructions)
+        self.mcp = FastMCP(name="reflectlog", instructions=instructions)
 
         # Register tools with FastMCP
         self._register_tools()
 
-        self.logger.info('ReflectLogMCP Server initialized successfully')
+        self.logger.info("ReflectLogMCP Server initialized successfully")
 
     def _initialize_tools(self) -> None:
-        '''Initialize all MCP tool instances.'''
+        """Initialize all MCP tool instances."""
         available_names = list(AVAILABLE_TOOL_CLASSES.keys())
 
         selected_names, invalid_names = self._determine_tool_selection(available_names)
 
         if invalid_names:
             self.logger.warning(
-                'Ignoring unknown tool identifiers from ALLOWED_TOOLS',
-                extra={'invalid_tools': sorted(invalid_names)},
+                "Ignoring unknown tool identifiers from ALLOWED_TOOLS",
+                extra={"invalid_tools": sorted(invalid_names)},
             )
 
         if not selected_names:
             self.logger.warning(
-                'No MCP tools selected for registration. Server will start without tools.',
-                extra={'available_tools': available_names},
+                "No MCP tools selected for registration. Server will start without tools.",
+                extra={"available_tools": available_names},
             )
 
         # Initialize each permitted tool with dependencies
@@ -111,18 +111,18 @@ class FastMCPServer:
             self.tools.append(tool)
 
             self.logger.info(
-                f'Initialized tool: {tool.get_name()}',
-                extra={'tool': tool.get_name()},
+                f"Initialized tool: {tool.get_name()}",
+                extra={"tool": tool.get_name()},
             )
 
         if selected_names:
             self.logger.info(
-                'Tool initialization complete',
-                extra={'registered_tools': selected_names},
+                "Tool initialization complete",
+                extra={"registered_tools": selected_names},
             )
 
     def _register_tools(self) -> None:
-        '''Register all tools with the FastMCP instance.'''
+        """Register all tools with the FastMCP instance."""
         for tool in self.tools:
             # Get the handler function from the tool
             handler = tool.get_handler()
@@ -131,23 +131,23 @@ class FastMCPServer:
             self.mcp.tool(handler)
 
             self.logger.info(
-                f'Registered tool: {tool.get_name()}', extra={'tool': tool.get_name()}
+                f"Registered tool: {tool.get_name()}", extra={"tool": tool.get_name()}
             )
 
         self.logger.info(
-            f'Registered {len(self.tools)} tools with FastMCP',
-            extra={'tool_count': len(self.tools)},
+            f"Registered {len(self.tools)} tools with FastMCP",
+            extra={"tool_count": len(self.tools)},
         )
 
     def _build_dynamic_instructions(self) -> str:
-        '''Build MCP instructions dynamically from registered tools.
+        """Build MCP instructions dynamically from registered tools.
 
         Assembles instructions by collecting snippets from each initialized tool
         and passing them to the build_instructions() function.
 
         Returns:
             Complete MCP instructions string with only registered tools documented.
-        '''
+        """
         tool_snippets = [
             (tool.get_name(), tool.get_instruction_snippet()) for tool in self.tools
         ]
@@ -155,10 +155,10 @@ class FastMCPServer:
         instructions = build_instructions(tool_snippets)
 
         self.logger.info(
-            f'Built dynamic instructions for {len(self.tools)} tool(s)',
+            f"Built dynamic instructions for {len(self.tools)} tool(s)",
             extra={
-                'tool_count': len(self.tools),
-                'tools': [tool.get_name() for tool in self.tools],
+                "tool_count": len(self.tools),
+                "tools": [tool.get_name() for tool in self.tools],
             },
         )
 
@@ -167,14 +167,14 @@ class FastMCPServer:
     def _determine_tool_selection(
         self, available_names: list[str]
     ) -> tuple[list[str], list[str]]:
-        '''Determine which tools should be initialized based on configuration.
+        """Determine which tools should be initialized based on configuration.
 
         Args:
             available_names: List of canonical tool identifiers that ship with the server.
 
         Returns:
             Tuple of (selected tool names, invalid tool names).
-        '''
+        """
         allowed = self.config.allowed_tools
 
         if allowed is None:
@@ -196,20 +196,20 @@ class FastMCPServer:
 
     @staticmethod
     def _canonicalize_tool_token(token: str, available_set: set[str]) -> str | None:
-        '''Map a token from configuration to a canonical tool name.'''
-        normalized = token.strip().lower().replace('-', '_')
+        """Map a token from configuration to a canonical tool name."""
+        normalized = token.strip().lower().replace("-", "_")
         if not normalized:
             return None
 
         if normalized in available_set:
             return normalized
 
-        collapsed = normalized.replace('_', '')
+        collapsed = normalized.replace("_", "")
         for name in available_set:
-            if name.replace('_', '') == collapsed:
+            if name.replace("_", "") == collapsed:
                 return name
 
-        suffixes = ('_tool', 'tool')
+        suffixes = ("_tool", "tool")
         for suffix in suffixes:
             if normalized.endswith(suffix):
                 base = normalized[: -len(suffix)]
@@ -218,24 +218,24 @@ class FastMCPServer:
         return None
 
     def run(self) -> None:
-        '''Start the FastMCP server with configured transport.
+        """Start the FastMCP server with configured transport.
 
         The transport configuration is determined by:
         1. Environment variables (MCP_TRANSPORT, MCP_PORT, MCP_HOST, MCP_PATH)
         2. Config defaults
-        '''
+        """
         transport = self.config.transport
 
-        if transport == 'stdio':
-            self.logger.info('Running MCP server with stdio transport')
-            self.mcp.run(transport='stdio')
+        if transport == "stdio":
+            self.logger.info("Running MCP server with stdio transport")
+            self.mcp.run(transport="stdio")
         else:
             self.logger.info(
-                f'Running MCP server with {transport} transport',
+                f"Running MCP server with {transport} transport",
                 extra={
-                    'host': self.config.host,
-                    'port': self.config.port,
-                    'path': self.config.path,
+                    "host": self.config.host,
+                    "port": self.config.port,
+                    "path": self.config.path,
                 },
             )
             self.mcp.run(
@@ -246,46 +246,46 @@ class FastMCPServer:
             )
 
     def close(self) -> None:
-        '''Gracefully shutdown the server and persist all data.
+        """Gracefully shutdown the server and persist all data.
 
         This method ensures all data is properly saved before shutdown:
         1. Closes the MemoryManager (which persists USearch and Tantivy data)
 
         Should be called during graceful shutdown (e.g., on SIGINT/SIGTERM)
         to prevent data loss.
-        '''
-        self.logger.info('Initiating graceful server shutdown...')
+        """
+        self.logger.info("Initiating graceful server shutdown...")
 
         try:
             self._memory_manager.close()
-            self.logger.info('Server shutdown complete - all data persisted')
+            self.logger.info("Server shutdown complete - all data persisted")
         except Exception as e:
             self.logger.error(
-                f'Error during server shutdown: {e}',
-                extra={'error': str(e)},
+                f"Error during server shutdown: {e}",
+                extra={"error": str(e)},
             )
 
     def set_startup_metrics(self, metrics: dict[str, float]) -> None:
-        '''Store startup timing metrics on the memory manager.
+        """Store startup timing metrics on the memory manager.
 
         Called by server.py after initialization to record per-phase timing
         data that the health_check tool exposes to callers.
 
         Args:
             metrics: Mapping of phase name to elapsed seconds.
-        '''
+        """
         self._memory_manager.startup_metrics = metrics
 
 
 def main() -> None:
-    '''Entry point for the ReflectLogMCP server.
+    """Entry point for the ReflectLogMCP server.
 
     This function:
     1. Loads configuration from environment
     2. Initializes the server
     3. Starts the transport
     4. Handles graceful shutdown on SIGINT/SIGTERM
-    '''
+    """
     # Create fallback logger once for exception handling
     fallback_logger = get_logger(__name__)
     server: FastMCPServer | None = None
@@ -295,18 +295,18 @@ def main() -> None:
         server = FastMCPServer()
         server.run()
     except RuntimeError as e:
-        fallback_logger.error(f'Failed to start server: {e}')
+        fallback_logger.error(f"Failed to start server: {e}")
         raise
     except KeyboardInterrupt:
-        fallback_logger.info('Server shutdown requested (Ctrl+C)')
+        fallback_logger.info("Server shutdown requested (Ctrl+C)")
         if server is not None:
             server.close()
     except Exception as e:
-        fallback_logger.error(f'Unexpected error: {e}')
+        fallback_logger.error(f"Unexpected error: {e}")
         if server is not None:
             server.close()
         raise
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -1,4 +1,4 @@
-'''Base class for platform-specific credential retrieval.'''
+"""Base class for platform-specific credential retrieval."""
 
 from abc import ABC, abstractmethod
 import json
@@ -7,21 +7,21 @@ from ..types import SERVICE_NAME, TOKEN_PREFIX
 
 
 class CredentialRetriever(ABC):
-    '''Abstract base class for platform-specific credential retrieval.'''
+    """Abstract base class for platform-specific credential retrieval."""
 
     service_name: str = SERVICE_NAME
     token_prefix: str = TOKEN_PREFIX
 
     @abstractmethod
     def get_credential(self) -> str | None:
-        '''Retrieve credential from platform-specific store.
+        """Retrieve credential from platform-specific store.
 
         Returns:
             The API key/token if found, None otherwise.
-        '''
+        """
 
     def parse_credential(self, raw: str) -> str | None:
-        '''Parse credential from raw string (JSON or plain text).
+        """Parse credential from raw string (JSON or plain text).
 
         Handles three formats:
         1. OAuth JSON: {"claudeAiOauth": {"accessToken": "sk-ant-..."}}
@@ -33,25 +33,25 @@ class CredentialRetriever(ABC):
 
         Returns:
             Parsed API key if valid, None otherwise.
-        '''
+        """
         raw = raw.strip()
         if not raw:
             return None
 
         # Handle JSON format (OAuth or legacy)
-        if raw.startswith('{'):
+        if raw.startswith("{"):
             try:
                 parsed = json.loads(raw)
 
                 # OAuth format: {"claudeAiOauth": {"accessToken": "..."}}
-                oauth_data = parsed.get('claudeAiOauth')
+                oauth_data = parsed.get("claudeAiOauth")
                 if isinstance(oauth_data, dict):
-                    access_token = oauth_data.get('accessToken')
+                    access_token = oauth_data.get("accessToken")
                     if access_token and access_token.startswith(self.token_prefix):
                         return access_token
 
                 # Legacy format: {"apiKey": "..."}
-                api_key = parsed.get('apiKey')
+                api_key = parsed.get("apiKey")
                 if api_key and api_key.startswith(self.token_prefix):
                     return api_key
 

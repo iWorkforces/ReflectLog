@@ -1,4 +1,4 @@
-'''Platform-specific credential retrieval.'''
+"""Platform-specific credential retrieval."""
 
 import platform
 
@@ -6,23 +6,23 @@ from .base import CredentialRetriever
 
 
 def get_platform_retriever() -> CredentialRetriever | None:
-    '''Get the appropriate credential retriever for the current platform.
+    """Get the appropriate credential retriever for the current platform.
 
     Returns:
         Platform-specific CredentialRetriever instance, or None if unsupported.
-    '''
+    """
     system = platform.system()
 
     match system:
-        case 'Darwin':
+        case "Darwin":
             from .darwin import DarwinCredentialRetriever
 
             return DarwinCredentialRetriever()
-        case 'Windows':
+        case "Windows":
             from .windows import WindowsCredentialRetriever
 
             return WindowsCredentialRetriever()
-        case 'Linux':
+        case "Linux":
             from .linux import LinuxCredentialRetriever
 
             return LinuxCredentialRetriever()
@@ -30,4 +30,4 @@ def get_platform_retriever() -> CredentialRetriever | None:
             return None
 
 
-__all__ = ['CredentialRetriever', 'get_platform_retriever']
+__all__ = ["CredentialRetriever", "get_platform_retriever"]

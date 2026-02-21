@@ -250,7 +250,7 @@ select = [
     "C4",    # flake8-comprehensions
     "SIM",   # flake8-simplify
     "RUF",   # Ruff-specific rules
-    "Q",     # flake8-quotes - enforce single quotes
+    "Q",     # flake8-quotes - enforce double quotes
 ]
 # Fixable rules (can be auto-fixed with --fix)
 fixable = ["UP", "I", "N", "F", "E", "W", "Q"]
@@ -274,12 +274,12 @@ ignore-names = ["test_*", "*_test"]
 keep-runtime-typing = false
 
 [tool.ruff.lint.flake8-quotes]
-# Enforce triple single quotes for docstrings (project convention)
-inline-quotes = "single"
-multiline-quotes = "single"
-docstring-quotes = "single"
+# Enforce double quotes (project convention)
+inline-quotes = "double"
+multiline-quotes = "double"
+docstring-quotes = "double"
 avoid-escape = true
 
 [tool.ruff.format]
-# Use single quotes for strings (ruff formatter)
-quote-style = "single"
+# Use double quotes for strings (ruff formatter)
+quote-style = "double"

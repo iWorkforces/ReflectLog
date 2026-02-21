@@ -1,8 +1,8 @@
-'''Plugin loading and lifecycle management.
+"""Plugin loading and lifecycle management.
 
 This module provides the PluginLoader class that handles plugin lifecycle:
 loading, initialization, activation, deactivation, and unloading.
-'''
+"""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -12,14 +12,14 @@ from typing import Protocol, TypeVar, runtime_checkable
 from .discovery import DiscoveredPlugin, PluginDiscoverer, PluginDiscoveryStrategy
 from .registry import PluginRegistry, PluginState
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class LifecycleHooks:
-    '''Hooks for plugin lifecycle events.'''
+    """Hooks for plugin lifecycle events."""
 
     on_load: Callable[[str], None] | None = None
     on_initialize: Callable[[str], None] | None = None
@@ -30,27 +30,27 @@ class LifecycleHooks:
 
 @runtime_checkable
 class IPluginLifecycle(Protocol):
-    '''Protocol for lifecycle-aware plugins.'''
+    """Protocol for lifecycle-aware plugins."""
 
     async def initialize(self) -> None:
-        '''Initialize the plugin after loading.'''
+        """Initialize the plugin after loading."""
         ...
 
     async def activate(self) -> None:
-        '''Activate the plugin for use.'''
+        """Activate the plugin for use."""
         ...
 
     async def deactivate(self) -> None:
-        '''Deactivate the plugin.'''
+        """Deactivate the plugin."""
         ...
 
     async def cleanup(self) -> None:
-        '''Clean up resources before unloading.'''
+        """Clean up resources before unloading."""
         ...
 
 
 class PluginLoader[T]:
-    '''Loader for managing plugin lifecycle.
+    """Loader for managing plugin lifecycle.
 
     This class handles the full plugin lifecycle: discovery, loading,
     initialization, activation, deactivation, and unloading.
@@ -63,7 +63,7 @@ class PluginLoader[T]:
         )
         await loader.load_all()
         await loader.activate_all()
-    '''
+    """
 
     def __init__(
         self,
@@ -71,24 +71,24 @@ class PluginLoader[T]:
         registry: PluginRegistry[T],
         hooks: LifecycleHooks | None = None,
     ):
-        '''Initialize plugin loader.
+        """Initialize plugin loader.
 
         Args:
             discovery_strategy: Strategy for discovering plugins.
             registry: Registry for managing plugins.
             hooks: Optional lifecycle hooks.
-        '''
+        """
         self._discovery_strategy = discovery_strategy
         self._registry = registry
         self._hooks = hooks or LifecycleHooks()
         self._discoverer = PluginDiscoverer(discovery_strategy)
 
     async def discover(self) -> list[DiscoveredPlugin]:
-        '''Discover available plugins.
+        """Discover available plugins.
 
         Returns:
             List of discovered plugins.
-        '''
+        """
         return await self._discoverer.discover_plugins()
 
     async def load_plugin(
@@ -96,7 +96,7 @@ class PluginLoader[T]:
         name: str,
         instance: T | None = None,
     ) -> bool:
-        '''Load a discovered plugin.
+        """Load a discovered plugin.
 
         Args:
             name: Plugin name to load.
@@ -104,7 +104,7 @@ class PluginLoader[T]:
 
         Returns:
             True if loaded successfully, False otherwise.
-        '''
+        """
         # Get discovered plugin
         discovered = None
         for p in self._discoverer.discovered_plugins:
@@ -128,7 +128,7 @@ class PluginLoader[T]:
                 return False
 
         # Register in registry
-        assert instance is not None, 'Plugin instance should not be None at this point'
+        assert instance is not None, "Plugin instance should not be None at this point"
         metadata = self._registry.register(instance)
 
         # Call load hook
@@ -139,14 +139,14 @@ class PluginLoader[T]:
         return True
 
     async def initialize_plugin(self, name: str) -> bool:
-        '''Initialize a loaded plugin.
+        """Initialize a loaded plugin.
 
         Args:
             name: Plugin name to initialize.
 
         Returns:
             True if initialized successfully, False otherwise.
-        '''
+        """
         plugin = self._registry.get(name)
         if plugin is None:
             logger.error(f"Plugin '{name}' not registered")
@@ -169,14 +169,14 @@ class PluginLoader[T]:
         return True
 
     async def activate_plugin(self, name: str) -> bool:
-        '''Activate a registered plugin.
+        """Activate a registered plugin.
 
         Args:
             name: Plugin name to activate.
 
         Returns:
             True if activated successfully, False otherwise.
-        '''
+        """
         if not self._registry.activate(name):
             logger.error(f"Failed to activate plugin '{name}'")
             return False
@@ -189,14 +189,14 @@ class PluginLoader[T]:
         return True
 
     async def deactivate_plugin(self, name: str) -> bool:
-        '''Deactivate an active plugin.
+        """Deactivate an active plugin.
 
         Args:
             name: Plugin name to deactivate.
 
         Returns:
             True if deactivated successfully, False otherwise.
-        '''
+        """
         plugin = self._registry.get(name)
         if plugin is None:
             logger.error(f"Plugin '{name}' not registered")
@@ -220,14 +220,14 @@ class PluginLoader[T]:
         return True
 
     async def unload_plugin(self, name: str) -> bool:
-        '''Unload a registered plugin.
+        """Unload a registered plugin.
 
         Args:
             name: Plugin name to unload.
 
         Returns:
             True if unloaded successfully, False otherwise.
-        '''
+        """
         plugin = self._registry.get(name)
         if plugin is None:
             logger.error(f"Plugin '{name}' not registered")
@@ -251,11 +251,11 @@ class PluginLoader[T]:
         return True
 
     async def load_all(self) -> int:
-        '''Load all discovered plugins.
+        """Load all discovered plugins.
 
         Returns:
             Number of plugins loaded.
-        '''
+        """
         loaded = 0
         for plugin in self._discoverer.discovered_plugins:
             if await self.load_plugin(plugin.name):
@@ -263,11 +263,11 @@ class PluginLoader[T]:
         return loaded
 
     async def initialize_all(self) -> int:
-        '''Initialize all loaded plugins.
+        """Initialize all loaded plugins.
 
         Returns:
             Number of plugins initialized.
-        '''
+        """
         initialized = 0
         for name in self._registry.list_by_state(PluginState.LOADED):
             if await self.initialize_plugin(name):
@@ -275,11 +275,11 @@ class PluginLoader[T]:
         return initialized
 
     async def activate_all(self) -> int:
-        '''Activate all registered plugins.
+        """Activate all registered plugins.
 
         Returns:
             Number of plugins activated.
-        '''
+        """
         activated = 0
         for name in self._registry.list_all():
             if await self.activate_plugin(name):
@@ -287,11 +287,11 @@ class PluginLoader[T]:
         return activated
 
     async def deactivate_all(self) -> int:
-        '''Deactivate all active plugins.
+        """Deactivate all active plugins.
 
         Returns:
             Number of plugins deactivated.
-        '''
+        """
         deactivated = 0
         for name in self._registry.list_by_state(PluginState.ACTIVATED):
             if await self.deactivate_plugin(name):
@@ -299,11 +299,11 @@ class PluginLoader[T]:
         return deactivated
 
     async def unload_all(self) -> int:
-        '''Unload all registered plugins.
+        """Unload all registered plugins.
 
         Returns:
             Number of plugins unloaded.
-        '''
+        """
         unloaded = 0
         for name in list(self._registry.list_all()):
             if await self.unload_plugin(name):
@@ -311,20 +311,20 @@ class PluginLoader[T]:
         return unloaded
 
     async def shutdown(self) -> None:
-        '''Gracefully shutdown all plugins.
+        """Gracefully shutdown all plugins.
 
         This method deactivates and unloads all plugins.
-        '''
+        """
         await self.deactivate_all()
         await self.unload_all()
-        logger.info('Plugin loader shutdown complete')
+        logger.info("Plugin loader shutdown complete")
 
     @property
     def registry(self) -> PluginRegistry[T]:
-        '''Get the plugin registry.'''
+        """Get the plugin registry."""
         return self._registry
 
     @property
     def discoverer(self) -> PluginDiscoverer[T]:
-        '''Get the plugin discoverer.'''
+        """Get the plugin discoverer."""
         return self._discoverer

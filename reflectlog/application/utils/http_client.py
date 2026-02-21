@@ -1,4 +1,4 @@
-'''HTTP client factory with connection pooling support.
+"""HTTP client factory with connection pooling support.
 
 This module provides centralized HTTP client creation with configurable
 connection pooling to optimize performance and reduce resource overhead.
@@ -21,7 +21,7 @@ Example:
         max_connections=100,
         max_keepalive_connections=20,
     )
-'''
+"""
 
 import os
 from typing import TYPE_CHECKING, Any
@@ -34,7 +34,7 @@ import httpx
 
 
 class HttpClientFactory:
-    '''Factory for creating HTTP clients with connection pooling.
+    """Factory for creating HTTP clients with connection pooling.
 
     Implements singleton pattern to reuse clients across the application.
     Connection pooling reduces TCP handshake overhead and improves performance.
@@ -45,7 +45,7 @@ class HttpClientFactory:
     - HTTP_CONNECT_TIMEOUT: Connection timeout in seconds (default: 30.0)
     - HTTP_READ_TIMEOUT: Read timeout in seconds (default: 30.0)
     - HTTP_WRITE_TIMEOUT: Write timeout in seconds (default: 30.0)
-    '''
+    """
 
     _httpx_client: httpx.Client | None = None
     _async_httpx_client: httpx.AsyncClient | None = None
@@ -54,36 +54,36 @@ class HttpClientFactory:
 
     @classmethod
     def get_max_connections(cls) -> int:
-        '''Get maximum connections from environment or default.'''
-        return int(os.getenv('HTTP_MAX_CONNECTIONS', '100'))
+        """Get maximum connections from environment or default."""
+        return int(os.getenv("HTTP_MAX_CONNECTIONS", "100"))
 
     @classmethod
     def get_max_keepalive_connections(cls) -> int:
-        '''Get maximum keepalive connections from environment or default.'''
-        return int(os.getenv('HTTP_MAX_KEEPALIVE_CONNECTIONS', '20'))
+        """Get maximum keepalive connections from environment or default."""
+        return int(os.getenv("HTTP_MAX_KEEPALIVE_CONNECTIONS", "20"))
 
     @classmethod
     def get_connect_timeout(cls) -> float:
-        '''Get connection timeout from environment or default.'''
-        return float(os.getenv('HTTP_CONNECT_TIMEOUT', '30.0'))
+        """Get connection timeout from environment or default."""
+        return float(os.getenv("HTTP_CONNECT_TIMEOUT", "30.0"))
 
     @classmethod
     def get_read_timeout(cls) -> float:
-        '''Get read timeout from environment or default.'''
-        return float(os.getenv('HTTP_READ_TIMEOUT', '30.0'))
+        """Get read timeout from environment or default."""
+        return float(os.getenv("HTTP_READ_TIMEOUT", "30.0"))
 
     @classmethod
     def get_write_timeout(cls) -> float:
-        '''Get write timeout from environment or default.'''
-        return float(os.getenv('HTTP_WRITE_TIMEOUT', '30.0'))
+        """Get write timeout from environment or default."""
+        return float(os.getenv("HTTP_WRITE_TIMEOUT", "30.0"))
 
     @classmethod
     def get_httpx_limits(cls) -> httpx.Limits:
-        '''Get httpx connection limits from configuration.
+        """Get httpx connection limits from configuration.
 
         Returns:
             httpx.Limits with configured connection pool settings.
-        '''
+        """
         return httpx.Limits(
             max_connections=cls.get_max_connections(),
             max_keepalive_connections=cls.get_max_keepalive_connections(),
@@ -91,11 +91,11 @@ class HttpClientFactory:
 
     @classmethod
     def get_httpx_timeout(cls) -> httpx.Timeout:
-        '''Get httpx timeout from configuration.
+        """Get httpx timeout from configuration.
 
         Returns:
             httpx.Timeout with configured timeout settings.
-        '''
+        """
         return httpx.Timeout(
             connect=cls.get_connect_timeout(),
             read=cls.get_read_timeout(),
@@ -114,7 +114,7 @@ class HttpClientFactory:
         write_timeout: float | None = None,
         http2: bool = True,
     ) -> httpx.Client:
-        '''Get or create pooled httpx client.
+        """Get or create pooled httpx client.
 
         Returns singleton client on first call to enable connection reuse.
 
@@ -128,7 +128,7 @@ class HttpClientFactory:
 
         Returns:
             Pooled httpx.Client instance.
-        '''
+        """
         if cls._httpx_client is not None:
             return cls._httpx_client
 
@@ -164,7 +164,7 @@ class HttpClientFactory:
         write_timeout: float | None = None,
         http2: bool = True,
     ) -> httpx.AsyncClient:
-        '''Get or create pooled async httpx client.
+        """Get or create pooled async httpx client.
 
         Returns singleton client on first call to enable connection reuse.
 
@@ -178,7 +178,7 @@ class HttpClientFactory:
 
         Returns:
             Pooled httpx.AsyncClient instance.
-        '''
+        """
         if cls._async_httpx_client is not None:
             return cls._async_httpx_client
 
@@ -213,7 +213,7 @@ class HttpClientFactory:
         read_timeout: float | None = None,
         http2: bool = False,
     ) -> aiohttp.ClientSession:
-        '''Get or create pooled aiohttp client.
+        """Get or create pooled aiohttp client.
 
         Returns singleton client on first call to enable connection reuse.
         Note: aiohttp does not support HTTP/2.
@@ -227,7 +227,7 @@ class HttpClientFactory:
 
         Returns:
             Pooled aiohttp.ClientSession instance.
-        '''
+        """
         if cls._aiohttp_client is not None:
             return cls._aiohttp_client
 
@@ -253,10 +253,10 @@ class HttpClientFactory:
 
     @classmethod
     async def close_all(cls) -> None:
-        '''Close all pooled HTTP clients.
+        """Close all pooled HTTP clients.
 
         Should be called on application shutdown to release resources.
-        '''
+        """
         if cls._httpx_client is not None:
             cls._httpx_client.close()
             cls._httpx_client = None
@@ -271,36 +271,36 @@ class HttpClientFactory:
 
 
 def get_pooled_httpx_client(**kwargs: Any) -> httpx.Client:
-    '''Convenience function to get pooled httpx client.
+    """Convenience function to get pooled httpx client.
 
     Args:
         **kwargs: Optional overrides for connection limits and timeouts.
 
     Returns:
         Pooled httpx.Client instance.
-    '''
+    """
     return HttpClientFactory.get_httpx_client(**kwargs)
 
 
 def get_pooled_async_httpx_client(**kwargs: Any) -> httpx.AsyncClient:
-    '''Convenience function to get pooled async httpx client.
+    """Convenience function to get pooled async httpx client.
 
     Args:
         **kwargs: Optional overrides for connection limits and timeouts.
 
     Returns:
         Pooled httpx.AsyncClient instance.
-    '''
+    """
     return HttpClientFactory.get_async_httpx_client(**kwargs)
 
 
 def get_pooled_aiohttp_client(**kwargs: Any) -> aiohttp.ClientSession:
-    '''Convenience function to get pooled aiohttp client.
+    """Convenience function to get pooled aiohttp client.
 
     Args:
         **kwargs: Optional overrides for connection limits and timeouts.
 
     Returns:
         Pooled aiohttp.ClientSession instance.
-    '''
+    """
     return HttpClientFactory.get_aiohttp_client(**kwargs)

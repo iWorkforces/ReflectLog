@@ -1,10 +1,10 @@
-'''Engine factory for search engine initialization.
+"""Engine factory for search engine initialization.
 
 This module provides the EngineFactory class that encapsulates the creation
 and configuration of search engine instances based on application configuration.
 It enables testing with mock engines and supports new engine types without
 modifying the factory interface.
-'''
+"""
 
 from dataclasses import dataclass
 
@@ -29,7 +29,7 @@ from reflectlog.infrastructure import (
 
 @dataclass
 class EngineFactoryResult:
-    '''Result of engine factory initialization.'''
+    """Result of engine factory initialization."""
 
     semantic_engine: USearchEngine
     tantivy_engine: TantivyEngine | None
@@ -39,7 +39,7 @@ class EngineFactoryResult:
 
 
 class EngineFactory:
-    '''Factory for creating and configuring search engine instances.
+    """Factory for creating and configuring search engine instances.
 
     This factory encapsulates all engine initialization logic, making it
     easy to test with mock engines and add support for new engine types.
@@ -49,10 +49,10 @@ class EngineFactory:
         result = factory.create_engines(config, logger)
         semantic = result.semantic_engine
         tantivy = result.tantivy_engine
-    '''
+    """
 
     def __init__(self):
-        '''Initialize the engine factory.'''
+        """Initialize the engine factory."""
         pass
 
     def create_engines(
@@ -60,7 +60,7 @@ class EngineFactory:
         config: Config,
         logger: StructuredLogger,
     ) -> EngineFactoryResult:
-        '''Create and configure all search engines based on configuration.
+        """Create and configure all search engines based on configuration.
 
         Args:
             config: Application configuration.
@@ -68,7 +68,7 @@ class EngineFactory:
 
         Returns:
             EngineFactoryResult with all initialized engines.
-        '''
+        """
         # Create USearch semantic engine
         semantic_engine = self._create_semantic_engine(config, logger)
 
@@ -91,7 +91,7 @@ class EngineFactory:
         config: Config,
         logger: StructuredLogger,
     ) -> USearchEngine:
-        '''Create and configure USearch semantic engine.
+        """Create and configure USearch semantic engine.
 
         Args:
             config: Application configuration.
@@ -99,7 +99,7 @@ class EngineFactory:
 
         Returns:
             Configured USearchEngine instance.
-        '''
+        """
         usearch_config = USearchConfig.from_app_config(config)
         embedder = self._create_embedder(config, logger)
         return USearchEngine(usearch_config, embedder=embedder, logger=logger)
@@ -109,7 +109,7 @@ class EngineFactory:
         config: Config,
         logger: StructuredLogger,
     ) -> LangchainQwenEmbeddings | CachedEmbeddings:
-        '''Create embedder with optional caching.
+        """Create embedder with optional caching.
 
         Args:
             config: Application configuration.
@@ -117,17 +117,17 @@ class EngineFactory:
 
         Returns:
             Embedder instance (possibly wrapped with caching).
-        '''
+        """
         base_embedder = LangchainQwenEmbeddings(
             config={
-                'model': config.embedding_model,
-                'embedding_dims': config.qwen_embedding_dims
-                if config.embedder_provider == 'langchain'
+                "model": config.embedding_model,
+                "embedding_dims": config.qwen_embedding_dims
+                if config.embedder_provider == "langchain"
                 else config.embedding_dims,
-                'api_key': config.openrouter_api_key.get_secret_value(),
-                'openai_base_url': config.openrouter_base_url,
-                'batch_size': config.embedding_batch_size,
-                'max_concurrent_batches': config.embedding_max_concurrent_batches,
+                "api_key": config.openrouter_api_key.get_secret_value(),
+                "openai_base_url": config.openrouter_base_url,
+                "batch_size": config.embedding_batch_size,
+                "max_concurrent_batches": config.embedding_max_concurrent_batches,
             }
         )
 
@@ -145,7 +145,7 @@ class EngineFactory:
         config: Config,
         logger: StructuredLogger,
     ) -> TantivyEngine | None:
-        '''Create Tantivy full-text engine if hybrid search is enabled.
+        """Create Tantivy full-text engine if hybrid search is enabled.
 
         Args:
             config: Application configuration.
@@ -153,7 +153,7 @@ class EngineFactory:
 
         Returns:
             TantivyEngine instance or None if hybrid search is disabled.
-        '''
+        """
         if not config.enable_hybrid_search:
             return None
 
@@ -171,7 +171,7 @@ class EngineFactory:
         config: Config,
         logger: StructuredLogger,
     ) -> FusionEngine:
-        '''Create fusion engine for hybrid ranking.
+        """Create fusion engine for hybrid ranking.
 
         Args:
             config: Application configuration.
@@ -179,7 +179,7 @@ class EngineFactory:
 
         Returns:
             Configured FusionEngine instance.
-        '''
+        """
         return create_fusion_engine(
             method=config.fusion_method,
             normalization=config.fusion_normalization,
@@ -192,7 +192,7 @@ def create_llm_reranker(
     config: Config,
     logger: StructuredLogger,
 ) -> LLMReranker | None:
-    '''Create LLM reranker if configured.
+    """Create LLM reranker if configured.
 
     Args:
         config: Application configuration.
@@ -200,8 +200,8 @@ def create_llm_reranker(
 
     Returns:
         LLMReranker instance or None if not configured.
-    '''
-    if config.reranker_engine != 'llm':
+    """
+    if config.reranker_engine != "llm":
         return None
 
     reranker_config = LLMRerankerConfig.from_app_config(config)
@@ -212,7 +212,7 @@ def create_cross_encoder_reranker(
     config: Config,
     logger: StructuredLogger,
 ) -> CrossEncoderReranker | None:
-    '''Create CrossEncoder reranker if configured.
+    """Create CrossEncoder reranker if configured.
 
     Args:
         config: Application configuration.
@@ -220,8 +220,8 @@ def create_cross_encoder_reranker(
 
     Returns:
         CrossEncoderReranker instance or None if not configured.
-    '''
-    if config.reranker_engine != 'cross_encoder':
+    """
+    if config.reranker_engine != "cross_encoder":
         return None
 
     ce_config = CrossEncoderConfig.from_app_config(config)
@@ -232,7 +232,7 @@ def create_smart_replacer(
     config: Config,
     logger: StructuredLogger,
 ) -> SmartReplacer | None:
-    '''Create SmartReplacer if enabled.
+    """Create SmartReplacer if enabled.
 
     Args:
         config: Application configuration.
@@ -240,7 +240,7 @@ def create_smart_replacer(
 
     Returns:
         SmartReplacer instance or None if disabled.
-    '''
+    """
     if not config.enable_smart_replace:
         return None
 

@@ -1,4 +1,4 @@
-'''Add tool implementation for ReflectLogMCP Server.'''
+"""Add tool implementation for ReflectLogMCP Server."""
 
 import time
 from typing import Any, cast
@@ -13,25 +13,25 @@ from .base import BaseTool
 
 
 class AddTool(BaseTool):
-    '''Tool for adding memories to memory storage.'''
+    """Tool for adding memories to memory storage."""
 
     def get_name(self) -> str:
-        '''Get the tool name.'''
-        return 'add'
+        """Get the tool name."""
+        return "add"
 
     def get_instruction_snippet(self) -> str:
-        '''Get the instruction snippet for MCP_INSTRUCTIONS.'''
+        """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
-            '    • add(memories: list[str])\n'
-            '      Add memories with semantic embeddings. Empty lists are no-op.\n'
-            '      Memories must be 1-30720 characters, non-whitespace.'
+            "    • add(memories: list[str])\n"
+            "      Add memories with semantic embeddings. Empty lists are no-op.\n"
+            "      Memories must be 1-30720 characters, non-whitespace."
         )
 
     def get_handler(self):
-        '''Get the async tool handler function.'''
+        """Get the async tool handler function."""
 
         async def add(memories: list[str], dry_run: bool = False) -> None:
-            '''Add memories to the memory store with parallel processing (async).
+            """Add memories to the memory store with parallel processing (async).
 
             This tool stores one or more text memories in the memory store using
             semantic embeddings. Memories are processed concurrently for improved
@@ -63,11 +63,11 @@ class AddTool(BaseTool):
                 >>> add(["Meeting notes: Discussed API design"])
                 >>> add([])  # No-op, no error
                 >>> add(["Test message"], dry_run=True)  # Check replacements without storing
-            '''
+            """
             # Handle empty list gracefully (no-op, no error)
             if not memories:
-                self.log_invocation('add', count=0)
-                self.logger.info('Add called with empty list, nothing to store')
+                self.log_invocation("add", count=0)
+                self.logger.info("Add called with empty list, nothing to store")
                 return
 
             # Validate memories
@@ -76,30 +76,30 @@ class AddTool(BaseTool):
             )
 
             if not is_valid:
-                self.log_error('add', ValueError(error_msg), count=len(memories))
-                raise ValueError(f'Invalid memory: {error_msg}')
+                self.log_error("add", ValueError(error_msg), count=len(memories))
+                raise ValueError(f"Invalid memory: {error_msg}")
 
             # Log invocation with detailed info
             start_time = time.time()
-            mode_str = 'DRY_RUN' if dry_run else 'LIVE'
+            mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.log_invocation(
-                'add', count=len(memories), mode=mode_str, dry_run=dry_run
+                "add", count=len(memories), mode=mode_str, dry_run=dry_run
             )
 
             # Log operation header
             total_chars = sum(len(m) for m in memories)
             self.logger.info(
-                '=' * LOG_SEPARATOR_LENGTH,
-                extra={'tool': 'add', 'section': 'header'},
+                "=" * LOG_SEPARATOR_LENGTH,
+                extra={"tool": "add", "section": "header"},
             )
             self.logger.info(
-                f'ADD OPERATION: Storing {len(memories)} memory(ies) '
-                f'({total_chars:,} total characters)',
+                f"ADD OPERATION: Storing {len(memories)} memory(ies) "
+                f"({total_chars:,} total characters)",
                 extra={
-                    'tool': 'add',
-                    'memory_count': len(memories),
-                    'total_characters': total_chars,
-                    'hybrid_mode': self.config.enable_hybrid_search,
+                    "tool": "add",
+                    "memory_count": len(memories),
+                    "total_characters": total_chars,
+                    "hybrid_mode": self.config.enable_hybrid_search,
                 },
             )
 
@@ -108,20 +108,20 @@ class AddTool(BaseTool):
             for idx, memory in enumerate(memories[:log_limit], 1):
                 preview = truncate_memory(memory, max_length=80)
                 self.logger.info(
-                    f'  Memory {idx}/{len(memories)} ({len(memory):,} chars): {preview}',
+                    f"  Memory {idx}/{len(memories)} ({len(memory):,} chars): {preview}",
                     extra={
-                        'tool': 'add',
-                        'memory_index': idx,
-                        'memory_length': len(memory),
+                        "tool": "add",
+                        "memory_index": idx,
+                        "memory_length": len(memory),
                     },
                 )
             if len(memories) > log_limit:
                 self.logger.info(
-                    f'  ... {len(memories) - log_limit} more memory(ies) omitted from logs',
+                    f"  ... {len(memories) - log_limit} more memory(ies) omitted from logs",
                     extra={
-                        'tool': 'add',
-                        'omitted_count': len(memories) - log_limit,
-                        'memory_count': len(memories),
+                        "tool": "add",
+                        "omitted_count": len(memories) - log_limit,
+                        "memory_count": len(memories),
                     },
                 )
 
@@ -139,36 +139,36 @@ class AddTool(BaseTool):
                 replaced_count = result.replaced_count
 
                 self.logger.info(
-                    '─' * 50,
-                    extra={'tool': 'add', 'section': 'summary'},
+                    "─" * 50,
+                    extra={"tool": "add", "section": "summary"},
                 )
 
                 # Build summary message
                 summary_parts: list[str] = []
                 if stored_count > 0:
-                    summary_parts.append(f'{stored_count} stored')
+                    summary_parts.append(f"{stored_count} stored")
                 if replaced_count > 0:
-                    summary_parts.append(f'{replaced_count} replaced')
+                    summary_parts.append(f"{replaced_count} replaced")
                 if skipped_count > 0:
-                    summary_parts.append(f'{skipped_count} skipped (duplicates)')
+                    summary_parts.append(f"{skipped_count} skipped (duplicates)")
 
                 if summary_parts:
-                    summary = ', '.join(summary_parts)
+                    summary = ", ".join(summary_parts)
                     self.logger.info(
-                        f'ADD SUMMARY: {summary}',
+                        f"ADD SUMMARY: {summary}",
                         extra={
-                            'tool': 'add',
-                            'stored_count': stored_count,
-                            'replaced_count': replaced_count,
-                            'skipped_count': skipped_count,
+                            "tool": "add",
+                            "stored_count": stored_count,
+                            "replaced_count": replaced_count,
+                            "skipped_count": skipped_count,
                         },
                     )
                 else:
                     self.logger.info(
-                        f'ADD COMPLETE: All {stored_count} memory(ies) stored successfully',
+                        f"ADD COMPLETE: All {stored_count} memory(ies) stored successfully",
                         extra={
-                            'tool': 'add',
-                            'stored_count': stored_count,
+                            "tool": "add",
+                            "stored_count": stored_count,
                         },
                     )
 
@@ -178,33 +178,33 @@ class AddTool(BaseTool):
                         f"  Replaced: '{replacement.old_memory[:50]}...' → "
                         f"'{replacement.new_memory[:50]}...' (confidence: {replacement.confidence:.2f})",
                         extra={
-                            'tool': 'add',
-                            'action': 'replacement',
-                            'confidence': replacement.confidence,
-                            'reason': replacement.reason,
+                            "tool": "add",
+                            "action": "replacement",
+                            "confidence": replacement.confidence,
+                            "reason": replacement.reason,
                         },
                     )
 
                 avg_time = duration / len(memories) if memories else 0
                 self.logger.info(
-                    f'Completed in {duration:.0f}ms ({avg_time:.0f}ms/memory avg)',
+                    f"Completed in {duration:.0f}ms ({avg_time:.0f}ms/memory avg)",
                     extra={
-                        'tool': 'add',
-                        'duration_ms': duration,
-                        'avg_ms_per_memory': avg_time,
+                        "tool": "add",
+                        "duration_ms": duration,
+                        "avg_ms_per_memory": avg_time,
                     },
                 )
                 self.logger.info(
-                    '=' * LOG_SEPARATOR_LENGTH,
-                    extra={'tool': 'add', 'section': 'footer'},
+                    "=" * LOG_SEPARATOR_LENGTH,
+                    extra={"tool": "add", "section": "footer"},
                 )
 
-                self.log_completion('add', requested=len(memories), stored=stored_count)
+                self.log_completion("add", requested=len(memories), stored=stored_count)
 
             except Exception as e:
-                self.log_error('add', e, count=len(memories))
+                self.log_error("add", e, count=len(memories))
                 raise StorageError(
-                    f'Failed to add memories to memory store: {e}'
+                    f"Failed to add memories to memory store: {e}"
                 ) from e
 
         return add

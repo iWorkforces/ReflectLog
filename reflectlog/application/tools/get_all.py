@@ -1,4 +1,4 @@
-'''Get all tool implementation for ReflectLogMCP Server.'''
+"""Get all tool implementation for ReflectLogMCP Server."""
 
 from asyncer import asyncify
 
@@ -8,24 +8,24 @@ from .base import BaseTool
 
 
 class GetAllTool(BaseTool):
-    '''Tool for retrieving all memories from memory storage.'''
+    """Tool for retrieving all memories from memory storage."""
 
     def get_name(self) -> str:
-        '''Get the tool name.'''
-        return 'get_all'
+        """Get the tool name."""
+        return "get_all"
 
     def get_instruction_snippet(self) -> str:
-        '''Get the instruction snippet for MCP_INSTRUCTIONS.'''
+        """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
-            '    • get_all() -> list[str]\n'
-            '      Retrieve all stored memories. Returns empty list if none stored.'
+            "    • get_all() -> list[str]\n"
+            "      Retrieve all stored memories. Returns empty list if none stored."
         )
 
     def get_handler(self):
-        '''Get the async tool handler function.'''
+        """Get the async tool handler function."""
 
         async def get_all() -> list[str]:
-            '''Retrieve all stored memories (async).
+            """Retrieve all stored memories (async).
 
             Returns all memories currently in the memory store. Order is determined
             by the underlying storage mechanism (typically insertion order).
@@ -45,9 +45,9 @@ class GetAllTool(BaseTool):
                 >>> add(["Message 1", "Message 2"])
                 >>> get_all()
                 ["Message 1", "Message 2"]
-            '''
+            """
             try:
-                self.log_invocation('get_all')
+                self.log_invocation("get_all")
 
                 # Retrieve all memories via asyncify (non-blocking)
                 memories = await asyncify(self.memory.get_all)()
@@ -55,24 +55,24 @@ class GetAllTool(BaseTool):
                 # Log each retrieved memory
                 for idx, memory in enumerate(memories, 1):
                     self.logger.info(
-                        f'[{idx}/{len(memories)}] Memory: {truncate_memory(memory)}',
+                        f"[{idx}/{len(memories)}] Memory: {truncate_memory(memory)}",
                         extra={
-                            'tool': 'get_all',
-                            'memory_index': idx,
-                            'total_memories': len(memories),
-                            'memory_length': len(memory),
+                            "tool": "get_all",
+                            "memory_index": idx,
+                            "total_memories": len(memories),
+                            "memory_length": len(memory),
                         },
                     )
 
-                self.log_completion('get_all', count=len(memories))
+                self.log_completion("get_all", count=len(memories))
 
                 # Return copy to prevent external mutation
                 return memories.copy()
 
             except Exception as e:
-                self.log_error('get_all', e)
+                self.log_error("get_all", e)
                 raise StorageError(
-                    f'Failed to retrieve memories from memory store: {e}'
+                    f"Failed to retrieve memories from memory store: {e}"
                 ) from e
 
         return get_all

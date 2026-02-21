@@ -1,11 +1,11 @@
-'''Add pipeline with pluggable phases.
+"""Add pipeline with pluggable phases.
 
 This module provides the AddPipeline class that orchestrates the
 3-phase add process with pluggable phases:
 1. Duplicate Detection
 2. Smart Replacement Detection
 3. Sequential Storage
-'''
+"""
 
 from dataclasses import dataclass, field
 import logging
@@ -26,7 +26,7 @@ def _empty_replacements() -> list[ReplacementInfo]:
 
 @dataclass
 class ReplacementInfo:
-    '''Information about a memory replacement.'''
+    """Information about a memory replacement."""
 
     old_memory: str
     new_memory: str
@@ -37,7 +37,7 @@ class ReplacementInfo:
 
 @dataclass
 class AddResult:
-    '''Result of adding memories to memory storage.'''
+    """Result of adding memories to memory storage."""
 
     stored_count: int = 0
     skipped_count: int = 0
@@ -46,14 +46,14 @@ class AddResult:
 
 
 class IDuplicateDetectionPhase(Protocol):
-    '''Protocol for duplicate detection phases.'''
+    """Protocol for duplicate detection phases."""
 
     async def detect(
         self,
         memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[str], int]:
-        '''Detect duplicates in memories.
+        """Detect duplicates in memories.
 
         Args:
             memories: Memories to check.
@@ -61,19 +61,19 @@ class IDuplicateDetectionPhase(Protocol):
 
         Returns:
             Tuple of (unique_memories, duplicates, duplicate_count).
-        '''
+        """
         ...
 
 
 class IReplacementDetectionPhase(Protocol):
-    '''Protocol for smart replacement detection phases.'''
+    """Protocol for smart replacement detection phases."""
 
     async def detect(
         self,
         memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[ReplacementInfo]]:
-        '''Detect potential replacements.
+        """Detect potential replacements.
 
         Args:
             memories: Memories to check.
@@ -81,19 +81,19 @@ class IReplacementDetectionPhase(Protocol):
 
         Returns:
             Tuple of (memories_to_store, replacement_info).
-        '''
+        """
         ...
 
 
 class IStoragePhase(Protocol):
-    '''Protocol for storage phases.'''
+    """Protocol for storage phases."""
 
     async def store(
         self,
         memories: list[str],
         project_id: str,
     ) -> int:
-        '''Store memories.
+        """Store memories.
 
         Args:
             memories: Memories to store.
@@ -101,12 +101,12 @@ class IStoragePhase(Protocol):
 
         Returns:
             Number of memories stored.
-        '''
+        """
         ...
 
 
 class DefaultDuplicateDetectionPhase:
-    '''Default duplicate detection phase.'''
+    """Default duplicate detection phase."""
 
     def __init__(
         self,
@@ -124,7 +124,7 @@ class DefaultDuplicateDetectionPhase:
         memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[str], int]:
-        '''Detect duplicates using storage check and batch check.'''
+        """Detect duplicates using storage check and batch check."""
         if not self._deduplicate:
             return memories, [], 0
 
@@ -157,19 +157,19 @@ class DefaultDuplicateDetectionPhase:
 
 
 class NoopReplacementDetectionPhase:
-    '''No-op replacement detection (skip smart replacement).'''
+    """No-op replacement detection (skip smart replacement)."""
 
     async def detect(
         self,
         memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[ReplacementInfo]]:
-        '''Return memories unchanged with no replacements.'''
+        """Return memories unchanged with no replacements."""
         return memories, []
 
 
 class DefaultStoragePhase:
-    '''Default storage phase using backend.'''
+    """Default storage phase using backend."""
 
     def __init__(
         self,
@@ -187,7 +187,7 @@ class DefaultStoragePhase:
         memories: list[str],
         project_id: str,
     ) -> int:
-        '''Store memories with write lock protection.'''
+        """Store memories with write lock protection."""
         with self._write_lock:
             if not memories:
                 return 0
@@ -203,7 +203,7 @@ class DefaultStoragePhase:
 
 @dataclass
 class AddPipelineConfig:
-    '''Configuration for add pipeline phases.'''
+    """Configuration for add pipeline phases."""
 
     deduplicate_memories: bool
     enable_smart_replace: bool
@@ -211,7 +211,7 @@ class AddPipelineConfig:
 
 
 class AddPipeline:
-    '''Modular add pipeline with pluggable phases.
+    """Modular add pipeline with pluggable phases.
 
     This pipeline orchestrates the add process with configurable phases:
     1. Duplicate Detection
@@ -226,7 +226,7 @@ class AddPipeline:
             config=pipeline_config,
         )
         result = await pipeline.execute(memories, project_id)
-    '''
+    """
 
     def __init__(
         self,
@@ -237,7 +237,7 @@ class AddPipeline:
         logger: StructuredLogger,
     ):
         super().__init__()
-        '''Initialize add pipeline.
+        """Initialize add pipeline.
 
         Args:
             dedup_phase: Phase for detecting duplicates.
@@ -245,7 +245,7 @@ class AddPipeline:
             storage_phase: Phase for storing memories.
             config: Pipeline configuration.
             logger: Structured logger.
-        '''
+        """
         self._dedup_phase = dedup_phase
         self._replace_phase = replace_phase
         self._storage_phase = storage_phase
@@ -258,7 +258,7 @@ class AddPipeline:
         project_id: str,
         dry_run: bool = False,
     ) -> AddResult:
-        '''Execute the full add pipeline.
+        """Execute the full add pipeline.
 
         Args:
             memories: Memories to add.
@@ -267,7 +267,7 @@ class AddPipeline:
 
         Returns:
             AddResult with details about stored/skipped/replaced memories.
-        '''
+        """
         # Phase 1: Duplicate Detection
         unique_memories, duplicates, _ = await self._dedup_phase.detect(
             memories, project_id
@@ -306,7 +306,7 @@ def create_default_pipeline(
     logger: StructuredLogger,
     write_lock: threading.Lock,
 ) -> AddPipeline:
-    '''Create an add pipeline with default configuration.
+    """Create an add pipeline with default configuration.
 
     Args:
         semantic_backend: Semantic search backend (USearch).
@@ -318,7 +318,7 @@ def create_default_pipeline(
 
     Returns:
         Configured AddPipeline instance.
-    '''
+    """
     # Duplicate detection phase
     dedup_phase = DefaultDuplicateDetectionPhase(
         semantic_backend,
@@ -356,7 +356,7 @@ def create_default_pipeline(
 
 
 class DefaultReplacementDetectionPhase:
-    '''Default smart replacement detection phase using a reranker.'''
+    """Default smart replacement detection phase using a reranker."""
 
     def __init__(self, replacer: IReranker):
         super().__init__()
@@ -367,7 +367,7 @@ class DefaultReplacementDetectionPhase:
         memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[ReplacementInfo]]:
-        '''Detect potential replacements using the replacer.'''
+        """Detect potential replacements using the replacer."""
         # TODO: Implement smart replacement detection
         # This would use the replacer to check for similar memories
         return memories, []

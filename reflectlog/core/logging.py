@@ -1,9 +1,9 @@
-'''Logging protocols for ReflectLogMCP.
+"""Logging protocols for ReflectLogMCP.
 
 This module defines protocols for logging and observability. These
 abstractions enable different logging implementations while providing
 a consistent interface for structured logging.
-'''
+"""
 
 from datetime import datetime
 from enum import Enum
@@ -11,7 +11,7 @@ from typing import Any, Protocol, runtime_checkable
 
 
 class LogLevel(Enum):
-    '''Log level enumeration matching Python logging levels.'''
+    """Log level enumeration matching Python logging levels."""
 
     DEBUG = 10
     INFO = 20
@@ -22,12 +22,12 @@ class LogLevel(Enum):
 
 @runtime_checkable
 class ILogSink(Protocol):
-    '''Protocol for log destinations.
+    """Protocol for log destinations.
 
     This protocol defines the interface for log sinks that receive
     and process log records. Implementations can write to files,
     network services, or any other destination.
-    '''
+    """
 
     def emit(
         self,
@@ -36,41 +36,41 @@ class ILogSink(Protocol):
         timestamp: datetime,
         **kwargs: Any,
     ) -> None:
-        '''Emit a log record.
+        """Emit a log record.
 
         Args:
             level: Log level.
             message: Log message.
             timestamp: Event timestamp.
             **kwargs: Additional structured data.
-        '''
+        """
         ...
 
     def close(self) -> None:
-        '''Release sink resources.'''
+        """Release sink resources."""
         ...
 
 
 @runtime_checkable
 class ILoggingService(Protocol):
-    '''Protocol for logging services.
+    """Protocol for logging services.
 
     This protocol defines the interface for structured logging services
     that provide type-safe logging with consistent formatting and
     metadata handling.
-    '''
+    """
 
     def debug(
         self,
         message: str,
         **kwargs: Any,
     ) -> None:
-        '''Log at DEBUG level.
+        """Log at DEBUG level.
 
         Args:
             message: Log message.
             **kwargs: Additional context.
-        '''
+        """
         ...
 
     def info(
@@ -78,12 +78,12 @@ class ILoggingService(Protocol):
         message: str,
         **kwargs: Any,
     ) -> None:
-        '''Log at INFO level.
+        """Log at INFO level.
 
         Args:
             message: Log message.
             **kwargs: Additional context.
-        '''
+        """
         ...
 
     def warning(
@@ -91,12 +91,12 @@ class ILoggingService(Protocol):
         message: str,
         **kwargs: Any,
     ) -> None:
-        '''Log at WARNING level.
+        """Log at WARNING level.
 
         Args:
             message: Log message.
             **kwargs: Additional context.
-        '''
+        """
         ...
 
     def error(
@@ -104,12 +104,12 @@ class ILoggingService(Protocol):
         message: str,
         **kwargs: Any,
     ) -> None:
-        '''Log at ERROR level.
+        """Log at ERROR level.
 
         Args:
             message: Log message.
             **kwargs: Additional context.
-        '''
+        """
         ...
 
     def critical(
@@ -117,12 +117,12 @@ class ILoggingService(Protocol):
         message: str,
         **kwargs: Any,
     ) -> None:
-        '''Log at CRITICAL level.
+        """Log at CRITICAL level.
 
         Args:
             message: Log message.
             **kwargs: Additional context.
-        '''
+        """
         ...
 
     def log(
@@ -131,43 +131,43 @@ class ILoggingService(Protocol):
         message: str,
         **kwargs: Any,
     ) -> None:
-        '''Log at specified level.
+        """Log at specified level.
 
         Args:
             level: Log level.
             message: Log message.
             **kwargs: Additional context.
-        '''
+        """
         ...
 
     def bind(self, **kwargs: Any) -> ILoggingService:
-        '''Create a bound logger with preset context.
+        """Create a bound logger with preset context.
 
         Args:
             **kwargs: Context to bind.
 
         Returns:
             New logger with bound context.
-        '''
+        """
         ...
 
     @property
     def level(self) -> LogLevel:
-        '''Current log level.'''
+        """Current log level."""
         ...
 
     def close(self) -> None:
-        '''Release logging resources.'''
+        """Release logging resources."""
         ...
 
 
 @runtime_checkable
 class IStructuredLogger(Protocol):
-    '''Protocol for structured logging with extra context.
+    """Protocol for structured logging with extra context.
 
     This protocol matches the StructuredLogger implementation,
     which uses an `extra` dict parameter instead of **kwargs.
-    '''
+    """
 
     def debug(
         self,
@@ -175,7 +175,7 @@ class IStructuredLogger(Protocol):
         extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
-        '''Log at DEBUG level.'''
+        """Log at DEBUG level."""
         ...
 
     def info(
@@ -184,7 +184,7 @@ class IStructuredLogger(Protocol):
         extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
-        '''Log at INFO level.'''
+        """Log at INFO level."""
         ...
 
     def warning(
@@ -193,7 +193,7 @@ class IStructuredLogger(Protocol):
         extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
-        '''Log at WARNING level.'''
+        """Log at WARNING level."""
         ...
 
     def error(
@@ -202,9 +202,9 @@ class IStructuredLogger(Protocol):
         extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
-        '''Log at ERROR level.'''
+        """Log at ERROR level."""
         ...
 
     def is_enabled_for(self, level: int) -> bool:
-        '''Check if logger is enabled for the given level.'''
+        """Check if logger is enabled for the given level."""
         ...

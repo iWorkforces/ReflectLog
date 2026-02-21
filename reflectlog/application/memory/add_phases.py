@@ -1,4 +1,4 @@
-'''Add operation phases for the 3-phase parallel add pipeline.
+"""Add operation phases for the 3-phase parallel add pipeline.
 
 This module extracts the add operation logic from MemoryManager into
 separate phase classes. The 3 phases are:
@@ -8,7 +8,7 @@ separate phase classes. The 3 phases are:
 
 Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
-'''
+"""
 
 from dataclasses import dataclass, field
 import threading
@@ -27,7 +27,7 @@ from .match_utils import has_exact_match
 
 @dataclass
 class ReplacementInfo:
-    '''Information about a memory replacement that occurred.
+    """Information about a memory replacement that occurred.
 
     Attributes:
         old_memory: The memory that was replaced (deleted).
@@ -35,7 +35,7 @@ class ReplacementInfo:
         confidence: LLM confidence score for the replacement decision (0.0-1.0).
         reason: LLM's explanation for why replacement was appropriate.
         similarity_score: Embedding similarity between old and new memories.
-    '''
+    """
 
     old_memory: str
     new_memory: str
@@ -46,7 +46,7 @@ class ReplacementInfo:
 
 @dataclass
 class AddResult:
-    '''Result of adding memories to memory storage.
+    """Result of adding memories to memory storage.
 
     Provides detailed information about what happened during the add operation,
     including which memories were stored, skipped (duplicates), and replaced.
@@ -56,7 +56,7 @@ class AddResult:
         skipped_count: Number of memories skipped (duplicates).
         replaced_count: Number of existing memories that were replaced.
         replacements: Detailed info about each replacement that occurred.
-    '''
+    """
 
     stored_count: int = 0
     skipped_count: int = 0
@@ -66,14 +66,14 @@ class AddResult:
 
 @dataclass
 class Phase1Result:
-    '''Result of Phase 1: Duplicate Detection.
+    """Result of Phase 1: Duplicate Detection.
 
     Attributes:
         unique_memories: Memories that are unique within the batch.
         storage_duplicates: Memories that already exist in storage.
         batch_duplicates_count: Count of duplicates within the batch.
         duration: Time taken for phase 1 execution.
-    '''
+    """
 
     unique_memories: list[str]
     storage_duplicates: list[str]
@@ -83,13 +83,13 @@ class Phase1Result:
 
 @dataclass
 class Phase2Result:
-    '''Result of Phase 2: Smart Replacement Detection.
+    """Result of Phase 2: Smart Replacement Detection.
 
     Attributes:
         replacement_map: Mapping from memory to list of ReplacementInfo objects.
         total_replacements: Total number of replacements detected.
         duration: Time taken for phase 2 execution.
-    '''
+    """
 
     replacement_map: dict[str, list[ReplacementInfo]]
     total_replacements: int
@@ -98,14 +98,14 @@ class Phase2Result:
 
 @dataclass
 class Phase3Result:
-    '''Result of Phase 3: Sequential Storage.
+    """Result of Phase 3: Sequential Storage.
 
     Attributes:
         stored_count: Number of memories stored.
         replaced_count: Number of memories replaced.
         replacements: List of ReplacementInfo objects.
         duration: Time taken for phase 3 execution.
-    '''
+    """
 
     stored_count: int
     replaced_count: int
@@ -114,13 +114,13 @@ class Phase3Result:
 
 
 class DuplicateDetectionPhase:
-    '''Phase 1: Parallel duplicate detection.
+    """Phase 1: Parallel duplicate detection.
 
     This phase:
     1. Deduplicates within the batch itself
     2. Checks against existing storage in parallel
     3. Returns unique memories and storage duplicates
-    '''
+    """
 
     def __init__(
         self,
@@ -129,14 +129,14 @@ class DuplicateDetectionPhase:
         config: Config,
         logger: StructuredLogger,
     ):
-        '''Initialize duplicate detection phase.
+        """Initialize duplicate detection phase.
 
         Args:
             semantic_engine: USearchEngine for semantic search and direct database lookup.
             tantivy_engine: TantivyEngine for fast exact phrase matching.
             config: Application configuration.
             logger: Structured logger instance.
-        '''
+        """
         self._semantic_engine = semantic_engine
         self._tantivy_engine = tantivy_engine
         self.config = config
@@ -144,14 +144,14 @@ class DuplicateDetectionPhase:
         self._project_id = config.project_id
 
     async def execute(self, memories: list[str]) -> Phase1Result:
-        '''Execute Phase 1: Parallel duplicate detection.
+        """Execute Phase 1: Parallel duplicate detection.
 
         Args:
             memories: List of memories to check for duplicates.
 
         Returns:
             Phase1Result with unique memories and duplicate information.
-        '''
+        """
         phase_start = time.perf_counter()
 
         # Step 1: Deduplicate within the batch itself (preserve order, keep first)
@@ -169,10 +169,10 @@ class DuplicateDetectionPhase:
         batch_duplicates_count = len(batch_duplicate_indices)
         if batch_duplicates_count > 0:
             self.logger.info(
-                f'Phase 1: Found {batch_duplicates_count} duplicates within batch',
+                f"Phase 1: Found {batch_duplicates_count} duplicates within batch",
                 extra={
-                    'batch_duplicates': batch_duplicates_count,
-                    'unique_count': len(unique_memories),
+                    "batch_duplicates": batch_duplicates_count,
+                    "unique_count": len(unique_memories),
                 },
             )
 
@@ -181,7 +181,7 @@ class DuplicateDetectionPhase:
         semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
         async def check_duplicate(memory: str) -> tuple[str, bool]:
-            '''Check if memory is duplicate (with semaphore for concurrency control).'''
+            """Check if memory is duplicate (with semaphore for concurrency control)."""
             async with semaphore:
                 is_dup = await asyncify(self._has_exact_match)(memory)
                 return (memory, is_dup)
@@ -213,14 +213,14 @@ class DuplicateDetectionPhase:
 
         duration = time.perf_counter() - phase_start
         self.logger.info(
-            f'Phase 1 complete: {len(non_duplicate_memories)} unique, '
-            f'{len(storage_duplicates)} storage duplicates ({duration:.3f}s)',
+            f"Phase 1 complete: {len(non_duplicate_memories)} unique, "
+            f"{len(storage_duplicates)} storage duplicates ({duration:.3f}s)",
             extra={
-                'phase': 1,
-                'duration_ms': int(duration * 1000),
-                'unique_count': len(non_duplicate_memories),
-                'storage_duplicates': len(storage_duplicates),
-                'batch_duplicates': batch_duplicates_count,
+                "phase": 1,
+                "duration_ms": int(duration * 1000),
+                "unique_count": len(non_duplicate_memories),
+                "storage_duplicates": len(storage_duplicates),
+                "batch_duplicates": batch_duplicates_count,
             },
         )
 
@@ -232,7 +232,7 @@ class DuplicateDetectionPhase:
         )
 
     def _has_exact_match(self, content: str) -> bool:
-        '''Check whether the exact memory already exists in storage.
+        """Check whether the exact memory already exists in storage.
 
         Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
         falling back to direct database lookup otherwise. Both paths are O(log n)
@@ -240,7 +240,7 @@ class DuplicateDetectionPhase:
 
         Sprint 2.1 Optimization: Fallback now uses get_id_by_content() for direct
         indexed database lookup instead of semantic search with embedding API call.
-        '''
+        """
         return has_exact_match(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
@@ -251,14 +251,14 @@ class DuplicateDetectionPhase:
 
 
 class SmartReplacementPhase:
-    '''Phase 2: Parallel smart replacement detection.
+    """Phase 2: Parallel smart replacement detection.
 
     This phase:
     1. Finds similar existing memories via semantic search
     2. Filters by similarity threshold
     3. Checks candidates in parallel with LLM
     4. Returns replacement map
-    '''
+    """
 
     def __init__(
         self,
@@ -267,14 +267,14 @@ class SmartReplacementPhase:
         logger: StructuredLogger,
         memory_manager: Any,  # MemoryManager for lazy SmartReplacer fetching
     ):
-        '''Initialize smart replacement phase.
+        """Initialize smart replacement phase.
 
         Args:
             semantic_engine: USearchEngine for semantic search.
             config: Application configuration.
             logger: Structured logger instance.
             memory_manager: MemoryManager instance for lazy SmartReplacer fetching.
-        '''
+        """
         self._semantic_engine = semantic_engine
         self.config = config
         self.logger = logger
@@ -282,33 +282,33 @@ class SmartReplacementPhase:
         self._memory_manager = memory_manager
 
     def _get_smart_replacer(self) -> Any:
-        '''Get SmartReplacer (lazy loading via memory_manager).
+        """Get SmartReplacer (lazy loading via memory_manager).
 
         Returns:
             SmartReplacer instance if configured, None otherwise.
-        '''
+        """
         if self._memory_manager is None:
             return None
         return self._memory_manager.smart_replacer
 
     @property
     def smart_replace_enabled(self) -> bool:
-        '''Check if smart replacement is configured and available.
+        """Check if smart replacement is configured and available.
 
         Returns:
             True if SmartReplacer is configured, False otherwise.
-        '''
+        """
         return self._get_smart_replacer() is not None
 
     async def execute(self, memories: list[str]) -> Phase2Result:
-        '''Execute Phase 2: Parallel smart replacement detection.
+        """Execute Phase 2: Parallel smart replacement detection.
 
         Args:
             memories: List of non-duplicate memories to check for replacements.
 
         Returns:
             Phase2Result with replacement information.
-        '''
+        """
         phase_start = time.perf_counter()
 
         # Map: memory -> list of replacement infos
@@ -334,7 +334,7 @@ class SmartReplacementPhase:
         async with create_task_group() as tg:
 
             async def check_replacement_for_memory(memory: str) -> None:
-                '''Check replacement for a single memory.'''
+                """Check replacement for a single memory."""
                 async with semaphore:
                     infos = await self._check_for_replacement(memory, smart_replacer)
                 replacement_results.append((memory, infos))
@@ -350,12 +350,12 @@ class SmartReplacementPhase:
         total_replacements = sum(len(infos) for infos in replacement_map.values())
 
         self.logger.info(
-            f'Phase 2 complete: {total_replacements} replacements detected ({duration:.3f}s)',
+            f"Phase 2 complete: {total_replacements} replacements detected ({duration:.3f}s)",
             extra={
-                'phase': 2,
-                'duration_ms': int(duration * 1000),
-                'memories_checked': len(memories),
-                'total_replacements': total_replacements,
+                "phase": 2,
+                "duration_ms": int(duration * 1000),
+                "memories_checked": len(memories),
+                "total_replacements": total_replacements,
             },
         )
 
@@ -368,7 +368,7 @@ class SmartReplacementPhase:
     async def _check_for_replacement(
         self, new_memory: str, smart_replacer: Any
     ) -> list[ReplacementInfo]:
-        '''Check if new memory should replace existing memories.
+        """Check if new memory should replace existing memories.
 
         Uses semantic search to find the most similar existing memories,
         applies similarity pre-filter, then uses LLM to determine which
@@ -381,7 +381,7 @@ class SmartReplacementPhase:
         Returns:
             List of ReplacementInfo objects for memories that should be replaced.
             Empty list if no replacements needed.
-        '''
+        """
 
         try:
             # Step 1: Find top N most similar memories via semantic search
@@ -394,10 +394,10 @@ class SmartReplacementPhase:
 
             if not similar_results:
                 self.logger.debug(
-                    'No similar memories found for replacement check',
+                    "No similar memories found for replacement check",
                     extra={
-                        'project_id': self._project_id,
-                        'new_memory_preview': new_memory[:100],
+                        "project_id": self._project_id,
+                        "new_memory_preview": new_memory[:100],
                     },
                 )
                 return []
@@ -412,22 +412,22 @@ class SmartReplacementPhase:
 
             if not filtered_candidates:
                 self.logger.debug(
-                    f'All candidates below similarity threshold ({min_similarity})',
+                    f"All candidates below similarity threshold ({min_similarity})",
                     extra={
-                        'project_id': self._project_id,
-                        'candidate_count': len(similar_results),
-                        'min_similarity': min_similarity,
+                        "project_id": self._project_id,
+                        "candidate_count": len(similar_results),
+                        "min_similarity": min_similarity,
                     },
                 )
                 return []
 
             self.logger.debug(
-                f'Found {len(filtered_candidates)} candidates above similarity threshold',
+                f"Found {len(filtered_candidates)} candidates above similarity threshold",
                 extra={
-                    'project_id': self._project_id,
-                    'candidate_count': len(filtered_candidates),
-                    'min_similarity': min_similarity,
-                    'top_similarity': filtered_candidates[0][1]
+                    "project_id": self._project_id,
+                    "candidate_count": len(filtered_candidates),
+                    "min_similarity": min_similarity,
+                    "top_similarity": filtered_candidates[0][1]
                     if filtered_candidates
                     else 0,
                 },
@@ -440,7 +440,7 @@ class SmartReplacementPhase:
             async def check_single_candidate(
                 existing_memory: str, similarity_score: float
             ) -> ReplacementInfo | None:
-                '''Check a single candidate for replacement (with semaphore).'''
+                """Check a single candidate for replacement (with semaphore)."""
                 async with semaphore:
                     try:
                         (
@@ -454,17 +454,17 @@ class SmartReplacementPhase:
 
                         if should_replace:
                             self.logger.info(
-                                f'Smart replacement triggered (confidence={confidence:.2f})',
+                                f"Smart replacement triggered (confidence={confidence:.2f})",
                                 extra={
-                                    'project_id': self._project_id,
-                                    'should_replace': True,
-                                    'confidence': confidence,
-                                    'similarity_score': similarity_score,
-                                    'reason': reason,
-                                    'old_memory_preview': truncate_memory(
+                                    "project_id": self._project_id,
+                                    "should_replace": True,
+                                    "confidence": confidence,
+                                    "similarity_score": similarity_score,
+                                    "reason": reason,
+                                    "old_memory_preview": truncate_memory(
                                         existing_memory, max_length=60
                                     ),
-                                    'new_memory_preview': truncate_memory(
+                                    "new_memory_preview": truncate_memory(
                                         new_memory, max_length=60
                                     ),
                                 },
@@ -478,23 +478,23 @@ class SmartReplacementPhase:
                             )
                         else:
                             self.logger.debug(
-                                f'No replacement needed (confidence={confidence:.2f}): {reason}',
+                                f"No replacement needed (confidence={confidence:.2f}): {reason}",
                                 extra={
-                                    'project_id': self._project_id,
-                                    'should_replace': False,
-                                    'confidence': confidence,
-                                    'reason': reason,
+                                    "project_id": self._project_id,
+                                    "should_replace": False,
+                                    "confidence": confidence,
+                                    "reason": reason,
                                 },
                             )
                             return None
                     except Exception as candidate_error:
                         # Graceful degradation: log warning and skip this candidate
                         self.logger.warning(
-                            f'LLM check failed for candidate: {candidate_error}',
+                            f"LLM check failed for candidate: {candidate_error}",
                             extra={
-                                'project_id': self._project_id,
-                                'error': str(candidate_error),
-                                'existing_preview': existing_memory[:100],
+                                "project_id": self._project_id,
+                                "error": str(candidate_error),
+                                "existing_preview": existing_memory[:100],
                             },
                         )
                         return None
@@ -505,7 +505,7 @@ class SmartReplacementPhase:
             async def collect_result(
                 existing_memory: str, similarity_score: float
             ) -> None:
-                '''Run check and collect result.'''
+                """Run check and collect result."""
                 result = await check_single_candidate(existing_memory, similarity_score)
                 results.append(result)
 
@@ -519,24 +519,24 @@ class SmartReplacementPhase:
         except Exception as e:
             # Graceful degradation: log warning and proceed without replacement
             self.logger.warning(
-                f'Smart replacement check failed: {e}',
+                f"Smart replacement check failed: {e}",
                 extra={
-                    'project_id': self._project_id,
-                    'error': str(e),
-                    'new_memory_preview': new_memory[:100],
+                    "project_id": self._project_id,
+                    "error": str(e),
+                    "new_memory_preview": new_memory[:100],
                 },
             )
             return []
 
 
 class StoragePhase:
-    '''Phase 3: Sequential storage with replacement handling.
+    """Phase 3: Sequential storage with replacement handling.
 
     This phase:
     1. Processes replacements (archives and deletes old memories)
     2. Adds new memories to storage
     3. Commits changes to both engines
-    '''
+    """
 
     def __init__(
         self,
@@ -546,14 +546,14 @@ class StoragePhase:
         logger: StructuredLogger,
         write_lock: threading.Lock | None = None,
     ):
-        '''Initialize storage phase.
+        """Initialize storage phase.
 
         Args:
             semantic_engine: USearchEngine for semantic storage.
             tantivy_engine: TantivyEngine for full-text storage.
             config: Application configuration.
             logger: Structured logger instance.
-        '''
+        """
         self._semantic_engine = semantic_engine
         self._tantivy_engine = tantivy_engine
         self.config = config
@@ -567,7 +567,7 @@ class StoragePhase:
         replacement_map: dict[str, list[ReplacementInfo]],
         dry_run: bool = False,
     ) -> Phase3Result:
-        '''Execute Phase 3: Sequential storage.
+        """Execute Phase 3: Sequential storage.
 
         Args:
             memories: List of non-duplicate memories to store.
@@ -576,7 +576,7 @@ class StoragePhase:
 
         Returns:
             Phase3Result with storage information.
-        '''
+        """
         phase_start = time.perf_counter()
 
         stored_count = 0
@@ -591,17 +591,17 @@ class StoragePhase:
             # Process replacements (delete old memories)
             for replacement_info in replacement_infos:
                 self.logger.info(
-                    'Replacing old memory with new one',
+                    "Replacing old memory with new one",
                     extra={
-                        'memory_index': idx + 1,
-                        'action': 'replace',
-                        'old_preview': truncate_memory(
+                        "memory_index": idx + 1,
+                        "action": "replace",
+                        "old_preview": truncate_memory(
                             replacement_info.old_memory, max_length=60
                         ),
-                        'new_preview': truncate_memory(memory, max_length=60),
-                        'confidence': replacement_info.confidence,
-                        'similarity': replacement_info.similarity_score,
-                        'dry_run': dry_run,
+                        "new_preview": truncate_memory(memory, max_length=60),
+                        "confidence": replacement_info.confidence,
+                        "similarity": replacement_info.similarity_score,
+                        "dry_run": dry_run,
                     },
                 )
 
@@ -616,10 +616,10 @@ class StoragePhase:
                         )
                         if archived:
                             self.logger.debug(
-                                'Old memory archived for recovery',
+                                "Old memory archived for recovery",
                                 extra={
-                                    'memory_index': idx + 1,
-                                    'action': 'archive_success',
+                                    "memory_index": idx + 1,
+                                    "action": "archive_success",
                                 },
                             )
 
@@ -629,10 +629,10 @@ class StoragePhase:
                         )
                         if msg_id is None:
                             self.logger.warning(
-                                'Old memory not found for replacement delete',
+                                "Old memory not found for replacement delete",
                                 extra={
-                                    'memory_index': idx + 1,
-                                    'action': 'delete_missing',
+                                    "memory_index": idx + 1,
+                                    "action": "delete_missing",
                                 },
                             )
                             continue
@@ -645,21 +645,21 @@ class StoragePhase:
                         replaced_count += 1
                         replacements.append(replacement_info)
                         self.logger.debug(
-                            'Old memory removed successfully',
+                            "Old memory removed successfully",
                             extra={
-                                'memory_index': idx + 1,
-                                'action': 'delete_success',
-                                'archived': archived,
+                                "memory_index": idx + 1,
+                                "action": "delete_success",
+                                "archived": archived,
                             },
                         )
                     except Exception as delete_error:
                         # Graceful degradation: log warning and continue
                         self.logger.warning(
-                            f'Failed to delete old memory: {delete_error}',
+                            f"Failed to delete old memory: {delete_error}",
                             extra={
-                                'memory_index': idx + 1,
-                                'action': 'delete_failed',
-                                'error': str(delete_error),
+                                "memory_index": idx + 1,
+                                "action": "delete_failed",
+                                "error": str(delete_error),
                             },
                         )
                 else:
@@ -679,10 +679,10 @@ class StoragePhase:
             stored_count = len(stored_memories)
             if stored_count != len(memories_to_add):
                 self.logger.warning(
-                    'Batch add stored fewer memories than expected',
+                    "Batch add stored fewer memories than expected",
                     extra={
-                        'expected_count': len(memories_to_add),
-                        'stored_count': stored_count,
+                        "expected_count": len(memories_to_add),
+                        "stored_count": stored_count,
                     },
                 )
 
@@ -695,12 +695,12 @@ class StoragePhase:
         duration = time.perf_counter() - phase_start
 
         self.logger.info(
-            f'Phase 3 complete: {stored_count} stored ({duration:.3f}s)',
+            f"Phase 3 complete: {stored_count} stored ({duration:.3f}s)",
             extra={
-                'phase': 3,
-                'duration_ms': int(duration * 1000),
-                'stored_count': stored_count,
-                'replaced_count': replaced_count,
+                "phase": 3,
+                "duration_ms": int(duration * 1000),
+                "stored_count": stored_count,
+                "replaced_count": replaced_count,
             },
         )
 
@@ -712,14 +712,14 @@ class StoragePhase:
         )
 
     def _add_memories_batch(self, memories: list[str]) -> list[str]:
-        '''Add multiple memories to both semantic and full-text engines.
+        """Add multiple memories to both semantic and full-text engines.
 
         Args:
             memories: List of memories to store.
 
         Returns:
             List of memories actually stored (duplicates skipped).
-        '''
+        """
         if not memories:
             return []
 
@@ -747,20 +747,20 @@ class StoragePhase:
                             self._tantivy_engine.add(self._project_id, memory)
 
             self.logger.debug(
-                'Batch added memories to hybrid storage',
+                "Batch added memories to hybrid storage",
                 extra={
-                    'project_id': self._project_id,
-                    'memory_count': len(inserted_memories),
-                    'engines': ['semantic', 'tantivy'],
+                    "project_id": self._project_id,
+                    "memory_count": len(inserted_memories),
+                    "engines": ["semantic", "tantivy"],
                 },
             )
             return inserted_memories
 
         except Exception as e:
-            raise StorageError(f'Failed to add memory batch: {e}') from e
+            raise StorageError(f"Failed to add memory batch: {e}") from e
 
     def _delete_memory(self, memory_id: str, content: str) -> None:
-        '''Delete a memory from semantic and full-text engines with write locking.'''
+        """Delete a memory from semantic and full-text engines with write locking."""
         if self._write_lock is None:
             self._semantic_engine.delete(memory_id=memory_id)
             if self._tantivy_engine is not None:
@@ -773,7 +773,7 @@ class StoragePhase:
                 self._tantivy_engine.delete(self._project_id, content)
 
     def _add_memory(self, content: str) -> bool:
-        '''Add a single memory to BOTH USearch semantic and Tantivy full-text engines.
+        """Add a single memory to BOTH USearch semantic and Tantivy full-text engines.
 
         Args:
             content: The memory to store.
@@ -783,13 +783,13 @@ class StoragePhase:
 
         Raises:
             RuntimeError: If storage operation fails.
-        '''
+        """
         if self.config.deduplicate_memories and self._has_exact_match(content):
             self.logger.info(
-                'Duplicate memory detected, skipping storage',
+                "Duplicate memory detected, skipping storage",
                 extra={
-                    'project_id': self._project_id,
-                    'memory_preview': content[:200],
+                    "project_id": self._project_id,
+                    "memory_preview": content[:200],
                 },
             )
             return False
@@ -806,25 +806,25 @@ class StoragePhase:
                 self._tantivy_engine.add(self._project_id, content)
 
             self.logger.debug(
-                'Memory added to hybrid storage',
+                "Memory added to hybrid storage",
                 extra={
-                    'project_id': self._project_id,
-                    'memory_length': len(content),
-                    'engines': ['semantic', 'tantivy'],
+                    "project_id": self._project_id,
+                    "memory_length": len(content),
+                    "engines": ["semantic", "tantivy"],
                 },
             )
             return True
 
         except Exception as e:
-            raise StorageError(f'Failed to add memory to hybrid storage: {e}') from e
+            raise StorageError(f"Failed to add memory to hybrid storage: {e}") from e
 
     def _has_exact_match(self, content: str) -> bool:
-        '''Check whether the exact memory already exists in storage.
+        """Check whether the exact memory already exists in storage.
 
         Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
         falling back to direct database lookup otherwise. Both paths are O(log n)
         avoiding the ~100-500ms embedding API call overhead.
-        '''
+        """
         return has_exact_match(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
@@ -836,7 +836,7 @@ class StoragePhase:
     def _archive_for_replacement(
         self, old_memory: str, new_memory: str, confidence: float, reason: str
     ) -> bool:
-        '''Archive a memory before replacement (for recovery).
+        """Archive a memory before replacement (for recovery).
 
         This method archives a memory to the archived_messages table before
         it gets deleted during smart replacement. This enables recovery if
@@ -850,7 +850,7 @@ class StoragePhase:
 
         Returns:
             True if archiving succeeded, False otherwise.
-        '''
+        """
         try:
             msg_id = self._semantic_engine.get_id_by_content(
                 self._project_id, old_memory
@@ -858,10 +858,10 @@ class StoragePhase:
 
             if msg_id is None:
                 self.logger.warning(
-                    'Cannot archive - memory not found',
+                    "Cannot archive - memory not found",
                     extra={
-                        'project_id': self._project_id,
-                        'old_memory_preview': old_memory[:50],
+                        "project_id": self._project_id,
+                        "old_memory_preview": old_memory[:50],
                     },
                 )
                 return False
@@ -878,12 +878,12 @@ class StoragePhase:
 
             if archive_id is not None:
                 self.logger.info(
-                    'Memory archived before replacement',
+                    "Memory archived before replacement",
                     extra={
-                        'project_id': self._project_id,
-                        'archive_id': archive_id,
-                        'original_id': msg_id,
-                        'confidence': confidence,
+                        "project_id": self._project_id,
+                        "archive_id": archive_id,
+                        "original_id": msg_id,
+                        "confidence": confidence,
                     },
                 )
                 return True
@@ -893,17 +893,17 @@ class StoragePhase:
         except Exception as e:
             # Graceful degradation - log warning but don't block the replacement
             self.logger.warning(
-                f'Failed to archive memory for replacement: {e}',
+                f"Failed to archive memory for replacement: {e}",
                 extra={
-                    'project_id': self._project_id,
-                    'error': str(e),
+                    "project_id": self._project_id,
+                    "error": str(e),
                 },
             )
             return False
 
 
 class AddPipeline:
-    '''Orchestrates the 3-phase add pipeline.
+    """Orchestrates the 3-phase add pipeline.
 
     This class coordinates the execution of the three phases:
     1. DuplicateDetectionPhase
@@ -911,7 +911,7 @@ class AddPipeline:
     3. StoragePhase
 
     It combines the results from each phase into the final AddResult.
-    '''
+    """
 
     def __init__(
         self,
@@ -921,7 +921,7 @@ class AddPipeline:
         config: Config,
         logger: StructuredLogger,
     ):
-        '''Initialize add pipeline.
+        """Initialize add pipeline.
 
         Args:
             duplicate_detection_phase: Phase 1 instance.
@@ -929,7 +929,7 @@ class AddPipeline:
             storage_phase: Phase 3 instance.
             config: Application configuration.
             logger: Structured logger instance.
-        '''
+        """
         self._phase1 = duplicate_detection_phase
         self._phase2 = smart_replacement_phase
         self._phase3 = storage_phase
@@ -937,7 +937,7 @@ class AddPipeline:
         self.logger = logger
 
     async def execute(self, memories: list[str], dry_run: bool = False) -> AddResult:
-        '''Execute the 3-phase add pipeline.
+        """Execute the 3-phase add pipeline.
 
         Args:
             memories: List of memories to add.
@@ -948,20 +948,20 @@ class AddPipeline:
 
         Raises:
             StorageError: If storage operation fails (not raised in dry_run mode).
-        '''
+        """
         result = AddResult()
 
         if not memories:
             return result
 
-        mode_str = 'DRY RUN' if dry_run else 'LIVE'
+        mode_str = "DRY RUN" if dry_run else "LIVE"
         self.logger.info(
-            f'Starting phased parallel memory addition [{mode_str}]: {len(memories)} memories',
+            f"Starting phased parallel memory addition [{mode_str}]: {len(memories)} memories",
             extra={
-                'total_memories': len(memories),
-                'smart_replace_enabled': self._phase2.smart_replace_enabled,
-                'dry_run': dry_run,
-                'optimization': 'phased_parallel',
+                "total_memories": len(memories),
+                "smart_replace_enabled": self._phase2.smart_replace_enabled,
+                "dry_run": dry_run,
+                "optimization": "phased_parallel",
             },
         )
 
@@ -988,40 +988,40 @@ class AddPipeline:
             result.replacements = phase3_result.replacements
 
         except Exception as e:
-            mode_str = 'DRY_RUN' if dry_run else 'LIVE'
+            mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.logger.error(
-                f'Phased parallel memory addition failed [{mode_str}]: {e}',
+                f"Phased parallel memory addition failed [{mode_str}]: {e}",
                 extra={
-                    'mode': mode_str,
-                    'dry_run': dry_run,
-                    'total_memories': len(memories),
-                    'stored_count': result.stored_count,
-                    'replaced_count': result.replaced_count,
-                    'error': str(e),
-                    'error_type': type(e).__name__,
+                    "mode": mode_str,
+                    "dry_run": dry_run,
+                    "total_memories": len(memories),
+                    "stored_count": result.stored_count,
+                    "replaced_count": result.replaced_count,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
                 },
             )
             if not dry_run:
-                raise StorageError(f'Failed to add memories: {e}') from e
+                raise StorageError(f"Failed to add memories: {e}") from e
 
         self.logger.info(
-            f'Phased parallel addition completed [{mode_str}]: '
-            f'{result.stored_count}/{len(memories)} stored, '
-            f'{result.replaced_count} replaced, {result.skipped_count} skipped',
+            f"Phased parallel addition completed [{mode_str}]: "
+            f"{result.stored_count}/{len(memories)} stored, "
+            f"{result.replaced_count} replaced, {result.skipped_count} skipped",
             extra={
-                'total_memories': len(memories),
-                'stored_count': result.stored_count,
-                'replaced_count': result.replaced_count,
-                'skipped_count': result.skipped_count,
-                'replacement_details': [
+                "total_memories": len(memories),
+                "stored_count": result.stored_count,
+                "replaced_count": result.replaced_count,
+                "skipped_count": result.skipped_count,
+                "replacement_details": [
                     {
-                        'old': truncate_memory(r.old_memory, 50),
-                        'confidence': r.confidence,
+                        "old": truncate_memory(r.old_memory, 50),
+                        "confidence": r.confidence,
                     }
                     for r in result.replacements
                 ],
-                'dry_run': dry_run,
-                'optimization': 'phased_parallel',
+                "dry_run": dry_run,
+                "optimization": "phased_parallel",
             },
         )
 

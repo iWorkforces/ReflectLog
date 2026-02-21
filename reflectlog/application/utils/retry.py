@@ -1,4 +1,4 @@
-'''Retry decorator with exponential backoff for async functions.'''
+"""Retry decorator with exponential backoff for async functions."""
 
 import asyncio
 from collections.abc import Callable, Coroutine
@@ -8,8 +8,8 @@ import random
 from typing import Any, ParamSpec, TypeVar
 
 # Generic types for async function decorator
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
 
 # Default logger for retry operations
 _retry_logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def async_retry_with_backoff(
 ) -> Callable[
     [Callable[P, Coroutine[Any, Any, T]]], Callable[P, Coroutine[Any, Any, T]]
 ]:
-    '''Decorator for async functions with exponential backoff retry logic.
+    """Decorator for async functions with exponential backoff retry logic.
 
     Features:
     - Exponential backoff: delay increases with each retry
@@ -67,7 +67,7 @@ def async_retry_with_backoff(
             async with session.get(url) as response:
                 return await response.json()
         ```
-    '''
+    """
 
     # Use default transient exceptions if none specified
     if exceptions is None:
@@ -93,13 +93,13 @@ def async_retry_with_backoff(
                     # If this is the last attempt, raise the exception
                     if attempt >= max_retries:
                         if logger:
-                            func_name = getattr(func, '__name__', '<unknown>')
+                            func_name = getattr(func, "__name__", "<unknown>")
                             logger.warning(
-                                f'All {max_retries} retry attempts exhausted for {func_name}',
+                                f"All {max_retries} retry attempts exhausted for {func_name}",
                                 extra={
-                                    'function': func_name,
-                                    'final_error': str(e),
-                                    'error_type': type(e).__name__,
+                                    "function": func_name,
+                                    "final_error": str(e),
+                                    "error_type": type(e).__name__,
                                 },
                             )
                         break
@@ -116,16 +116,16 @@ def async_retry_with_backoff(
 
                     # Log retry attempt
                     if logger:
-                        func_name = getattr(func, '__name__', '<unknown>')
+                        func_name = getattr(func, "__name__", "<unknown>")
                         logger.info(
-                            f'Retry attempt {attempt + 1}/{max_retries} for {func_name} after {delay:.2f}s delay',
+                            f"Retry attempt {attempt + 1}/{max_retries} for {func_name} after {delay:.2f}s delay",
                             extra={
-                                'function': func_name,
-                                'attempt': attempt + 1,
-                                'max_retries': max_retries,
-                                'delay': delay,
-                                'error': str(e),
-                                'error_type': type(e).__name__,
+                                "function": func_name,
+                                "attempt": attempt + 1,
+                                "max_retries": max_retries,
+                                "delay": delay,
+                                "error": str(e),
+                                "error_type": type(e).__name__,
                             },
                         )
 
@@ -137,7 +137,7 @@ def async_retry_with_backoff(
                 raise last_exception
 
             # Should never reach here, but type checker needs it
-            raise RuntimeError('Retry logic error')
+            raise RuntimeError("Retry logic error")
 
         return wrapper
 

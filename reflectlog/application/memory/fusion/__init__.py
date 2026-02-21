@@ -1,4 +1,4 @@
-'''Fusion strategies for hybrid search.'''
+"""Fusion strategies for hybrid search."""
 
 from typing import Any
 
@@ -12,12 +12,12 @@ from .ranx_fusion import (
 
 
 def create_fusion_engine(
-    method: str = 'rrf',
+    method: str = "rrf",
     normalization: str | None = None,
     rrf_k: int = 60,
     logger: Any | None = None,
 ) -> FusionEngine:
-    '''Factory function to create a fusion engine.
+    """Factory function to create a fusion engine.
 
     Args:
         method: Fusion algorithm to use. One of: rrf, sum, mnz,
@@ -34,7 +34,7 @@ def create_fusion_engine(
 
     Raises:
         ValueError: If method or normalization is not supported.
-    '''
+    """
     return RanxFusionEngine(
         method=method,
         normalization=normalization,
@@ -44,10 +44,10 @@ def create_fusion_engine(
 
 
 __all__ = [
-    'DEFAULT_NORMALIZATIONS',
-    'SUPPORTED_METHODS',
-    'SUPPORTED_NORMALIZATIONS',
-    'FusionEngine',
-    'RanxFusionEngine',
-    'create_fusion_engine',
+    "DEFAULT_NORMALIZATIONS",
+    "SUPPORTED_METHODS",
+    "SUPPORTED_NORMALIZATIONS",
+    "FusionEngine",
+    "RanxFusionEngine",
+    "create_fusion_engine",
 ]

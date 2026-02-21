@@ -1,4 +1,4 @@
-'''Base class for OpenAI-compatible LLM providers.
+"""Base class for OpenAI-compatible LLM providers.
 
 This module provides BaseOpenAIProvider, which extracts common functionality
 shared between OpenAIRerankerProvider and OpenAIReplacementProvider:
@@ -15,7 +15,7 @@ Example:
                 response_schema=MyResponseSchema,
             )
             return response
-'''
+"""
 
 import json
 from typing import Any, Protocol
@@ -27,15 +27,15 @@ from reflectlog.application.utils.http_client import HttpClientFactory
 
 
 class IStructuredOutputSchema(Protocol):
-    '''Protocol for Pydantic schemas used in structured output.'''
+    """Protocol for Pydantic schemas used in structured output."""
 
     def model_json_schema(self) -> dict[str, Any]:
-        '''Generate JSON schema for structured output.'''
+        """Generate JSON schema for structured output."""
         ...
 
 
 class BaseOpenAIProvider:
-    '''Base class for OpenAI-compatible LLM providers.
+    """Base class for OpenAI-compatible LLM providers.
 
     Provides common infrastructure:
     - AsyncOpenAI client with HTTP/2 support
@@ -44,7 +44,7 @@ class BaseOpenAIProvider:
 
     Subclasses should implement protocol-specific methods (e.g., score_document
     for IRerankerProvider, detect_replacement for IReplacementProvider).
-    '''
+    """
 
     def __init__(
         self,
@@ -54,7 +54,7 @@ class BaseOpenAIProvider:
         timeout: float = 30.0,
         logger: Any = None,
     ):
-        '''Initialize OpenAI-compatible provider.
+        """Initialize OpenAI-compatible provider.
 
         Args:
             api_key: OpenRouter/OpenAI API key.
@@ -62,7 +62,7 @@ class BaseOpenAIProvider:
             model: LLM model identifier.
             timeout: HTTP request timeout in seconds.
             logger: Optional structured logger.
-        '''
+        """
         self._client: AsyncOpenAI | None = None
         self._api_key = api_key
         self._base_url = base_url
@@ -87,7 +87,7 @@ class BaseOpenAIProvider:
         response_schema: type[IStructuredOutputSchema],
         max_tokens: int = 150,
     ) -> dict[str, Any]:
-        '''Call LLM with structured output, falling back to json_object if unsupported.
+        """Call LLM with structured output, falling back to json_object if unsupported.
 
         Tries json_schema mode first for guaranteed schema compliance.
         Falls back to json_object mode if the model doesn't support structured outputs.
@@ -102,15 +102,15 @@ class BaseOpenAIProvider:
 
         Raises:
             Exception: If both structured output and json_object fallback fail.
-        '''
+        """
         # Build structured output response format using Pydantic schema
         schema_name = response_schema.__name__.lower()
         structured_response_format = ResponseFormatJSONSchema(
-            type='json_schema',
+            type="json_schema",
             json_schema={
-                'name': schema_name,
-                'strict': True,
-                'schema': response_schema.model_json_schema(),
+                "name": schema_name,
+                "strict": True,
+                "schema": response_schema.model_json_schema(),
             },
         )
 
@@ -119,7 +119,7 @@ class BaseOpenAIProvider:
             client = self._get_client()
             response = await client.chat.completions.create(
                 model=self._model,
-                messages=[{'role': 'user', 'content': prompt}],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0,
                 max_tokens=max_tokens,
                 response_format=structured_response_format,
@@ -127,20 +127,20 @@ class BaseOpenAIProvider:
         except Exception as e:
             error_msg = str(e).lower()
             # Fallback to simple json_object mode for unsupported models
-            if 'json_schema' in error_msg or 'structured' in error_msg:
+            if "json_schema" in error_msg or "structured" in error_msg:
                 if self._logger:
                     self._logger.warning(
                         "Model doesn't support structured outputs, "
-                        'falling back to json_object',
-                        extra={'model': self._model, 'error': str(e)},
+                        "falling back to json_object",
+                        extra={"model": self._model, "error": str(e)},
                     )
                 client = self._get_client()
                 response = await client.chat.completions.create(
                     model=self._model,
-                    messages=[{'role': 'user', 'content': prompt}],
+                    messages=[{"role": "user", "content": prompt}],
                     temperature=0,
                     max_tokens=max_tokens,
-                    response_format={'type': 'json_object'},
+                    response_format={"type": "json_object"},
                 )
             else:
                 raise
@@ -148,7 +148,7 @@ class BaseOpenAIProvider:
         # Parse response content
         content = response.choices[0].message.content
         if content is None:
-            raise ValueError('Empty response from LLM')
+            raise ValueError("Empty response from LLM")
 
         result = json.loads(content)
         return result
@@ -156,7 +156,7 @@ class BaseOpenAIProvider:
     def _clamp_float(
         self, value: float, min_value: float = 0.0, max_value: float = 1.0
     ) -> float:
-        '''Clamp a float value to a specified range.
+        """Clamp a float value to a specified range.
 
         Args:
             value: The value to clamp.
@@ -165,16 +165,16 @@ class BaseOpenAIProvider:
 
         Returns:
             Clamped value within [min_value, max_value].
-        '''
+        """
         return max(min_value, min(max_value, value))
 
     def _extract_string_field(
         self,
         data: dict[str, Any],
         field: str,
-        default: str = '',
+        default: str = "",
     ) -> str:
-        '''Extract a string field from JSON data with default fallback.
+        """Extract a string field from JSON data with default fallback.
 
         Args:
             data: Parsed JSON dictionary.
@@ -183,7 +183,7 @@ class BaseOpenAIProvider:
 
         Returns:
             String value or default.
-        '''
+        """
         return str(data.get(field, default))
 
     def _extract_float_field(
@@ -193,7 +193,7 @@ class BaseOpenAIProvider:
         default: float = 0.0,
         clamp: bool = True,
     ) -> float:
-        '''Extract a float field from JSON data with optional clamping.
+        """Extract a float field from JSON data with optional clamping.
 
         Args:
             data: Parsed JSON dictionary.
@@ -203,7 +203,7 @@ class BaseOpenAIProvider:
 
         Returns:
             Float value (clamped if clamp=True).
-        '''
+        """
         value = float(data.get(field, default))
         return self._clamp_float(value) if clamp else value
 
@@ -213,7 +213,7 @@ class BaseOpenAIProvider:
         field: str,
         default: bool = False,
     ) -> bool:
-        '''Extract a boolean field from JSON data with default fallback.
+        """Extract a boolean field from JSON data with default fallback.
 
         Args:
             data: Parsed JSON dictionary.
@@ -222,5 +222,5 @@ class BaseOpenAIProvider:
 
         Returns:
             Boolean value or default.
-        '''
+        """
         return bool(data.get(field, default))

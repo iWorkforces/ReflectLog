@@ -1,10 +1,10 @@
-'''Plugin discovery mechanisms for ReflectLogMCP.
+"""Plugin discovery mechanisms for ReflectLogMCP.
 
 This module provides mechanisms for discovering plugins from various sources:
 1. Entry point discovery (via package metadata)
 2. Directory scanning (package-based distribution)
 3. Static registration (explicit configuration)
-'''
+"""
 
 from dataclasses import dataclass
 import importlib
@@ -13,59 +13,59 @@ from pathlib import Path
 import pkgutil
 from typing import TypeVar, cast
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @dataclass
 class DiscoveredPlugin:
-    '''A discovered plugin with its load function and metadata.'''
+    """A discovered plugin with its load function and metadata."""
 
     name: str
     module_path: str
     class_name: str
-    version: str = '0.0.0'
+    version: str = "0.0.0"
     entry_point: str | None = None
 
 
 class PluginDiscoveryStrategy[T]:
-    '''Base class for plugin discovery strategies.'''
+    """Base class for plugin discovery strategies."""
 
     async def discover(self) -> list[DiscoveredPlugin]:
-        '''Discover plugins using this strategy.
+        """Discover plugins using this strategy.
 
         Returns:
             List of discovered plugins.
-        '''
+        """
         raise NotImplementedError
 
 
 class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
-    '''Discover plugins via Python entry points.
+    """Discover plugins via Python entry points.
 
     This strategy uses the standard Python entry point mechanism to
     discover plugins distributed through package indexes.
-    '''
+    """
 
     def __init__(
         self,
         group: str,
         plugin_type: type[T],
     ):
-        '''Initialize entry point discovery.
+        """Initialize entry point discovery.
 
         Args:
             group: Entry point group name (e.g., 'reflectlog.plugins').
             plugin_type: Base class or protocol for type checking.
-        '''
+        """
         self._group = group
         self._plugin_type = plugin_type
 
     async def discover(self) -> list[DiscoveredPlugin]:
-        '''Discover plugins from entry points.
+        """Discover plugins from entry points.
 
         Returns:
             List of discovered plugins.
-        '''
+        """
         discovered: list[DiscoveredPlugin] = []
 
         try:
@@ -75,7 +75,7 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
             # SelectableGroups
             eps = importlib.metadata.entry_points()
             # Filter to our group if SelectableGroups
-            if hasattr(eps, 'select'):
+            if hasattr(eps, "select"):
                 eps = eps.select(group=self._group)
             else:
                 # Python 3.9 without select, iterate all and filter
@@ -85,11 +85,11 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
             # Parse module path and class name from entry point value
             # Format: "module.path:ClassName"
             value = ep.value
-            if ':' in value:
-                module_path, class_name = value.rsplit(':', 1)
+            if ":" in value:
+                module_path, class_name = value.rsplit(":", 1)
             else:
                 module_path = value
-                class_name = ''
+                class_name = ""
 
             discovered.append(
                 DiscoveredPlugin(
@@ -104,35 +104,35 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
 
 
 class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
-    '''Discover plugins by scanning directories.
+    """Discover plugins by scanning directories.
 
     This strategy scans configured Python packages for modules
     containing plugin implementations.
-    '''
+    """
 
     def __init__(
         self,
         package_names: list[str],
         plugin_base_class: type[T],
-        module_pattern: str = 'plugin_*.py',
+        module_pattern: str = "plugin_*.py",
     ):
-        '''Initialize directory scan discovery.
+        """Initialize directory scan discovery.
 
         Args:
             package_names: List of package names to scan.
             plugin_base_class: Base class for type checking.
             module_pattern: Glob pattern for plugin modules.
-        '''
+        """
         self._package_names = package_names
         self._plugin_base_class = plugin_base_class
         self._module_pattern = module_pattern
 
     async def discover(self) -> list[DiscoveredPlugin]:
-        '''Discover plugins by scanning packages.
+        """Discover plugins by scanning packages.
 
         Returns:
             List of discovered plugins.
-        '''
+        """
         discovered: list[DiscoveredPlugin] = []
 
         for package_name in self._package_names:
@@ -147,7 +147,7 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
                 # Find all modules matching the pattern
                 for _finder, name, ispkg in pkgutil.iter_modules(
                     [str(pkg_path)],
-                    prefix=f'{package_name}.',
+                    prefix=f"{package_name}.",
                 ):
                     if ispkg:
                         continue  # Skip packages for now
@@ -163,7 +163,7 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
                         ):
                             discovered.append(
                                 DiscoveredPlugin(
-                                    name=f'{package_name}_{attr_name}',
+                                    name=f"{package_name}_{attr_name}",
                                     module_path=name,
                                     class_name=attr_name,
                                 )
@@ -177,56 +177,56 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
 
 
 class StaticRegistration(PluginDiscoveryStrategy[T]):
-    '''Static plugin registration via explicit configuration.
+    """Static plugin registration via explicit configuration.
 
     This strategy allows plugins to be registered explicitly without
     automatic discovery, useful for development and testing.
-    '''
+    """
 
     def __init__(
         self,
         registered_plugins: list[DiscoveredPlugin],
     ):
-        '''Initialize static registration.
+        """Initialize static registration.
 
         Args:
             registered_plugins: List of pre-registered plugins.
-        '''
+        """
         self._registered = registered_plugins
 
     async def discover(self) -> list[DiscoveredPlugin]:
-        '''Return statically registered plugins.
+        """Return statically registered plugins.
 
         Returns:
             List of registered plugins.
-        '''
+        """
         return self._registered.copy()
 
 
 class CompositeDiscovery(PluginDiscoveryStrategy[T]):
-    '''Combine multiple discovery strategies.
+    """Combine multiple discovery strategies.
 
     This class combines multiple discovery strategies and returns
     all plugins discovered by any strategy.
-    '''
+    """
 
     def __init__(
         self,
         strategies: list[PluginDiscoveryStrategy[T]],
     ):
-        '''Initialize composite discovery.
+        """Initialize composite discovery.
 
         Args:
             strategies: List of discovery strategies to combine.
-        '''
+        """
         self._strategies = strategies
 
     async def discover(self) -> list[DiscoveredPlugin]:
-        '''Discover plugins using all strategies.
+        """Discover plugins using all strategies.
 
         Returns:
             Combined list of discovered plugins.
-        '''
+        """
         all_discovered: dict[str, DiscoveredPlugin] = {}
 
         for strategy in self._strategies:
@@ -239,14 +239,14 @@ class CompositeDiscovery(PluginDiscoveryStrategy[T]):
 
 
 async def load_plugin(plugin: DiscoveredPlugin) -> T:
-    '''Load and instantiate a discovered plugin.
+    """Load and instantiate a discovered plugin.
 
     Args:
         plugin: Discovered plugin information.
 
     Returns:
         Instantiated plugin.
-    '''
+    """
     module = importlib.import_module(plugin.module_path)
 
     if plugin.class_name:
@@ -259,46 +259,46 @@ async def load_plugin(plugin: DiscoveredPlugin) -> T:
 
 
 class PluginDiscoverer[T]:
-    '''Main class for plugin discovery and loading.
+    """Main class for plugin discovery and loading.
 
     This class orchestrates plugin discovery using configured strategies
     and provides methods for loading and managing plugins.
 
     Type Parameters:
         T: Plugin type that this discoverer manages.
-    '''
+    """
 
     def __init__(
         self,
         discovery_strategy: PluginDiscoveryStrategy[T],
     ):
-        '''Initialize plugin discoverer.
+        """Initialize plugin discoverer.
 
         Args:
             discovery_strategy: Strategy for discovering plugins.
-        '''
+        """
         self._strategy = discovery_strategy
         self._discovered: list[DiscoveredPlugin] = []
         self._loaded: dict[str, T] = {}
 
     async def discover_plugins(self) -> list[DiscoveredPlugin]:
-        '''Discover available plugins.
+        """Discover available plugins.
 
         Returns:
             List of discovered plugins.
-        '''
+        """
         self._discovered = await self._strategy.discover()
         return self._discovered
 
     async def load_plugin(self, name: str) -> T | None:
-        '''Load a plugin by name.
+        """Load a plugin by name.
 
         Args:
             name: Plugin name to load.
 
         Returns:
             Loaded plugin instance or None if not found.
-        '''
+        """
         # Check if already loaded
         if name in self._loaded:
             return self._loaded[name]
@@ -319,11 +319,11 @@ class PluginDiscoverer[T]:
         return instance
 
     async def load_all_plugins(self) -> list[T]:
-        '''Load all discovered plugins.
+        """Load all discovered plugins.
 
         Returns:
             List of loaded plugin instances.
-        '''
+        """
         loaded = []
         for plugin in self._discovered:
             instance = await self.load_plugin(plugin.name)
@@ -333,10 +333,10 @@ class PluginDiscoverer[T]:
 
     @property
     def discovered_plugins(self) -> list[DiscoveredPlugin]:
-        '''Get list of discovered plugins.'''
+        """Get list of discovered plugins."""
         return self._discovered.copy()
 
     @property
     def loaded_plugins(self) -> dict[str, T]:
-        '''Get dict of loaded plugins by name.'''
+        """Get dict of loaded plugins by name."""
         return self._loaded.copy()

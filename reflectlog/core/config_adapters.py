@@ -1,4 +1,4 @@
-'''Configuration adapters for protocol-based dependency injection.
+"""Configuration adapters for protocol-based dependency injection.
 
 This module provides adapter classes that wrap application configuration
 and expose specific protocol interfaces. This enables components to depend
@@ -28,7 +28,7 @@ Example:
                 ...
 
         service = SearchService(search_config=SearchConfigAdapter(config))
-'''
+"""
 
 from typing import TYPE_CHECKING, Literal
 
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 
 
 class ConfigAdapter[IAppConfig]:
-    '''Adapter that makes Config satisfy IAppConfig protocol.
+    """Adapter that makes Config satisfy IAppConfig protocol.
 
     This adapter wraps the application Config dataclass and provides
     all properties required by the IAppConfig protocol. Since Python
@@ -63,205 +63,205 @@ class ConfigAdapter[IAppConfig]:
 
         # Now adapter satisfies IAppConfig protocol
         assert isinstance(adapter, IAppConfig)  # True
-    '''
+    """
 
     def __init__(self, config: Config) -> None:
-        '''Initialize adapter with Config instance.
+        """Initialize adapter with Config instance.
 
         Args:
             config: Application configuration instance.
-        '''
+        """
         self._config = config
 
     # IServerConfig properties
     @property
-    def transport(self) -> Literal['stdio', 'http', 'sse', 'streamable-http']:
-        '''Transport mode for MCP server.'''
+    def transport(self) -> Literal["stdio", "http", "sse", "streamable-http"]:
+        """Transport mode for MCP server."""
         return self._config.transport
 
     @property
     def host(self) -> str:
-        '''Server host for network transports.'''
+        """Server host for network transports."""
         return self._config.host
 
     @property
     def port(self) -> int:
-        '''Server port for network transports.'''
+        """Server port for network transports."""
         return self._config.port
 
     @property
     def path(self) -> str:
-        '''Server path for network transports.'''
+        """Server path for network transports."""
         return self._config.path
 
     @property
     def log_level(self) -> str:
-        '''Logging level: DEBUG, INFO, WARNING, ERROR.'''
+        """Logging level: DEBUG, INFO, WARNING, ERROR."""
         return self._config.log_level
 
     @property
     def project_id(self) -> str:
-        '''Unique project identifier.'''
+        """Unique project identifier."""
         return self._config.project_id
 
     # ISearchConfig properties
     @property
     def search_limit(self) -> int:
-        '''Maximum number of results to return.'''
+        """Maximum number of results to return."""
         return self._config.search_limit
 
     @property
     def enable_hybrid_search(self) -> bool:
-        '''Enable combining semantic and full-text search.'''
+        """Enable combining semantic and full-text search."""
         return self._config.enable_hybrid_search
 
     @property
     def enable_rrf_fusion(self) -> bool:
-        '''Enable Reciprocal Rank Fusion for result ranking.'''
+        """Enable Reciprocal Rank Fusion for result ranking."""
         return self._config.enable_rrf_fusion
 
     @property
     def fusion_rrf_k(self) -> int:
-        '''RRF constant k for fusion ranking.'''
+        """RRF constant k for fusion ranking."""
         return self._config.fusion_rrf_k
 
     @property
     def fusion_threshold(self) -> float:
-        '''Minimum fusion score to include result.'''
+        """Minimum fusion score to include result."""
         return self._config.fusion_ranking_threshold
 
     @property
-    def reranker_engine(self) -> Literal['llm', 'cross_encoder', 'none']:
-        '''Reranking engine type.'''
+    def reranker_engine(self) -> Literal["llm", "cross_encoder", "none"]:
+        """Reranking engine type."""
         return self._config.reranker_engine  # type: ignore[return-value]
 
     @property
     def search_score_threshold(self) -> float:
-        '''Minimum relevance score for LLM reranking.'''
+        """Minimum relevance score for LLM reranking."""
         return self._config.search_score_threshold
 
     @property
     def enable_recency_boost(self) -> bool:
-        '''Include memory age in reranking.'''
+        """Include memory age in reranking."""
         return self._config.enable_recency_boost
 
     @property
     def recency_decay_rate(self) -> float:
-        '''Exponential decay rate per hour.'''
+        """Exponential decay rate per hour."""
         return self._config.recency_decay_rate
 
     # IStorageConfig properties
     @property
     def storage_path(self) -> str:
-        '''Base path for index storage.'''
-        return 'indexes'
+        """Base path for index storage."""
+        return "indexes"
 
     @property
     def usearch_index_path(self) -> str:
-        '''Path to USearch index files.'''
-        return f'indexes/{self._config.project_id}/usearch'
+        """Path to USearch index files."""
+        return f"indexes/{self._config.project_id}/usearch"
 
     @property
     def tantivy_index_path(self) -> str:
-        '''Path to Tantivy index files.'''
-        return f'indexes/{self._config.project_id}/tantivy'
+        """Path to Tantivy index files."""
+        return f"indexes/{self._config.project_id}/tantivy"
 
     @property
     def embedding_dims(self) -> int:
-        '''Embedding vector dimensions.'''
+        """Embedding vector dimensions."""
         return self._config.embedding_dims
 
     @property
-    def metric(self) -> Literal['cosine', 'euclidean', 'inner_product']:
-        '''Similarity metric for vector search.'''
-        return 'cosine'
+    def metric(self) -> Literal["cosine", "euclidean", "inner_product"]:
+        """Similarity metric for vector search."""
+        return "cosine"
 
     # IRerankerConfig properties
     @property
     def llm_model(self) -> str:
-        '''LLM model for reranking.'''
+        """LLM model for reranking."""
         return self._config.llm_model
 
     @property
     def llm_api_base_url(self) -> str:
-        '''API base URL for LLM provider.'''
+        """API base URL for LLM provider."""
         return self._config.openrouter_base_url
 
     @property
     def cross_encoder_model(self) -> str:
-        '''Cross-encoder model name.'''
+        """Cross-encoder model name."""
         return self._config.cross_encoder_model
 
     @property
     def cross_encoder_device(self) -> str:
-        '''Device for cross-encoder: cpu, cuda, mps.'''
+        """Device for cross-encoder: cpu, cuda, mps."""
         return self._config.cross_encoder_device
 
     @property
     def reranker_batch_normalize(self) -> bool:
-        '''Enable batch normalization for reranker scores.'''
+        """Enable batch normalization for reranker scores."""
         return self._config.reranker_batch_normalize
 
     # IEmbedderConfig properties
     @property
     def embedding_model(self) -> str:
-        '''Embedding model name.'''
+        """Embedding model name."""
         return self._config.embedding_model
 
     @property
     def embedder_provider(self) -> str:
-        '''Embedder provider: langchain or openai.'''
+        """Embedder provider: langchain or openai."""
         return self._config.embedder_provider
 
     @property
     def qwen_embedding_dims(self) -> int:
-        '''Qwen embedding dimensions.'''
+        """Qwen embedding dimensions."""
         return self._config.qwen_embedding_dims
 
     @property
     def embedding_batch_size(self) -> int:
-        '''Batch size for embedding operations.'''
+        """Batch size for embedding operations."""
         return self._config.embedding_batch_size
 
     @property
     def embedding_max_concurrent_batches(self) -> int:
-        '''Maximum concurrent embedding batches.'''
+        """Maximum concurrent embedding batches."""
         return self._config.embedding_max_concurrent_batches
 
     @property
     def embedding_cache_enabled(self) -> bool:
-        '''Enable embedding cache.'''
+        """Enable embedding cache."""
         return self._config.embedding_cache_enabled
 
     @property
     def embedding_cache_size(self) -> int:
-        '''Maximum cache entries.'''
+        """Maximum cache entries."""
         return self._config.embedding_cache_size
 
     # IReplacementConfig properties
     @property
     def enable_smart_replace(self) -> bool:
-        '''Enable smart memory replacement detection.'''
+        """Enable smart memory replacement detection."""
         return self._config.enable_smart_replace
 
     @property
     def smart_replace_threshold(self) -> float:
-        '''Minimum confidence for replacement detection.'''
+        """Minimum confidence for replacement detection."""
         return self._config.smart_replace_threshold
 
     @property
     def smart_replace_min_similarity(self) -> float:
-        '''Minimum embedding similarity for candidates.'''
+        """Minimum embedding similarity for candidates."""
         return self._config.smart_replace_min_similarity
 
     @property
     def smart_replace_candidate_limit(self) -> int:
-        '''Maximum candidates to check.'''
+        """Maximum candidates to check."""
         return self._config.smart_replace_candidate_limit
 
 
 class ServerConfigAdapter[IServerConfig]:
-    '''Adapter exposing only server configuration protocol.
+    """Adapter exposing only server configuration protocol.
 
     Use this when a component only needs server-level settings.
 
@@ -274,13 +274,13 @@ class ServerConfigAdapter[IServerConfig]:
 
         # Use where IServerConfig is expected
         start_server(transport=server_adapter.transport, port=server_adapter.port)
-    '''
+    """
 
     def __init__(self, config: Config) -> None:
         self._config = config
 
     @property
-    def transport(self) -> Literal['stdio', 'http', 'sse', 'streamable-http']:
+    def transport(self) -> Literal["stdio", "http", "sse", "streamable-http"]:
         return self._config.transport
 
     @property
@@ -305,13 +305,13 @@ class ServerConfigAdapter[IServerConfig]:
 
 
 class SearchConfigAdapter[ISearchConfig]:
-    '''Adapter exposing only search configuration protocol.
+    """Adapter exposing only search configuration protocol.
 
     Use this when a component only needs search-related settings.
 
     Args:
         config: The application Config instance to adapt.
-    '''
+    """
 
     def __init__(self, config: Config) -> None:
         self._config = config
@@ -337,7 +337,7 @@ class SearchConfigAdapter[ISearchConfig]:
         return self._config.fusion_ranking_threshold
 
     @property
-    def reranker_engine(self) -> Literal['llm', 'cross_encoder', 'none']:
+    def reranker_engine(self) -> Literal["llm", "cross_encoder", "none"]:
         return self._config.reranker_engine  # type: ignore[return-value]
 
     @property
@@ -354,46 +354,46 @@ class SearchConfigAdapter[ISearchConfig]:
 
 
 class StorageConfigAdapter[IStorageConfig]:
-    '''Adapter exposing only storage configuration protocol.
+    """Adapter exposing only storage configuration protocol.
 
     Use this when a component only needs storage-related settings.
 
     Args:
         config: The application Config instance to adapt.
-    '''
+    """
 
     def __init__(self, config: Config) -> None:
         self._config = config
 
     @property
     def storage_path(self) -> str:
-        return 'indexes'
+        return "indexes"
 
     @property
     def usearch_index_path(self) -> str:
-        return f'indexes/{self._config.project_id}/usearch'
+        return f"indexes/{self._config.project_id}/usearch"
 
     @property
     def tantivy_index_path(self) -> str:
-        return f'indexes/{self._config.project_id}/tantivy'
+        return f"indexes/{self._config.project_id}/tantivy"
 
     @property
     def embedding_dims(self) -> int:
         return self._config.embedding_dims
 
     @property
-    def metric(self) -> Literal['cosine', 'euclidean', 'inner_product']:
-        return 'cosine'
+    def metric(self) -> Literal["cosine", "euclidean", "inner_product"]:
+        return "cosine"
 
 
 class RerankerConfigAdapter[IRerankerConfig]:
-    '''Adapter exposing only reranker configuration protocol.
+    """Adapter exposing only reranker configuration protocol.
 
     Use this when a component only needs reranker settings.
 
     Args:
         config: The application Config instance to adapt.
-    '''
+    """
 
     def __init__(self, config: Config) -> None:
         self._config = config
@@ -420,13 +420,13 @@ class RerankerConfigAdapter[IRerankerConfig]:
 
 
 class EmbedderConfigAdapter[IEmbedderConfig]:
-    '''Adapter exposing only embedder configuration protocol.
+    """Adapter exposing only embedder configuration protocol.
 
     Use this when a component only needs embedding settings.
 
     Args:
         config: The application Config instance to adapt.
-    '''
+    """
 
     def __init__(self, config: Config) -> None:
         self._config = config
@@ -461,13 +461,13 @@ class EmbedderConfigAdapter[IEmbedderConfig]:
 
 
 class ReplacementConfigAdapter[IReplacementConfig]:
-    '''Adapter exposing only replacement configuration protocol.
+    """Adapter exposing only replacement configuration protocol.
 
     Use this when a component only needs smart replacement settings.
 
     Args:
         config: The application Config instance to adapt.
-    '''
+    """
 
     def __init__(self, config: Config) -> None:
         self._config = config
@@ -490,96 +490,96 @@ class ReplacementConfigAdapter[IReplacementConfig]:
 
 
 def create_config_adapter(config: Config) -> ConfigAdapter[IAppConfig]:
-    '''Factory function to create a full ConfigAdapter.
+    """Factory function to create a full ConfigAdapter.
 
     Args:
         config: Application configuration instance.
 
     Returns:
         ConfigAdapter wrapping the provided configuration.
-    '''
+    """
     return ConfigAdapter(config)
 
 
 def create_server_config_adapter(
     config: Config,
 ) -> ServerConfigAdapter[IServerConfig]:
-    '''Factory function to create a ServerConfigAdapter.
+    """Factory function to create a ServerConfigAdapter.
 
     Args:
         config: Application configuration instance.
 
     Returns:
         ServerConfigAdapter wrapping the provided configuration.
-    '''
+    """
     return ServerConfigAdapter(config)
 
 
 def create_search_config_adapter(
     config: Config,
 ) -> SearchConfigAdapter[ISearchConfig]:
-    '''Factory function to create a SearchConfigAdapter.
+    """Factory function to create a SearchConfigAdapter.
 
     Args:
         config: Application configuration instance.
 
     Returns:
         SearchConfigAdapter wrapping the provided configuration.
-    '''
+    """
     return SearchConfigAdapter(config)
 
 
 def create_storage_config_adapter(
     config: Config,
 ) -> StorageConfigAdapter[IStorageConfig]:
-    '''Factory function to create a StorageConfigAdapter.
+    """Factory function to create a StorageConfigAdapter.
 
     Args:
         config: Application configuration instance.
 
     Returns:
         StorageConfigAdapter wrapping the provided configuration.
-    '''
+    """
     return StorageConfigAdapter(config)
 
 
 def create_reranker_config_adapter(
     config: Config,
 ) -> RerankerConfigAdapter[IRerankerConfig]:
-    '''Factory function to create a RerankerConfigAdapter.
+    """Factory function to create a RerankerConfigAdapter.
 
     Args:
         config: Application configuration instance.
 
     Returns:
         RerankerConfigAdapter wrapping the provided configuration.
-    '''
+    """
     return RerankerConfigAdapter(config)
 
 
 def create_embedder_config_adapter(
     config: Config,
 ) -> EmbedderConfigAdapter[IEmbedderConfig]:
-    '''Factory function to create an EmbedderConfigAdapter.
+    """Factory function to create an EmbedderConfigAdapter.
 
     Args:
         config: Application configuration instance.
 
     Returns:
         EmbedderConfigAdapter wrapping the provided configuration.
-    '''
+    """
     return EmbedderConfigAdapter(config)
 
 
 def create_replacement_config_adapter(
     config: Config,
 ) -> ReplacementConfigAdapter[IReplacementConfig]:
-    '''Factory function to create a ReplacementConfigAdapter.
+    """Factory function to create a ReplacementConfigAdapter.
 
     Args:
         config: Application configuration instance.
 
     Returns:
         ReplacementConfigAdapter wrapping the provided configuration.
-    '''
+    """
     return ReplacementConfigAdapter(config)

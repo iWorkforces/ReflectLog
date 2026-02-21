@@ -1,4 +1,4 @@
-'''Custom exception hierarchy for ReflectLogMCP.
+"""Custom exception hierarchy for ReflectLogMCP.
 
 This module defines a structured exception hierarchy that allows callers
 to distinguish between different types of errors and handle them appropriately.
@@ -13,11 +13,11 @@ Hierarchy:
     │   └── InconsistentStateError - Dual-engine state mismatch
     ├── SearchError - Search operation failures
     └── EmbeddingError - Embedding generation failures
-'''
+"""
 
 
 class ReflectLogError(Exception):
-    '''Base exception for all ReflectLogMCP errors.
+    """Base exception for all ReflectLogMCP errors.
 
     All custom exceptions in this project should inherit from this class
     to enable broad exception catching when needed.
@@ -28,13 +28,13 @@ class ReflectLogError(Exception):
         except ReflectLogError as e:
             # Handle any ReflectLogMCP error
             logger.error(f"Operation failed: {e}")
-    '''
+    """
 
     pass
 
 
 class ConfigurationError(ReflectLogError):
-    '''Raised when configuration is invalid or missing.
+    """Raised when configuration is invalid or missing.
 
     This includes missing required environment variables,
     invalid configuration values, and configuration validation failures.
@@ -42,13 +42,13 @@ class ConfigurationError(ReflectLogError):
     Example:
         if not project_id:
             raise ConfigurationError("PROJECT_ID environment variable is required")
-    '''
+    """
 
     pass
 
 
 class ValidationError(ReflectLogError):
-    '''Raised when input validation fails.
+    """Raised when input validation fails.
 
     This includes memory length validation, format validation,
     and any other input-related validation failures.
@@ -56,13 +56,13 @@ class ValidationError(ReflectLogError):
     Example:
         if len(memory) > max_length:
             raise ValidationError(f"Memory exceeds maximum length of {max_length}")
-    '''
+    """
 
     pass
 
 
 class InitializationError(ReflectLogError):
-    '''Raised when engine or client initialization fails.
+    """Raised when engine or client initialization fails.
 
     This includes failures to initialize search engines, embedding clients,
     database connections, and other infrastructure components.
@@ -70,13 +70,13 @@ class InitializationError(ReflectLogError):
     Example:
         if self._index is None:
             raise InitializationError("Tantivy index not initialized")
-    '''
+    """
 
     pass
 
 
 class StorageError(ReflectLogError):
-    '''Raised when a storage operation fails.
+    """Raised when a storage operation fails.
 
     This is the base class for storage-related errors including
     insert, update, delete, and persistence failures.
@@ -86,13 +86,13 @@ class StorageError(ReflectLogError):
             self.message_store.insert(project_id, memory)
         except Exception as e:
             raise StorageError(f"Failed to store memory: {e}") from e
-    '''
+    """
 
     pass
 
 
 class DuplicateError(StorageError):
-    '''Raised when a duplicate entry is detected.
+    """Raised when a duplicate entry is detected.
 
     This is raised when attempting to insert a memory that already
     exists in the storage (when deduplication is enabled).
@@ -100,13 +100,13 @@ class DuplicateError(StorageError):
     Example:
         if self.message_store.exists(project_id, memory):
             raise DuplicateError(f"Memory already exists: {memory[:50]}...")
-    '''
+    """
 
     pass
 
 
 class InconsistentStateError(StorageError):
-    '''Raised when dual-engine state becomes inconsistent.
+    """Raised when dual-engine state becomes inconsistent.
 
     This is a critical error that occurs when an operation succeeds
     on one engine (e.g., USearch) but fails on another (e.g., Tantivy),
@@ -118,13 +118,13 @@ class InconsistentStateError(StorageError):
             "USearch deletion succeeded but Tantivy deletion failed: "
             "system is in inconsistent state"
         )
-    '''
+    """
 
     pass
 
 
 class SearchError(ReflectLogError):
-    '''Raised when a search operation fails.
+    """Raised when a search operation fails.
 
     This includes semantic search failures, full-text search failures,
     and hybrid search fusion failures.
@@ -134,13 +134,13 @@ class SearchError(ReflectLogError):
             results = self._semantic_engine.search(query, project_id, limit)
         except Exception as e:
             raise SearchError(f"Semantic search failed: {e}") from e
-    '''
+    """
 
     pass
 
 
 class EmbeddingError(ReflectLogError):
-    '''Raised when embedding generation fails.
+    """Raised when embedding generation fails.
 
     This includes API errors, timeout errors, and other failures
     during the embedding generation process.
@@ -150,13 +150,13 @@ class EmbeddingError(ReflectLogError):
             embedding = embedder.embed_query(text)
         except Exception as e:
             raise EmbeddingError(f"Failed to generate embedding: {e}") from e
-    '''
+    """
 
     pass
 
 
 class RerankerError(ReflectLogError):
-    '''Raised when LLM reranking fails.
+    """Raised when LLM reranking fails.
 
     This is raised when the LLM reranker encounters an unrecoverable error.
     Note: Individual document scoring failures fall back gracefully to fusion scores;
@@ -165,6 +165,6 @@ class RerankerError(ReflectLogError):
     Example:
         if self._client is None:
             raise RerankerError("LLM reranker client is not initialized")
-    '''
+    """
 
     pass

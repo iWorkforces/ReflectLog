@@ -1,4 +1,4 @@
-'''Type definitions for ReflectLogMCP Server.'''
+"""Type definitions for ReflectLogMCP Server."""
 
 from typing import (
     TYPE_CHECKING,
@@ -40,7 +40,7 @@ type LogContext = dict[str, Any]
 # Infrastructure layer implements them via structural subtyping (duck typing)
 @runtime_checkable
 class ISemanticSearchConfig(Protocol):
-    '''Interface for semantic search engine configuration.
+    """Interface for semantic search engine configuration.
 
     Following Clean Architecture principles, this protocol defines the contract
     that the application layer needs from semantic search configuration. The
@@ -63,7 +63,7 @@ class ISemanticSearchConfig(Protocol):
         openrouter_api_key: API key for embeddings.
         openrouter_base_url: API base URL.
         qwen_embedding_dims: Qwen embedding dimensions.
-    '''
+    """
 
     @property
     def project_id(self) -> str: ...
@@ -95,7 +95,7 @@ class ISemanticSearchConfig(Protocol):
 
 @runtime_checkable
 class Embeddings(Protocol):
-    '''Interface for embedding providers used by semantic search engines.
+    """Interface for embedding providers used by semantic search engines.
 
     This protocol defines the contract for embedding text into vector representations.
     Implementations can use various backends (OpenAI, Langchain/Qwen, etc.)
@@ -103,10 +103,10 @@ class Embeddings(Protocol):
 
     All embedding methods should return lists of floats representing the
     embedding vector for the given text(s).
-    '''
+    """
 
     def embed_query(self, text: str) -> list[float]:
-        '''Embed a single query string synchronously.
+        """Embed a single query string synchronously.
 
         Args:
             text: The query text to embed.
@@ -117,11 +117,11 @@ class Embeddings(Protocol):
 
         Raises:
             RuntimeError: If the embedding operation fails.
-        '''
+        """
         ...
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        '''Embed a batch of documents synchronously.
+        """Embed a batch of documents synchronously.
 
         Args:
             texts: List of document texts to embed.
@@ -133,11 +133,11 @@ class Embeddings(Protocol):
 
         Raises:
             RuntimeError: If the embedding operation fails.
-        '''
+        """
         ...
 
     async def aembed_query(self, text: str) -> list[float]:
-        '''Embed a single query string asynchronously.
+        """Embed a single query string asynchronously.
 
         Args:
             text: The query text to embed.
@@ -148,11 +148,11 @@ class Embeddings(Protocol):
 
         Raises:
             RuntimeError: If the embedding operation fails.
-        '''
+        """
         ...
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        '''Embed a batch of documents asynchronously.
+        """Embed a batch of documents asynchronously.
 
         Args:
             texts: List of document texts to embed.
@@ -164,12 +164,12 @@ class Embeddings(Protocol):
 
         Raises:
             RuntimeError: If the embedding operation fails.
-        '''
+        """
         ...
 
 
 class ISemanticSearchEngine(Protocol):
-    '''Interface for semantic search engine operations.
+    """Interface for semantic search engine operations.
 
     Following Clean Architecture principles, this protocol defines the contract
     that the application layer needs from a semantic search engine. The
@@ -192,15 +192,15 @@ class ISemanticSearchEngine(Protocol):
         ) -> list[tuple[str, float]]:
             return engine.search(query=query, project_id="project", limit=5)
         ```
-    '''
+    """
 
     @property
     def name(self) -> str:
-        '''Engine name for identification.'''
+        """Engine name for identification."""
         ...
 
     def add(self, project_id: str, content: str, infer: bool) -> None:
-        '''Add a memory to the semantic index.
+        """Add a memory to the semantic index.
 
         Args:
             project_id: Project identifier for filtering.
@@ -212,11 +212,11 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If add operation fails.
-        '''
+        """
         ...
 
     def add_batch(self, project_id: str, contents: list[str], infer: bool) -> list[str]:
-        '''Add multiple memories to the semantic index in a single batch.
+        """Add multiple memories to the semantic index in a single batch.
 
         Args:
             project_id: Project identifier for filtering.
@@ -225,7 +225,7 @@ class ISemanticSearchEngine(Protocol):
 
         Returns:
             List of memories successfully added (duplicates skipped).
-        '''
+        """
         ...
 
     def search(
@@ -234,7 +234,7 @@ class ISemanticSearchEngine(Protocol):
         project_id: str,
         limit: int,
     ) -> list[tuple[str, float, str]]:
-        '''Execute semantic search.
+        """Execute semantic search.
 
         Args:
             query: Search query string.
@@ -260,11 +260,11 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If search operation fails.
-        '''
+        """
         ...
 
     def get_all(self, project_id: str) -> list[str]:
-        '''Retrieve all stored memories for a project.
+        """Retrieve all stored memories for a project.
 
         Args:
             project_id: Project identifier for filtering.
@@ -274,11 +274,11 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If retrieval operation fails.
-        '''
+        """
         ...
 
     def delete(self, memory_id: str) -> None:
-        '''Delete a memory entry by its ID.
+        """Delete a memory entry by its ID.
 
         Args:
             memory_id: The ID of the memory to delete.
@@ -288,11 +288,11 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If deletion fails.
-        '''
+        """
         ...
 
     def commit(self) -> None:
-        '''Commit pending changes to the index.
+        """Commit pending changes to the index.
 
         This ensures any buffered writes are persisted to storage.
 
@@ -303,11 +303,11 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If commit operation fails.
-        '''
+        """
         ...
 
     def ensure_initialized(self) -> None:
-        '''Ensure the engine is fully initialized (thread-safe).
+        """Ensure the engine is fully initialized (thread-safe).
 
         This method forces any lazy initialization to complete before returning.
         Use this before parallel operations to prevent race conditions in
@@ -320,11 +320,11 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If initialization fails.
-        '''
+        """
         ...
 
     def get_id_by_content(self, project_id: str, content: str) -> int | None:
-        '''Get the ID of a memory by its content.
+        """Get the ID of a memory by its content.
 
         Args:
             project_id: Project identifier.
@@ -332,11 +332,11 @@ class ISemanticSearchEngine(Protocol):
 
         Returns:
             The memory ID if found, None otherwise.
-        '''
+        """
         ...
 
     def close(self) -> None:
-        '''Close resources and cleanup.
+        """Close resources and cleanup.
 
         This method should be called during graceful shutdown to ensure
         all resources are properly released (e.g., database connections,
@@ -350,14 +350,14 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If cleanup operation fails.
-        '''
+        """
         ...
 
     @property
     def memory_store(self) -> MemoryStore:
-        '''Get the underlying memory store for archive operations.
+        """Get the underlying memory store for archive operations.
 
         Returns:
             The MemoryStore instance used for memory text storage.
-        '''
+        """
         ...

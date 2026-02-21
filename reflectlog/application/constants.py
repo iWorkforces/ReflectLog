@@ -1,8 +1,8 @@
-'''Centralized constants for ReflectLogMCP application.
+"""Centralized constants for ReflectLogMCP application.
 
 This module contains internal constants used throughout the application.
 Configuration values should go in config/settings.py instead.
-'''
+"""
 
 
 # =============================================================================
@@ -74,15 +74,15 @@ DEFAULT_RETRY_BASE_DELAY: float = 1.0
 # =============================================================================
 
 __all__ = [
-    'ADAPTIVE_OVERFETCH_LARGE_INDEX_THRESHOLD',
-    'ADAPTIVE_OVERFETCH_SMALL_INDEX_THRESHOLD',
-    'DEFAULT_MAX_RETRIES',
-    'DEFAULT_RETRY_BASE_DELAY',
-    'LOG_ADD_MEMORY_PREVIEW_LIMIT',
-    'LOG_QUERY_TRUNCATE_LENGTH',
-    'LOG_SEPARATOR_LENGTH',
-    'MAX_PERCENTAGE_THRESHOLD',
-    'MIN_OVERFETCH_LIMIT',
-    'MIN_PERCENTAGE_THRESHOLD',
-    'TANTIVY_SCORE_DIVISOR',
+    "ADAPTIVE_OVERFETCH_LARGE_INDEX_THRESHOLD",
+    "ADAPTIVE_OVERFETCH_SMALL_INDEX_THRESHOLD",
+    "DEFAULT_MAX_RETRIES",
+    "DEFAULT_RETRY_BASE_DELAY",
+    "LOG_ADD_MEMORY_PREVIEW_LIMIT",
+    "LOG_QUERY_TRUNCATE_LENGTH",
+    "LOG_SEPARATOR_LENGTH",
+    "MAX_PERCENTAGE_THRESHOLD",
+    "MIN_OVERFETCH_LIMIT",
+    "MIN_PERCENTAGE_THRESHOLD",
+    "TANTIVY_SCORE_DIVISOR",
 ]
