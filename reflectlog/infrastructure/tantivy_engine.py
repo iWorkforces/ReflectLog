@@ -788,12 +788,6 @@ class TantivyEngine(BaseModel):
             # but we clear the reference for consistency
             self._index = None
 
-            if self.logger:
-                self.logger.info(
-                    "Tantivy engine closed",
-                    extra={"project_id": self.config.project_id},
-                )
-
     def soft_delete(self, project_id: str, content: str) -> bool:
         """Mark a document as deleted by adding a tombstone (O(1) operation).
 
