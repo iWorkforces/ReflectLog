@@ -27,7 +27,7 @@ from .match_utils import has_exact_match
 
 @dataclass
 class ReplacementInfo:
-    """Information about a memory replacement that occurred.
+    '''Information about a memory replacement that occurred.
 
     Attributes:
         old_memory: The memory that was replaced (deleted).
@@ -35,7 +35,7 @@ class ReplacementInfo:
         confidence: LLM confidence score for the replacement decision (0.0-1.0).
         reason: LLM's explanation for why replacement was appropriate.
         similarity_score: Embedding similarity between old and new memories.
-    """
+    '''
 
     old_memory: str
     new_memory: str
@@ -836,7 +836,7 @@ class StoragePhase:
     def _archive_for_replacement(
         self, old_memory: str, new_memory: str, confidence: float, reason: str
     ) -> bool:
-        """Archive a memory before replacement (for recovery).
+        '''Archive a memory before replacement (for recovery).
 
         This method archives a memory to the archived_messages table before
         it gets deleted during smart replacement. This enables recovery if
@@ -850,7 +850,7 @@ class StoragePhase:
 
         Returns:
             True if archiving succeeded, False otherwise.
-        """
+        '''
         try:
             msg_id = self._semantic_engine.get_id_by_content(
                 self._project_id, old_memory

@@ -1,7 +1,7 @@
-"""Unit tests for reflectlog/plugins/ package.
+'''Unit tests for reflectlog/plugins/ package.
 
 Tests plugin discovery, loading, registry, and lifecycle management.
-"""
+'''
 
 import importlib
 import pkgutil
@@ -43,13 +43,13 @@ from reflectlog.plugins.registry import (
 
 
 class _DummyPlugin:
-    """Simple plugin stub without lifecycle support."""
+    '''Simple plugin stub without lifecycle support.'''
 
     pass
 
 
 class _PluggablePlugin:
-    """Plugin implementing IPluggable protocol."""
+    '''Plugin implementing IPluggable protocol.'''
 
     @property
     def plugin_name(self) -> str:
@@ -61,7 +61,7 @@ class _PluggablePlugin:
 
 
 class _LifecyclePlugin:
-    """Plugin implementing IPluginLifecycle protocol."""
+    '''Plugin implementing IPluginLifecycle protocol.'''
 
     def __init__(self) -> None:
         self.initialized = False
@@ -83,7 +83,7 @@ class _LifecyclePlugin:
 
 
 class _FailingLifecyclePlugin:
-    """Plugin whose lifecycle methods raise."""
+    '''Plugin whose lifecycle methods raise.'''
 
     async def initialize(self) -> None:
         raise RuntimeError("init boom")
@@ -105,15 +105,15 @@ class _FailingLifecyclePlugin:
 
 @pytest.mark.unit
 class TestUtcNow:
-    """Tests for utc_now helper."""
+    '''Tests for utc_now helper.'''
 
     def test_returns_timezone_aware_datetime(self) -> None:
-        """utc_now should return a timezone-aware datetime."""
+        '''utc_now should return a timezone-aware datetime.'''
         now = utc_now()
         assert now.tzinfo is not None
 
     def test_returns_utc_timezone(self) -> None:
-        """utc_now should use UTC timezone."""
+        '''utc_now should use UTC timezone.'''
         from datetime import UTC
 
         now = utc_now()
@@ -127,10 +127,10 @@ class TestUtcNow:
 
 @pytest.mark.unit
 class TestPluginState:
-    """Tests for PluginState enum."""
+    '''Tests for PluginState enum.'''
 
     def test_all_states_exist(self) -> None:
-        """Verify all expected lifecycle states."""
+        '''Verify all expected lifecycle states.'''
         expected = {
             "DISCOVERED",
             "LOADED",
@@ -142,7 +142,7 @@ class TestPluginState:
         assert {s.name for s in PluginState} == expected
 
     def test_state_values(self) -> None:
-        """Verify state string values."""
+        '''Verify state string values.'''
         assert PluginState.DISCOVERED.value == "discovered"
         assert PluginState.ERROR.value == "error"
 
@@ -154,15 +154,15 @@ class TestPluginState:
 
 @pytest.mark.unit
 class TestPluginMetadata:
-    """Tests for PluginCapability and PluginMetadata dataclasses."""
+    '''Tests for PluginCapability and PluginMetadata dataclasses.'''
 
     def test_capability_defaults(self) -> None:
-        """PluginCapability defaults version to "0.0.0"."""
+        '''PluginCapability defaults version to "0.0.0".'''
         cap = PluginCapability(name="search")
         assert cap.version == "0.0.0"
 
     def test_metadata_defaults(self) -> None:
-        """PluginMetadata defaults should be sensible."""
+        '''PluginMetadata defaults should be sensible.'''
         meta = PluginMetadata(name="test", version="1.0")
         assert meta.state == PluginState.DISCOVERED
         assert meta.error_message is None
@@ -172,7 +172,7 @@ class TestPluginMetadata:
         assert meta.dependencies == []
 
     def test_metadata_discovered_at_auto(self) -> None:
-        """discovered_at should be auto-populated."""
+        '''discovered_at should be auto-populated.'''
         meta = PluginMetadata(name="t", version="0")
         assert meta.discovered_at is not None
 
@@ -184,14 +184,14 @@ class TestPluginMetadata:
 
 @pytest.mark.unit
 class TestIPluggable:
-    """Tests for IPluggable runtime-checkable protocol."""
+    '''Tests for IPluggable runtime-checkable protocol.'''
 
     def test_pluggable_class_is_instance(self) -> None:
-        """A class with plugin_name and plugin_version is IPluggable."""
+        '''A class with plugin_name and plugin_version is IPluggable.'''
         assert isinstance(_PluggablePlugin(), IPluggable)
 
     def test_plain_class_is_not_instance(self) -> None:
-        """A plain class is not IPluggable."""
+        '''A plain class is not IPluggable.'''
         assert not isinstance(_DummyPlugin(), IPluggable)
 
 
@@ -202,10 +202,10 @@ class TestIPluggable:
 
 @pytest.mark.unit
 class TestPluginRegistry:
-    """Tests for PluginRegistry."""
+    '''Tests for PluginRegistry.'''
 
     def test_register_auto_metadata(self) -> None:
-        """Register with auto-generated metadata."""
+        '''Register with auto-generated metadata.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         plugin = _DummyPlugin()
         meta = reg.register(plugin)
@@ -215,7 +215,7 @@ class TestPluginRegistry:
         assert meta.loaded_at is not None
 
     def test_register_pluggable_auto_metadata(self) -> None:
-        """Register IPluggable — auto-metadata uses plugin_name/version."""
+        '''Register IPluggable — auto-metadata uses plugin_name/version.'''
         reg: PluginRegistry[_PluggablePlugin] = PluginRegistry()
         plugin = _PluggablePlugin()
         meta = reg.register(plugin)
@@ -224,7 +224,7 @@ class TestPluginRegistry:
         assert meta.version == "1.2.3"
 
     def test_register_custom_metadata(self) -> None:
-        """Register with explicit metadata."""
+        '''Register with explicit metadata.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         custom_meta = PluginMetadata(name="custom", version="9.9.9")
         meta = reg.register(_DummyPlugin(), metadata=custom_meta)
@@ -234,19 +234,19 @@ class TestPluginRegistry:
         assert meta.state == PluginState.LOADED
 
     def test_get_existing(self) -> None:
-        """get() returns registered plugin."""
+        '''get() returns registered plugin.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         plugin = _DummyPlugin()
         reg.register(plugin, PluginMetadata(name="p", version="0"))
         assert reg.get("p") is plugin
 
     def test_get_missing_returns_none(self) -> None:
-        """get() returns None for missing plugin."""
+        '''get() returns None for missing plugin.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         assert reg.get("nonexistent") is None
 
     def test_get_metadata(self) -> None:
-        """get_metadata() returns metadata."""
+        '''get_metadata() returns metadata.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="1"))
         meta = reg.get_metadata("p")
@@ -254,12 +254,12 @@ class TestPluginRegistry:
         assert meta.version == "1"
 
     def test_get_metadata_missing(self) -> None:
-        """get_metadata() returns None for missing."""
+        '''get_metadata() returns None for missing.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         assert reg.get_metadata("x") is None
 
     def test_unregister_existing(self) -> None:
-        """unregister() removes plugin and returns True."""
+        '''unregister() removes plugin and returns True.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="0"))
         assert reg.unregister("p") is True
@@ -267,19 +267,19 @@ class TestPluginRegistry:
         assert reg.count() == 0
 
     def test_unregister_missing(self) -> None:
-        """unregister() returns False when not found."""
+        '''unregister() returns False when not found.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         assert reg.unregister("missing") is False
 
     def test_list_all(self) -> None:
-        """list_all() returns all registered names."""
+        '''list_all() returns all registered names.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="a", version="0"))
         reg.register(_DummyPlugin(), PluginMetadata(name="b", version="0"))
         assert sorted(reg.list_all()) == ["a", "b"]
 
     def test_list_by_state(self) -> None:
-        """list_by_state() filters correctly."""
+        '''list_by_state() filters correctly.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="a", version="0"))
         reg.register(_DummyPlugin(), PluginMetadata(name="b", version="0"))
@@ -291,7 +291,7 @@ class TestPluginRegistry:
         assert activated == ["a"]
 
     def test_list_by_capability(self) -> None:
-        """list_by_capability() returns plugins with matching capability."""
+        '''list_by_capability() returns plugins with matching capability.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         meta = PluginMetadata(
             name="search_plugin",
@@ -305,7 +305,7 @@ class TestPluginRegistry:
         assert reg.list_by_capability("nonexistent") == []
 
     def test_list_by_type(self) -> None:
-        """list_by_type() returns instances of the specified type."""
+        '''list_by_type() returns instances of the specified type.'''
         reg: PluginRegistry[object] = PluginRegistry()
         dummy = _DummyPlugin()
         pluggable = _PluggablePlugin()
@@ -317,7 +317,7 @@ class TestPluginRegistry:
         assert result[0] is pluggable
 
     def test_activate_success(self) -> None:
-        """activate() transitions LOADED → ACTIVATED."""
+        '''activate() transitions LOADED → ACTIVATED.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="0"))
         assert reg.activate("p") is True
@@ -328,7 +328,7 @@ class TestPluginRegistry:
         assert meta.activated_at is not None
 
     def test_activate_not_loaded_returns_false(self) -> None:
-        """activate() returns False when state is not LOADED."""
+        '''activate() returns False when state is not LOADED.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="0"))
         reg.activate("p")
@@ -336,12 +336,12 @@ class TestPluginRegistry:
         assert reg.activate("p") is False
 
     def test_activate_missing_returns_false(self) -> None:
-        """activate() returns False when plugin not found."""
+        '''activate() returns False when plugin not found.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         assert reg.activate("nonexistent") is False
 
     def test_deactivate_success(self) -> None:
-        """deactivate() transitions ACTIVATED → DEACTIVATED."""
+        '''deactivate() transitions ACTIVATED → DEACTIVATED.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="0"))
         reg.activate("p")
@@ -352,19 +352,19 @@ class TestPluginRegistry:
         assert meta.state == PluginState.DEACTIVATED
 
     def test_deactivate_not_activated_returns_false(self) -> None:
-        """deactivate() returns False when state is not ACTIVATED."""
+        '''deactivate() returns False when state is not ACTIVATED.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="0"))
         # State is LOADED, not ACTIVATED
         assert reg.deactivate("p") is False
 
     def test_deactivate_missing_returns_false(self) -> None:
-        """deactivate() returns False when plugin not found."""
+        '''deactivate() returns False when plugin not found.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         assert reg.deactivate("missing") is False
 
     def test_set_error_success(self) -> None:
-        """set_error() sets ERROR state and message."""
+        '''set_error() sets ERROR state and message.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="0"))
         assert reg.set_error("p", "something broke") is True
@@ -375,12 +375,12 @@ class TestPluginRegistry:
         assert meta.error_message == "something broke"
 
     def test_set_error_missing_returns_false(self) -> None:
-        """set_error() returns False when plugin not found."""
+        '''set_error() returns False when plugin not found.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         assert reg.set_error("missing", "err") is False
 
     def test_clear(self) -> None:
-        """clear() removes everything."""
+        '''clear() removes everything.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="a", version="0"))
         reg.register(_DummyPlugin(), PluginMetadata(name="b", version="0"))
@@ -389,14 +389,14 @@ class TestPluginRegistry:
         assert reg.list_all() == []
 
     def test_count(self) -> None:
-        """count() returns number of registered plugins."""
+        '''count() returns number of registered plugins.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         assert reg.count() == 0
         reg.register(_DummyPlugin(), PluginMetadata(name="a", version="0"))
         assert reg.count() == 1
 
     def test_plugins_property_returns_copy(self) -> None:
-        """plugins property returns a copy, not the internal dict."""
+        '''plugins property returns a copy, not the internal dict.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="0"))
         copy = reg.plugins
@@ -404,7 +404,7 @@ class TestPluginRegistry:
         assert "injected" not in reg.plugins
 
     def test_instances_property_returns_copy(self) -> None:
-        """instances property returns a copy, not the internal dict."""
+        '''instances property returns a copy, not the internal dict.'''
         reg: PluginRegistry[_DummyPlugin] = PluginRegistry()
         reg.register(_DummyPlugin(), PluginMetadata(name="p", version="0"))
         copy = reg.instances
@@ -419,10 +419,10 @@ class TestPluginRegistry:
 
 @pytest.mark.unit
 class TestToolRegistry:
-    """Tests for ToolRegistry."""
+    '''Tests for ToolRegistry.'''
 
     def test_register_tool(self) -> None:
-        """register_tool() creates metadata with tool capability."""
+        '''register_tool() creates metadata with tool capability.'''
         reg: ToolRegistry[_DummyPlugin] = ToolRegistry()
         meta = reg.register_tool(
             _DummyPlugin(), name="my_tool", description="A tool", version="2.0"
@@ -433,14 +433,14 @@ class TestToolRegistry:
         assert any(c.name == "tool" for c in meta.capabilities)
 
     def test_register_tool_duplicate_raises(self) -> None:
-        """register_tool() raises ValueError for duplicate name."""
+        '''register_tool() raises ValueError for duplicate name.'''
         reg: ToolRegistry[_DummyPlugin] = ToolRegistry()
         reg.register_tool(_DummyPlugin(), name="dup")
         with pytest.raises(ValueError, match="already registered"):
             reg.register_tool(_DummyPlugin(), name="dup")
 
     def test_unregister_tool(self) -> None:
-        """unregister_tool() removes tool from both registries."""
+        '''unregister_tool() removes tool from both registries.'''
         reg: ToolRegistry[_DummyPlugin] = ToolRegistry()
         reg.register_tool(_DummyPlugin(), name="t")
         assert reg.unregister_tool("t") is True
@@ -448,31 +448,31 @@ class TestToolRegistry:
         assert reg.get("t") is None
 
     def test_unregister_tool_missing(self) -> None:
-        """unregister_tool() returns False when tool not found."""
+        '''unregister_tool() returns False when tool not found.'''
         reg: ToolRegistry[_DummyPlugin] = ToolRegistry()
         assert reg.unregister_tool("missing") is False
 
     def test_get_tool(self) -> None:
-        """get_tool() returns the registered tool."""
+        '''get_tool() returns the registered tool.'''
         reg: ToolRegistry[_DummyPlugin] = ToolRegistry()
         plugin = _DummyPlugin()
         reg.register_tool(plugin, name="t")
         assert reg.get_tool("t") is plugin
 
     def test_get_tool_missing(self) -> None:
-        """get_tool() returns None for unregistered tool."""
+        '''get_tool() returns None for unregistered tool.'''
         reg: ToolRegistry[_DummyPlugin] = ToolRegistry()
         assert reg.get_tool("nope") is None
 
     def test_list_tool_names(self) -> None:
-        """list_tool_names() returns sorted tool names."""
+        '''list_tool_names() returns sorted tool names.'''
         reg: ToolRegistry[_DummyPlugin] = ToolRegistry()
         reg.register_tool(_DummyPlugin(), name="zebra")
         reg.register_tool(_DummyPlugin(), name="alpha")
         assert reg.list_tool_names() == ["alpha", "zebra"]
 
     def test_has_tool(self) -> None:
-        """has_tool() returns True/False correctly."""
+        '''has_tool() returns True/False correctly.'''
         reg: ToolRegistry[_DummyPlugin] = ToolRegistry()
         reg.register_tool(_DummyPlugin(), name="exists")
         assert reg.has_tool("exists") is True
@@ -486,16 +486,16 @@ class TestToolRegistry:
 
 @pytest.mark.unit
 class TestDiscoveredPlugin:
-    """Tests for DiscoveredPlugin dataclass."""
+    '''Tests for DiscoveredPlugin dataclass.'''
 
     def test_defaults(self) -> None:
-        """Verify default field values."""
+        '''Verify default field values.'''
         dp = DiscoveredPlugin(name="p", module_path="mod", class_name="Cls")
         assert dp.version == "0.0.0"
         assert dp.entry_point is None
 
     def test_with_entry_point(self) -> None:
-        """entry_point can be set."""
+        '''entry_point can be set.'''
         dp = DiscoveredPlugin(
             name="p",
             module_path="mod",
@@ -512,10 +512,10 @@ class TestDiscoveredPlugin:
 
 @pytest.mark.unit
 class TestPluginDiscoveryStrategy:
-    """Tests for base PluginDiscoveryStrategy."""
+    '''Tests for base PluginDiscoveryStrategy.'''
 
     async def test_base_raises_not_implemented(self) -> None:
-        """Base discover() raises NotImplementedError."""
+        '''Base discover() raises NotImplementedError.'''
         strategy = PluginDiscoveryStrategy()
         with pytest.raises(NotImplementedError):
             await strategy.discover()
@@ -528,10 +528,10 @@ class TestPluginDiscoveryStrategy:
 
 @pytest.mark.unit
 class TestEntryPointDiscovery:
-    """Tests for EntryPointDiscovery."""
+    '''Tests for EntryPointDiscovery.'''
 
     async def test_discovers_from_entry_points(self) -> None:
-        """Should parse entry points with colon-separated value."""
+        '''Should parse entry points with colon-separated value.'''
         mock_ep = MagicMock()
         mock_ep.name = "my_plugin"
         mock_ep.value = "some.module:MyClass"
@@ -548,7 +548,7 @@ class TestEntryPointDiscovery:
         assert result[0].entry_point is not None
 
     async def test_discovers_module_only_entry_point(self) -> None:
-        """Entry point without colon sets class_name to empty string."""
+        '''Entry point without colon sets class_name to empty string.'''
         mock_ep = MagicMock()
         mock_ep.name = "mod_plugin"
         mock_ep.value = "some.module"
@@ -563,7 +563,7 @@ class TestEntryPointDiscovery:
         assert result[0].module_path == "some.module"
 
     async def test_type_error_fallback_with_select(self) -> None:
-        """Handles TypeError with SelectableGroups that have select()."""
+        '''Handles TypeError with SelectableGroups that have select().'''
         mock_eps = MagicMock()
         mock_eps.select.return_value = []
 
@@ -589,7 +589,7 @@ class TestEntryPointDiscovery:
             assert result == []
 
     async def test_type_error_fallback_without_select(self) -> None:
-        """Handles TypeError fallback using list filtering."""
+        '''Handles TypeError fallback using list filtering.'''
         mock_ep = MagicMock()
         mock_ep.name = "filtered"
         mock_ep.value = "mod:Cls"
@@ -613,7 +613,7 @@ class TestEntryPointDiscovery:
         assert result[0].name == "filtered"
 
     async def test_empty_entry_points(self) -> None:
-        """Should return empty list when no entry points found."""
+        '''Should return empty list when no entry points found.'''
         with patch(
             "reflectlog.plugins.discovery.importlib.metadata.entry_points",
             return_value=[],
@@ -631,10 +631,10 @@ class TestEntryPointDiscovery:
 
 @pytest.mark.unit
 class TestDirectoryScanDiscovery:
-    """Tests for DirectoryScanDiscovery."""
+    '''Tests for DirectoryScanDiscovery.'''
 
     async def test_discovers_subclasses_in_modules(self) -> None:
-        """Should find subclasses of plugin_base_class in scanned modules."""
+        '''Should find subclasses of plugin_base_class in scanned modules.'''
 
         class BasePlugin:
             pass
@@ -678,7 +678,7 @@ class TestDirectoryScanDiscovery:
         assert result[0].module_path == "fake_pkg.plugin_tool"
 
     async def test_skips_packages(self) -> None:
-        """Should skip sub-packages (ispkg=True)."""
+        '''Should skip sub-packages (ispkg=True).'''
 
         class Base:
             pass
@@ -710,7 +710,7 @@ class TestDirectoryScanDiscovery:
         assert result == []
 
     async def test_skips_namespace_packages(self) -> None:
-        """Should skip namespace packages (__file__ is None)."""
+        '''Should skip namespace packages (__file__ is None).'''
 
         class Base:
             pass
@@ -735,7 +735,7 @@ class TestDirectoryScanDiscovery:
         assert result == []
 
     async def test_handles_import_error(self) -> None:
-        """Should skip packages that raise ImportError."""
+        '''Should skip packages that raise ImportError.'''
 
         class Base:
             pass
@@ -757,7 +757,7 @@ class TestDirectoryScanDiscovery:
         assert result == []
 
     async def test_skips_non_type_attributes(self) -> None:
-        """Should ignore module attributes that are not types."""
+        '''Should ignore module attributes that are not types.'''
 
         class Base:
             pass
@@ -802,10 +802,10 @@ class TestDirectoryScanDiscovery:
 
 @pytest.mark.unit
 class TestStaticRegistration:
-    """Tests for StaticRegistration."""
+    '''Tests for StaticRegistration.'''
 
     async def test_returns_registered_plugins(self) -> None:
-        """Should return a copy of registered plugins."""
+        '''Should return a copy of registered plugins.'''
         plugins = [
             DiscoveredPlugin(name="a", module_path="m", class_name="A"),
             DiscoveredPlugin(name="b", module_path="m", class_name="B"),
@@ -818,7 +818,7 @@ class TestStaticRegistration:
         assert result[1].name == "b"
 
     async def test_returns_copy(self) -> None:
-        """Returned list should be a copy, not the original."""
+        '''Returned list should be a copy, not the original.'''
         plugins = [
             DiscoveredPlugin(name="x", module_path="m", class_name="X"),
         ]
@@ -831,7 +831,7 @@ class TestStaticRegistration:
         assert len(result2) == 1
 
     async def test_empty_registration(self) -> None:
-        """Empty list returns empty list."""
+        '''Empty list returns empty list.'''
         strategy = StaticRegistration([])
         result = await strategy.discover()
         assert result == []
@@ -844,10 +844,10 @@ class TestStaticRegistration:
 
 @pytest.mark.unit
 class TestCompositeDiscovery:
-    """Tests for CompositeDiscovery."""
+    '''Tests for CompositeDiscovery.'''
 
     async def test_combines_strategies(self) -> None:
-        """Should combine results from all strategies."""
+        '''Should combine results from all strategies.'''
         s1 = StaticRegistration(
             [
                 DiscoveredPlugin(name="a", module_path="m", class_name="A"),
@@ -866,7 +866,7 @@ class TestCompositeDiscovery:
         assert "b" in names
 
     async def test_deduplicates_by_name(self) -> None:
-        """First discovery wins when duplicate names found."""
+        '''First discovery wins when duplicate names found.'''
         s1 = StaticRegistration(
             [
                 DiscoveredPlugin(
@@ -889,7 +889,7 @@ class TestCompositeDiscovery:
         assert result[0].version == "1.0"
 
     async def test_empty_strategies(self) -> None:
-        """No strategies means no results."""
+        '''No strategies means no results.'''
         composite = CompositeDiscovery(strategies=[])
         result = await composite.discover()
         assert result == []
@@ -902,10 +902,10 @@ class TestCompositeDiscovery:
 
 @pytest.mark.unit
 class TestLoadPlugin:
-    """Tests for load_plugin() function."""
+    '''Tests for load_plugin() function.'''
 
     async def test_load_with_class_name(self) -> None:
-        """Should import module and instantiate class."""
+        '''Should import module and instantiate class.'''
         mock_module = MagicMock()
         mock_class = MagicMock(return_value="instance")
         mock_module.MyPlugin = mock_class
@@ -920,7 +920,7 @@ class TestLoadPlugin:
         mock_class.assert_called_once()
 
     async def test_load_without_class_name(self) -> None:
-        """Should return the module when no class_name."""
+        '''Should return the module when no class_name.'''
         mock_module = MagicMock()
 
         with patch.object(importlib, "import_module", return_value=mock_module):
@@ -937,10 +937,10 @@ class TestLoadPlugin:
 
 @pytest.mark.unit
 class TestPluginDiscoverer:
-    """Tests for PluginDiscoverer class."""
+    '''Tests for PluginDiscoverer class.'''
 
     async def test_discover_plugins(self) -> None:
-        """discover_plugins() uses strategy and stores results."""
+        '''discover_plugins() uses strategy and stores results.'''
         plugins = [
             DiscoveredPlugin(name="a", module_path="m", class_name="A"),
         ]
@@ -952,7 +952,7 @@ class TestPluginDiscoverer:
         assert discoverer.discovered_plugins == result
 
     async def test_load_plugin_by_name(self) -> None:
-        """load_plugin() loads a previously discovered plugin."""
+        '''load_plugin() loads a previously discovered plugin.'''
         dp = DiscoveredPlugin(name="p", module_path="some.mod", class_name="Cls")
         strategy = StaticRegistration([dp])
         discoverer = PluginDiscoverer(strategy)
@@ -968,7 +968,7 @@ class TestPluginDiscoverer:
         assert "p" in discoverer.loaded_plugins
 
     async def test_load_plugin_already_loaded(self) -> None:
-        """load_plugin() returns cached instance if already loaded."""
+        '''load_plugin() returns cached instance if already loaded.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         strategy = StaticRegistration([dp])
         discoverer = PluginDiscoverer(strategy)
@@ -986,7 +986,7 @@ class TestPluginDiscoverer:
         assert mock_module.C.call_count == 1
 
     async def test_load_plugin_not_discovered(self) -> None:
-        """load_plugin() returns None for undiscovered plugin."""
+        '''load_plugin() returns None for undiscovered plugin.'''
         strategy = StaticRegistration([])
         discoverer = PluginDiscoverer(strategy)
         await discoverer.discover_plugins()
@@ -995,7 +995,7 @@ class TestPluginDiscoverer:
         assert result is None
 
     async def test_load_all_plugins(self) -> None:
-        """load_all_plugins() loads all discovered plugins."""
+        '''load_all_plugins() loads all discovered plugins.'''
         plugins = [
             DiscoveredPlugin(name="a", module_path="m", class_name="A"),
             DiscoveredPlugin(name="b", module_path="m", class_name="B"),
@@ -1014,7 +1014,7 @@ class TestPluginDiscoverer:
         assert len(loaded) == 2
 
     async def test_discovered_plugins_returns_copy(self) -> None:
-        """discovered_plugins property returns a copy."""
+        '''discovered_plugins property returns a copy.'''
         plugins = [
             DiscoveredPlugin(name="x", module_path="m", class_name="X"),
         ]
@@ -1027,7 +1027,7 @@ class TestPluginDiscoverer:
         assert len(discoverer.discovered_plugins) == 1
 
     async def test_loaded_plugins_returns_copy(self) -> None:
-        """loaded_plugins property returns a copy."""
+        '''loaded_plugins property returns a copy.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         strategy = StaticRegistration([dp])
         discoverer = PluginDiscoverer(strategy)
@@ -1051,10 +1051,10 @@ class TestPluginDiscoverer:
 
 @pytest.mark.unit
 class TestLifecycleHooks:
-    """Tests for LifecycleHooks dataclass."""
+    '''Tests for LifecycleHooks dataclass.'''
 
     def test_defaults_none(self) -> None:
-        """All hooks default to None."""
+        '''All hooks default to None.'''
         hooks = LifecycleHooks()
         assert hooks.on_load is None
         assert hooks.on_initialize is None
@@ -1063,7 +1063,7 @@ class TestLifecycleHooks:
         assert hooks.on_unload is None
 
     def test_custom_hooks(self) -> None:
-        """Custom hooks can be set."""
+        '''Custom hooks can be set.'''
         cb = lambda name: None  # noqa: E731
         hooks = LifecycleHooks(on_load=cb, on_activate=cb)
         assert hooks.on_load is cb
@@ -1077,14 +1077,14 @@ class TestLifecycleHooks:
 
 @pytest.mark.unit
 class TestIPluginLifecycle:
-    """Tests for IPluginLifecycle protocol."""
+    '''Tests for IPluginLifecycle protocol.'''
 
     def test_lifecycle_plugin_is_instance(self) -> None:
-        """A class with lifecycle methods passes isinstance check."""
+        '''A class with lifecycle methods passes isinstance check.'''
         assert isinstance(_LifecyclePlugin(), IPluginLifecycle)
 
     def test_plain_class_is_not_instance(self) -> None:
-        """A plain class does not implement IPluginLifecycle."""
+        '''A plain class does not implement IPluginLifecycle.'''
         assert not isinstance(_DummyPlugin(), IPluginLifecycle)
 
 
@@ -1095,14 +1095,14 @@ class TestIPluginLifecycle:
 
 @pytest.mark.unit
 class TestPluginLoader:
-    """Tests for PluginLoader."""
+    '''Tests for PluginLoader.'''
 
     def _make_loader(
         self,
         plugins: list[DiscoveredPlugin] | None = None,
         hooks: LifecycleHooks | None = None,
     ) -> PluginLoader:
-        """Create a PluginLoader with static discovery."""
+        '''Create a PluginLoader with static discovery.'''
         if plugins is None:
             plugins = []
         strategy = StaticRegistration(plugins)
@@ -1114,14 +1114,14 @@ class TestPluginLoader:
         )
 
     async def test_discover(self) -> None:
-        """discover() delegates to discoverer."""
+        '''discover() delegates to discoverer.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         result = await loader.discover()
         assert len(result) == 1
 
     async def test_load_plugin_success(self) -> None:
-        """load_plugin() loads and registers the plugin."""
+        '''load_plugin() loads and registers the plugin.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1137,7 +1137,7 @@ class TestPluginLoader:
         assert loader.registry.count() == 1
 
     async def test_load_plugin_with_instance(self) -> None:
-        """load_plugin() uses provided instance directly."""
+        '''load_plugin() uses provided instance directly.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1148,14 +1148,14 @@ class TestPluginLoader:
         assert loader.registry.get("_DummyPlugin") is instance
 
     async def test_load_plugin_not_discovered(self) -> None:
-        """load_plugin() returns False for undiscovered plugin."""
+        '''load_plugin() returns False for undiscovered plugin.'''
         loader = self._make_loader([])
         await loader.discover()
         result = await loader.load_plugin("missing")
         assert result is False
 
     async def test_load_plugin_import_error(self) -> None:
-        """load_plugin() returns False and sets error on load failure."""
+        '''load_plugin() returns False and sets error on load failure.'''
         dp = DiscoveredPlugin(name="p", module_path="bad.mod", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1170,7 +1170,7 @@ class TestPluginLoader:
         assert result is False
 
     async def test_load_plugin_calls_hook(self) -> None:
-        """load_plugin() calls on_load hook."""
+        '''load_plugin() calls on_load hook.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         hook_calls: list[str] = []
         hooks = LifecycleHooks(on_load=lambda name: hook_calls.append(name))
@@ -1187,7 +1187,7 @@ class TestPluginLoader:
         assert "p" in hook_calls
 
     async def test_initialize_plugin_with_lifecycle(self) -> None:
-        """initialize_plugin() calls initialize() on lifecycle plugins."""
+        '''initialize_plugin() calls initialize() on lifecycle plugins.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1202,7 +1202,7 @@ class TestPluginLoader:
         assert lc_plugin.initialized is True
 
     async def test_initialize_plugin_without_lifecycle(self) -> None:
-        """initialize_plugin() succeeds for non-lifecycle plugins."""
+        '''initialize_plugin() succeeds for non-lifecycle plugins.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1213,13 +1213,13 @@ class TestPluginLoader:
         assert result is True
 
     async def test_initialize_plugin_not_registered(self) -> None:
-        """initialize_plugin() returns False for unregistered plugin."""
+        '''initialize_plugin() returns False for unregistered plugin.'''
         loader = self._make_loader()
         result = await loader.initialize_plugin("missing")
         assert result is False
 
     async def test_initialize_plugin_failure(self) -> None:
-        """initialize_plugin() returns False on lifecycle error."""
+        '''initialize_plugin() returns False on lifecycle error.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1231,7 +1231,7 @@ class TestPluginLoader:
         assert result is False
 
     async def test_initialize_plugin_calls_hook(self) -> None:
-        """initialize_plugin() calls on_initialize hook."""
+        '''initialize_plugin() calls on_initialize hook.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         hook_calls: list[str] = []
         hooks = LifecycleHooks(on_initialize=lambda name: hook_calls.append(name))
@@ -1244,7 +1244,7 @@ class TestPluginLoader:
         assert plugin_name in hook_calls
 
     async def test_activate_plugin_success(self) -> None:
-        """activate_plugin() activates a LOADED plugin."""
+        '''activate_plugin() activates a LOADED plugin.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1255,13 +1255,13 @@ class TestPluginLoader:
         assert result is True
 
     async def test_activate_plugin_failure(self) -> None:
-        """activate_plugin() returns False if registry rejects."""
+        '''activate_plugin() returns False if registry rejects.'''
         loader = self._make_loader()
         result = await loader.activate_plugin("missing")
         assert result is False
 
     async def test_activate_plugin_calls_hook(self) -> None:
-        """activate_plugin() calls on_activate hook."""
+        '''activate_plugin() calls on_activate hook.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         hook_calls: list[str] = []
         hooks = LifecycleHooks(on_activate=lambda name: hook_calls.append(name))
@@ -1274,7 +1274,7 @@ class TestPluginLoader:
         assert plugin_name in hook_calls
 
     async def test_deactivate_plugin_with_lifecycle(self) -> None:
-        """deactivate_plugin() calls deactivate() on lifecycle plugins."""
+        '''deactivate_plugin() calls deactivate() on lifecycle plugins.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1289,7 +1289,7 @@ class TestPluginLoader:
         assert lc_plugin.deactivated is True
 
     async def test_deactivate_plugin_not_registered(self) -> None:
-        """deactivate_plugin() returns False for unregistered."""
+        '''deactivate_plugin() returns False for unregistered.'''
         loader = self._make_loader()
         result = await loader.deactivate_plugin("missing")
         assert result is False
@@ -1297,7 +1297,7 @@ class TestPluginLoader:
     async def test_deactivate_plugin_lifecycle_error_still_deactivates(
         self,
     ) -> None:
-        """deactivate_plugin() continues even if lifecycle.deactivate() fails."""
+        '''deactivate_plugin() continues even if lifecycle.deactivate() fails.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1312,7 +1312,7 @@ class TestPluginLoader:
         assert result is True
 
     async def test_deactivate_plugin_calls_hook(self) -> None:
-        """deactivate_plugin() calls on_deactivate hook."""
+        '''deactivate_plugin() calls on_deactivate hook.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         hook_calls: list[str] = []
         hooks = LifecycleHooks(on_deactivate=lambda name: hook_calls.append(name))
@@ -1326,7 +1326,7 @@ class TestPluginLoader:
         assert plugin_name in hook_calls
 
     async def test_unload_plugin_with_lifecycle(self) -> None:
-        """unload_plugin() calls cleanup() on lifecycle plugins."""
+        '''unload_plugin() calls cleanup() on lifecycle plugins.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1341,13 +1341,13 @@ class TestPluginLoader:
         assert loader.registry.count() == 0
 
     async def test_unload_plugin_not_registered(self) -> None:
-        """unload_plugin() returns False for unregistered."""
+        '''unload_plugin() returns False for unregistered.'''
         loader = self._make_loader()
         result = await loader.unload_plugin("missing")
         assert result is False
 
     async def test_unload_plugin_cleanup_error_still_unloads(self) -> None:
-        """unload_plugin() continues even if cleanup() fails."""
+        '''unload_plugin() continues even if cleanup() fails.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1361,7 +1361,7 @@ class TestPluginLoader:
         assert loader.registry.count() == 0
 
     async def test_unload_plugin_calls_hook(self) -> None:
-        """unload_plugin() calls on_unload hook."""
+        '''unload_plugin() calls on_unload hook.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         hook_calls: list[str] = []
         hooks = LifecycleHooks(on_unload=lambda name: hook_calls.append(name))
@@ -1374,7 +1374,7 @@ class TestPluginLoader:
         assert plugin_name in hook_calls
 
     async def test_load_all(self) -> None:
-        """load_all() loads all discovered plugins."""
+        '''load_all() loads all discovered plugins.'''
         plugins = [
             DiscoveredPlugin(name="a", module_path="m", class_name="A"),
             DiscoveredPlugin(name="b", module_path="m", class_name="B"),
@@ -1392,7 +1392,7 @@ class TestPluginLoader:
         assert count == 2
 
     async def test_initialize_all(self) -> None:
-        """initialize_all() initializes all LOADED plugins."""
+        '''initialize_all() initializes all LOADED plugins.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1402,7 +1402,7 @@ class TestPluginLoader:
         assert count == 1
 
     async def test_activate_all(self) -> None:
-        """activate_all() activates all registered plugins."""
+        '''activate_all() activates all registered plugins.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1412,7 +1412,7 @@ class TestPluginLoader:
         assert count == 1
 
     async def test_deactivate_all(self) -> None:
-        """deactivate_all() deactivates all ACTIVATED plugins."""
+        '''deactivate_all() deactivates all ACTIVATED plugins.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1425,7 +1425,7 @@ class TestPluginLoader:
         assert count == 1
 
     async def test_unload_all(self) -> None:
-        """unload_all() unloads all registered plugins."""
+        '''unload_all() unloads all registered plugins.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1436,7 +1436,7 @@ class TestPluginLoader:
         assert loader.registry.count() == 0
 
     async def test_shutdown(self) -> None:
-        """shutdown() deactivates and unloads everything."""
+        '''shutdown() deactivates and unloads everything.'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         loader = self._make_loader([dp])
         await loader.discover()
@@ -1452,12 +1452,12 @@ class TestPluginLoader:
         assert lc_plugin.cleaned_up is True
 
     def test_registry_property(self) -> None:
-        """registry property returns the registry."""
+        '''registry property returns the registry.'''
         loader = self._make_loader()
         assert isinstance(loader.registry, PluginRegistry)
 
     def test_discoverer_property(self) -> None:
-        """discoverer property returns the discoverer."""
+        '''discoverer property returns the discoverer.'''
         loader = self._make_loader()
         assert isinstance(loader.discoverer, PluginDiscoverer)
 
@@ -1469,17 +1469,17 @@ class TestPluginLoader:
 
 @pytest.mark.unit
 class TestPluginsInit:
-    """Tests for plugins __init__.py re-exports."""
+    '''Tests for plugins __init__.py re-exports.'''
 
     def test_all_exports_importable(self) -> None:
-        """All __all__ entries should be importable."""
+        '''All __all__ entries should be importable.'''
         import reflectlog.plugins as pkg
 
         for name in pkg.__all__:
             assert hasattr(pkg, name), f"{name} not found in plugins package"
 
     def test_key_classes_accessible(self) -> None:
-        """Key classes accessible from package level."""
+        '''Key classes accessible from package level.'''
         from reflectlog.plugins import (
             CompositeDiscovery,
             DirectoryScanDiscovery,
@@ -1514,10 +1514,10 @@ class TestPluginsInit:
 
 @pytest.mark.unit
 class TestPluginLoaderEdgeCases:
-    """Edge case tests for PluginLoader."""
+    '''Edge case tests for PluginLoader.'''
 
     async def test_deactivate_non_activated_plugin(self) -> None:
-        """deactivate_plugin() returns False when plugin is LOADED (not ACTIVATED)."""
+        '''deactivate_plugin() returns False when plugin is LOADED (not ACTIVATED).'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
         strategy = StaticRegistration([dp])
         registry: PluginRegistry[object] = PluginRegistry()
@@ -1535,7 +1535,7 @@ class TestPluginLoaderEdgeCases:
         assert result is False
 
     async def test_load_all_partial_failure(self) -> None:
-        """load_all() counts only successful loads."""
+        '''load_all() counts only successful loads.'''
         plugins = [
             DiscoveredPlugin(name="ok", module_path="m", class_name="OK"),
             DiscoveredPlugin(name="bad", module_path="m", class_name="Bad"),
@@ -1566,7 +1566,7 @@ class TestPluginLoaderEdgeCases:
         assert count == 1  # only 'ok' succeeded
 
     async def test_shutdown_with_no_plugins(self) -> None:
-        """shutdown() on empty loader is a no-op."""
+        '''shutdown() on empty loader is a no-op.'''
         strategy = StaticRegistration([])
         registry: PluginRegistry[object] = PluginRegistry()
         loader = PluginLoader(
@@ -1578,7 +1578,7 @@ class TestPluginLoaderEdgeCases:
         assert registry.count() == 0
 
     async def test_loader_default_hooks(self) -> None:
-        """PluginLoader uses empty LifecycleHooks when none provided."""
+        '''PluginLoader uses empty LifecycleHooks when none provided.'''
         strategy = StaticRegistration([])
         registry: PluginRegistry[object] = PluginRegistry()
         loader = PluginLoader(

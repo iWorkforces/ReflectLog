@@ -52,7 +52,7 @@ def get_claude_code_api_key(verbose: bool = False) -> str | None:
 
 
 def get_anthropic_api_key() -> ApiKeyResult | None:
-    """Get API key from environment variable or Claude Code keychain.
+    '''Get API key from environment variable or Claude Code keychain.
 
     Checks in order:
     1. ANTHROPIC_API_KEY environment variable
@@ -66,7 +66,7 @@ def get_anthropic_api_key() -> ApiKeyResult | None:
         >>> result = get_anthropic_api_key()
         >>> if result:
         ...     print(f"Key from {result['source']}: {result['api_key'][:20]}...")
-    """
+    '''
     # Check environment variable first
     env_key = os.environ.get('ANTHROPIC_API_KEY')
     if env_key:
@@ -81,7 +81,7 @@ def get_anthropic_api_key() -> ApiKeyResult | None:
 
 
 def init_credentials(verbose: bool = True) -> str | None:
-    """Initialize OAuth credentials from environment or keychain.
+    '''Initialize OAuth credentials from environment or keychain.
 
     Checks for ANTHROPIC_AUTH_TOKEN environment variable first,
     then falls back to keychain retrieval. If an OAuth token is found
@@ -97,7 +97,7 @@ def init_credentials(verbose: bool = True) -> str | None:
         >>> from ccoauth2 import init_credentials
         >>> token = init_credentials()
         >>> # Token is now available in os.environ["ANTHROPIC_AUTH_TOKEN"]
-    """
+    '''
     oauth_token = os.environ.get('ANTHROPIC_AUTH_TOKEN')
 
     if not oauth_token:
@@ -142,7 +142,7 @@ async def generate_content(
     system_prompt: str | None = None,
     allowed_tools: list[str] | None = None,
 ) -> str:
-    """Generate content using Claude Agent SDK with OAuth authentication.
+    '''Generate content using Claude Agent SDK with OAuth authentication.
 
     This function uses the Claude Agent SDK which properly handles OAuth
     authentication through Claude Code. It's the recommended way to use
@@ -164,7 +164,7 @@ async def generate_content(
         >>> import asyncio
         >>> result = asyncio.run(generate_content("Say hello"))
         >>> print(result)
-    """
+    '''
     options = ClaudeAgentOptions(
         model=model,
         system_prompt=system_prompt,

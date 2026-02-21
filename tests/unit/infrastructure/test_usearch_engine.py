@@ -1,4 +1,4 @@
-"""Unit tests for USearchEngine."""
+'''Unit tests for USearchEngine.'''
 
 import os
 import tempfile
@@ -14,7 +14,7 @@ from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngin
 
 
 class MockEmbedder(Embeddings):
-    """Mock embedder for testing."""
+    '''Mock embedder for testing.'''
 
     def __init__(self, dims: int = 128) -> None:
         super().__init__()
@@ -22,14 +22,14 @@ class MockEmbedder(Embeddings):
         self.call_count = 0
 
     def embed_query(self, text: str) -> list[float]:
-        """Return deterministic embeddings based on text hash."""
+        '''Return deterministic embeddings based on text hash.'''
         self.call_count += 1
         np.random.seed(hash(text) % (2**32))
         embedding: list[float] = np.random.randn(self.dims).astype(np.float32).tolist()
         return embedding
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed a list of documents."""
+        '''Embed a list of documents.'''
         return [self.embed_query(text) for text in texts]
 
     async def aembed_query(self, text: str) -> list[float]:
@@ -67,7 +67,7 @@ class ToggleableFailingQueryEmbedder(MockEmbedder):
 
 @pytest.fixture
 def temp_engine() -> Generator[tuple[USearchConfig, MockEmbedder, str], None, None]:
-    """Create a temporary engine configuration and embedder."""
+    '''Create a temporary engine configuration and embedder.'''
     with tempfile.TemporaryDirectory() as tmpdir:
         config = USearchConfig(
             project_id="test",
@@ -80,10 +80,10 @@ def temp_engine() -> Generator[tuple[USearchConfig, MockEmbedder, str], None, No
 
 
 class TestUSearchConfigFromAppConfig:
-    """Tests for USearchConfig.from_app_config factory method."""
+    '''Tests for USearchConfig.from_app_config factory method.'''
 
     def test_creates_config_from_app_config(self) -> None:
-        """Factory should create config from application Config."""
+        '''Factory should create config from application Config.'''
         mock_config = MagicMock()
         mock_config.project_id = "test-project"
         mock_config.embedder_provider = "openai"
@@ -99,7 +99,7 @@ class TestUSearchConfigFromAppConfig:
         assert "test-project" in config.db_path
 
     def test_uses_qwen_dims_for_langchain_provider(self) -> None:
-        """Factory should use qwen_embedding_dims for langchain provider."""
+        '''Factory should use qwen_embedding_dims for langchain provider.'''
         mock_config = MagicMock()
         mock_config.project_id = "test-project"
         mock_config.embedder_provider = "langchain"
@@ -113,12 +113,12 @@ class TestUSearchConfigFromAppConfig:
 
 
 class TestUSearchEngineInitialization:
-    """Tests for USearchEngine initialization."""
+    '''Tests for USearchEngine initialization.'''
 
     def test_engine_name_is_usearch(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Engine name should be 'usearch'."""
+        '''Engine name should be 'usearch'.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
         try:
@@ -129,7 +129,7 @@ class TestUSearchEngineInitialization:
     def test_lazy_initialization(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Index and memory store should be lazily initialized."""
+        '''Index and memory store should be lazily initialized.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -145,12 +145,12 @@ class TestUSearchEngineInitialization:
 
 
 class TestUSearchEngineAdd:
-    """Tests for USearchEngine.add method."""
+    '''Tests for USearchEngine.add method.'''
 
     def test_add_content(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Add should store content in both index and SQLite."""
+        '''Add should store content in both index and SQLite.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -169,7 +169,7 @@ class TestUSearchEngineAdd:
     def test_add_skips_duplicates(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Add should skip duplicate contents."""
+        '''Add should skip duplicate contents.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -189,7 +189,7 @@ class TestUSearchEngineAdd:
     def test_add_with_infer_logs_warning(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Add with infer=True should log a warning."""
+        '''Add with infer=True should log a warning.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -204,12 +204,12 @@ class TestUSearchEngineAdd:
 
 
 class TestUSearchEngineSearch:
-    """Tests for USearchEngine.search method."""
+    '''Tests for USearchEngine.search method.'''
 
     def test_search_empty_index(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search on empty index should return empty list."""
+        '''Search on empty index should return empty list.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -225,7 +225,7 @@ class TestUSearchEngineSearch:
     def test_search_returns_matches(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search should return matching contents with scores."""
+        '''Search should return matching contents with scores.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -244,7 +244,7 @@ class TestUSearchEngineSearch:
     def test_search_filters_by_project_id(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search should only return contents for the specified project."""
+        '''Search should only return contents for the specified project.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -264,7 +264,7 @@ class TestUSearchEngineSearch:
     def test_search_respects_limit(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search should respect the limit parameter."""
+        '''Search should respect the limit parameter.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -281,12 +281,12 @@ class TestUSearchEngineSearch:
 
 
 class TestUSearchEngineGetAll:
-    """Tests for USearchEngine.get_all method."""
+    '''Tests for USearchEngine.get_all method.'''
 
     def test_get_all_empty(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Get all on empty store should return empty list."""
+        '''Get all on empty store should return empty list.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -299,7 +299,7 @@ class TestUSearchEngineGetAll:
     def test_get_all_returns_contents(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Get all should return all contents for user."""
+        '''Get all should return all contents for user.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -317,12 +317,12 @@ class TestUSearchEngineGetAll:
 
 
 class TestUSearchEngineDelete:
-    """Tests for USearchEngine.delete method."""
+    '''Tests for USearchEngine.delete method.'''
 
     def test_delete_existing_content(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Delete should remove content from both index and SQLite."""
+        '''Delete should remove content from both index and SQLite.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -344,7 +344,7 @@ class TestUSearchEngineDelete:
     def test_delete_nonexistent_logs_warning(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Delete of non-existent content should log warning."""
+        '''Delete of non-existent content should log warning.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -361,7 +361,7 @@ class TestUSearchEngineDelete:
     def test_delete_invalid_id_raises_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Delete with invalid ID format should raise error."""
+        '''Delete with invalid ID format should raise error.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -375,12 +375,12 @@ class TestUSearchEngineDelete:
 
 
 class TestUSearchEngineCommit:
-    """Tests for USearchEngine.commit method."""
+    '''Tests for USearchEngine.commit method.'''
 
     def test_commit_saves_index(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Commit should save the USearch index to disk."""
+        '''Commit should save the USearch index to disk.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -395,12 +395,12 @@ class TestUSearchEngineCommit:
 
 
 class TestUSearchEnginePersistence:
-    """Tests for USearchEngine persistence across restarts."""
+    '''Tests for USearchEngine persistence across restarts.'''
 
     def test_persistence_across_restart(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Contents should persist across engine restart."""
+        '''Contents should persist across engine restart.'''
         config, embedder, _ = temp_engine
 
         # First engine instance
@@ -422,12 +422,12 @@ class TestUSearchEnginePersistence:
 
 
 class TestUSearchEngineExactSearch:
-    """Tests for USearchEngine exact vs approximate search modes."""
+    '''Tests for USearchEngine exact vs approximate search modes.'''
 
     def test_default_uses_exact_search(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Default config should use exact (brute-force) search for small databases."""
+        '''Default config should use exact (brute-force) search for small databases.'''
         config, embedder, _ = temp_engine
         # Note: temp_engine uses explicit config, so we test with default config
         # The default USearchConfig has exact_search=True
@@ -451,7 +451,7 @@ class TestUSearchEngineExactSearch:
     def test_exact_search_when_forced(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Should use exact search when exact_search=True."""
+        '''Should use exact search when exact_search=True.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
             project_id="test",
@@ -470,7 +470,7 @@ class TestUSearchEngineExactSearch:
     def test_exact_search_auto_switch_below_threshold(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Should auto-switch to exact search when index size < threshold."""
+        '''Should auto-switch to exact search when index size < threshold.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
             project_id="test",
@@ -496,7 +496,7 @@ class TestUSearchEngineExactSearch:
     def test_approximate_search_above_threshold(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Should use approximate search when index size >= threshold."""
+        '''Should use approximate search when index size >= threshold.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
             project_id="test",
@@ -522,7 +522,7 @@ class TestUSearchEngineExactSearch:
     def test_exact_search_returns_valid_results(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Exact search should return valid search results."""
+        '''Exact search should return valid search results.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
             project_id="test",
@@ -548,7 +548,7 @@ class TestUSearchEngineExactSearch:
     def test_search_logs_search_mode(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search should log the search mode being used."""
+        '''Search should log the search mode being used.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
             project_id="test",
@@ -575,7 +575,7 @@ class TestUSearchEngineExactSearch:
             engine.close()
 
     def test_config_from_app_config_includes_exact_search(self) -> None:
-        """USearchConfig.from_app_config should include exact search settings."""
+        '''USearchConfig.from_app_config should include exact search settings.'''
         mock_config = MagicMock()
         mock_config.project_id = "test-project"
         mock_config.embedder_provider = "openai"
@@ -592,10 +592,10 @@ class TestUSearchEngineExactSearch:
 
 
 class TestUSearchConfigFromDict:
-    """Tests for USearchConfig.from_dict factory method."""
+    '''Tests for USearchConfig.from_dict factory method.'''
 
     def test_from_dict_with_full_data(self) -> None:
-        """from_dict should create config from a complete dictionary."""
+        '''from_dict should create config from a complete dictionary.'''
         data = {
             "project_id": "my-proj",
             "index_path": "/tmp/index.usearch",
@@ -622,7 +622,7 @@ class TestUSearchConfigFromDict:
         assert config.exact_search_threshold == 500
 
     def test_from_dict_with_defaults(self) -> None:
-        """from_dict should use defaults for missing keys."""
+        '''from_dict should use defaults for missing keys.'''
         config = USearchConfig.from_dict({})
 
         assert config.project_id == ""
@@ -638,10 +638,10 @@ class TestUSearchConfigFromDict:
 
 
 class TestUSearchEngineInitWithDict:
-    """Tests for USearchEngine initialization with dict config."""
+    '''Tests for USearchEngine initialization with dict config.'''
 
     def test_init_with_dict_config(self) -> None:
-        """Engine should accept a dict and convert to USearchConfig."""
+        '''Engine should accept a dict and convert to USearchConfig.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dict = {
                 "project_id": "test",
@@ -660,12 +660,12 @@ class TestUSearchEngineInitWithDict:
 
 
 class TestUSearchEngineIndexInit:
-    """Tests for USearch index lazy initialization error paths."""
+    '''Tests for USearch index lazy initialization error paths.'''
 
     def test_index_restore_returns_none_creates_new(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """When Index.restore returns None, should create a new index."""
+        '''When Index.restore returns None, should create a new index.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -680,7 +680,7 @@ class TestUSearchEngineIndexInit:
     def test_index_init_failure_raises_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """If both restore and create fail, should raise RuntimeError."""
+        '''If both restore and create fail, should raise RuntimeError.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -699,7 +699,7 @@ class TestUSearchEngineIndexInit:
     def test_index_init_logs_debug_on_create(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Creating new index should log debug and info messages."""
+        '''Creating new index should log debug and info messages.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -716,7 +716,7 @@ class TestUSearchEngineIndexInit:
     def test_index_loaded_from_existing_file(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Restoring an existing index should log loading info."""
+        '''Restoring an existing index should log loading info.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
 
@@ -737,7 +737,7 @@ class TestUSearchEngineIndexInit:
 
 
 class TestUSearchEngineAddErrorPaths:
-    """Tests for add() error handling paths."""
+    '''Tests for add() error handling paths.'''
 
     def test_add_embedding_failure_rolls_back(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
@@ -760,7 +760,7 @@ class TestUSearchEngineAddErrorPaths:
     def test_add_duplicate_via_storage_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """StorageError with "Duplicate message" should be silently skipped."""
+        '''StorageError with "Duplicate message" should be silently skipped.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -780,7 +780,7 @@ class TestUSearchEngineAddErrorPaths:
     def test_add_unexpected_exception_wraps_in_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Unexpected exceptions in add should be wrapped in RuntimeError."""
+        '''Unexpected exceptions in add should be wrapped in RuntimeError.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -801,7 +801,7 @@ class TestUSearchEngineAddErrorPaths:
     def test_add_non_duplicate_runtime_error_reraises(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """RuntimeError without "Duplicate message" should be re-raised."""
+        '''RuntimeError without "Duplicate message" should be re-raised.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -821,12 +821,12 @@ class TestUSearchEngineAddErrorPaths:
 
 
 class TestUSearchEngineAddBatch:
-    """Tests for add_batch() method."""
+    '''Tests for add_batch() method.'''
 
     def test_add_batch_empty_list(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """add_batch with empty list should return empty list."""
+        '''add_batch with empty list should return empty list.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -839,7 +839,7 @@ class TestUSearchEngineAddBatch:
     def test_add_batch_success(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """add_batch should add multiple contents and return them."""
+        '''add_batch should add multiple contents and return them.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -861,7 +861,7 @@ class TestUSearchEngineAddBatch:
     def test_add_batch_with_infer_logs_warning(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """add_batch with infer=True should log a warning."""
+        '''add_batch with infer=True should log a warning.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -876,7 +876,7 @@ class TestUSearchEngineAddBatch:
     def test_add_batch_all_duplicates_returns_empty(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """add_batch where insert_many returns empty should return empty list."""
+        '''add_batch where insert_many returns empty should return empty list.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -927,12 +927,12 @@ class TestUSearchEngineAddBatch:
 
 
 class TestUSearchEngineDistanceScoring:
-    """Tests for _rank_scores and _distances_to_scores methods."""
+    '''Tests for _rank_scores and _distances_to_scores methods.'''
 
     def test_rank_scores_empty(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """_rank_scores with count=0 should return empty array."""
+        '''_rank_scores with count=0 should return empty array.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -945,7 +945,7 @@ class TestUSearchEngineDistanceScoring:
     def test_rank_scores_single(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """_rank_scores with count=1 should return [1.0]."""
+        '''_rank_scores with count=1 should return [1.0].'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -959,7 +959,7 @@ class TestUSearchEngineDistanceScoring:
     def test_rank_scores_multiple(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """_rank_scores with count>1 should return descending scores."""
+        '''_rank_scores with count>1 should return descending scores.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -974,7 +974,7 @@ class TestUSearchEngineDistanceScoring:
             engine.close()
 
     def test_distances_to_scores_l2_metric(self) -> None:
-        """L2 metric should use 1/(1+d) conversion."""
+        '''L2 metric should use 1/(1+d) conversion.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = USearchConfig(
                 project_id="test",
@@ -997,7 +997,7 @@ class TestUSearchEngineDistanceScoring:
                 engine.close()
 
     def test_distances_to_scores_unknown_metric_uses_rank(self) -> None:
-        """Unknown metric should fall back to rank-based scores."""
+        '''Unknown metric should fall back to rank-based scores.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = USearchConfig(
                 project_id="test",
@@ -1023,12 +1023,12 @@ class TestUSearchEngineDistanceScoring:
 
 
 class TestUSearchEngineSearchErrorPaths:
-    """Tests for search() error handling and edge cases."""
+    '''Tests for search() error handling and edge cases.'''
 
     def test_search_empty_index_with_logger(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search on empty index with logger should log debug message."""
+        '''Search on empty index with logger should log debug message.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1046,7 +1046,7 @@ class TestUSearchEngineSearchErrorPaths:
     def test_search_no_matching_project_returns_empty(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search where no results match project_id should return empty."""
+        '''Search where no results match project_id should return empty.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -1080,12 +1080,12 @@ class TestUSearchEngineSearchErrorPaths:
 
 
 class TestUSearchEngineGetAllErrorPaths:
-    """Tests for get_all() error handling paths."""
+    '''Tests for get_all() error handling paths.'''
 
     def test_get_all_with_logger(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """get_all with logger should log content count."""
+        '''get_all with logger should log content count.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1101,7 +1101,7 @@ class TestUSearchEngineGetAllErrorPaths:
     def test_get_all_error_wraps_in_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Exceptions in get_all should be wrapped in RuntimeError."""
+        '''Exceptions in get_all should be wrapped in RuntimeError.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1123,12 +1123,12 @@ class TestUSearchEngineGetAllErrorPaths:
 
 
 class TestUSearchEngineDeleteErrorPaths:
-    """Tests for delete() additional error handling."""
+    '''Tests for delete() additional error handling.'''
 
     def test_delete_existing_with_logger_logs_debug(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Deleting an existing content with logger should log debug."""
+        '''Deleting an existing content with logger should log debug.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1148,7 +1148,7 @@ class TestUSearchEngineDeleteErrorPaths:
     def test_delete_invalid_id_with_logger(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Invalid memory_id with logger should log error."""
+        '''Invalid memory_id with logger should log error.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1164,7 +1164,7 @@ class TestUSearchEngineDeleteErrorPaths:
     def test_delete_general_exception_wraps_in_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Unexpected exceptions in delete should be wrapped in RuntimeError."""
+        '''Unexpected exceptions in delete should be wrapped in RuntimeError.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1185,12 +1185,12 @@ class TestUSearchEngineDeleteErrorPaths:
 
 
 class TestUSearchEngineCommitErrorPaths:
-    """Tests for commit() error handling and edge cases."""
+    '''Tests for commit() error handling and edge cases.'''
 
     def test_commit_no_index_is_noop(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Commit when _index is None should be a no-op."""
+        '''Commit when _index is None should be a no-op.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -1202,7 +1202,7 @@ class TestUSearchEngineCommitErrorPaths:
     def test_commit_with_logger(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Commit with logger should log save info."""
+        '''Commit with logger should log save info.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1219,7 +1219,7 @@ class TestUSearchEngineCommitErrorPaths:
     def test_commit_error_wraps_in_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Exceptions in commit should be wrapped in RuntimeError."""
+        '''Exceptions in commit should be wrapped in RuntimeError.'''
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1238,12 +1238,12 @@ class TestUSearchEngineCommitErrorPaths:
 
 
 class TestUSearchEngineGetIdByContent:
-    """Tests for get_id_by_content() method."""
+    '''Tests for get_id_by_content() method.'''
 
     def test_get_id_by_content_found(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """get_id_by_content should return ID for existing content."""
+        '''get_id_by_content should return ID for existing content.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -1258,7 +1258,7 @@ class TestUSearchEngineGetIdByContent:
     def test_get_id_by_content_not_found(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """get_id_by_content should return None for non-existent content."""
+        '''get_id_by_content should return None for non-existent content.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -1271,12 +1271,12 @@ class TestUSearchEngineGetIdByContent:
 
 
 class TestUSearchEngineContextManager:
-    """Tests for context manager protocol (__enter__/__exit__)."""
+    '''Tests for context manager protocol (__enter__/__exit__).'''
 
     def test_context_manager_initializes_and_closes(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Context manager should initialize on enter and close on exit."""
+        '''Context manager should initialize on enter and close on exit.'''
         config, embedder, _ = temp_engine
 
         with USearchEngine(config=config, embedder=embedder) as engine:
@@ -1287,7 +1287,7 @@ class TestUSearchEngineContextManager:
     def test_context_manager_does_not_suppress_exceptions(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """__exit__ should return False to not suppress exceptions."""
+        '''__exit__ should return False to not suppress exceptions.'''
         config, embedder, _ = temp_engine
 
         with pytest.raises(ValueError, match="test error"):
@@ -1297,7 +1297,7 @@ class TestUSearchEngineContextManager:
     def test_close_with_no_memory_store(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """close() when _memory_store is None should be a no-op."""
+        '''close() when _memory_store is None should be a no-op.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
         engine.close()

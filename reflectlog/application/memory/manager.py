@@ -393,14 +393,14 @@ class MemoryManager:
 
     @property
     def llm_reranker(self) -> LLMReranker | None:
-        """Get LLM reranker (lazy initialization with thread-safety).
+        '''Get LLM reranker (lazy initialization with thread-safety).
 
         Returns:
             LLMReranker instance if configured, None otherwise.
 
         Raises:
             RuntimeError: If reranker_engine is 'llm' but initialization fails.
-        """
+        '''
         # Fast path: already initialized or not configured
         if self._llm_reranker is not None or self.config.reranker_engine != 'llm':
             return self._llm_reranker
@@ -422,14 +422,14 @@ class MemoryManager:
 
     @property
     def cross_encoder_reranker(self) -> CrossEncoderReranker | None:
-        """Get CrossEncoder reranker (lazy initialization with thread-safety).
+        '''Get CrossEncoder reranker (lazy initialization with thread-safety).
 
         Returns:
             CrossEncoderReranker instance if configured, None otherwise.
 
         Raises:
             RuntimeError: If reranker_engine is 'cross_encoder' but initialization fails.
-        """
+        '''
         # Fast path: already initialized or not configured
         if (
             self._cross_encoder_reranker is not None
@@ -805,7 +805,7 @@ class MemoryManager:
     def search_for_removal(
         self, query: str, limit: int | None = None
     ) -> list[dict[str, Any]]:
-        """Search for memories to potentially remove using direct database lookup.
+        '''Search for memories to potentially remove using direct database lookup.
 
         Uses O(log n) indexed database lookup instead of O(n) iteration through
         all memories. This is a significant performance improvement for large
@@ -822,7 +822,7 @@ class MemoryManager:
 
         Raises:
             RuntimeError: If search operation fails.
-        """
+        '''
         # Note: limit is kept for API compatibility but exact match returns at most 1
         _ = limit  # Unused, kept for API compatibility
 

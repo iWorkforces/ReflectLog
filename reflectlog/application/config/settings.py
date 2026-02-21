@@ -597,7 +597,7 @@ _config_lock = threading.Lock()
 
 
 def get_config() -> Config:
-    """Get the configuration singleton (lazy initialization).
+    '''Get the configuration singleton (lazy initialization).
 
     This delays environment variable parsing until first access,
     avoiding startup overhead for imports that don't need config.
@@ -607,7 +607,7 @@ def get_config() -> Config:
 
     Returns:
         The Config singleton instance.
-    """
+    '''
     global _config
 
     # Fast path: already initialized (use local var for type narrowing)

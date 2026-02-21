@@ -1,4 +1,4 @@
-"""Unit tests for reflectlog.application.utils.http_client module."""
+'''Unit tests for reflectlog.application.utils.http_client module.'''
 
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,7 +17,7 @@ from reflectlog.application.utils.http_client import (
 
 @pytest.fixture(autouse=True)
 def reset_factory_singletons():
-    """Reset all singleton clients before and after each test."""
+    '''Reset all singleton clients before and after each test.'''
     HttpClientFactory._httpx_client = None
     HttpClientFactory._async_httpx_client = None
     HttpClientFactory._aiohttp_client = None
@@ -28,85 +28,85 @@ def reset_factory_singletons():
 
 
 class TestGetMaxConnections:
-    """Tests for HttpClientFactory.get_max_connections()."""
+    '''Tests for HttpClientFactory.get_max_connections().'''
 
     def test_default_value(self) -> None:
-        """Returns 100 when HTTP_MAX_CONNECTIONS is not set."""
+        '''Returns 100 when HTTP_MAX_CONNECTIONS is not set.'''
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HTTP_MAX_CONNECTIONS", None)
             assert HttpClientFactory.get_max_connections() == 100
 
     def test_custom_value(self) -> None:
-        """Returns custom value from environment."""
+        '''Returns custom value from environment.'''
         with patch.dict(os.environ, {"HTTP_MAX_CONNECTIONS": "200"}):
             assert HttpClientFactory.get_max_connections() == 200
 
 
 class TestGetMaxKeepaliveConnections:
-    """Tests for HttpClientFactory.get_max_keepalive_connections()."""
+    '''Tests for HttpClientFactory.get_max_keepalive_connections().'''
 
     def test_default_value(self) -> None:
-        """Returns 20 when HTTP_MAX_KEEPALIVE_CONNECTIONS is not set."""
+        '''Returns 20 when HTTP_MAX_KEEPALIVE_CONNECTIONS is not set.'''
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HTTP_MAX_KEEPALIVE_CONNECTIONS", None)
             assert HttpClientFactory.get_max_keepalive_connections() == 20
 
     def test_custom_value(self) -> None:
-        """Returns custom value from environment."""
+        '''Returns custom value from environment.'''
         with patch.dict(os.environ, {"HTTP_MAX_KEEPALIVE_CONNECTIONS": "50"}):
             assert HttpClientFactory.get_max_keepalive_connections() == 50
 
 
 class TestGetConnectTimeout:
-    """Tests for HttpClientFactory.get_connect_timeout()."""
+    '''Tests for HttpClientFactory.get_connect_timeout().'''
 
     def test_default_value(self) -> None:
-        """Returns 30.0 when HTTP_CONNECT_TIMEOUT is not set."""
+        '''Returns 30.0 when HTTP_CONNECT_TIMEOUT is not set.'''
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HTTP_CONNECT_TIMEOUT", None)
             assert HttpClientFactory.get_connect_timeout() == 30.0
 
     def test_custom_value(self) -> None:
-        """Returns custom value from environment."""
+        '''Returns custom value from environment.'''
         with patch.dict(os.environ, {"HTTP_CONNECT_TIMEOUT": "10.0"}):
             assert HttpClientFactory.get_connect_timeout() == 10.0
 
 
 class TestGetReadTimeout:
-    """Tests for HttpClientFactory.get_read_timeout()."""
+    '''Tests for HttpClientFactory.get_read_timeout().'''
 
     def test_default_value(self) -> None:
-        """Returns 30.0 when HTTP_READ_TIMEOUT is not set."""
+        '''Returns 30.0 when HTTP_READ_TIMEOUT is not set.'''
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HTTP_READ_TIMEOUT", None)
             assert HttpClientFactory.get_read_timeout() == 30.0
 
     def test_custom_value(self) -> None:
-        """Returns custom value from environment."""
+        '''Returns custom value from environment.'''
         with patch.dict(os.environ, {"HTTP_READ_TIMEOUT": "15.5"}):
             assert HttpClientFactory.get_read_timeout() == 15.5
 
 
 class TestGetWriteTimeout:
-    """Tests for HttpClientFactory.get_write_timeout()."""
+    '''Tests for HttpClientFactory.get_write_timeout().'''
 
     def test_default_value(self) -> None:
-        """Returns 30.0 when HTTP_WRITE_TIMEOUT is not set."""
+        '''Returns 30.0 when HTTP_WRITE_TIMEOUT is not set.'''
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HTTP_WRITE_TIMEOUT", None)
             assert HttpClientFactory.get_write_timeout() == 30.0
 
     def test_custom_value(self) -> None:
-        """Returns custom value from environment."""
+        '''Returns custom value from environment.'''
         with patch.dict(os.environ, {"HTTP_WRITE_TIMEOUT": "45.0"}):
             assert HttpClientFactory.get_write_timeout() == 45.0
 
 
 class TestGetHttpxLimits:
-    """Tests for HttpClientFactory.get_httpx_limits()."""
+    '''Tests for HttpClientFactory.get_httpx_limits().'''
 
     def test_returns_httpx_limits(self) -> None:
-        """Returns httpx.Limits with configured values."""
+        '''Returns httpx.Limits with configured values.'''
         with patch.dict(
             os.environ,
             {"HTTP_MAX_CONNECTIONS": "50", "HTTP_MAX_KEEPALIVE_CONNECTIONS": "10"},
@@ -118,7 +118,7 @@ class TestGetHttpxLimits:
             assert limits.max_keepalive_connections == 10
 
     def test_uses_defaults(self) -> None:
-        """Uses default values when env vars are not set."""
+        '''Uses default values when env vars are not set.'''
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HTTP_MAX_CONNECTIONS", None)
             os.environ.pop("HTTP_MAX_KEEPALIVE_CONNECTIONS", None)
@@ -129,10 +129,10 @@ class TestGetHttpxLimits:
 
 
 class TestGetHttpxTimeout:
-    """Tests for HttpClientFactory.get_httpx_timeout()."""
+    '''Tests for HttpClientFactory.get_httpx_timeout().'''
 
     def test_returns_httpx_timeout(self) -> None:
-        """Returns httpx.Timeout with configured values."""
+        '''Returns httpx.Timeout with configured values.'''
         with patch.dict(
             os.environ,
             {
@@ -150,7 +150,7 @@ class TestGetHttpxTimeout:
             assert timeout.pool == 5.0
 
     def test_uses_defaults(self) -> None:
-        """Uses default values when env vars are not set."""
+        '''Uses default values when env vars are not set.'''
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HTTP_CONNECT_TIMEOUT", None)
             os.environ.pop("HTTP_READ_TIMEOUT", None)
@@ -164,23 +164,23 @@ class TestGetHttpxTimeout:
 
 
 class TestGetHttpxClient:
-    """Tests for HttpClientFactory.get_httpx_client()."""
+    '''Tests for HttpClientFactory.get_httpx_client().'''
 
     def test_creates_client(self) -> None:
-        """Creates an httpx.Client on first call."""
+        '''Creates an httpx.Client on first call.'''
         client = HttpClientFactory.get_httpx_client()
 
         assert isinstance(client, httpx.Client)
 
     def test_singleton_returns_same_instance(self) -> None:
-        """Subsequent calls return the same client instance."""
+        '''Subsequent calls return the same client instance.'''
         client1 = HttpClientFactory.get_httpx_client()
         client2 = HttpClientFactory.get_httpx_client()
 
         assert client1 is client2
 
     def test_custom_limits_passed_to_constructor(self) -> None:
-        """Custom max_connections and max_keepalive are passed to httpx.Limits."""
+        '''Custom max_connections and max_keepalive are passed to httpx.Limits.'''
         with patch(
             "reflectlog.application.utils.http_client.httpx.Limits",
         ) as mock_limits:
@@ -203,7 +203,7 @@ class TestGetHttpxClient:
                     assert limits_kwargs["max_keepalive_connections"] == 5
 
     def test_custom_timeouts(self) -> None:
-        """Custom timeout values override environment defaults."""
+        '''Custom timeout values override environment defaults.'''
         client = HttpClientFactory.get_httpx_client(
             connect_timeout=5.0,
             read_timeout=10.0,
@@ -215,7 +215,7 @@ class TestGetHttpxClient:
         assert client.timeout.write == 15.0
 
     def test_http2_enabled_by_default(self) -> None:
-        """HTTP/2 is enabled by default."""
+        '''HTTP/2 is enabled by default.'''
         with patch(
             "reflectlog.application.utils.http_client.httpx.Client",
         ) as mock_cls:
@@ -226,7 +226,7 @@ class TestGetHttpxClient:
             assert call_kwargs["http2"] is True
 
     def test_http2_disabled(self) -> None:
-        """HTTP/2 can be disabled."""
+        '''HTTP/2 can be disabled.'''
         with patch(
             "reflectlog.application.utils.http_client.httpx.Client",
         ) as mock_cls:
@@ -237,7 +237,7 @@ class TestGetHttpxClient:
             assert call_kwargs["http2"] is False
 
     def test_env_based_defaults(self) -> None:
-        """Uses environment-based defaults when no overrides given."""
+        '''Uses environment-based defaults when no overrides given.'''
         with patch.dict(
             os.environ,
             {
@@ -255,23 +255,23 @@ class TestGetHttpxClient:
 
 
 class TestGetAsyncHttpxClient:
-    """Tests for HttpClientFactory.get_async_httpx_client()."""
+    '''Tests for HttpClientFactory.get_async_httpx_client().'''
 
     def test_creates_async_client(self) -> None:
-        """Creates an httpx.AsyncClient on first call."""
+        '''Creates an httpx.AsyncClient on first call.'''
         client = HttpClientFactory.get_async_httpx_client()
 
         assert isinstance(client, httpx.AsyncClient)
 
     def test_singleton_returns_same_instance(self) -> None:
-        """Subsequent calls return the same async client instance."""
+        '''Subsequent calls return the same async client instance.'''
         client1 = HttpClientFactory.get_async_httpx_client()
         client2 = HttpClientFactory.get_async_httpx_client()
 
         assert client1 is client2
 
     def test_custom_limits_passed_to_constructor(self) -> None:
-        """Custom limits are passed to httpx.Limits for async client."""
+        '''Custom limits are passed to httpx.Limits for async client.'''
         with patch(
             "reflectlog.application.utils.http_client.httpx.Limits",
         ) as mock_limits:
@@ -294,7 +294,7 @@ class TestGetAsyncHttpxClient:
                     assert limits_kwargs["max_keepalive_connections"] == 8
 
     def test_custom_timeouts(self) -> None:
-        """Custom timeout values override environment defaults."""
+        '''Custom timeout values override environment defaults.'''
         client = HttpClientFactory.get_async_httpx_client(
             connect_timeout=3.0,
             read_timeout=6.0,
@@ -306,7 +306,7 @@ class TestGetAsyncHttpxClient:
         assert client.timeout.write == 9.0
 
     def test_http2_enabled_by_default(self) -> None:
-        """HTTP/2 is enabled by default for async client."""
+        '''HTTP/2 is enabled by default for async client.'''
         with patch(
             "reflectlog.application.utils.http_client.httpx.AsyncClient",
         ) as mock_cls:
@@ -317,7 +317,7 @@ class TestGetAsyncHttpxClient:
             assert call_kwargs["http2"] is True
 
     def test_http2_disabled(self) -> None:
-        """HTTP/2 can be disabled for async client."""
+        '''HTTP/2 can be disabled for async client.'''
         with patch(
             "reflectlog.application.utils.http_client.httpx.AsyncClient",
         ) as mock_cls:
@@ -328,7 +328,7 @@ class TestGetAsyncHttpxClient:
             assert call_kwargs["http2"] is False
 
     def test_env_based_defaults(self) -> None:
-        """Uses environment-based defaults when no overrides given."""
+        '''Uses environment-based defaults when no overrides given.'''
         with patch.dict(
             os.environ,
             {
@@ -346,10 +346,10 @@ class TestGetAsyncHttpxClient:
 
 
 class TestGetAiohttpClient:
-    """Tests for HttpClientFactory.get_aiohttp_client()."""
+    '''Tests for HttpClientFactory.get_aiohttp_client().'''
 
     def test_creates_aiohttp_session(self) -> None:
-        """Creates an aiohttp.ClientSession via mocked constructors."""
+        '''Creates an aiohttp.ClientSession via mocked constructors.'''
         mock_connector = MagicMock()
         mock_timeout = MagicMock()
         mock_session = MagicMock(spec=aiohttp.ClientSession)
@@ -377,7 +377,7 @@ class TestGetAiohttpClient:
             )
 
     def test_singleton_returns_same_instance(self) -> None:
-        """Subsequent calls return the same session instance."""
+        '''Subsequent calls return the same session instance.'''
         mock_session = MagicMock(spec=aiohttp.ClientSession)
         HttpClientFactory._aiohttp_client = mock_session
 
@@ -388,7 +388,7 @@ class TestGetAiohttpClient:
         assert client1 is mock_session
 
     def test_connector_max_connections(self) -> None:
-        """TCPConnector is configured with custom max_connections."""
+        '''TCPConnector is configured with custom max_connections.'''
         with (
             patch(
                 "reflectlog.application.utils.http_client.aiohttp.TCPConnector",
@@ -407,7 +407,7 @@ class TestGetAiohttpClient:
             assert call_kwargs["limit"] == 75
 
     def test_connector_limit_per_host(self) -> None:
-        """TCPConnector limit_per_host set from max_keepalive_connections."""
+        '''TCPConnector limit_per_host set from max_keepalive_connections.'''
         with (
             patch(
                 "reflectlog.application.utils.http_client.aiohttp.TCPConnector",
@@ -426,7 +426,7 @@ class TestGetAiohttpClient:
             assert call_kwargs["limit_per_host"] == 15
 
     def test_connector_dns_cache(self) -> None:
-        """TCPConnector has DNS caching enabled with 300s TTL."""
+        '''TCPConnector has DNS caching enabled with 300s TTL.'''
         with (
             patch(
                 "reflectlog.application.utils.http_client.aiohttp.TCPConnector",
@@ -445,7 +445,7 @@ class TestGetAiohttpClient:
             assert call_kwargs["ttl_dns_cache"] == 300
 
     def test_connector_cleanup_closed(self) -> None:
-        """TCPConnector has enable_cleanup_closed set to True."""
+        '''TCPConnector has enable_cleanup_closed set to True.'''
         with (
             patch(
                 "reflectlog.application.utils.http_client.aiohttp.TCPConnector",
@@ -464,7 +464,7 @@ class TestGetAiohttpClient:
             assert call_kwargs["enable_cleanup_closed"] is True
 
     def test_custom_timeouts(self) -> None:
-        """Custom timeout values override environment defaults."""
+        '''Custom timeout values override environment defaults.'''
         with (
             patch(
                 "reflectlog.application.utils.http_client.aiohttp.TCPConnector",
@@ -487,7 +487,7 @@ class TestGetAiohttpClient:
             assert call_kwargs["sock_read"] == 8.0
 
     def test_env_based_defaults(self) -> None:
-        """Uses environment-based defaults when no overrides given."""
+        '''Uses environment-based defaults when no overrides given.'''
         with patch.dict(
             os.environ,
             {
@@ -522,10 +522,10 @@ class TestGetAiohttpClient:
 
 
 class TestCloseAll:
-    """Tests for HttpClientFactory.close_all()."""
+    '''Tests for HttpClientFactory.close_all().'''
 
     async def test_close_all_with_no_clients(self) -> None:
-        """close_all with no active clients does nothing."""
+        '''close_all with no active clients does nothing.'''
         await HttpClientFactory.close_all()
 
         assert HttpClientFactory._httpx_client is None
@@ -533,7 +533,7 @@ class TestCloseAll:
         assert HttpClientFactory._aiohttp_client is None
 
     async def test_close_httpx_client(self) -> None:
-        """close_all closes the sync httpx client and resets to None."""
+        '''close_all closes the sync httpx client and resets to None.'''
         mock_client = MagicMock(spec=httpx.Client)
         HttpClientFactory._httpx_client = mock_client
 
@@ -543,7 +543,7 @@ class TestCloseAll:
         assert HttpClientFactory._httpx_client is None
 
     async def test_close_async_httpx_client(self) -> None:
-        """close_all closes the async httpx client and resets to None."""
+        '''close_all closes the async httpx client and resets to None.'''
         mock_client = AsyncMock(spec=httpx.AsyncClient)
         HttpClientFactory._async_httpx_client = mock_client
 
@@ -553,7 +553,7 @@ class TestCloseAll:
         assert HttpClientFactory._async_httpx_client is None
 
     async def test_close_aiohttp_client(self) -> None:
-        """close_all closes the aiohttp client session and resets to None."""
+        '''close_all closes the aiohttp client session and resets to None.'''
         mock_client = AsyncMock(spec=aiohttp.ClientSession)
         HttpClientFactory._aiohttp_client = mock_client
 
@@ -563,7 +563,7 @@ class TestCloseAll:
         assert HttpClientFactory._aiohttp_client is None
 
     async def test_close_all_clients_simultaneously(self) -> None:
-        """close_all closes all three clients when all are active."""
+        '''close_all closes all three clients when all are active.'''
         mock_httpx = MagicMock(spec=httpx.Client)
         mock_async_httpx = AsyncMock(spec=httpx.AsyncClient)
         mock_aiohttp = AsyncMock(spec=aiohttp.ClientSession)
@@ -583,48 +583,48 @@ class TestCloseAll:
 
 
 class TestConvenienceFunctions:
-    """Tests for module-level convenience functions."""
+    '''Tests for module-level convenience functions.'''
 
     def test_get_pooled_httpx_client(self) -> None:
-        """get_pooled_httpx_client delegates to HttpClientFactory."""
+        '''get_pooled_httpx_client delegates to HttpClientFactory.'''
         client = get_pooled_httpx_client()
 
         assert isinstance(client, httpx.Client)
 
     def test_get_pooled_httpx_client_singleton(self) -> None:
-        """get_pooled_httpx_client returns the same singleton."""
+        '''get_pooled_httpx_client returns the same singleton.'''
         client1 = get_pooled_httpx_client()
         client2 = get_pooled_httpx_client()
 
         assert client1 is client2
 
     def test_get_pooled_httpx_client_with_kwargs(self) -> None:
-        """get_pooled_httpx_client passes kwargs to factory."""
+        '''get_pooled_httpx_client passes kwargs to factory.'''
         client = get_pooled_httpx_client(max_connections=42)
 
         assert isinstance(client, httpx.Client)
 
     def test_get_pooled_async_httpx_client(self) -> None:
-        """get_pooled_async_httpx_client delegates to HttpClientFactory."""
+        '''get_pooled_async_httpx_client delegates to HttpClientFactory.'''
         client = get_pooled_async_httpx_client()
 
         assert isinstance(client, httpx.AsyncClient)
 
     def test_get_pooled_async_httpx_client_singleton(self) -> None:
-        """get_pooled_async_httpx_client returns the same singleton."""
+        '''get_pooled_async_httpx_client returns the same singleton.'''
         client1 = get_pooled_async_httpx_client()
         client2 = get_pooled_async_httpx_client()
 
         assert client1 is client2
 
     def test_get_pooled_async_httpx_client_with_kwargs(self) -> None:
-        """get_pooled_async_httpx_client passes kwargs to factory."""
+        '''get_pooled_async_httpx_client passes kwargs to factory.'''
         client = get_pooled_async_httpx_client(max_connections=33)
 
         assert isinstance(client, httpx.AsyncClient)
 
     def test_get_pooled_aiohttp_client(self) -> None:
-        """get_pooled_aiohttp_client delegates to HttpClientFactory."""
+        '''get_pooled_aiohttp_client delegates to HttpClientFactory.'''
         with (
             patch(
                 "reflectlog.application.utils.http_client.aiohttp.TCPConnector",
@@ -642,7 +642,7 @@ class TestConvenienceFunctions:
             assert client is not None
 
     def test_get_pooled_aiohttp_client_singleton(self) -> None:
-        """get_pooled_aiohttp_client returns the same singleton."""
+        '''get_pooled_aiohttp_client returns the same singleton.'''
         mock_session = MagicMock(spec=aiohttp.ClientSession)
         HttpClientFactory._aiohttp_client = mock_session
 
@@ -652,7 +652,7 @@ class TestConvenienceFunctions:
         assert client1 is client2
 
     def test_get_pooled_aiohttp_client_with_kwargs(self) -> None:
-        """get_pooled_aiohttp_client passes kwargs to factory."""
+        '''get_pooled_aiohttp_client passes kwargs to factory.'''
         with (
             patch(
                 "reflectlog.application.utils.http_client.aiohttp.TCPConnector",

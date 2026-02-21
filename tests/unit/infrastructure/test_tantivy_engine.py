@@ -1,4 +1,4 @@
-"""Unit tests for TantivyEngine."""
+'''Unit tests for TantivyEngine.'''
 
 import os
 import tempfile
@@ -17,16 +17,16 @@ from reflectlog.infrastructure.tantivy_engine import (
 
 @pytest.mark.unit
 class TestTantivyConfig:
-    """Test TantivyConfig dataclass."""
+    '''Test TantivyConfig dataclass.'''
 
     def test_config_creation(self) -> None:
-        """Test creating TantivyConfig with required fields."""
+        '''Test creating TantivyConfig with required fields.'''
         config = TantivyConfig(project_id="test-project", index_path="/tmp/test-index")
         assert config.project_id == "test-project"
         assert config.index_path == "/tmp/test-index"
 
     def test_config_immutability(self) -> None:
-        """Test that TantivyConfig is frozen/immutable."""
+        '''Test that TantivyConfig is frozen/immutable.'''
         config = TantivyConfig(project_id="test", index_path="/tmp/test")
         with pytest.raises(AttributeError):
             config.project_id = "new-project"  # type: ignore[misc]
@@ -34,10 +34,10 @@ class TestTantivyConfig:
 
 @pytest.mark.unit
 class TestTantivyEngineInitialization:
-    """Test TantivyEngine initialization."""
+    '''Test TantivyEngine initialization.'''
 
     def test_init_with_config_object(self) -> None:
-        """Test initialization with TantivyConfig object."""
+        '''Test initialization with TantivyConfig object.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test-project", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -45,14 +45,14 @@ class TestTantivyEngineInitialization:
             assert engine.name == "tantivy"
 
     def test_init_with_dict_config(self) -> None:
-        """Test initialization with dict config."""
+        '''Test initialization with dict config.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dict = {"project_id": "test-project", "index_path": tmpdir}
             engine = TantivyEngine(config_dict)
             assert engine.config.project_id == "test-project"
 
     def test_init_creates_index_directory(self) -> None:
-        """Test that initialization creates the index directory."""
+        '''Test that initialization creates the index directory.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             index_path = os.path.join(tmpdir, "new_index")
             config = TantivyConfig(project_id="test", index_path=index_path)
@@ -60,7 +60,7 @@ class TestTantivyEngineInitialization:
             assert os.path.isdir(index_path)
 
     def test_init_with_logger(self) -> None:
-        """Test initialization with logger."""
+        '''Test initialization with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -72,33 +72,33 @@ class TestTantivyEngineInitialization:
 
 @pytest.mark.unit
 class TestTantivyEngineOperations:
-    """Test TantivyEngine CRUD operations."""
+    '''Test TantivyEngine CRUD operations.'''
 
     @pytest.fixture
     def engine(self) -> TantivyEngine:
-        """Create a TantivyEngine with temporary directory."""
+        '''Create a TantivyEngine with temporary directory.'''
         tmpdir = tempfile.mkdtemp()
         config = TantivyConfig(project_id="test-project", index_path=tmpdir)
         return TantivyEngine(config)
 
     def test_add_document(self, engine: TantivyEngine) -> None:
-        """Test adding a document to the index."""
+        '''Test adding a document to the index.'''
         # Should not raise
         engine.add("user-1", "Test message content")
 
     def test_commit(self, engine: TantivyEngine) -> None:
-        """Test committing changes."""
+        '''Test committing changes.'''
         engine.add("user-1", "Test message")
         # Should not raise
         engine.commit()
 
     def test_search_empty_index(self, engine: TantivyEngine) -> None:
-        """Test searching an empty index."""
+        '''Test searching an empty index.'''
         results = engine.search("test query", "user-1", limit=5)
         assert results == []
 
     def test_search_after_add_and_commit(self, engine: TantivyEngine) -> None:
-        """Test searching after adding documents."""
+        '''Test searching after adding documents.'''
         engine.add("user-1", "Python programming language")
         engine.add("user-1", "JavaScript is for web development")
         engine.commit()
@@ -109,7 +109,7 @@ class TestTantivyEngineOperations:
         assert "Python" in results[0][0]
 
     def test_search_filters_by_project_id(self, engine: TantivyEngine) -> None:
-        """Test that search filters by project_id."""
+        '''Test that search filters by project_id.'''
         engine.add("user-1", "Message for user 1")
         engine.add("user-2", "Message for user 2")
         engine.commit()
@@ -120,7 +120,7 @@ class TestTantivyEngineOperations:
             assert "user 1" in msg or results == []
 
     def test_search_respects_limit(self, engine: TantivyEngine) -> None:
-        """Test that search respects the limit parameter."""
+        '''Test that search respects the limit parameter.'''
         for i in range(10):
             engine.add("user-1", f"Document number {i}")
         engine.commit()
@@ -131,10 +131,10 @@ class TestTantivyEngineOperations:
 
 @pytest.mark.unit
 class TestTantivyEngineLazyInitialization:
-    """Test lazy initialization of writer and searcher."""
+    '''Test lazy initialization of writer and searcher.'''
 
     def test_writer_lazy_init(self) -> None:
-        """Test that writer is lazily initialized."""
+        '''Test that writer is lazily initialized.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -148,7 +148,7 @@ class TestTantivyEngineLazyInitialization:
             assert engine._writer is not None
 
     def test_searcher_lazy_init(self) -> None:
-        """Test that searcher is lazily initialized."""
+        '''Test that searcher is lazily initialized.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -164,10 +164,10 @@ class TestTantivyEngineLazyInitialization:
 
 @pytest.mark.unit
 class TestTantivyEngineErrorHandling:
-    """Test TantivyEngine error handling."""
+    '''Test TantivyEngine error handling.'''
 
     def test_search_handles_errors_gracefully(self) -> None:
-        """Test that search errors are handled gracefully."""
+        '''Test that search errors are handled gracefully.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -182,10 +182,10 @@ class TestTantivyEngineErrorHandling:
 
 @pytest.mark.unit
 class TestTantivyEnginePersistence:
-    """Test TantivyEngine index persistence."""
+    '''Test TantivyEngine index persistence.'''
 
     def test_index_persists_across_instances(self) -> None:
-        """Test that data persists when creating new engine instance."""
+        '''Test that data persists when creating new engine instance.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
 
@@ -204,17 +204,17 @@ class TestTantivyEnginePersistence:
 
 @pytest.mark.unit
 class TestTantivyEngineDelete:
-    """Test TantivyEngine delete operations."""
+    '''Test TantivyEngine delete operations.'''
 
     @pytest.fixture
     def engine(self) -> TantivyEngine:
-        """Create a TantivyEngine with temporary directory."""
+        '''Create a TantivyEngine with temporary directory.'''
         tmpdir = tempfile.mkdtemp()
         config = TantivyConfig(project_id="test-project", index_path=tmpdir)
         return TantivyEngine(config)
 
     def test_delete_existing_document(self, engine: TantivyEngine) -> None:
-        """Test deleting an existing document."""
+        '''Test deleting an existing document.'''
         # Add and commit a document
         engine.add("test-project", "Hello world test message")
         engine.commit()
@@ -232,7 +232,7 @@ class TestTantivyEngineDelete:
         assert len(results) == 0
 
     def test_delete_nonexistent_document(self, engine: TantivyEngine) -> None:
-        """Test deleting a document that doesn't exist."""
+        '''Test deleting a document that doesn't exist.'''
         engine.add("test-project", "Existing message")
         engine.commit()
 
@@ -244,7 +244,7 @@ class TestTantivyEngineDelete:
         assert len(results) == 1
 
     def test_delete_after_multiple_commits(self, engine: TantivyEngine) -> None:
-        """Test delete works after multiple commits (the original bug)."""
+        '''Test delete works after multiple commits (the original bug).'''
         # Add and commit multiple times
         engine.add("test-project", "Message 1")
         engine.commit()
@@ -267,7 +267,7 @@ class TestTantivyEngineDelete:
         assert any("Message 3" in m for m in messages)
 
     def test_delete_preserves_other_documents(self, engine: TantivyEngine) -> None:
-        """Test that delete only removes the target document."""
+        '''Test that delete only removes the target document.'''
         engine.add("test-project", "Keep this document")
         engine.add("test-project", "Delete this document")
         engine.add("test-project", "Also keep this one")
@@ -286,7 +286,7 @@ class TestTantivyEngineDelete:
         assert not any("Delete this" in m for m in messages)
 
     def test_delete_removes_all_duplicates(self, engine: TantivyEngine) -> None:
-        """Test that delete removes all occurrences of the same message."""
+        '''Test that delete removes all occurrences of the same message.'''
         # Add duplicate messages
         engine.add("test-project", "Duplicate message")
         engine.add("test-project", "Duplicate message")
@@ -305,7 +305,7 @@ class TestTantivyEngineDelete:
         assert len(results) == 1
 
     def test_delete_respects_project_id(self, engine: TantivyEngine) -> None:
-        """Test that delete only affects the specified project."""
+        '''Test that delete only affects the specified project.'''
         engine.add("project-a", "Same message")
         engine.add("project-b", "Same message")
         engine.commit()
@@ -319,12 +319,12 @@ class TestTantivyEngineDelete:
         assert len(results) == 1
 
     def test_delete_with_empty_index(self, engine: TantivyEngine) -> None:
-        """Test delete on empty index returns False."""
+        '''Test delete on empty index returns False.'''
         result = engine.delete("test-project", "Any message")
         assert result is False
 
     def test_delete_with_logger(self) -> None:
-        """Test that delete logs appropriately."""
+        '''Test that delete logs appropriately.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -341,22 +341,22 @@ class TestTantivyEngineDelete:
 
 @pytest.mark.unit
 class TestTantivyEngineHelperMethods:
-    """Test TantivyEngine helper methods."""
+    '''Test TantivyEngine helper methods.'''
 
     @pytest.fixture
     def engine(self) -> TantivyEngine:
-        """Create a TantivyEngine with temporary directory."""
+        '''Create a TantivyEngine with temporary directory.'''
         tmpdir = tempfile.mkdtemp()
         config = TantivyConfig(project_id="test-project", index_path=tmpdir)
         return TantivyEngine(config)
 
     def test_get_all_docs_empty_index(self, engine: TantivyEngine) -> None:
-        """Test _get_all_docs on empty index."""
+        '''Test _get_all_docs on empty index.'''
         docs = engine._get_all_docs("test-project")
         assert docs == []
 
     def test_get_all_docs_with_documents(self, engine: TantivyEngine) -> None:
-        """Test _get_all_docs returns all documents for project."""
+        '''Test _get_all_docs returns all documents for project.'''
         engine.add("test-project", "Doc 1")
         engine.add("test-project", "Doc 2")
         engine.add("test-project", "Doc 3")
@@ -369,7 +369,7 @@ class TestTantivyEngineHelperMethods:
         assert "Doc 3" in docs
 
     def test_get_all_docs_filters_by_project(self, engine: TantivyEngine) -> None:
-        """Test _get_all_docs only returns docs for specified project."""
+        '''Test _get_all_docs only returns docs for specified project.'''
         engine.add("project-a", "A's doc")
         engine.add("project-b", "B's doc")
         engine.commit()
@@ -383,7 +383,7 @@ class TestTantivyEngineHelperMethods:
         assert "B's doc" in docs_b
 
     def test_recreate_writer_if_needed(self, engine: TantivyEngine) -> None:
-        """Test _recreate_writer_if_needed creates a new writer."""
+        '''Test _recreate_writer_if_needed creates a new writer.'''
         # Start with no writer
         assert engine._writer is None
 
@@ -411,10 +411,10 @@ class TestTantivyEngineHelperMethods:
 
 @pytest.mark.unit
 class TestTantivyEngineWriterReuse:
-    """Tests for writer reuse optimization."""
+    '''Tests for writer reuse optimization.'''
 
     def test_writer_reused_after_commit(self) -> None:
-        """Test that writer is reused after commit (not recreated)."""
+        '''Test that writer is reused after commit (not recreated).'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -438,7 +438,7 @@ class TestTantivyEngineWriterReuse:
             engine.close()
 
     def test_multiple_commit_cycles_reuse_writer(self) -> None:
-        """Test writer reused across multiple add-commit cycles."""
+        '''Test writer reused across multiple add-commit cycles.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -454,7 +454,7 @@ class TestTantivyEngineWriterReuse:
             engine.close()
 
     def test_flush_invalidates_writer(self) -> None:
-        """Test that flush() invalidates the writer."""
+        '''Test that flush() invalidates the writer.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -472,7 +472,7 @@ class TestTantivyEngineWriterReuse:
             engine.close()
 
     def test_flush_commits_and_refreshes_searcher(self) -> None:
-        """Test that flush() commits data and refreshes searcher."""
+        '''Test that flush() commits data and refreshes searcher.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -488,7 +488,7 @@ class TestTantivyEngineWriterReuse:
             engine.close()
 
     def test_close_waits_for_merging_threads(self) -> None:
-        """Test that close() properly waits for merging."""
+        '''Test that close() properly waits for merging.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -504,7 +504,7 @@ class TestTantivyEngineWriterReuse:
             assert engine._searcher is None
 
     def test_data_integrity_across_commit_cycles(self) -> None:
-        """Test that data is correctly persisted across multiple commit cycles."""
+        '''Test that data is correctly persisted across multiple commit cycles.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -532,7 +532,7 @@ class TestTantivyEngineWriterReuse:
             engine.close()
 
     def test_flush_then_add_creates_new_writer(self) -> None:
-        """Test that adding after flush creates a new writer instance."""
+        '''Test that adding after flush creates a new writer instance.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -553,7 +553,7 @@ class TestTantivyEngineWriterReuse:
             engine.close()
 
     def test_commit_with_logger(self) -> None:
-        """Test that commit logs 'writer reusable' message."""
+        '''Test that commit logs 'writer reusable' message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -570,7 +570,7 @@ class TestTantivyEngineWriterReuse:
             engine.close()
 
     def test_flush_with_logger(self) -> None:
-        """Test that flush logs 'writer invalidated' message."""
+        '''Test that flush logs 'writer invalidated' message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -587,7 +587,7 @@ class TestTantivyEngineWriterReuse:
             engine.close()
 
     def test_flush_on_empty_writer(self) -> None:
-        """Test that flush() handles no-writer case gracefully."""
+        '''Test that flush() handles no-writer case gracefully.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -606,10 +606,10 @@ class TestTantivyEngineWriterReuse:
 
 @pytest.mark.unit
 class TestTantivySoftDelete:
-    """Tests for soft-delete (tombstone) functionality."""
+    '''Tests for soft-delete (tombstone) functionality.'''
 
     def test_soft_delete_creates_tombstone(self) -> None:
-        """Test that soft_delete adds a tombstone document."""
+        '''Test that soft_delete adds a tombstone document.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -638,7 +638,7 @@ class TestTantivySoftDelete:
             engine.close()
 
     def test_soft_delete_nonexistent_content_returns_false(self) -> None:
-        """Test that soft_delete returns False for non-existent message."""
+        '''Test that soft_delete returns False for non-existent message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -653,11 +653,11 @@ class TestTantivySoftDelete:
             engine.close()
 
     def test_soft_delete_with_disabled_config_still_works(self) -> None:
-        """Test that soft_delete works even when soft_delete_enabled=False in config.
+        '''Test that soft_delete works even when soft_delete_enabled=False in config.
 
         Note: soft_delete_enabled config controls whether delete() uses soft_delete.
         The soft_delete() method itself only checks schema version support.
-        """
+        '''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -681,7 +681,7 @@ class TestTantivySoftDelete:
             engine.close()
 
     def test_search_filters_tombstoned_memories(self) -> None:
-        """Test that search excludes tombstoned messages."""
+        '''Test that search excludes tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -714,7 +714,7 @@ class TestTantivySoftDelete:
             engine.close()
 
     def test_get_all_docs_filters_tombstoned(self) -> None:
-        """Test that _get_all_docs excludes tombstoned messages."""
+        '''Test that _get_all_docs excludes tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -742,7 +742,7 @@ class TestTantivySoftDelete:
             engine.close()
 
     def test_delete_uses_soft_delete_when_enabled(self) -> None:
-        """Test that delete() uses soft-delete when enabled."""
+        '''Test that delete() uses soft-delete when enabled.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -767,10 +767,10 @@ class TestTantivySoftDelete:
 
 @pytest.mark.unit
 class TestTantivyCompaction:
-    """Tests for compaction service functionality."""
+    '''Tests for compaction service functionality.'''
 
     def test_get_tombstone_stats_empty_index(self) -> None:
-        """Test tombstone stats on empty index."""
+        '''Test tombstone stats on empty index.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -787,7 +787,7 @@ class TestTantivyCompaction:
             engine.close()
 
     def test_get_tombstone_stats_with_tombstones(self) -> None:
-        """Test tombstone stats after soft-deletes."""
+        '''Test tombstone stats after soft-deletes.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -816,7 +816,7 @@ class TestTantivyCompaction:
             engine.close()
 
     def test_needs_compaction_below_threshold(self) -> None:
-        """Test needs_compaction returns False when below thresholds."""
+        '''Test needs_compaction returns False when below thresholds.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -838,7 +838,7 @@ class TestTantivyCompaction:
             engine.close()
 
     def test_needs_compaction_ratio_exceeded(self) -> None:
-        """Test needs_compaction returns True when ratio exceeded."""
+        '''Test needs_compaction returns True when ratio exceeded.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -864,7 +864,7 @@ class TestTantivyCompaction:
             engine.close()
 
     def test_needs_compaction_max_tombstones_exceeded(self) -> None:
-        """Test needs_compaction returns True when max tombstones exceeded."""
+        '''Test needs_compaction returns True when max tombstones exceeded.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -890,7 +890,7 @@ class TestTantivyCompaction:
             engine.close()
 
     def test_compact_removes_tombstones(self) -> None:
-        """Test that compact() removes tombstoned messages."""
+        '''Test that compact() removes tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -932,7 +932,7 @@ class TestTantivyCompaction:
             engine.close()
 
     def test_compact_not_needed_returns_early(self) -> None:
-        """Test that compact() returns early when not needed."""
+        '''Test that compact() returns early when not needed.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -954,7 +954,7 @@ class TestTantivyCompaction:
             engine.close()
 
     def test_compact_force_ignores_thresholds(self) -> None:
-        """Test that compact(force=True) ignores thresholds."""
+        '''Test that compact(force=True) ignores thresholds.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -979,10 +979,10 @@ class TestTantivyCompaction:
 
 @pytest.mark.unit
 class TestTantivyTombstoneHelpers:
-    """Tests for tombstone helper methods."""
+    '''Tests for tombstone helper methods.'''
 
     def test_get_tombstoned_memories_empty(self) -> None:
-        """Test _get_tombstoned_memories on empty index."""
+        '''Test _get_tombstoned_memories on empty index.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -997,7 +997,7 @@ class TestTantivyTombstoneHelpers:
             engine.close()
 
     def test_get_tombstoned_memories_returns_deleted(self) -> None:
-        """Test _get_tombstoned_memories returns soft-deleted messages."""
+        '''Test _get_tombstoned_memories returns soft-deleted messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1019,7 +1019,7 @@ class TestTantivyTombstoneHelpers:
             engine.close()
 
     def test_multiple_soft_deletes_same_content(self) -> None:
-        """Test that multiple soft-deletes of same message work correctly."""
+        '''Test that multiple soft-deletes of same message work correctly.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1043,7 +1043,7 @@ class TestTantivyTombstoneHelpers:
             engine.close()
 
     def test_find_by_exact_match_excludes_tombstoned(self) -> None:
-        """Test that find_by_exact_match returns empty list for tombstoned messages."""
+        '''Test that find_by_exact_match returns empty list for tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1073,10 +1073,10 @@ class TestTantivyTombstoneHelpers:
 
 @pytest.mark.unit
 class TestTantivyScoreNormalization:
-    """Tests for BM25 score normalization to 0-1 range."""
+    '''Tests for BM25 score normalization to 0-1 range.'''
 
     def test_normalize_typical_bm25_scores(self) -> None:
-        """Test normalization of typical BM25 score range."""
+        '''Test normalization of typical BM25 score range.'''
         import numpy as np
 
         from reflectlog.application.utils.numba_utils import normalize_scores_minmax
@@ -1092,7 +1092,7 @@ class TestTantivyScoreNormalization:
         assert normalized[1] == pytest.approx(0.00883, rel=0.01)
 
     def test_normalize_single_result(self) -> None:
-        """Single result should be 0.5 (neutral midpoint with no range)."""
+        '''Single result should be 0.5 (neutral midpoint with no range).'''
         import numpy as np
 
         from reflectlog.application.utils.numba_utils import normalize_scores_minmax
@@ -1103,7 +1103,7 @@ class TestTantivyScoreNormalization:
         assert normalized[0] == 0.5
 
     def test_normalize_equal_scores(self) -> None:
-        """All equal scores should become 0.5 (neutral midpoint with no range)."""
+        '''All equal scores should become 0.5 (neutral midpoint with no range).'''
         import numpy as np
 
         from reflectlog.application.utils.numba_utils import normalize_scores_minmax
@@ -1114,7 +1114,7 @@ class TestTantivyScoreNormalization:
         assert all(s == 0.5 for s in normalized)
 
     def test_normalize_preserves_order(self) -> None:
-        """Normalization should preserve relative ordering."""
+        '''Normalization should preserve relative ordering.'''
         import numpy as np
 
         from reflectlog.application.utils.numba_utils import normalize_scores_minmax
@@ -1130,7 +1130,7 @@ class TestTantivyScoreNormalization:
         assert normalized[4] > normalized[2]  # 2 > 1
 
     def test_normalize_wide_range(self) -> None:
-        """Test with wide BM25 score range."""
+        '''Test with wide BM25 score range.'''
         import numpy as np
 
         from reflectlog.application.utils.numba_utils import normalize_scores_minmax
@@ -1143,7 +1143,7 @@ class TestTantivyScoreNormalization:
         assert all(0.0 <= s <= 1.0 for s in normalized)
 
     def test_tantivy_engine_normalize_scores_method(self) -> None:
-        """Test the TantivyEngine._normalize_scores() method directly."""
+        '''Test the TantivyEngine._normalize_scores() method directly.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1169,7 +1169,7 @@ class TestTantivyScoreNormalization:
             engine.close()
 
     def test_tantivy_engine_normalize_scores_single_result(self) -> None:
-        """Test _normalize_scores with single result returns 1.0."""
+        '''Test _normalize_scores with single result returns 1.0.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1188,7 +1188,7 @@ class TestTantivyScoreNormalization:
             engine.close()
 
     def test_tantivy_engine_normalize_scores_empty_results(self) -> None:
-        """Test _normalize_scores with empty results returns empty list."""
+        '''Test _normalize_scores with empty results returns empty list.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1205,7 +1205,7 @@ class TestTantivyScoreNormalization:
             engine.close()
 
     def test_search_with_normalization_enabled(self) -> None:
-        """Test that search returns normalized scores when enabled."""
+        '''Test that search returns normalized scores when enabled.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1234,7 +1234,7 @@ class TestTantivyScoreNormalization:
             engine.close()
 
     def test_search_with_normalization_disabled(self) -> None:
-        """Test that search returns raw BM25 scores when normalization is disabled."""
+        '''Test that search returns raw BM25 scores when normalization is disabled.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1262,7 +1262,7 @@ class TestTantivyScoreNormalization:
             engine.close()
 
     def test_config_normalize_scores_default(self) -> None:
-        """Test that normalize_scores defaults to True in TantivyConfig."""
+        '''Test that normalize_scores defaults to True in TantivyConfig.'''
         config = TantivyConfig(
             project_id="test",
             index_path="/tmp/test",
@@ -1270,7 +1270,7 @@ class TestTantivyScoreNormalization:
         assert config.normalize_scores is True
 
     def test_config_normalize_scores_explicit_false(self) -> None:
-        """Test that normalize_scores can be set to False."""
+        '''Test that normalize_scores can be set to False.'''
         config = TantivyConfig(
             project_id="test",
             index_path="/tmp/test",
@@ -1281,30 +1281,30 @@ class TestTantivyScoreNormalization:
 
 @pytest.mark.unit
 class TestIsDictConfig:
-    """Tests for _is_dict_config type guard function."""
+    '''Tests for _is_dict_config type guard function.'''
 
     def test_dict_returns_true(self) -> None:
-        """Test that a dict returns True."""
+        '''Test that a dict returns True.'''
         assert _is_dict_config({"key": "value"}) is True
 
     def test_non_dict_returns_false(self) -> None:
-        """Test that a non-dict returns False."""
+        '''Test that a non-dict returns False.'''
         assert _is_dict_config("not a dict") is False
         assert _is_dict_config(42) is False
         assert _is_dict_config(None) is False
 
     def test_tantivy_config_returns_false(self) -> None:
-        """Test that a TantivyConfig returns False."""
+        '''Test that a TantivyConfig returns False.'''
         config = TantivyConfig(project_id="test", index_path="/tmp/test")
         assert _is_dict_config(config) is False
 
 
 @pytest.mark.unit
 class TestTantivyConfigFromDict:
-    """Tests for TantivyConfig.from_dict factory method."""
+    '''Tests for TantivyConfig.from_dict factory method.'''
 
     def test_from_dict_with_all_fields(self) -> None:
-        """Test from_dict with all fields specified."""
+        '''Test from_dict with all fields specified.'''
         data = {
             "project_id": "proj-1",
             "index_path": "/tmp/idx",
@@ -1326,7 +1326,7 @@ class TestTantivyConfigFromDict:
         assert config.normalize_scores is False
 
     def test_from_dict_with_defaults(self) -> None:
-        """Test from_dict with missing fields uses defaults."""
+        '''Test from_dict with missing fields uses defaults.'''
         data: dict[str, str] = {}
         config = TantivyConfig.from_dict(data)
         assert config.project_id == ""
@@ -1336,7 +1336,7 @@ class TestTantivyConfigFromDict:
         assert config.compaction_max_tombstones == 10000
 
     def test_from_dict_with_none_values(self) -> None:
-        """Test from_dict handles None values for project_id and index_path."""
+        '''Test from_dict handles None values for project_id and index_path.'''
         data = {"project_id": None, "index_path": None}
         config = TantivyConfig.from_dict(data)
         assert config.project_id == ""
@@ -1345,10 +1345,10 @@ class TestTantivyConfigFromDict:
 
 @pytest.mark.unit
 class TestTantivyEngineWriterSearcherErrors:
-    """Tests for writer and searcher RuntimeError when index is None."""
+    '''Tests for writer and searcher RuntimeError when index is None.'''
 
     def test_writer_raises_runtime_error_when_index_none(self) -> None:
-        """Test that accessing writer raises RuntimeError when _index is None."""
+        '''Test that accessing writer raises RuntimeError when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1359,7 +1359,7 @@ class TestTantivyEngineWriterSearcherErrors:
                 _ = engine.writer
 
     def test_searcher_raises_runtime_error_when_index_none(self) -> None:
-        """Test that accessing searcher raises RuntimeError when _index is None."""
+        '''Test that accessing searcher raises RuntimeError when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1372,10 +1372,10 @@ class TestTantivyEngineWriterSearcherErrors:
 
 @pytest.mark.unit
 class TestTantivyEngineInitWithLogger:
-    """Tests for _initialize_index logger paths."""
+    '''Tests for _initialize_index logger paths.'''
 
     def test_init_existing_index_logs_loaded(self) -> None:
-        """Test that loading existing index logs loaded message."""
+        '''Test that loading existing index logs loaded message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1392,7 +1392,7 @@ class TestTantivyEngineInitWithLogger:
             engine2.close()
 
     def test_init_new_index_logs_created(self) -> None:
-        """Test that creating new index logs created message."""
+        '''Test that creating new index logs created message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             index_path = os.path.join(tmpdir, "brand_new_index")
@@ -1405,10 +1405,10 @@ class TestTantivyEngineInitWithLogger:
 
 @pytest.mark.unit
 class TestGetAllDocsErrorHandling:
-    """Tests for _get_all_docs error paths."""
+    '''Tests for _get_all_docs error paths.'''
 
     def test_get_all_docs_index_none_returns_empty(self) -> None:
-        """Test _get_all_docs returns [] when _index is None."""
+        '''Test _get_all_docs returns [] when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1417,7 +1417,7 @@ class TestGetAllDocsErrorHandling:
             assert result == []
 
     def test_get_all_docs_exception_with_logger(self) -> None:
-        """Test _get_all_docs logs warning on exception."""
+        '''Test _get_all_docs logs warning on exception.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1439,7 +1439,7 @@ class TestGetAllDocsErrorHandling:
             assert any("Failed to get all docs" in c for c in calls)
 
     def test_get_all_docs_exception_without_logger(self) -> None:
-        """Test _get_all_docs returns [] on exception even without logger."""
+        '''Test _get_all_docs returns [] on exception even without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1458,10 +1458,10 @@ class TestGetAllDocsErrorHandling:
 
 @pytest.mark.unit
 class TestGetAllDocsAllProjects:
-    """Tests for _get_all_docs_all_projects."""
+    '''Tests for _get_all_docs_all_projects.'''
 
     def test_all_projects_returns_tuples(self) -> None:
-        """Test _get_all_docs_all_projects returns (project_id, message) tuples."""
+        '''Test _get_all_docs_all_projects returns (project_id, message) tuples.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1477,7 +1477,7 @@ class TestGetAllDocsAllProjects:
             assert "proj-b" in project_ids
 
     def test_all_projects_index_none_returns_empty(self) -> None:
-        """Test _get_all_docs_all_projects returns [] when _index is None."""
+        '''Test _get_all_docs_all_projects returns [] when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1486,7 +1486,7 @@ class TestGetAllDocsAllProjects:
             assert result == []
 
     def test_all_projects_exception_with_logger(self) -> None:
-        """Test _get_all_docs_all_projects logs warning on exception."""
+        '''Test _get_all_docs_all_projects logs warning on exception.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1506,7 +1506,7 @@ class TestGetAllDocsAllProjects:
             assert any("all projects" in c for c in calls)
 
     def test_all_projects_exception_without_logger(self) -> None:
-        """Test _get_all_docs_all_projects returns [] on exception without logger."""
+        '''Test _get_all_docs_all_projects returns [] on exception without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1525,10 +1525,10 @@ class TestGetAllDocsAllProjects:
 
 @pytest.mark.unit
 class TestInvalidateTombstoneCache:
-    """Tests for _invalidate_tombstone_cache with specific project_id."""
+    '''Tests for _invalidate_tombstone_cache with specific project_id.'''
 
     def test_invalidate_specific_project(self) -> None:
-        """Test invalidating cache for a specific project."""
+        '''Test invalidating cache for a specific project.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1548,7 +1548,7 @@ class TestInvalidateTombstoneCache:
             assert "proj-b" in engine._tombstone_cache
 
     def test_invalidate_nonexistent_project_is_noop(self) -> None:
-        """Test invalidating cache for a non-existent project does nothing."""
+        '''Test invalidating cache for a non-existent project does nothing.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1557,7 +1557,7 @@ class TestInvalidateTombstoneCache:
             engine._invalidate_tombstone_cache("nonexistent")
 
     def test_invalidate_all_clears_entire_cache(self) -> None:
-        """Test invalidating with None clears entire cache."""
+        '''Test invalidating with None clears entire cache.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1573,10 +1573,10 @@ class TestInvalidateTombstoneCache:
 
 @pytest.mark.unit
 class TestGetTombstonedMessagesCacheAndErrors:
-    """Tests for _get_tombstoned_memories cache LRU eviction and error paths."""
+    '''Tests for _get_tombstoned_memories cache LRU eviction and error paths.'''
 
     def test_cache_hit_returns_cached(self) -> None:
-        """Test that cached tombstones are returned without re-querying."""
+        '''Test that cached tombstones are returned without re-querying.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1591,7 +1591,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
             assert result1 == result2
 
     def test_lru_eviction_when_cache_full(self) -> None:
-        """Test that oldest entry is evicted when cache exceeds max size."""
+        '''Test that oldest entry is evicted when cache exceeds max size.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1616,7 +1616,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
             assert "proj-2" in engine._tombstone_cache
 
     def test_index_none_returns_empty_set(self) -> None:
-        """Test that _get_tombstoned_memories returns empty set when _index is None."""
+        '''Test that _get_tombstoned_memories returns empty set when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1626,7 +1626,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
             assert result == set()
 
     def test_value_error_with_logger(self) -> None:
-        """Test ValueError handling in _get_tombstoned_memories with logger."""
+        '''Test ValueError handling in _get_tombstoned_memories with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1643,7 +1643,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
             assert any("query parse error" in c for c in calls)
 
     def test_generic_exception_with_logger(self) -> None:
-        """Test generic exception handling in _get_tombstoned_memories with logger."""
+        '''Test generic exception handling in _get_tombstoned_memories with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1660,7 +1660,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
             assert any("Failed to get tombstoned memories" in c for c in calls)
 
     def test_generic_exception_without_logger(self) -> None:
-        """Test generic exception without logger returns empty set."""
+        '''Test generic exception without logger returns empty set.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1676,10 +1676,10 @@ class TestGetTombstonedMessagesCacheAndErrors:
 
 @pytest.mark.unit
 class TestSearchErrorHandling:
-    """Tests for search error handling paths."""
+    '''Tests for search error handling paths.'''
 
     def test_search_empty_query_uses_project_only(self) -> None:
-        """Test search with empty query string uses project_id-only query."""
+        '''Test search with empty query string uses project_id-only query.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1693,7 +1693,7 @@ class TestSearchErrorHandling:
             assert len(results) >= 1
 
     def test_search_value_error_returns_empty(self) -> None:
-        """Test search returns [] on ValueError and logs with logger."""
+        '''Test search returns [] on ValueError and logs with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1710,7 +1710,7 @@ class TestSearchErrorHandling:
             assert any("Tantivy query parsing failed" in c for c in calls)
 
     def test_search_value_error_without_logger(self) -> None:
-        """Test search returns [] on ValueError without logger."""
+        '''Test search returns [] on ValueError without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1724,7 +1724,7 @@ class TestSearchErrorHandling:
             assert results == []
 
     def test_search_os_error_returns_empty(self) -> None:
-        """Test search returns [] on OSError and logs with logger."""
+        '''Test search returns [] on OSError and logs with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1741,7 +1741,7 @@ class TestSearchErrorHandling:
             assert any("file system error" in c.lower() for c in calls)
 
     def test_search_os_error_without_logger(self) -> None:
-        """Test search returns [] on OSError without logger."""
+        '''Test search returns [] on OSError without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1755,7 +1755,7 @@ class TestSearchErrorHandling:
             assert results == []
 
     def test_search_unexpected_error_raises_search_error(self) -> None:
-        """Test search raises SearchError on unexpected exceptions."""
+        '''Test search raises SearchError on unexpected exceptions.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1768,7 +1768,7 @@ class TestSearchErrorHandling:
                 engine.search("query", "test", limit=5)
 
     def test_search_query_escaping_fallback(self) -> None:
-        """Test that search escapes query on first parse failure."""
+        '''Test that search escapes query on first parse failure.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1802,7 +1802,7 @@ class TestSearchErrorHandling:
             assert any("Escaped Tantivy query" in c for c in calls)
 
     def test_search_empty_query_value_error_re_raises(self) -> None:
-        """Test that empty query + ValueError is re-raised (not escaped)."""
+        '''Test that empty query + ValueError is re-raised (not escaped).'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1817,7 +1817,7 @@ class TestSearchErrorHandling:
             assert results == []
 
     def test_search_with_logger_logs_matches(self) -> None:
-        """Test that search logs debug messages for each match."""
+        '''Test that search logs debug messages for each match.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1832,7 +1832,7 @@ class TestSearchErrorHandling:
             assert any("Tantivy match" in c for c in calls)
 
     def test_search_index_none_with_logger(self) -> None:
-        """Test search with _index=None logs warning with logger."""
+        '''Test search with _index=None logs warning with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1847,10 +1847,10 @@ class TestSearchErrorHandling:
 
 @pytest.mark.unit
 class TestEnsureInitialized:
-    """Tests for ensure_initialized method."""
+    '''Tests for ensure_initialized method.'''
 
     def test_ensure_initialized_creates_searcher(self) -> None:
-        """Test that ensure_initialized forces searcher creation."""
+        '''Test that ensure_initialized forces searcher creation.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1862,10 +1862,10 @@ class TestEnsureInitialized:
 
 @pytest.mark.unit
 class TestCloseErrorHandling:
-    """Tests for close() error handling."""
+    '''Tests for close() error handling.'''
 
     def test_close_handles_writer_error(self) -> None:
-        """Test that close handles errors during writer cleanup."""
+        '''Test that close handles errors during writer cleanup.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1892,7 +1892,7 @@ class TestCloseErrorHandling:
             assert any("Error during Tantivy writer cleanup" in c for c in calls)
 
     def test_close_with_logger_logs_closed(self) -> None:
-        """Test that close logs engine closed message."""
+        '''Test that close logs engine closed message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1903,7 +1903,7 @@ class TestCloseErrorHandling:
             assert any("Tantivy engine closed" in c for c in calls)
 
     def test_close_without_writer(self) -> None:
-        """Test that close works when writer was never initialized."""
+        '''Test that close works when writer was never initialized.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1916,10 +1916,10 @@ class TestCloseErrorHandling:
 
 @pytest.mark.unit
 class TestSoftDeleteWithLogger:
-    """Tests for soft_delete with logger messages."""
+    '''Tests for soft_delete with logger messages.'''
 
     def test_soft_delete_not_found_with_logger(self) -> None:
-        """Test soft_delete logs debug when message not found."""
+        '''Test soft_delete logs debug when message not found.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1931,7 +1931,7 @@ class TestSoftDeleteWithLogger:
             assert any("memory not found" in c for c in calls)
 
     def test_soft_delete_success_with_logger(self) -> None:
-        """Test soft_delete logs debug when tombstone added."""
+        '''Test soft_delete logs debug when tombstone added.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1950,11 +1950,11 @@ class TestSoftDeleteWithLogger:
 
 @pytest.mark.unit
 class TestDeleteWithSoftDeleteDisabled:
-    """Tests for delete() with soft_delete_enabled=False (rebuild path)."""
+    '''Tests for delete() with soft_delete_enabled=False (rebuild path).'''
 
     @pytest.fixture
     def engine_no_soft_delete(self) -> TantivyEngine:
-        """Create engine with soft_delete_enabled=False."""
+        '''Create engine with soft_delete_enabled=False.'''
         tmpdir = tempfile.mkdtemp()
         config = TantivyConfig(
             project_id="test",
@@ -1966,7 +1966,7 @@ class TestDeleteWithSoftDeleteDisabled:
     def test_delete_rebuild_existing_content(
         self, engine_no_soft_delete: TantivyEngine
     ) -> None:
-        """Test delete with rebuild removes the message."""
+        '''Test delete with rebuild removes the message.'''
         engine = engine_no_soft_delete
         engine.add("test", "Keep this")
         engine.add("test", "Delete this")
@@ -1982,7 +1982,7 @@ class TestDeleteWithSoftDeleteDisabled:
     def test_delete_rebuild_nonexistent_content(
         self, engine_no_soft_delete: TantivyEngine
     ) -> None:
-        """Test delete rebuild returns False for nonexistent message."""
+        '''Test delete rebuild returns False for nonexistent message.'''
         engine = engine_no_soft_delete
         engine.add("test", "Only message")
         engine.commit()
@@ -1993,14 +1993,14 @@ class TestDeleteWithSoftDeleteDisabled:
     def test_delete_rebuild_index_none(
         self, engine_no_soft_delete: TantivyEngine
     ) -> None:
-        """Test delete rebuild returns False when _index is None."""
+        '''Test delete rebuild returns False when _index is None.'''
         engine = engine_no_soft_delete
         engine._index = None
         result = engine.delete("test", "msg")
         assert result is False
 
     def test_delete_rebuild_with_logger(self) -> None:
-        """Test delete rebuild logs progress messages."""
+        '''Test delete rebuild logs progress messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
@@ -2021,7 +2021,7 @@ class TestDeleteWithSoftDeleteDisabled:
             assert any("completed successfully" in c for c in calls)
 
     def test_delete_rebuild_not_found_with_logger(self) -> None:
-        """Test delete rebuild logs not-found message."""
+        '''Test delete rebuild logs not-found message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
@@ -2039,7 +2039,7 @@ class TestDeleteWithSoftDeleteDisabled:
             assert any("document not found" in c for c in calls)
 
     def test_delete_rebuild_value_error(self) -> None:
-        """Test delete rebuild handles ValueError."""
+        '''Test delete rebuild handles ValueError.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
@@ -2062,7 +2062,7 @@ class TestDeleteWithSoftDeleteDisabled:
             assert any("query parsing failed" in c.lower() for c in calls)
 
     def test_delete_rebuild_os_error(self) -> None:
-        """Test delete rebuild handles OSError."""
+        '''Test delete rebuild handles OSError.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
@@ -2085,7 +2085,7 @@ class TestDeleteWithSoftDeleteDisabled:
             assert any("file system error" in c.lower() for c in calls)
 
     def test_delete_rebuild_unexpected_error(self) -> None:
-        """Test delete rebuild handles unexpected errors."""
+        '''Test delete rebuild handles unexpected errors.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
@@ -2108,7 +2108,7 @@ class TestDeleteWithSoftDeleteDisabled:
             assert any("failed unexpectedly" in c.lower() for c in calls)
 
     def test_delete_rebuild_unexpected_error_without_logger(self) -> None:
-        """Test delete rebuild handles unexpected errors without logger."""
+        '''Test delete rebuild handles unexpected errors without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -2128,7 +2128,7 @@ class TestDeleteWithSoftDeleteDisabled:
             assert result is False
 
     def test_delete_rebuild_preserves_other_projects(self) -> None:
-        """Test delete rebuild preserves documents from other projects."""
+        '''Test delete rebuild preserves documents from other projects.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -2151,10 +2151,10 @@ class TestDeleteWithSoftDeleteDisabled:
 
 @pytest.mark.unit
 class TestRebuildIndexWithDocs:
-    """Tests for _rebuild_index_with_docs edge cases."""
+    '''Tests for _rebuild_index_with_docs edge cases.'''
 
     def test_rebuild_with_existing_writer_error(self) -> None:
-        """Test rebuild handles writer commit error gracefully."""
+        '''Test rebuild handles writer commit error gracefully.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2177,10 +2177,10 @@ class TestRebuildIndexWithDocs:
 
 @pytest.mark.unit
 class TestGetDocLimitEdgeCases:
-    """Tests for _get_doc_limit edge cases."""
+    '''Tests for _get_doc_limit edge cases.'''
 
     def test_doc_limit_index_none(self) -> None:
-        """Test _get_doc_limit returns 0 when _index is None."""
+        '''Test _get_doc_limit returns 0 when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2188,7 +2188,7 @@ class TestGetDocLimitEdgeCases:
             assert engine._get_doc_limit() == 0
 
     def test_doc_limit_callable_num_docs(self) -> None:
-        """Test _get_doc_limit uses callable num_docs."""
+        '''Test _get_doc_limit uses callable num_docs.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2201,7 +2201,7 @@ class TestGetDocLimitEdgeCases:
             assert result >= 1
 
     def test_doc_limit_numeric_num_docs(self) -> None:
-        """Test _get_doc_limit handles num_docs as numeric attribute."""
+        '''Test _get_doc_limit handles num_docs as numeric attribute.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2220,7 +2220,7 @@ class TestGetDocLimitEdgeCases:
             assert result == 42
 
     def test_doc_limit_negative_num_docs_uses_fallback(self) -> None:
-        """Test _get_doc_limit uses fallback when num_docs is negative."""
+        '''Test _get_doc_limit uses fallback when num_docs is negative.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -2239,7 +2239,7 @@ class TestGetDocLimitEdgeCases:
             assert any("fallback limit" in c.lower() for c in calls)
 
     def test_doc_limit_none_num_docs_uses_fallback(self) -> None:
-        """Test _get_doc_limit uses fallback when num_docs is None."""
+        '''Test _get_doc_limit uses fallback when num_docs is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -2258,7 +2258,7 @@ class TestGetDocLimitEdgeCases:
             assert result == DEFAULT_TANTIVY_DOC_LIMIT
 
     def test_doc_limit_exception_uses_fallback(self) -> None:
-        """Test _get_doc_limit uses fallback when num_docs raises."""
+        '''Test _get_doc_limit uses fallback when num_docs raises.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -2277,7 +2277,7 @@ class TestGetDocLimitEdgeCases:
             assert any("Failed to read Tantivy num_docs" in c for c in calls)
 
     def test_doc_limit_zero_returns_max_1(self) -> None:
-        """Test _get_doc_limit returns max(1, 0) = 1 for empty index."""
+        '''Test _get_doc_limit returns max(1, 0) = 1 for empty index.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2297,10 +2297,10 @@ class TestGetDocLimitEdgeCases:
 
 @pytest.mark.unit
 class TestGetTombstoneStatsEdgeCases:
-    """Tests for get_tombstone_stats edge cases."""
+    '''Tests for get_tombstone_stats edge cases.'''
 
     def test_stats_index_none(self) -> None:
-        """Test get_tombstone_stats returns zeros when _index is None."""
+        '''Test get_tombstone_stats returns zeros when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2313,7 +2313,7 @@ class TestGetTombstoneStatsEdgeCases:
             assert stats["unique_active_memories"] == 0
 
     def test_stats_exception_with_logger(self) -> None:
-        """Test get_tombstone_stats returns zeros on exception with logger."""
+        '''Test get_tombstone_stats returns zeros on exception with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -2330,7 +2330,7 @@ class TestGetTombstoneStatsEdgeCases:
             assert any("Failed to get tombstone stats" in c for c in calls)
 
     def test_stats_exception_without_logger(self) -> None:
-        """Test get_tombstone_stats returns zeros on exception without logger."""
+        '''Test get_tombstone_stats returns zeros on exception without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2346,10 +2346,10 @@ class TestGetTombstoneStatsEdgeCases:
 
 @pytest.mark.unit
 class TestNeedsCompactionWithLogger:
-    """Tests for needs_compaction with logger messages."""
+    '''Tests for needs_compaction with logger messages.'''
 
     def test_needs_compaction_max_tombstones_with_logger(self) -> None:
-        """Test needs_compaction logs when max tombstones exceeded."""
+        '''Test needs_compaction logs when max tombstones exceeded.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
@@ -2373,7 +2373,7 @@ class TestNeedsCompactionWithLogger:
             assert any("tombstone count exceeded" in c for c in calls)
 
     def test_needs_compaction_ratio_with_logger(self) -> None:
-        """Test needs_compaction logs when ratio exceeded."""
+        '''Test needs_compaction logs when ratio exceeded.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
@@ -2399,10 +2399,10 @@ class TestNeedsCompactionWithLogger:
 
 @pytest.mark.unit
 class TestCompactEdgeCases:
-    """Tests for compact() error handling and edge cases."""
+    '''Tests for compact() error handling and edge cases.'''
 
     def test_compact_exception_returns_failure(self) -> None:
-        """Test compact returns failure dict on exception."""
+        '''Test compact returns failure dict on exception.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -2421,7 +2421,7 @@ class TestCompactEdgeCases:
             assert any("compaction failed" in c.lower() for c in calls)
 
     def test_compact_exception_without_logger(self) -> None:
-        """Test compact returns failure dict on exception without logger."""
+        '''Test compact returns failure dict on exception without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2435,7 +2435,7 @@ class TestCompactEdgeCases:
             assert result["compacted"] is False
 
     def test_compact_with_logger_logs_completion(self) -> None:
-        """Test compact logs completion message with stats."""
+        '''Test compact logs completion message with stats.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -2455,10 +2455,10 @@ class TestCompactEdgeCases:
 
 @pytest.mark.unit
 class TestEscapeTantivyQuery:
-    """Tests for _escape_tantivy_query static method."""
+    '''Tests for _escape_tantivy_query static method.'''
 
     def test_escape_special_characters(self) -> None:
-        """Test that all special characters are escaped."""
+        '''Test that all special characters are escaped.'''
         query = 'test+and-or|not!group()range{}list[]up^quote"tilde~wild*any?colon:back\\/slash'
         escaped = TantivyEngine._escape_tantivy_query(query)
         # Every special char should have a backslash prefix
@@ -2480,10 +2480,10 @@ class TestEscapeTantivyQuery:
         assert "\\:" in escaped
 
     def test_escape_no_special_chars(self) -> None:
-        """Test that plain text is unchanged."""
+        '''Test that plain text is unchanged.'''
         query = "simple query text"
         assert TantivyEngine._escape_tantivy_query(query) == query
 
     def test_escape_empty_string(self) -> None:
-        """Test escaping empty string returns empty."""
+        '''Test escaping empty string returns empty.'''
         assert TantivyEngine._escape_tantivy_query("") == ""

@@ -1,4 +1,4 @@
-"""Unit tests for reflectlog.application.utils.config_reload module."""
+'''Unit tests for reflectlog.application.utils.config_reload module.'''
 
 import signal
 import threading
@@ -15,38 +15,38 @@ from reflectlog.application.utils.config_reload import (
 
 
 class TestConfigReloadManagerInit:
-    """Tests for ConfigReloadManager.__init__."""
+    '''Tests for ConfigReloadManager.__init__.'''
 
     def test_init_stores_config_provider(self) -> None:
-        """Test that config_provider callable is stored."""
+        '''Test that config_provider callable is stored.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
         assert manager._config_provider is provider
 
     def test_init_config_is_none(self) -> None:
-        """Test that config starts as None (lazy loading)."""
+        '''Test that config starts as None (lazy loading).'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
         assert manager._config is None
 
     def test_init_reload_count_is_zero(self) -> None:
-        """Test that reload count starts at zero."""
+        '''Test that reload count starts at zero.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
         assert manager._reload_count == 0
 
     def test_init_creates_rlock(self) -> None:
-        """Test that an RLock is created for thread safety."""
+        '''Test that an RLock is created for thread safety.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
         assert isinstance(manager._lock, type(threading.RLock()))
 
 
 class TestConfigReloadManagerGetConfig:
-    """Tests for ConfigReloadManager.get_config."""
+    '''Tests for ConfigReloadManager.get_config.'''
 
     def test_get_config_calls_provider_on_first_access(self) -> None:
-        """Test that config_provider is called on first get_config."""
+        '''Test that config_provider is called on first get_config.'''
         mock_config = MagicMock()
         provider = MagicMock(return_value=mock_config)
         manager = ConfigReloadManager(config_provider=provider)
@@ -57,7 +57,7 @@ class TestConfigReloadManagerGetConfig:
         assert result is mock_config
 
     def test_get_config_returns_cached_on_second_call(self) -> None:
-        """Test that second call returns cached config without calling provider again."""
+        '''Test that second call returns cached config without calling provider again.'''
         mock_config = MagicMock()
         provider = MagicMock(return_value=mock_config)
         manager = ConfigReloadManager(config_provider=provider)
@@ -70,7 +70,7 @@ class TestConfigReloadManagerGetConfig:
         assert first is mock_config
 
     def test_get_config_logs_on_load(self) -> None:
-        """Test that loading config logs an info message."""
+        '''Test that loading config logs an info message.'''
         mock_config = MagicMock()
         provider = MagicMock(return_value=mock_config)
         manager = ConfigReloadManager(config_provider=provider)
@@ -83,7 +83,7 @@ class TestConfigReloadManagerGetConfig:
             )
 
     def test_get_config_does_not_log_on_cached_access(self) -> None:
-        """Test that cached access does not log again."""
+        '''Test that cached access does not log again.'''
         mock_config = MagicMock()
         provider = MagicMock(return_value=mock_config)
         manager = ConfigReloadManager(config_provider=provider)
@@ -97,10 +97,10 @@ class TestConfigReloadManagerGetConfig:
 
 
 class TestConfigReloadManagerReloadConfig:
-    """Tests for ConfigReloadManager.reload_config."""
+    '''Tests for ConfigReloadManager.reload_config.'''
 
     def test_reload_invalidates_cache_and_reloads(self) -> None:
-        """Test that reload clears cached config and provides fresh one."""
+        '''Test that reload clears cached config and provides fresh one.'''
         config_v1 = MagicMock(name="config_v1")
         config_v2 = MagicMock(name="config_v2")
         provider = MagicMock(side_effect=[config_v1, config_v2])
@@ -114,7 +114,7 @@ class TestConfigReloadManagerReloadConfig:
         assert provider.call_count == 2
 
     def test_reload_increments_reload_count(self) -> None:
-        """Test that each reload increments the count."""
+        '''Test that each reload increments the count.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
 
@@ -127,7 +127,7 @@ class TestConfigReloadManagerReloadConfig:
         assert manager.get_reload_count() == 2
 
     def test_reload_logs_invalidation(self) -> None:
-        """Test that reload logs the invalidation message."""
+        '''Test that reload logs the invalidation message.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
 
@@ -146,7 +146,7 @@ class TestConfigReloadManagerReloadConfig:
             assert calls[1].kwargs["extra"] == {"reload_count": 1}
 
     def test_reload_returns_new_config(self) -> None:
-        """Test that reload returns the newly loaded config."""
+        '''Test that reload returns the newly loaded config.'''
         config_new = MagicMock(name="config_new")
         provider = MagicMock(side_effect=[MagicMock(), config_new])
         manager = ConfigReloadManager(config_provider=provider)
@@ -158,16 +158,16 @@ class TestConfigReloadManagerReloadConfig:
 
 
 class TestConfigReloadManagerGetReloadCount:
-    """Tests for ConfigReloadManager.get_reload_count."""
+    '''Tests for ConfigReloadManager.get_reload_count.'''
 
     def test_initial_count_is_zero(self) -> None:
-        """Test that reload count starts at zero."""
+        '''Test that reload count starts at zero.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
         assert manager.get_reload_count() == 0
 
     def test_count_tracks_multiple_reloads(self) -> None:
-        """Test that count increases with each reload."""
+        '''Test that count increases with each reload.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
 
@@ -176,7 +176,7 @@ class TestConfigReloadManagerGetReloadCount:
             assert manager.get_reload_count() == i + 1
 
     def test_count_not_incremented_by_get_config(self) -> None:
-        """Test that get_config does not increment reload count."""
+        '''Test that get_config does not increment reload count.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
 
@@ -188,10 +188,10 @@ class TestConfigReloadManagerGetReloadCount:
 
 
 class TestConfigReloadManagerThreadSafety:
-    """Tests for thread safety of ConfigReloadManager."""
+    '''Tests for thread safety of ConfigReloadManager.'''
 
     def test_concurrent_get_config_calls_provider_once(self) -> None:
-        """Test that concurrent get_config calls only invoke provider once."""
+        '''Test that concurrent get_config calls only invoke provider once.'''
         call_count = 0
         barrier = threading.Barrier(5)
         mock_config = MagicMock()
@@ -227,7 +227,7 @@ class TestConfigReloadManagerThreadSafety:
         assert call_count == 1
 
     def test_concurrent_reload_increments_correctly(self) -> None:
-        """Test that concurrent reloads maintain correct count."""
+        '''Test that concurrent reloads maintain correct count.'''
         provider = MagicMock()
         manager = ConfigReloadManager(config_provider=provider)
         barrier = threading.Barrier(10)
@@ -251,11 +251,11 @@ class TestConfigReloadManagerThreadSafety:
 
 
 class TestSetupSignalHandler:
-    """Tests for setup_signal_handler function."""
+    '''Tests for setup_signal_handler function.'''
 
     @pytest.fixture(autouse=True)
     def _reset_global_state(self) -> Generator[None]:
-        """Reset global singleton state before each test."""
+        '''Reset global singleton state before each test.'''
         import reflectlog.application.utils.config_reload as module
 
         with module._global_lock:
@@ -266,7 +266,7 @@ class TestSetupSignalHandler:
 
     @patch("reflectlog.application.utils.config_reload.signal.signal")
     def test_registers_sighup_handler(self, mock_signal: MagicMock) -> None:
-        """Test that SIGHUP handler is registered with signal module."""
+        '''Test that SIGHUP handler is registered with signal module.'''
         provider = MagicMock()
 
         _ = setup_signal_handler(provider)
@@ -277,7 +277,7 @@ class TestSetupSignalHandler:
 
     @patch("reflectlog.application.utils.config_reload.signal.signal")
     def test_returns_reload_manager(self, mock_signal: MagicMock) -> None:
-        """Test that setup returns a ConfigReloadManager instance."""
+        '''Test that setup returns a ConfigReloadManager instance.'''
         provider = MagicMock()
 
         result = setup_signal_handler(provider)
@@ -286,7 +286,7 @@ class TestSetupSignalHandler:
 
     @patch("reflectlog.application.utils.config_reload.signal.signal")
     def test_singleton_returns_same_instance(self, mock_signal: MagicMock) -> None:
-        """Test that second call returns same manager (singleton)."""
+        '''Test that second call returns same manager (singleton).'''
         provider1 = MagicMock()
         provider2 = MagicMock()
 
@@ -299,7 +299,7 @@ class TestSetupSignalHandler:
 
     @patch("reflectlog.application.utils.config_reload.signal.signal")
     def test_logs_handler_registration(self, mock_signal: MagicMock) -> None:
-        """Test that handler registration is logged."""
+        '''Test that handler registration is logged.'''
         provider = MagicMock()
 
         with patch("reflectlog.application.utils.config_reload.logger") as mock_logger:
@@ -310,7 +310,7 @@ class TestSetupSignalHandler:
 
     @patch("reflectlog.application.utils.config_reload.signal.signal")
     def test_sighup_handler_triggers_reload(self, mock_signal: MagicMock) -> None:
-        """Test that the registered SIGHUP handler triggers config reload."""
+        '''Test that the registered SIGHUP handler triggers config reload.'''
         mock_config = MagicMock()
         provider = MagicMock(return_value=mock_config)
 
@@ -327,7 +327,7 @@ class TestSetupSignalHandler:
 
     @patch("reflectlog.application.utils.config_reload.signal.signal")
     def test_sighup_handler_logs_signal_receipt(self, mock_signal: MagicMock) -> None:
-        """Test that SIGHUP handler logs signal receipt."""
+        '''Test that SIGHUP handler logs signal receipt.'''
         provider = MagicMock()
 
         _ = setup_signal_handler(provider)
@@ -345,7 +345,7 @@ class TestSetupSignalHandler:
     def test_sighup_handler_increments_reload_count(
         self, mock_signal: MagicMock
     ) -> None:
-        """Test that SIGHUP handler increments reload count."""
+        '''Test that SIGHUP handler increments reload count.'''
         provider = MagicMock()
 
         manager = setup_signal_handler(provider)
@@ -361,11 +361,11 @@ class TestSetupSignalHandler:
 
 
 class TestGetReloadManager:
-    """Tests for get_reload_manager function."""
+    '''Tests for get_reload_manager function.'''
 
     @pytest.fixture(autouse=True)
     def _reset_global_state(self) -> Generator[None]:
-        """Reset global singleton state before each test."""
+        '''Reset global singleton state before each test.'''
         import reflectlog.application.utils.config_reload as module
 
         with module._global_lock:
@@ -375,13 +375,13 @@ class TestGetReloadManager:
             module._global_reload_manager = None
 
     def test_returns_none_before_setup(self) -> None:
-        """Test that get_reload_manager returns None before setup."""
+        '''Test that get_reload_manager returns None before setup.'''
         result = get_reload_manager()
         assert result is None
 
     @patch("reflectlog.application.utils.config_reload.signal.signal")
     def test_returns_manager_after_setup(self, mock_signal: MagicMock) -> None:
-        """Test that get_reload_manager returns manager after setup."""
+        '''Test that get_reload_manager returns manager after setup.'''
         provider = MagicMock()
         expected = setup_signal_handler(provider)
 
@@ -392,7 +392,7 @@ class TestGetReloadManager:
 
     @patch("reflectlog.application.utils.config_reload.signal.signal")
     def test_returns_same_instance(self, mock_signal: MagicMock) -> None:
-        """Test that get_reload_manager always returns same instance."""
+        '''Test that get_reload_manager always returns same instance.'''
         provider = MagicMock()
         _ = setup_signal_handler(provider)
 

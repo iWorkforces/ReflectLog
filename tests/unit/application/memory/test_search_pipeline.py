@@ -1,4 +1,4 @@
-"""Unit tests for search_pipeline module."""
+'''Unit tests for search_pipeline module.'''
 
 from dataclasses import dataclass
 from typing import Any
@@ -25,7 +25,7 @@ from reflectlog.core.search import ISearchResult
 
 
 def _result(content: str, score: float, memory_id: str = "") -> ISearchResult:
-    """Create an ISearchResult with minimal boilerplate."""
+    '''Create an ISearchResult with minimal boilerplate.'''
     return ISearchResult(content=content, score=score, memory_id=memory_id)
 
 
@@ -37,7 +37,7 @@ def _make_pipeline_config(
     fusion_ranking_threshold: float = 0.01,
     search_limit: int = 5,
 ) -> SearchPipelineConfig:
-    """Build a SearchPipelineConfig with sensible defaults."""
+    '''Build a SearchPipelineConfig with sensible defaults.'''
     return SearchPipelineConfig(
         enable_hybrid_search=enable_hybrid_search,
         enable_rrf_fusion=enable_rrf_fusion,
@@ -54,10 +54,10 @@ def _make_pipeline_config(
 
 @pytest.mark.unit
 class TestSearchPipelineConfig:
-    """Tests for SearchPipelineConfig dataclass."""
+    '''Tests for SearchPipelineConfig dataclass.'''
 
     def test_default_construction(self) -> None:
-        """Config fields should be stored correctly."""
+        '''Config fields should be stored correctly.'''
         cfg = SearchPipelineConfig(
             enable_hybrid_search=True,
             enable_rrf_fusion=False,
@@ -79,11 +79,11 @@ class TestSearchPipelineConfig:
 
 @pytest.mark.unit
 class TestDefaultBackendExecutor:
-    """Tests for DefaultBackendExecutor."""
+    '''Tests for DefaultBackendExecutor.'''
 
     @pytest.fixture
     def semantic_backend(self) -> AsyncMock:
-        """Mock semantic search backend."""
+        '''Mock semantic search backend.'''
         backend = AsyncMock()
         backend.search = AsyncMock(
             return_value=[
@@ -95,7 +95,7 @@ class TestDefaultBackendExecutor:
 
     @pytest.fixture
     def fulltext_backend(self) -> AsyncMock:
-        """Mock full-text search backend."""
+        '''Mock full-text search backend.'''
         backend = AsyncMock()
         backend.search = AsyncMock(
             return_value=[
@@ -109,7 +109,7 @@ class TestDefaultBackendExecutor:
         self,
         semantic_backend: AsyncMock,
     ) -> None:
-        """Only semantic results when fulltext_backend is None."""
+        '''Only semantic results when fulltext_backend is None.'''
         executor = DefaultBackendExecutor(semantic_backend, None)
         from reflectlog.core.search import SearchContext
 
@@ -139,7 +139,7 @@ class TestDefaultBackendExecutor:
         semantic_backend: AsyncMock,
         fulltext_backend: AsyncMock,
     ) -> None:
-        """Both backends executed when hybrid search enabled."""
+        '''Both backends executed when hybrid search enabled.'''
         executor = DefaultBackendExecutor(semantic_backend, fulltext_backend)
         from reflectlog.core.search import SearchContext
 
@@ -165,7 +165,7 @@ class TestDefaultBackendExecutor:
         semantic_backend: AsyncMock,
         fulltext_backend: AsyncMock,
     ) -> None:
-        """Fulltext backend skipped when enable_hybrid_search=False."""
+        '''Fulltext backend skipped when enable_hybrid_search=False.'''
         executor = DefaultBackendExecutor(semantic_backend, fulltext_backend)
         from reflectlog.core.search import SearchContext
 
@@ -192,19 +192,19 @@ class TestDefaultBackendExecutor:
 
 @pytest.mark.unit
 class TestRRFFusionStage:
-    """Tests for RRFFusionStage."""
+    '''Tests for RRFFusionStage.'''
 
     @pytest.fixture
     def fusion(self) -> RRFFusionStage:
-        """RRFFusionStage with default k=60."""
+        '''RRFFusionStage with default k=60.'''
         return RRFFusionStage(k=60.0)
 
     def test_empty_results(self, fusion: RRFFusionStage) -> None:
-        """Empty input should return empty list."""
+        '''Empty input should return empty list.'''
         assert fusion.fuse({}, limit=10) == []
 
     def test_single_backend(self, fusion: RRFFusionStage) -> None:
-        """Single backend results returned with RRF scores."""
+        '''Single backend results returned with RRF scores.'''
         results = {
             "semantic": [
                 _result("A", 0.9),
@@ -220,7 +220,7 @@ class TestRRFFusionStage:
         assert fused[0].score > fused[1].score
 
     def test_multiple_backends_aggregation(self, fusion: RRFFusionStage) -> None:
-        """Results from multiple backends get aggregated RRF scores."""
+        '''Results from multiple backends get aggregated RRF scores.'''
         results = {
             "semantic": [_result("A", 0.9), _result("B", 0.8)],
             "fulltext": [_result("B", 0.95), _result("C", 0.7)],
@@ -237,7 +237,7 @@ class TestRRFFusionStage:
         assert b_item.score > a_item.score
 
     def test_limit_respected(self, fusion: RRFFusionStage) -> None:
-        """Only limit number of results returned."""
+        '''Only limit number of results returned.'''
         results = {
             "semantic": [_result(f"item{i}", 0.9 - i * 0.1) for i in range(5)],
         }
@@ -245,7 +245,7 @@ class TestRRFFusionStage:
         assert len(fused) == 2
 
     def test_custom_k_value(self) -> None:
-        """Custom k changes RRF scores."""
+        '''Custom k changes RRF scores.'''
         fusion_k10 = RRFFusionStage(k=10.0)
         fusion_k100 = RRFFusionStage(k=100.0)
 
@@ -258,7 +258,7 @@ class TestRRFFusionStage:
         assert fused_k10[0].score > fused_k100[0].score
 
     def test_rrf_score_correctness(self) -> None:
-        """Verify RRF formula: score = sum(1/(k+rank))."""
+        '''Verify RRF formula: score = sum(1/(k+rank)).'''
         fusion = RRFFusionStage(k=60.0)
         results = {
             "semantic": [_result("A", 0.9)],
@@ -270,7 +270,7 @@ class TestRRFFusionStage:
         assert abs(fused[0].score - expected_score) < 1e-9
 
     def test_original_score_in_metadata(self, fusion: RRFFusionStage) -> None:
-        """Original score from first matching backend stored in metadata."""
+        '''Original score from first matching backend stored in metadata.'''
         results = {
             "semantic": [_result("A", 0.92)],
         }
@@ -278,7 +278,7 @@ class TestRRFFusionStage:
         assert fused[0].metadata["original_score"] == 0.92
 
     def test_memory_id_empty_string(self, fusion: RRFFusionStage) -> None:
-        """Fused results get empty memory_id."""
+        '''Fused results get empty memory_id.'''
         results = {
             "semantic": [_result("A", 0.9, memory_id="id1")],
         }
@@ -286,7 +286,7 @@ class TestRRFFusionStage:
         assert fused[0].memory_id == ""
 
     def test_deduplication_by_content(self, fusion: RRFFusionStage) -> None:
-        """Duplicate content from same backend is deduplicated."""
+        '''Duplicate content from same backend is deduplicated.'''
         results = {
             "semantic": [_result("dup", 0.9), _result("dup", 0.8)],
         }
@@ -304,19 +304,19 @@ class TestRRFFusionStage:
 
 @pytest.mark.unit
 class TestConcatenationFusionStage:
-    """Tests for ConcatenationFusionStage."""
+    '''Tests for ConcatenationFusionStage.'''
 
     @pytest.fixture
     def fusion(self) -> ConcatenationFusionStage:
-        """ConcatenationFusionStage instance."""
+        '''ConcatenationFusionStage instance.'''
         return ConcatenationFusionStage()
 
     def test_empty_results(self, fusion: ConcatenationFusionStage) -> None:
-        """Empty input should return empty list."""
+        '''Empty input should return empty list.'''
         assert fusion.fuse({}, limit=10) == []
 
     def test_single_backend(self, fusion: ConcatenationFusionStage) -> None:
-        """Results from one backend returned sorted by score."""
+        '''Results from one backend returned sorted by score.'''
         results = {
             "semantic": [_result("B", 0.7), _result("A", 0.9)],
         }
@@ -328,7 +328,7 @@ class TestConcatenationFusionStage:
         self,
         fusion: ConcatenationFusionStage,
     ) -> None:
-        """Results from multiple backends combined and sorted."""
+        '''Results from multiple backends combined and sorted.'''
         results = {
             "semantic": [_result("A", 0.9)],
             "fulltext": [_result("B", 0.95)],
@@ -339,7 +339,7 @@ class TestConcatenationFusionStage:
         assert fused[1].content == "A"
 
     def test_deduplication(self, fusion: ConcatenationFusionStage) -> None:
-        """Duplicate content deduplicated (first occurrence kept)."""
+        '''Duplicate content deduplicated (first occurrence kept).'''
         results = {
             "semantic": [_result("same", 0.8)],
             "fulltext": [_result("same", 0.95)],
@@ -350,7 +350,7 @@ class TestConcatenationFusionStage:
         assert fused[0].score == 0.8
 
     def test_limit_respected(self, fusion: ConcatenationFusionStage) -> None:
-        """Only limit number of results returned."""
+        '''Only limit number of results returned.'''
         results = {
             "semantic": [_result(f"item{i}", 0.9 - i * 0.1) for i in range(5)],
         }
@@ -365,18 +365,18 @@ class TestConcatenationFusionStage:
 
 @pytest.mark.unit
 class TestThresholdFilterStage:
-    """Tests for ThresholdFilterStage."""
+    '''Tests for ThresholdFilterStage.'''
 
     @pytest.fixture
     def filter_stage(self) -> ThresholdFilterStage:
-        """ThresholdFilterStage instance."""
+        '''ThresholdFilterStage instance.'''
         return ThresholdFilterStage()
 
     def test_all_above_threshold(
         self,
         filter_stage: ThresholdFilterStage,
     ) -> None:
-        """All results kept when above threshold."""
+        '''All results kept when above threshold.'''
         results = [_result("A", 0.9), _result("B", 0.8)]
         filtered = filter_stage.filter(results, threshold=0.5)
         assert len(filtered) == 2
@@ -385,7 +385,7 @@ class TestThresholdFilterStage:
         self,
         filter_stage: ThresholdFilterStage,
     ) -> None:
-        """All results removed when below threshold."""
+        '''All results removed when below threshold.'''
         results = [_result("A", 0.3), _result("B", 0.2)]
         filtered = filter_stage.filter(results, threshold=0.5)
         assert len(filtered) == 0
@@ -394,7 +394,7 @@ class TestThresholdFilterStage:
         self,
         filter_stage: ThresholdFilterStage,
     ) -> None:
-        """Only results above threshold kept."""
+        '''Only results above threshold kept.'''
         results = [_result("A", 0.9), _result("B", 0.3)]
         filtered = filter_stage.filter(results, threshold=0.5)
         assert len(filtered) == 1
@@ -404,13 +404,13 @@ class TestThresholdFilterStage:
         self,
         filter_stage: ThresholdFilterStage,
     ) -> None:
-        """Score exactly at threshold is included (>=)."""
+        '''Score exactly at threshold is included (>=).'''
         results = [_result("A", 0.5)]
         filtered = filter_stage.filter(results, threshold=0.5)
         assert len(filtered) == 1
 
     def test_empty_input(self, filter_stage: ThresholdFilterStage) -> None:
-        """Empty list returns empty list."""
+        '''Empty list returns empty list.'''
         filtered = filter_stage.filter([], threshold=0.5)
         assert filtered == []
 
@@ -418,7 +418,7 @@ class TestThresholdFilterStage:
         self,
         filter_stage: ThresholdFilterStage,
     ) -> None:
-        """Zero threshold keeps everything."""
+        '''Zero threshold keeps everything.'''
         results = [_result("A", 0.01), _result("B", 0.0)]
         filtered = filter_stage.filter(results, threshold=0.0)
         assert len(filtered) == 2
@@ -431,11 +431,11 @@ class TestThresholdFilterStage:
 
 @pytest.mark.unit
 class TestNoopRerankerStage:
-    """Tests for NoopRerankerStage."""
+    '''Tests for NoopRerankerStage.'''
 
     @pytest.mark.asyncio
     async def test_passthrough(self) -> None:
-        """Results returned unchanged."""
+        '''Results returned unchanged.'''
         stage = NoopRerankerStage()
         results = [_result("A", 0.9), _result("B", 0.8)]
         reranked = await stage.rerank("query", results)
@@ -443,7 +443,7 @@ class TestNoopRerankerStage:
 
     @pytest.mark.asyncio
     async def test_empty_input(self) -> None:
-        """Empty list returns empty list."""
+        '''Empty list returns empty list.'''
         stage = NoopRerankerStage()
         reranked = await stage.rerank("query", [])
         assert reranked == []
@@ -456,11 +456,11 @@ class TestNoopRerankerStage:
 
 @pytest.mark.unit
 class TestSearchPipeline:
-    """Tests for SearchPipeline orchestration."""
+    '''Tests for SearchPipeline orchestration.'''
 
     @pytest.fixture
     def mock_backend_executor(self) -> AsyncMock:
-        """Mock backend executor."""
+        '''Mock backend executor.'''
         executor = AsyncMock()
         executor.execute = AsyncMock(
             return_value={
@@ -474,7 +474,7 @@ class TestSearchPipeline:
 
     @pytest.fixture
     def mock_fusion(self) -> MagicMock:
-        """Mock fusion stage."""
+        '''Mock fusion stage.'''
         fusion = MagicMock()
         fusion.fuse.return_value = [
             _result("hit1", 0.032),
@@ -484,7 +484,7 @@ class TestSearchPipeline:
 
     @pytest.fixture
     def mock_filter(self) -> MagicMock:
-        """Mock filter stage."""
+        '''Mock filter stage.'''
         filter_stage = MagicMock()
         filter_stage.filter.side_effect = lambda results, threshold: [
             r for r in results if r.score >= threshold
@@ -493,7 +493,7 @@ class TestSearchPipeline:
 
     @pytest.fixture
     def mock_logger(self) -> MagicMock:
-        """Mock structured logger."""
+        '''Mock structured logger.'''
         return MagicMock()
 
     def _make_pipeline(
@@ -506,7 +506,7 @@ class TestSearchPipeline:
         reranker: Any = None,
         config: SearchPipelineConfig | None = None,
     ) -> SearchPipeline:
-        """Build a SearchPipeline with provided or default config."""
+        '''Build a SearchPipeline with provided or default config.'''
         if config is None:
             config = _make_pipeline_config()
         return SearchPipeline(
@@ -526,7 +526,7 @@ class TestSearchPipeline:
         mock_filter: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Pipeline returns content strings without reranker."""
+        '''Pipeline returns content strings without reranker.'''
         pipeline = self._make_pipeline(
             mock_backend_executor,
             mock_fusion,
@@ -548,7 +548,7 @@ class TestSearchPipeline:
         mock_filter: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """When limit=None, uses config.search_limit."""
+        '''When limit=None, uses config.search_limit.'''
         cfg = _make_pipeline_config(search_limit=3)
         pipeline = self._make_pipeline(
             mock_backend_executor,
@@ -571,7 +571,7 @@ class TestSearchPipeline:
         mock_filter: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Explicit limit overrides config default."""
+        '''Explicit limit overrides config default.'''
         cfg = _make_pipeline_config(search_limit=10)
         pipeline = self._make_pipeline(
             mock_backend_executor,
@@ -593,7 +593,7 @@ class TestSearchPipeline:
         mock_filter: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Filter stage called when enable_rrf_fusion=True."""
+        '''Filter stage called when enable_rrf_fusion=True.'''
         cfg = _make_pipeline_config(
             enable_rrf_fusion=True,
             fusion_ranking_threshold=0.02,
@@ -619,7 +619,7 @@ class TestSearchPipeline:
         mock_filter: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Filter stage NOT called when enable_rrf_fusion=False."""
+        '''Filter stage NOT called when enable_rrf_fusion=False.'''
         cfg = _make_pipeline_config(enable_rrf_fusion=False)
         pipeline = self._make_pipeline(
             mock_backend_executor,
@@ -640,7 +640,7 @@ class TestSearchPipeline:
         mock_filter: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Reranker transforms results when provided."""
+        '''Reranker transforms results when provided.'''
         mock_reranker = AsyncMock()
 
         @dataclass(frozen=True)
@@ -677,7 +677,7 @@ class TestSearchPipeline:
         mock_backend_executor: AsyncMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Reranker not called when filtered results are empty."""
+        '''Reranker not called when filtered results are empty.'''
         mock_fusion = MagicMock()
         mock_fusion.fuse.return_value = []
 
@@ -710,7 +710,7 @@ class TestSearchPipeline:
         mock_filter: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Final results truncated to limit."""
+        '''Final results truncated to limit.'''
         mock_fusion = MagicMock()
         mock_fusion.fuse.return_value = [
             _result(f"hit{i}", 0.9 - i * 0.01) for i in range(10)
@@ -739,7 +739,7 @@ class TestSearchPipeline:
         mock_filter: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """SearchContext passed to executor has correct fields."""
+        '''SearchContext passed to executor has correct fields.'''
         cfg = _make_pipeline_config(
             enable_hybrid_search=True,
             enable_rrf_fusion=False,
@@ -771,11 +771,11 @@ class TestSearchPipeline:
 
 @pytest.mark.unit
 class TestCalculateOverfetch:
-    """Tests for SearchPipeline._calculate_overfetch."""
+    '''Tests for SearchPipeline._calculate_overfetch.'''
 
     @pytest.fixture
     def pipeline(self) -> SearchPipeline:
-        """Minimal pipeline for overfetch tests."""
+        '''Minimal pipeline for overfetch tests.'''
         return SearchPipeline(
             backend_executor=AsyncMock(),
             fusion_stage=MagicMock(),
@@ -803,16 +803,16 @@ class TestCalculateOverfetch:
         limit: int,
         expected: int,
     ) -> None:
-        """Overfetch multiplier adapts to limit size."""
+        '''Overfetch multiplier adapts to limit size.'''
         assert pipeline._calculate_overfetch(limit) == expected
 
     def test_overfetch_small_limit_capped(self, pipeline: SearchPipeline) -> None:
-        """Small limits capped at 50."""
+        '''Small limits capped at 50.'''
         result = pipeline._calculate_overfetch(10)
         assert result <= 50
 
     def test_overfetch_medium_limit_capped(self, pipeline: SearchPipeline) -> None:
-        """Medium limits capped at 100."""
+        '''Medium limits capped at 100.'''
         result = pipeline._calculate_overfetch(50)
         assert result <= 100
 
@@ -824,11 +824,11 @@ class TestCalculateOverfetch:
 
 @pytest.mark.unit
 class TestCreateDefaultPipeline:
-    """Tests for create_default_pipeline factory function."""
+    '''Tests for create_default_pipeline factory function.'''
 
     @pytest.fixture
     def mock_config(self) -> MagicMock:
-        """Mock Config with required attributes."""
+        '''Mock Config with required attributes.'''
         cfg = MagicMock()
         cfg.enable_hybrid_search = True
         cfg.enable_rrf_fusion = True
@@ -840,17 +840,17 @@ class TestCreateDefaultPipeline:
 
     @pytest.fixture
     def mock_semantic(self) -> AsyncMock:
-        """Mock semantic backend."""
+        '''Mock semantic backend.'''
         return AsyncMock()
 
     @pytest.fixture
     def mock_fulltext(self) -> AsyncMock:
-        """Mock fulltext backend."""
+        '''Mock fulltext backend.'''
         return AsyncMock()
 
     @pytest.fixture
     def mock_logger(self) -> MagicMock:
-        """Mock structured logger."""
+        '''Mock structured logger.'''
         return MagicMock()
 
     def test_creates_pipeline_with_rrf_fusion(
@@ -860,7 +860,7 @@ class TestCreateDefaultPipeline:
         mock_config: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """With enable_rrf_fusion=True, uses RRFFusionStage."""
+        '''With enable_rrf_fusion=True, uses RRFFusionStage.'''
         mock_config.enable_rrf_fusion = True
         pipeline = create_default_pipeline(
             mock_semantic,
@@ -879,7 +879,7 @@ class TestCreateDefaultPipeline:
         mock_config: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """With enable_rrf_fusion=False, uses ConcatenationFusionStage."""
+        '''With enable_rrf_fusion=False, uses ConcatenationFusionStage.'''
         mock_config.enable_rrf_fusion = False
         pipeline = create_default_pipeline(
             mock_semantic,
@@ -896,7 +896,7 @@ class TestCreateDefaultPipeline:
         mock_config: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Reranker instance passed to pipeline."""
+        '''Reranker instance passed to pipeline.'''
         mock_reranker = AsyncMock()
         pipeline = create_default_pipeline(
             mock_semantic,
@@ -913,7 +913,7 @@ class TestCreateDefaultPipeline:
         mock_config: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """None reranker stored as None."""
+        '''None reranker stored as None.'''
         pipeline = create_default_pipeline(
             mock_semantic,
             None,
@@ -929,7 +929,7 @@ class TestCreateDefaultPipeline:
         mock_config: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Pipeline config fields match source config."""
+        '''Pipeline config fields match source config.'''
         mock_config.enable_hybrid_search = True
         mock_config.enable_rrf_fusion = True
         mock_config.reranker_engine = "cross_encoder"
@@ -954,7 +954,7 @@ class TestCreateDefaultPipeline:
         mock_config: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Custom fusion_rrf_k propagated to RRFFusionStage."""
+        '''Custom fusion_rrf_k propagated to RRFFusionStage.'''
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_rrf_k = 42
         pipeline = create_default_pipeline(
@@ -973,7 +973,7 @@ class TestCreateDefaultPipeline:
         mock_config: MagicMock,
         mock_logger: MagicMock,
     ) -> None:
-        """Pipeline can be created with fulltext_backend=None."""
+        '''Pipeline can be created with fulltext_backend=None.'''
         pipeline = create_default_pipeline(
             mock_semantic,
             None,
@@ -991,11 +991,11 @@ class TestCreateDefaultPipeline:
 
 @pytest.mark.unit
 class TestSearchPipelineIntegration:
-    """Integration tests using real stage implementations."""
+    '''Integration tests using real stage implementations.'''
 
     @pytest.mark.asyncio
     async def test_end_to_end_with_rrf(self) -> None:
-        """Full pipeline with real RRF fusion and threshold filter."""
+        '''Full pipeline with real RRF fusion and threshold filter.'''
         semantic = AsyncMock()
         semantic.search = AsyncMock(
             return_value=[
@@ -1039,7 +1039,7 @@ class TestSearchPipelineIntegration:
 
     @pytest.mark.asyncio
     async def test_end_to_end_with_concatenation(self) -> None:
-        """Full pipeline with concatenation fusion (no RRF)."""
+        '''Full pipeline with concatenation fusion (no RRF).'''
         semantic = AsyncMock()
         semantic.search = AsyncMock(
             return_value=[
@@ -1072,7 +1072,7 @@ class TestSearchPipelineIntegration:
 
     @pytest.mark.asyncio
     async def test_end_to_end_with_mock_reranker(self) -> None:
-        """Full pipeline with a reranker returning IRankingResult objects."""
+        '''Full pipeline with a reranker returning IRankingResult objects.'''
         semantic = AsyncMock()
         semantic.search = AsyncMock(
             return_value=[
@@ -1118,7 +1118,7 @@ class TestSearchPipelineIntegration:
 
     @pytest.mark.asyncio
     async def test_threshold_filters_low_rrf_scores(self) -> None:
-        """High threshold filters out low RRF scores."""
+        '''High threshold filters out low RRF scores.'''
         semantic = AsyncMock()
         semantic.search = AsyncMock(
             return_value=[

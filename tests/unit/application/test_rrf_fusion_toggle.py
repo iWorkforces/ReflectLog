@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for ENABLE_RRF_FUSION configuration toggle."""
+'''Unit tests for ENABLE_RRF_FUSION configuration toggle.'''
 
 import os
 from unittest.mock import Mock, patch
@@ -11,10 +11,10 @@ from reflectlog.application.config.settings import Config
 
 @pytest.mark.unit
 class TestRRFFusionToggleConfig:
-    """Tests for ENABLE_RRF_FUSION configuration option."""
+    '''Tests for ENABLE_RRF_FUSION configuration option.'''
 
     def test_config_enable_rrf_fusion_default_true(self):
-        """RRF fusion should be enabled by default."""
+        '''RRF fusion should be enabled by default.'''
         with patch.dict(
             os.environ,
             {
@@ -27,7 +27,7 @@ class TestRRFFusionToggleConfig:
             assert config.enable_rrf_fusion is True
 
     def test_config_enable_rrf_fusion_explicit_true(self):
-        """RRF fusion can be explicitly enabled."""
+        '''RRF fusion can be explicitly enabled.'''
         with patch.dict(
             os.environ,
             {
@@ -41,7 +41,7 @@ class TestRRFFusionToggleConfig:
             assert config.enable_rrf_fusion is True
 
     def test_config_enable_rrf_fusion_explicit_false(self):
-        """RRF fusion can be disabled via environment variable."""
+        '''RRF fusion can be disabled via environment variable.'''
         with patch.dict(
             os.environ,
             {
@@ -55,7 +55,7 @@ class TestRRFFusionToggleConfig:
             assert config.enable_rrf_fusion is False
 
     def test_config_enable_rrf_fusion_case_insensitive(self):
-        """ENABLE_RRF_FUSION parsing should be case-insensitive."""
+        '''ENABLE_RRF_FUSION parsing should be case-insensitive.'''
         test_cases = [
             ("TRUE", True),
             ("True", True),
@@ -81,7 +81,7 @@ class TestRRFFusionToggleConfig:
                 )
 
     def test_config_enable_rrf_fusion_invalid_value_defaults_false(self):
-        """Invalid ENABLE_RRF_FUSION values should default to False (not 'true')."""
+        '''Invalid ENABLE_RRF_FUSION values should default to False (not 'true').'''
         invalid_values = ["yes", "1", "on", "enabled", "invalid", ""]
 
         for value in invalid_values:
@@ -103,11 +103,11 @@ class TestRRFFusionToggleConfig:
 
 @pytest.mark.unit
 class TestSearchPipelineWithRRFToggle:
-    """Tests for search pipeline behavior with RRF toggle."""
+    '''Tests for search pipeline behavior with RRF toggle.'''
 
     @pytest.fixture
     def mock_config_rrf_enabled(self):
-        """Mock configuration with RRF fusion enabled."""
+        '''Mock configuration with RRF fusion enabled.'''
         config = Mock(spec=Config)
         config.project_id = "test_project"
         config.enable_hybrid_search = True
@@ -154,7 +154,7 @@ class TestSearchPipelineWithRRFToggle:
 
     @pytest.fixture
     def mock_config_rrf_disabled(self):
-        """Mock configuration with RRF fusion disabled."""
+        '''Mock configuration with RRF fusion disabled.'''
         config = Mock(spec=Config)
         config.project_id = "test_project"
         config.enable_hybrid_search = True
@@ -201,13 +201,13 @@ class TestSearchPipelineWithRRFToggle:
 
     @pytest.fixture
     def mock_logger(self):
-        """Mock structured logger."""
+        '''Mock structured logger.'''
         from reflectlog.application.utils import StructuredLogger
 
         return Mock(spec=StructuredLogger)
 
     def test_rrf_enabled_uses_fusion_engine(self, mock_config_rrf_enabled, mock_logger):
-        """When RRF is enabled, fusion engine should be called."""
+        '''When RRF is enabled, fusion engine should be called.'''
         from reflectlog.application.memory.manager import MemoryManager
 
         with patch(
@@ -242,6 +242,6 @@ class TestSearchPipelineWithRRFToggle:
     async def test_rrf_disabled_uses_concatenation(
         self, mock_config_rrf_disabled, mock_logger
     ):
-        """When RRF is disabled, concatenation should be used instead of fusion."""
+        '''When RRF is disabled, concatenation should be used instead of fusion.'''
         # When RRF is disabled, config should reflect that
         assert mock_config_rrf_disabled.enable_rrf_fusion is False

@@ -155,7 +155,7 @@ def compute_rrf_scores_batch(
     ranks_matrix: NDArray[np.int64],
     k: int = 60,
 ) -> NDArray[np.float64]:
-    """Compute RRF scores for multiple documents across multiple rankings.
+    '''Compute RRF scores for multiple documents across multiple rankings.
 
     This is a parallel implementation of Reciprocal Rank Fusion:
     RRF_score(d) = sum over rankings: 1 / (k + rank(d))
@@ -182,7 +182,7 @@ def compute_rrf_scores_batch(
         >>> scores = compute_rrf_scores_batch(ranks, k=60)
         >>> # scores[0] = 1/(60+1) + 1/(60+2) ≈ 0.032
         >>> # scores[1] = 1/(60+2) + 0 ≈ 0.016
-    """
+    '''
     n_docs = ranks_matrix.shape[0]
     n_rankings = ranks_matrix.shape[1]
     scores = np.zeros(n_docs, dtype=np.float64)
@@ -227,7 +227,7 @@ def distance_to_similarity_cosine(
 
 # Warm-up function to pre-compile all JIT functions
 def warmup_numba_functions() -> bool:
-    """Pre-compile all numba JIT functions to avoid first-call latency.
+    '''Pre-compile all numba JIT functions to avoid first-call latency.
 
     Call this during application startup to ensure all numba functions
     are compiled before they're needed in production code paths.
@@ -244,7 +244,7 @@ def warmup_numba_functions() -> bool:
         success = warmup_numba_functions()
         if not success:
             logger.warning("Numba JIT warmup failed, first calls may be slower")
-    """
+    '''
     try:
         # Small test arrays for compilation
         test_scores = np.array([0.1, 0.5, 0.9], dtype=np.float64)

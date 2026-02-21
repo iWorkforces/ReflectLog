@@ -1,4 +1,4 @@
-"""Cross-encoder reranker using FlagEmbedding's FlagReranker.
+'''Cross-encoder reranker using FlagEmbedding's FlagReranker.
 
 This module provides a local cross-encoder model for fast reranking of search
 results before passing top candidates to the LLM reranker. This two-stage
@@ -13,7 +13,7 @@ Example:
     >>> config = CrossEncoderConfig.from_app_config(app_config)
     >>> reranker = CrossEncoderReranker(config=config, logger=logger)
     >>> results = reranker.rerank("Python tutorials", candidates)
-"""
+'''
 
 from dataclasses import dataclass
 import importlib
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CrossEncoderConfig:
-    """Configuration for cross-encoder reranking using FlagReranker.
+    '''Configuration for cross-encoder reranking using FlagReranker.
 
     Attributes:
         model_name: Hugging Face model identifier for the cross-encoder.
@@ -44,7 +44,7 @@ class CrossEncoderConfig:
         use_fp16: Enable FP16 for faster computation with slight quality tradeoff.
         normalize: Apply sigmoid to normalize scores to 0-1 range.
         max_length: Maximum token length for query-document pairs.
-    """
+    '''
 
     model_name: str = 'BAAI/bge-reranker-v2-m3'
     enabled: bool = True
@@ -88,7 +88,7 @@ class CrossEncoderConfig:
 
 
 class CrossEncoderReranker(BaseModel):
-    """Cross-encoder reranker using FlagEmbedding's FlagReranker.
+    '''Cross-encoder reranker using FlagEmbedding's FlagReranker.
 
     This class provides fast, local reranking using FlagReranker which is
     optimized for BGE reranker models. It jointly encodes query and document
@@ -109,7 +109,7 @@ class CrossEncoderReranker(BaseModel):
         >>> # candidates: [(document, fusion_score), ...]
         >>> reranked = reranker.rerank("Python tutorials", candidates)
         >>> # Returns top-k candidates sorted by cross-encoder score
-    """
+    '''
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -233,7 +233,7 @@ class CrossEncoderReranker(BaseModel):
         return self._model
 
     def _suppress_fast_tokenizer_warning(self) -> None:
-        """Suppress the fast tokenizer padding warning.
+        '''Suppress the fast tokenizer padding warning.
 
         The warning "You're using a XLMRobertaTokenizerFast tokenizer..."
         is informational and not actionable since FlagReranker handles
@@ -241,7 +241,7 @@ class CrossEncoderReranker(BaseModel):
 
         1. Set the tokenizer's deprecation_warnings flag (if accessible)
         2. Add a global warnings filter for this specific message
-        """
+        '''
         # Approach 1: Try to set the tokenizer's deprecation flag directly
         # This is the cleanest solution if the tokenizer is accessible
         if self._model is not None:

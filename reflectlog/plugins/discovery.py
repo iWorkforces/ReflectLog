@@ -51,12 +51,12 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
         group: str,
         plugin_type: type[T],
     ):
-        """Initialize entry point discovery.
+        '''Initialize entry point discovery.
 
         Args:
             group: Entry point group name (e.g., 'reflectlog.plugins').
             plugin_type: Base class or protocol for type checking.
-        """
+        '''
         self._group = group
         self._plugin_type = plugin_type
 

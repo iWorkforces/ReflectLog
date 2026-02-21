@@ -1,4 +1,4 @@
-"""Shared fixtures and configuration for all tests."""
+'''Shared fixtures and configuration for all tests.'''
 
 from unittest.mock import MagicMock, patch
 
@@ -6,34 +6,34 @@ import pytest
 
 
 class MockMemorySearchResult:
-    """Mock implementation of MemorySearchResult for testing."""
+    '''Mock implementation of MemorySearchResult for testing.'''
 
     def __init__(self, text: str, index: int | str):
-        """Initialize mock search result.
+        '''Initialize mock search result.
 
         Args:
             text: The memory text content
             index: Unique identifier for the result
-        """
+        '''
         self._text = text
         self.index = index
 
     def __str__(self) -> str:
-        """Return string representation."""
+        '''Return string representation.'''
         return self._text
 
     def lower(self) -> str:
-        """Return lowercase version of the text."""
+        '''Return lowercase version of the text.'''
         return self._text.lower()
 
 
 @pytest.fixture
 def mock_search_result():
-    """Factory fixture for creating mock search results.
+    '''Factory fixture for creating mock search results.
 
     Returns:
         Callable that creates MockMemorySearchResult instances
-    """
+    '''
 
     def _create_result(text: str, index: int | str = 0) -> MockMemorySearchResult:
         return MockMemorySearchResult(text, index)
@@ -43,11 +43,11 @@ def mock_search_result():
 
 @pytest.fixture
 def mock_usearch_engine():
-    """Mock USearchEngine instance for testing.
+    '''Mock USearchEngine instance for testing.
 
     Returns:
         MagicMock configured to behave like a USearchEngine instance
-    """
+    '''
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.add_batch = MagicMock(
@@ -65,11 +65,11 @@ def mock_usearch_engine():
 
 @pytest.fixture
 def mock_memory_class(mock_usearch_engine):
-    """Mock USearchEngine class for patching imports.
+    '''Mock USearchEngine class for patching imports.
 
     Yields:
         Patched USearchEngine class that returns mock_usearch_engine instance
-    """
+    '''
     with patch("reflectlog.application.memory.manager.USearchEngine") as mock_cls:
         mock_cls.return_value = mock_usearch_engine
         yield mock_cls
@@ -77,14 +77,14 @@ def mock_memory_class(mock_usearch_engine):
 
 @pytest.fixture
 def set_env_vars(monkeypatch):
-    """Set required environment variables for testing.
+    '''Set required environment variables for testing.
 
     Args:
         monkeypatch: pytest monkeypatch fixture
 
     Returns:
         Dictionary of set environment variables
-    """
+    '''
     env_vars = {
         "PROJECT_ID": "test_project",
         "OPENROUTER_API_KEY": "test_key",
@@ -114,17 +114,17 @@ def set_env_vars(monkeypatch):
 
 @pytest.fixture
 def unset_project_id(monkeypatch):
-    """Remove PROJECT_ID from environment for testing missing config.
+    '''Remove PROJECT_ID from environment for testing missing config.
 
     Args:
         monkeypatch: pytest monkeypatch fixture
-    """
+    '''
     monkeypatch.delenv("PROJECT_ID", raising=False)
 
 
 @pytest.fixture
 def mcp_server(set_env_vars, mock_usearch_engine):
-    """Create FastMCPServer instance with mocked dependencies.
+    '''Create FastMCPServer instance with mocked dependencies.
 
     Args:
         set_env_vars: Environment variables fixture
@@ -132,7 +132,7 @@ def mcp_server(set_env_vars, mock_usearch_engine):
 
     Returns:
         FastMCPServer instance for testing
-    """
+    '''
     with (
         patch(
             "reflectlog.application.memory.manager.USearchEngine"
@@ -178,11 +178,11 @@ def mcp_server(set_env_vars, mock_usearch_engine):
 
 @pytest.fixture
 def sample_memories():
-    """Provide sample memories for testing.
+    '''Provide sample memories for testing.
 
     Returns:
         Dictionary of sample memory lists for various test scenarios
-    """
+    '''
     return {
         "single": ["Hello, World!"],
         "multiple": [
@@ -215,11 +215,11 @@ def sample_memories():
 
 @pytest.fixture
 def mock_logger():
-    """Mock logger for testing logging behavior.
+    '''Mock logger for testing logging behavior.
 
     Returns:
         MagicMock configured as a logger
-    """
+    '''
     logger = MagicMock()
     logger.info = MagicMock()
     logger.error = MagicMock()
@@ -229,10 +229,10 @@ def mock_logger():
 
 @pytest.fixture(autouse=True)
 def reset_env_after_test():
-    """Automatically reset environment after each test.
+    '''Automatically reset environment after each test.
 
     This fixture runs after every test to ensure clean state.
-    """
+    '''
     yield
     # Reset cached config singleton to avoid cross-test config mutation
     try:
@@ -252,14 +252,14 @@ def reset_env_after_test():
 
 @pytest.fixture
 def create_search_results(mock_search_result):
-    """Factory for creating lists of search results in USearchEngine format.
+    '''Factory for creating lists of search results in USearchEngine format.
 
     Args:
         mock_search_result: Factory fixture for single results (unused, kept for compatibility)
 
     Returns:
         Callable that creates lists of tuples (memory, score, created_at) for USearchEngine.search()
-    """
+    '''
 
     def _create_results(memories: list[str]) -> list[tuple[str, float, str]]:
         # USearchEngine.search returns List[Tuple[str, float, str]]
@@ -276,11 +276,11 @@ def create_search_results(mock_search_result):
 
 @pytest.fixture
 def create_search_response():
-    """Factory for creating search response dictionaries.
+    '''Factory for creating search response dictionaries.
 
     Returns:
         Callable that creates search response format: {'results': [{'memory': '...', 'id': '...'}]}
-    """
+    '''
 
     def _create_response(memories: list[str], include_ids: bool = True) -> dict:
         results = []
@@ -296,17 +296,17 @@ def create_search_response():
 
 @pytest.fixture
 def get_tool_func(mcp_server):
-    """Helper to get tool function by name.
+    '''Helper to get tool function by name.
 
     Args:
         mcp_server: FastMCPServer instance
 
     Returns:
         Callable that retrieves tool functions by name
-    """
+    '''
 
     def _get_tool(tool_name: str):
-        """Get tool function by name."""
+        '''Get tool function by name.'''
         # Access the internal _tools dictionary directly to avoid async call
         if hasattr(mcp_server.mcp._tool_manager, "_tools"):
             tool = mcp_server.mcp._tool_manager._tools.get(tool_name)
@@ -320,23 +320,23 @@ def get_tool_func(mcp_server):
 
 @pytest.fixture
 def add_tool(get_tool_func):
-    """Get the add tool function."""
+    '''Get the add tool function.'''
     return get_tool_func("add")
 
 
 @pytest.fixture
 def get_all_tool(get_tool_func):
-    """Get the get_all tool function."""
+    '''Get the get_all tool function.'''
     return get_tool_func("get_all")
 
 
 @pytest.fixture
 def search_tool(get_tool_func):
-    """Get the search tool function."""
+    '''Get the search tool function.'''
     return get_tool_func("search")
 
 
 @pytest.fixture
 def remove_tool(get_tool_func):
-    """Get the remove tool function."""
+    '''Get the remove tool function.'''
     return get_tool_func("remove")

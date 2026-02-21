@@ -1,8 +1,8 @@
-"""Integration tests for MemoryManager with USearch backend.
+'''Integration tests for MemoryManager with USearch backend.
 
 These tests verify hybrid search with USearchEngine + TantivyEngine
 and RRF fusion using real indices in temporary directories.
-"""
+'''
 
 import os
 import shutil
@@ -20,31 +20,31 @@ from reflectlog.application.utils.security import SecretString
 
 
 class MockEmbedder(Embeddings):
-    """Mock embedder for testing that produces deterministic vectors."""
+    '''Mock embedder for testing that produces deterministic vectors.'''
 
     def __init__(self, dims: int = 128) -> None:
         self.dims = dims
         self.call_count = 0
 
     def embed_query(self, text: str) -> list[float]:
-        """Return deterministic embeddings based on text hash."""
+        '''Return deterministic embeddings based on text hash.'''
         self.call_count += 1
         np.random.seed(hash(text) % (2**32))
         embedding: list[float] = np.random.randn(self.dims).astype(np.float32).tolist()
         return embedding
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed a list of documents."""
+        '''Embed a list of documents.'''
         return [self.embed_query(text) for text in texts]
 
 
 def create_usearch_config(temp_dir: str, project_suffix: str = "") -> Config:
-    """Create a Config instance configured for USearch backend.
+    '''Create a Config instance configured for USearch backend.
 
     Args:
         temp_dir: Temporary directory for index files.
         project_suffix: Unique suffix to append to project_id for test isolation.
-    """
+    '''
     import uuid
 
     # Create unique project_id to ensure test isolation
@@ -70,7 +70,7 @@ def create_usearch_config(temp_dir: str, project_suffix: str = "") -> Config:
 
 
 def create_memory_manager(config: Config) -> tuple[MemoryManager, MagicMock]:
-    """Create a MemoryManager with USearch backend and mock embedder."""
+    '''Create a MemoryManager with USearch backend and mock embedder.'''
     mock_embedder = MockEmbedder(dims=128)
     mock_logger = MagicMock(spec=StructuredLogger)
 
@@ -83,7 +83,7 @@ def create_memory_manager(config: Config) -> tuple[MemoryManager, MagicMock]:
 
 
 def cleanup_manager(manager: MemoryManager) -> None:
-    """Clean up MemoryManager resources and delete index files."""
+    '''Clean up MemoryManager resources and delete index files.'''
     # Close resources first
     if hasattr(manager, "close"):
         manager.close()
@@ -104,10 +104,10 @@ def cleanup_manager(manager: MemoryManager) -> None:
 
 @pytest.mark.integration
 class TestMemoryManagerWithUSearch:
-    """Integration tests for MemoryManager with USearch backend."""
+    '''Integration tests for MemoryManager with USearch backend.'''
 
     def test_initialization_with_usearch(self) -> None:
-        """MemoryManager should initialize with USearch backend."""
+        '''MemoryManager should initialize with USearch backend.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -118,7 +118,7 @@ class TestMemoryManagerWithUSearch:
                 cleanup_manager(manager)
 
     def test_add_single_memory(self) -> None:
-        """Adding a single memory should store in both engines."""
+        '''Adding a single memory should store in both engines.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -133,7 +133,7 @@ class TestMemoryManagerWithUSearch:
                 cleanup_manager(manager)
 
     def test_add_multiple_memories(self) -> None:
-        """Adding multiple memories should store all in both engines."""
+        '''Adding multiple memories should store all in both engines.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -155,7 +155,7 @@ class TestMemoryManagerWithUSearch:
                 cleanup_manager(manager)
 
     def test_deduplication(self) -> None:
-        """Duplicate memories should not be stored."""
+        '''Duplicate memories should not be stored.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -175,7 +175,7 @@ class TestMemoryManagerWithUSearch:
                 cleanup_manager(manager)
 
     def test_get_all_empty(self) -> None:
-        """get_all on empty store should return empty list."""
+        '''get_all on empty store should return empty list.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -187,7 +187,7 @@ class TestMemoryManagerWithUSearch:
 
     @pytest.mark.asyncio
     async def test_search_returns_results(self) -> None:
-        """Search should return matching memories."""
+        '''Search should return matching memories.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -210,7 +210,7 @@ class TestMemoryManagerWithUSearch:
 
     @pytest.mark.asyncio
     async def test_hybrid_search_combines_engines(self) -> None:
-        """Hybrid search should combine results from both engines."""
+        '''Hybrid search should combine results from both engines.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -236,7 +236,7 @@ class TestMemoryManagerWithUSearch:
 
     @pytest.mark.asyncio
     async def test_search_respects_limit(self) -> None:
-        """Search should respect the limit parameter."""
+        '''Search should respect the limit parameter.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -253,7 +253,7 @@ class TestMemoryManagerWithUSearch:
 
     @pytest.mark.asyncio
     async def test_search_empty_index(self) -> None:
-        """Search on empty index should return empty list."""
+        '''Search on empty index should return empty list.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -264,7 +264,7 @@ class TestMemoryManagerWithUSearch:
                 cleanup_manager(manager)
 
     def test_search_for_removal(self) -> None:
-        """search_for_removal should find exact matches."""
+        '''search_for_removal should find exact matches.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -282,7 +282,7 @@ class TestMemoryManagerWithUSearch:
     @pytest.mark.skip(reason="Async add causes segfault due to SQLite threading")
     @pytest.mark.asyncio
     async def test_add_memories_async(self) -> None:
-        """Async memory addition should work correctly."""
+        '''Async memory addition should work correctly.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -300,11 +300,11 @@ class TestMemoryManagerWithUSearch:
 
 @pytest.mark.integration
 class TestUSearchRRFFusion:
-    """Tests for RRF fusion with USearch backend."""
+    '''Tests for RRF fusion with USearch backend.'''
 
     @pytest.mark.asyncio
     async def test_rrf_fusion_ranks_correctly(self) -> None:
-        """RRF fusion should rank documents appearing in both engines higher."""
+        '''RRF fusion should rank documents appearing in both engines higher.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -335,7 +335,7 @@ class TestUSearchRRFFusion:
 
     @pytest.mark.asyncio
     async def test_fusion_combines_unique_results(self) -> None:
-        """Fusion should return unique results from both engines."""
+        '''Fusion should return unique results from both engines.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -358,10 +358,10 @@ class TestUSearchRRFFusion:
 
 @pytest.mark.integration
 class TestUSearchPersistence:
-    """Tests for USearch engine persistence."""
+    '''Tests for USearch engine persistence.'''
 
     def test_persistence_across_manager_restart(self) -> None:
-        """Data should persist across MemoryManager restarts."""
+        '''Data should persist across MemoryManager restarts.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             # Use a fixed project suffix so both managers access the same data
             config = create_usearch_config(tmpdir, project_suffix="persist-test")
@@ -400,11 +400,11 @@ class TestUSearchPersistence:
 
 @pytest.mark.integration
 class TestUSearchErrorHandling:
-    """Tests for error handling with USearch backend."""
+    '''Tests for error handling with USearch backend.'''
 
     @pytest.mark.asyncio
     async def test_search_handles_empty_query(self) -> None:
-        """Search should handle edge cases gracefully."""
+        '''Search should handle edge cases gracefully.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -420,7 +420,7 @@ class TestUSearchErrorHandling:
                 cleanup_manager(manager)
 
     def test_add_empty_list(self) -> None:
-        """Adding empty list should be a no-op."""
+        '''Adding empty list should be a no-op.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -435,11 +435,11 @@ class TestUSearchErrorHandling:
 
 @pytest.mark.integration
 class TestPhasedParallelAdd:
-    """Integration tests for Sprint 2.2: Phased parallel add processing."""
+    '''Integration tests for Sprint 2.2: Phased parallel add processing.'''
 
     @pytest.mark.asyncio
     async def test_parallel_add_multiple_memories(self) -> None:
-        """Phased parallel add should correctly store multiple memories."""
+        '''Phased parallel add should correctly store multiple memories.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -467,7 +467,7 @@ class TestPhasedParallelAdd:
 
     @pytest.mark.asyncio
     async def test_parallel_add_batch_deduplication(self) -> None:
-        """Phase 1 should deduplicate within the batch before storage."""
+        '''Phase 1 should deduplicate within the batch before storage.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -496,7 +496,7 @@ class TestPhasedParallelAdd:
 
     @pytest.mark.asyncio
     async def test_parallel_add_storage_deduplication(self) -> None:
-        """Phase 1 should detect duplicates already in storage."""
+        '''Phase 1 should detect duplicates already in storage.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)
@@ -527,7 +527,7 @@ class TestPhasedParallelAdd:
 
     @pytest.mark.asyncio
     async def test_parallel_add_preserves_order(self) -> None:
-        """Phased parallel add should preserve memory order for first occurrence."""
+        '''Phased parallel add should preserve memory order for first occurrence.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = create_usearch_config(tmpdir)
             manager, _ = create_memory_manager(config)

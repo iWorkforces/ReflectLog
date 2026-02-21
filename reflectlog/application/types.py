@@ -40,7 +40,7 @@ type LogContext = dict[str, Any]
 # Infrastructure layer implements them via structural subtyping (duck typing)
 @runtime_checkable
 class ISemanticSearchConfig(Protocol):
-    """Interface for semantic search engine configuration.
+    '''Interface for semantic search engine configuration.
 
     Following Clean Architecture principles, this protocol defines the contract
     that the application layer needs from semantic search configuration. The
@@ -63,7 +63,7 @@ class ISemanticSearchConfig(Protocol):
         openrouter_api_key: API key for embeddings.
         openrouter_base_url: API base URL.
         qwen_embedding_dims: Qwen embedding dimensions.
-    """
+    '''
 
     @property
     def project_id(self) -> str: ...
@@ -169,7 +169,7 @@ class Embeddings(Protocol):
 
 
 class ISemanticSearchEngine(Protocol):
-    """Interface for semantic search engine operations.
+    '''Interface for semantic search engine operations.
 
     Following Clean Architecture principles, this protocol defines the contract
     that the application layer needs from a semantic search engine. The
@@ -192,7 +192,7 @@ class ISemanticSearchEngine(Protocol):
         ) -> list[tuple[str, float]]:
             return engine.search(query=query, project_id="project", limit=5)
         ```
-    """
+    '''
 
     @property
     def name(self) -> str:

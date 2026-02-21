@@ -30,7 +30,7 @@ DEFAULT_NORMALIZATIONS: dict[str, str | None] = {
 
 
 class RanxFusionEngine:
-    """Fusion engine using the ranx library.
+    '''Fusion engine using the ranx library.
 
     This engine supports multiple fusion algorithms and normalization
     strategies provided by the ranx library. It converts between the
@@ -50,7 +50,7 @@ class RanxFusionEngine:
         - zmuv: Zero-mean unit-variance normalization
         - rank: Rank-based normalization
         - borda: Borda count normalization
-    """
+    '''
 
     # Fixed query ID for single-query fusion scenario
     _QUERY_ID = 'q'
@@ -62,7 +62,7 @@ class RanxFusionEngine:
         rrf_k: int = 60,
         logger: Any | None = None,
     ):
-        """Initialize the ranx fusion engine.
+        '''Initialize the ranx fusion engine.
 
         Args:
             method: Fusion algorithm to use. One of: rrf, sum, mnz,
@@ -76,7 +76,7 @@ class RanxFusionEngine:
 
         Raises:
             ValueError: If method or normalization is not supported.
-        """
+        '''
         super().__init__()
 
         if method not in SUPPORTED_METHODS:

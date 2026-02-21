@@ -1,9 +1,9 @@
-"""Conftest for numba utility tests.
+'''Conftest for numba utility tests.
 
 Disables numba JIT so coverage.py can instrument JIT-compiled function
 bodies. pyproject.toml filterwarnings imports numba before conftest loads,
 so we must purge and reimport numba with NUMBA_DISABLE_JIT=1.
-"""
+'''
 
 import importlib
 import os

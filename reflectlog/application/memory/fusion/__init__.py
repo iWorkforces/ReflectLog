@@ -17,7 +17,7 @@ def create_fusion_engine(
     rrf_k: int = 60,
     logger: Any | None = None,
 ) -> FusionEngine:
-    """Factory function to create a fusion engine.
+    '''Factory function to create a fusion engine.
 
     Args:
         method: Fusion algorithm to use. One of: rrf, sum, mnz,
@@ -34,7 +34,7 @@ def create_fusion_engine(
 
     Raises:
         ValueError: If method or normalization is not supported.
-    """
+    '''
     return RanxFusionEngine(
         method=method,
         normalization=normalization,

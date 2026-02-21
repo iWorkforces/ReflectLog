@@ -1,4 +1,4 @@
-"""Unit tests for CrossEncoderReranker (using FlagReranker)."""
+'''Unit tests for CrossEncoderReranker (using FlagReranker).'''
 
 import sys
 from typing import Any, Generator
@@ -14,7 +14,7 @@ from reflectlog.infrastructure.cross_encoder_reranker import (
 
 @pytest.fixture(autouse=True)
 def mock_flag_embedding_module() -> Generator[None, Any, None]:
-    """Mock FlagEmbedding module in sys.modules to avoid heavy imports."""
+    '''Mock FlagEmbedding module in sys.modules to avoid heavy imports.'''
     mock_flag_embedding = MagicMock()
     mock_flag_reranker_class = MagicMock()
     mock_flag_embedding.FlagReranker = mock_flag_reranker_class
@@ -24,10 +24,10 @@ def mock_flag_embedding_module() -> Generator[None, Any, None]:
 
 
 class TestCrossEncoderConfig:
-    """Test CrossEncoderConfig dataclass."""
+    '''Test CrossEncoderConfig dataclass.'''
 
     def test_default_values(self) -> None:
-        """Test default configuration values."""
+        '''Test default configuration values.'''
         config = CrossEncoderConfig()
 
         assert config.model_name == "BAAI/bge-reranker-v2-m3"
@@ -42,7 +42,7 @@ class TestCrossEncoderConfig:
         assert config.max_length == 512
 
     def test_custom_values(self) -> None:
-        """Test configuration with custom values."""
+        '''Test configuration with custom values.'''
         config = CrossEncoderConfig(
             model_name="BAAI/bge-reranker-large",
             enabled=True,
@@ -66,14 +66,14 @@ class TestCrossEncoderConfig:
         assert config.max_length == 256
 
     def test_default_batch_normalize_and_min_results(self) -> None:
-        """Test default values for batch_normalize and min_results."""
+        '''Test default values for batch_normalize and min_results.'''
         config = CrossEncoderConfig()
 
         assert config.batch_normalize is True
         assert config.min_results == 0
 
     def test_from_app_config_enabled(self) -> None:
-        """Test factory method from application config when enabled."""
+        '''Test factory method from application config when enabled.'''
         mock_app_config = MagicMock()
         mock_app_config.reranker_engine = "cross_encoder"
         mock_app_config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
@@ -102,7 +102,7 @@ class TestCrossEncoderConfig:
         assert config.batch_normalize is True
 
     def test_from_app_config_disabled(self) -> None:
-        """Test factory method from application config when disabled."""
+        '''Test factory method from application config when disabled.'''
         mock_app_config = MagicMock()
         mock_app_config.reranker_engine = "llm"  # Not cross_encoder
         mock_app_config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
@@ -122,10 +122,10 @@ class TestCrossEncoderConfig:
 
 
 class TestCrossEncoderRerankerInitialization:
-    """Test CrossEncoderReranker initialization."""
+    '''Test CrossEncoderReranker initialization.'''
 
     def test_initialization_does_not_load_model(self) -> None:
-        """Test that initialization does not load the model (lazy loading)."""
+        '''Test that initialization does not load the model (lazy loading).'''
         config = CrossEncoderConfig()
 
         with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
@@ -136,7 +136,7 @@ class TestCrossEncoderRerankerInitialization:
             assert reranker._model is None
 
     def test_model_property_lazy_loads(self) -> None:
-        """Test that accessing model property triggers lazy loading."""
+        '''Test that accessing model property triggers lazy loading.'''
         config = CrossEncoderConfig(
             model_name="test-model", device="cpu", use_fp16=True
         )
@@ -157,7 +157,7 @@ class TestCrossEncoderRerankerInitialization:
             assert model is mock_model
 
     def test_model_property_caches_instance(self) -> None:
-        """Test that model property returns cached instance on subsequent calls."""
+        '''Test that model property returns cached instance on subsequent calls.'''
         config = CrossEncoderConfig()
 
         with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
@@ -177,11 +177,11 @@ class TestCrossEncoderRerankerInitialization:
 
 
 class TestRerank:
-    """Test rerank method."""
+    '''Test rerank method.'''
 
     @pytest.fixture
     def mock_reranker(self) -> CrossEncoderReranker:
-        """Create a CrossEncoderReranker with mocked FlagReranker model."""
+        '''Create a CrossEncoderReranker with mocked FlagReranker model.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -205,12 +205,12 @@ class TestRerank:
             return reranker
 
     def test_rerank_empty_candidates(self, mock_reranker: CrossEncoderReranker) -> None:
-        """Test reranking empty candidate list."""
+        '''Test reranking empty candidate list.'''
         result = mock_reranker.rerank("test query", [])
         assert result == []
 
     def test_rerank_disabled_returns_candidates_unchanged(self) -> None:
-        """Test that disabled reranker returns candidates unchanged."""
+        '''Test that disabled reranker returns candidates unchanged.'''
         config = CrossEncoderConfig(enabled=False)
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -223,7 +223,7 @@ class TestRerank:
             assert result == candidates
 
     def test_rerank_scores_and_sorts(self, mock_reranker: CrossEncoderReranker) -> None:
-        """Test that rerank scores candidates and sorts by score descending."""
+        '''Test that rerank scores candidates and sorts by score descending.'''
         # Mock model.compute_score to return scores (FlagReranker API)
         mock_reranker._model.compute_score.return_value = [0.3, 0.9, 0.6]
 
@@ -242,7 +242,7 @@ class TestRerank:
         assert result[2] == ("doc1", 0.3)
 
     def test_rerank_respects_top_k(self) -> None:
-        """Test that rerank limits results to top_k."""
+        '''Test that rerank limits results to top_k.'''
         config = CrossEncoderConfig(enabled=True, top_k=2, batch_normalize=False)
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -261,7 +261,7 @@ class TestRerank:
             assert len(result) == 2
 
     def test_rerank_filters_by_score_threshold(self) -> None:
-        """Test that results below score threshold are filtered out."""
+        '''Test that results below score threshold are filtered out.'''
         config = CrossEncoderConfig(
             enabled=True, top_k=10, score_threshold=0.5, batch_normalize=False
         )
@@ -287,7 +287,7 @@ class TestRerank:
     def test_rerank_builds_correct_pairs(
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
-        """Test that query-document pairs are built correctly for scoring."""
+        '''Test that query-document pairs are built correctly for scoring.'''
         mock_reranker._model.compute_score.return_value = [0.8, 0.7]
 
         candidates = [("Python guide", 0.5), ("JavaScript guide", 0.5)]
@@ -302,7 +302,7 @@ class TestRerank:
         ]
 
     def test_rerank_uses_batch_size_and_max_length(self) -> None:
-        """Test that compute_score is called with configured batch_size and max_length."""
+        '''Test that compute_score is called with configured batch_size and max_length.'''
         config = CrossEncoderConfig(
             enabled=True,
             batch_size=16,
@@ -330,7 +330,7 @@ class TestRerank:
             assert call_kwargs["normalize"] is True
 
     def test_rerank_with_logger_logs_debug(self) -> None:
-        """Test that reranking logs debug information when logger is provided."""
+        '''Test that reranking logs debug information when logger is provided.'''
         config = CrossEncoderConfig(enabled=True, batch_normalize=False)
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -350,7 +350,7 @@ class TestRerank:
             mock_logger.info.assert_called()
 
     def test_rerank_handles_single_pair_float_return(self) -> None:
-        """Test that rerank handles single-pair case where compute_score returns float."""
+        '''Test that rerank handles single-pair case where compute_score returns float.'''
         config = CrossEncoderConfig(
             enabled=True, top_k=10, score_threshold=0.0, batch_normalize=False
         )
@@ -374,11 +374,11 @@ class TestRerank:
 
 
 class TestRerankAsync:
-    """Test rerank_async method."""
+    '''Test rerank_async method.'''
 
     @pytest.fixture
     def mock_reranker(self) -> CrossEncoderReranker:
-        """Create a CrossEncoderReranker with mocked FlagReranker model."""
+        '''Create a CrossEncoderReranker with mocked FlagReranker model.'''
         config = CrossEncoderConfig(enabled=True, batch_normalize=False)
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -394,7 +394,7 @@ class TestRerankAsync:
     async def test_rerank_async_calls_sync_rerank(
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
-        """Test that rerank_async wraps the sync rerank method."""
+        '''Test that rerank_async wraps the sync rerank method.'''
         mock_reranker._model.compute_score.return_value = [0.9, 0.7]
 
         candidates = [("doc1", 0.8), ("doc2", 0.6)]
@@ -409,16 +409,16 @@ class TestRerankAsync:
     async def test_rerank_async_empty_candidates(
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
-        """Test rerank_async with empty candidate list."""
+        '''Test rerank_async with empty candidate list.'''
         result = await mock_reranker.rerank_async("test query", [])
         assert result == []
 
 
 class TestCrossEncoderRerankerIntegration:
-    """Integration-style tests for full reranking flow."""
+    '''Integration-style tests for full reranking flow.'''
 
     def test_full_reranking_flow(self) -> None:
-        """Test complete reranking flow with mocked FlagReranker model."""
+        '''Test complete reranking flow with mocked FlagReranker model.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=5,
@@ -462,7 +462,7 @@ class TestCrossEncoderRerankerIntegration:
             assert result[2] == ("Machine learning tutorial", 0.65)
 
     def test_disabled_reranker_passthrough(self) -> None:
-        """Test that disabled reranker passes through candidates unchanged."""
+        '''Test that disabled reranker passes through candidates unchanged.'''
         config = CrossEncoderConfig(enabled=False)
 
         with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
@@ -484,10 +484,10 @@ class TestCrossEncoderRerankerIntegration:
 
 
 class TestThreadSafety:
-    """Test thread-safety of FlagReranker model initialization."""
+    '''Test thread-safety of FlagReranker model initialization.'''
 
     def test_double_checked_locking_pattern(self) -> None:
-        """Test that model initialization uses double-checked locking."""
+        '''Test that model initialization uses double-checked locking.'''
         config = CrossEncoderConfig()
 
         with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
@@ -520,10 +520,10 @@ class TestThreadSafety:
 
 
 class TestBatchNormalization:
-    """Test batch normalization feature."""
+    '''Test batch normalization feature.'''
 
     def test_batch_normalize_enabled_normalizes_scores(self) -> None:
-        """Test that batch_normalize=True normalizes scores to 0-1 range."""
+        '''Test that batch_normalize=True normalizes scores to 0-1 range.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -554,7 +554,7 @@ class TestBatchNormalization:
             assert result[2][1] == pytest.approx(0.0)
 
     def test_batch_normalize_disabled_uses_raw_scores(self) -> None:
-        """Test that batch_normalize=False uses raw scores."""
+        '''Test that batch_normalize=False uses raw scores.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -582,7 +582,7 @@ class TestBatchNormalization:
             assert result[1][1] == 0.05
 
     def test_batch_normalize_with_threshold_filters_correctly(self) -> None:
-        """Test batch normalization with threshold filtering."""
+        '''Test batch normalization with threshold filtering.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -610,10 +610,10 @@ class TestBatchNormalization:
 
 
 class TestModelPropertyWithLogger:
-    """Test model property logging behavior during initialization."""
+    '''Test model property logging behavior during initialization.'''
 
     def test_model_property_logs_loading_and_success(self) -> None:
-        """Test that model property logs loading start and success when logger is provided."""
+        '''Test that model property logs loading start and success when logger is provided.'''
         config = CrossEncoderConfig(
             model_name="test-model", device="cpu", use_fp16=True
         )
@@ -641,10 +641,10 @@ class TestModelPropertyWithLogger:
 
 
 class TestSuppressFastTokenizerWarning:
-    """Test _suppress_fast_tokenizer_warning method."""
+    '''Test _suppress_fast_tokenizer_warning method.'''
 
     def test_tokenizer_found_on_model_directly(self) -> None:
-        """Test suppression when tokenizer is accessible directly on model."""
+        '''Test suppression when tokenizer is accessible directly on model.'''
         config = CrossEncoderConfig()
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -665,7 +665,7 @@ class TestSuppressFastTokenizerWarning:
             )
 
     def test_tokenizer_found_via_model_model(self) -> None:
-        """Test suppression when tokenizer found via model.model (lines 247-249)."""
+        '''Test suppression when tokenizer found via model.model (lines 247-249).'''
         config = CrossEncoderConfig()
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -690,7 +690,7 @@ class TestSuppressFastTokenizerWarning:
             )
 
     def test_no_tokenizer_falls_back_to_warnings_filter(self) -> None:
-        """Test warnings.filterwarnings fallback when no tokenizer found (line 257)."""
+        '''Test warnings.filterwarnings fallback when no tokenizer found (line 257).'''
         config = CrossEncoderConfig()
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -715,7 +715,7 @@ class TestSuppressFastTokenizerWarning:
                 )
 
     def test_tokenizer_without_deprecation_warnings_attr(self) -> None:
-        """Test fallback when tokenizer exists but lacks deprecation_warnings."""
+        '''Test fallback when tokenizer exists but lacks deprecation_warnings.'''
         config = CrossEncoderConfig()
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -736,10 +736,10 @@ class TestSuppressFastTokenizerWarning:
 
 
 class TestRerankDisabledWithLogger:
-    """Test disabled reranker with logger present."""
+    '''Test disabled reranker with logger present.'''
 
     def test_disabled_reranker_logs_debug_with_logger(self) -> None:
-        """Test that disabled reranker logs debug message when logger is provided (line 302)."""
+        '''Test that disabled reranker logs debug message when logger is provided (line 302).'''
         config = CrossEncoderConfig(enabled=False)
 
         with patch("FlagEmbedding.FlagReranker"):
@@ -760,10 +760,10 @@ class TestRerankDisabledWithLogger:
 
 
 class TestBatchNormalizationWithLogger:
-    """Test batch normalization logging."""
+    '''Test batch normalization logging.'''
 
     def test_batch_normalize_logs_range_info(self) -> None:
-        """Test that batch normalization logs raw and normalized ranges (line 338)."""
+        '''Test that batch normalization logs raw and normalized ranges (line 338).'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -795,10 +795,10 @@ class TestBatchNormalizationWithLogger:
 
 
 class TestRecencyDecay:
-    """Test recency decay integration in rerank."""
+    '''Test recency decay integration in rerank.'''
 
     def test_recency_decay_applied_with_timestamp_map(self) -> None:
-        """Test recency decay is applied when enabled and timestamp_map provided (lines 357-368)."""
+        '''Test recency decay is applied when enabled and timestamp_map provided (lines 357-368).'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -829,7 +829,7 @@ class TestRecencyDecay:
             assert doc_scores["doc2"] > doc_scores["doc1"]
 
     def test_recency_decay_logs_when_logger_present(self) -> None:
-        """Test recency decay logs pre/post decay scores when logger is present (lines 367-368)."""
+        '''Test recency decay logs pre/post decay scores when logger is present (lines 367-368).'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -863,7 +863,7 @@ class TestRecencyDecay:
             assert decay_call[1]["extra"]["decay_rate"] == 0.01
 
     def test_recency_decay_skipped_when_disabled(self) -> None:
-        """Test recency decay is skipped when enable_recency_boost=False."""
+        '''Test recency decay is skipped when enable_recency_boost=False.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -892,7 +892,7 @@ class TestRecencyDecay:
             assert result[1] == ("doc2", 0.8)
 
     def test_recency_decay_skipped_when_no_timestamp_map(self) -> None:
-        """Test recency decay is skipped when timestamp_map is None."""
+        '''Test recency decay is skipped when timestamp_map is None.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -918,10 +918,10 @@ class TestRecencyDecay:
 
 
 class TestMinResultsSafetyNet:
-    """Test min_results safety net feature."""
+    '''Test min_results safety net feature.'''
 
     def test_safety_net_returns_min_results_when_all_filtered(self) -> None:
-        """Test that safety net returns min_results when all below threshold."""
+        '''Test that safety net returns min_results when all below threshold.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -950,7 +950,7 @@ class TestMinResultsSafetyNet:
             assert result[1][0] == "doc2"  # Second best (0.5)
 
     def test_no_safety_net_when_min_results_zero(self) -> None:
-        """Test that min_results=0 allows empty results."""
+        '''Test that min_results=0 allows empty results.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -978,7 +978,7 @@ class TestMinResultsSafetyNet:
             assert result[0][0] == "doc1"
 
     def test_safety_net_not_needed_when_enough_pass(self) -> None:
-        """Test that safety net doesn't interfere when enough results pass."""
+        '''Test that safety net doesn't interfere when enough results pass.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,

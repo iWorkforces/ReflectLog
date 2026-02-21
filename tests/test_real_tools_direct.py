@@ -1,4 +1,4 @@
-"""Direct integration test - calls real server tools with real USearch and OpenRouter via HTTP/SSE."""
+'''Direct integration test - calls real server tools with real USearch and OpenRouter via HTTP/SSE.'''
 
 import json
 import os
@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_real_tools_workflow():
-    """Test real MCP tools with actual USearch and OpenRouter integration via HTTP/SSE."""
+    '''Test real MCP tools with actual USearch and OpenRouter integration via HTTP/SSE.'''
 
     print("\n" + "=" * 70)
     print("🌐 REAL INTEGRATION TEST - Via HTTP/SSE Transport")
@@ -153,7 +153,7 @@ async def test_real_tools_workflow():
             print("\n" + "=" * 70)
             print("🎉 REAL INTEGRATION TEST COMPLETE!")
             print("=" * 70)
-            print(f"""
+            print(f'''
 Summary:
   ✅ Connected to MCP server at {server_url}
   ✅ Added 10 memories using REAL OpenAI text-embedding-3-large
@@ -169,7 +169,7 @@ This was a complete END-TO-END integration test with:
   • Real OpenAI API calls (embeddings + LLM reranking)
   • Real semantic search with L2 normalization
   • Persistent storage (data saved to disk)
-            """)
+            ''')
 
     except Exception as e:
         import traceback

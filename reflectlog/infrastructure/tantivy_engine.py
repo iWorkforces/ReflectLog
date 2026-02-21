@@ -177,14 +177,14 @@ class TantivyEngine(BaseModel):
         return schema_builder.build()
 
     def _initialize_index(self) -> None:
-        """Initialize or load persistent Tantivy index.
+        '''Initialize or load persistent Tantivy index.
 
         Creates the index directory if it doesn't exist.
         Attempts to load existing index, creates new one if not found.
 
         Raises:
             RuntimeError: If index creation fails.
-        """
+        '''
         index_path = self.config.index_path
         os.makedirs(index_path, exist_ok=True)
 
@@ -263,13 +263,13 @@ class TantivyEngine(BaseModel):
         return self._searcher
 
     def _recreate_writer_if_needed(self) -> None:
-        """Recreate the IndexWriter if it's in an invalid state (thread-safe).
+        '''Recreate the IndexWriter if it's in an invalid state (thread-safe).
 
         The Tantivy-py IndexWriter becomes invalid after certain operations
         like delete_documents(). This method safely recreates the writer.
 
         Must be called with _writer_lock already held.
-        """
+        '''
         if self._index is not None:
             self._writer = self._index.writer()
 
@@ -329,7 +329,7 @@ class TantivyEngine(BaseModel):
             return []
 
     def find_by_exact_match(self, project_id: str, content: str) -> list[str]:
-        """Find all memories that exactly match the given memory text.
+        '''Find all memories that exactly match the given memory text.
 
         Uses Python-level string comparison after fetching all docs for the project.
         This works around the en_stem tokenizer's stemming behavior which prevents
@@ -341,7 +341,7 @@ class TantivyEngine(BaseModel):
 
         Returns:
             List of matching memory strings (may contain duplicates if stored multiple times).
-        """
+        '''
         all_docs = self._get_all_docs(project_id)
         return [doc for doc in all_docs if doc == content]
 
@@ -750,7 +750,7 @@ class TantivyEngine(BaseModel):
         _ = self.searcher
 
     def close(self) -> None:
-        """Close the engine and release resources (thread-safe).
+        '''Close the engine and release resources (thread-safe).
 
         Commits any pending changes, waits for merging threads to complete,
         and releases the index writer to free file locks.
@@ -758,7 +758,7 @@ class TantivyEngine(BaseModel):
         Call this method during shutdown to ensure clean resource cleanup.
         If not called, resources will be released by Python's garbage collector,
         but file locks may persist until GC runs.
-        """
+        '''
         with self._writer_lock:
             if self._writer is not None:
                 try:
@@ -789,7 +789,7 @@ class TantivyEngine(BaseModel):
             self._index = None
 
     def soft_delete(self, project_id: str, content: str) -> bool:
-        """Mark a document as deleted by adding a tombstone (O(1) operation).
+        '''Mark a document as deleted by adding a tombstone (O(1) operation).
 
         Thread-safe. This is much faster than rebuilding the entire index (O(n) for rebuild vs O(1)).
 
@@ -805,7 +805,7 @@ class TantivyEngine(BaseModel):
 
         Returns:
             True if tombstone was added, False if memory wasn't found.
-        """
+        '''
         # First, verify the memory exists (only check non-deleted documents)
         existing = self.find_by_exact_match(project_id, content)
         if not existing:
@@ -977,7 +977,7 @@ class TantivyEngine(BaseModel):
             return False
 
     def _rebuild_index_with_docs(self, docs_to_keep: list[tuple[str, str]]) -> None:
-        """Rebuild the index with the specified documents from all projects.
+        '''Rebuild the index with the specified documents from all projects.
 
         This destroys the existing index and creates a new one with all
         the documents in docs_to_keep. This is necessary because Tantivy-py's
@@ -985,7 +985,7 @@ class TantivyEngine(BaseModel):
 
         Args:
             docs_to_keep: List of (project_id, content) tuples to preserve.
-        """
+        '''
         import shutil
 
         index_path = self.config.index_path
@@ -1041,11 +1041,11 @@ class TantivyEngine(BaseModel):
         return ''.join(escaped)
 
     def _get_doc_limit(self) -> int:
-        """Get total document count for safe full scans.
+        '''Get total document count for safe full scans.
 
         Uses Tantivy's searcher num_docs when available to avoid truncation.
         Falls back to a conservative limit if not accessible.
-        """
+        '''
         if self._index is None:
             return 0
 
@@ -1191,7 +1191,7 @@ class TantivyEngine(BaseModel):
         return False
 
     def compact(self, force: bool = False) -> dict[str, int]:
-        """Compact the index by removing tombstoned memories.
+        '''Compact the index by removing tombstoned memories.
 
         This physically removes both tombstone documents (is_deleted=1) and their
         corresponding original documents (is_deleted=0) from the index. After
@@ -1211,7 +1211,7 @@ class TantivyEngine(BaseModel):
 
         When compaction not needed (and force=False), returns compacted=False
         with all other values as 0.
-        """
+        '''
         start_time = time.time()
 
         if not force and not self.needs_compaction():

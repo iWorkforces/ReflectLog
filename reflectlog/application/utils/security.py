@@ -5,7 +5,7 @@ from typing import Any
 
 
 class SecretString:
-    """A wrapper for sensitive strings that prevents accidental exposure in logs.
+    '''A wrapper for sensitive strings that prevents accidental exposure in logs.
 
     This class wraps sensitive values like API keys to ensure they are not
     accidentally logged or displayed. The actual value is only accessible
@@ -17,7 +17,7 @@ class SecretString:
         ***REDACTED***
         >>> secret.get_secret_value()
         'sk-abc123'
-    """
+    '''
 
     __slots__ = ('_value',)
 
@@ -176,7 +176,7 @@ def sanitize_for_logging(
     max_length: int = 200,
     redact_sensitive: bool = True,
 ) -> str:
-    """Sanitize a value for safe logging.
+    '''Sanitize a value for safe logging.
 
     This function prepares values for logging by:
     1. Converting to string
@@ -196,7 +196,7 @@ def sanitize_for_logging(
         'My API key is [API_KEY_REDACTED]'
         >>> sanitize_for_logging("x" * 500, max_length=100)
         'xxxx...xxxx (truncated, original length: 500)'
-    """
+    '''
     # Convert to string
     text = str(value) if value is not None else ''
 
@@ -215,7 +215,7 @@ def sanitize_for_logging(
 
 
 def validate_project_id(project_id: str) -> str:
-    """Validate project_id to prevent path traversal attacks.
+    '''Validate project_id to prevent path traversal attacks.
 
     This function validates that a project_id contains only safe characters
     and does not contain path traversal patterns like "../" that could allow
@@ -235,7 +235,7 @@ def validate_project_id(project_id: str) -> str:
         'my-project-123'
         >>> validate_project_id("../../../etc")
         ValidationError: Invalid project_id: ../../../etc
-    """
+    '''
     from ..exceptions import ValidationError
 
     if not project_id:
@@ -268,7 +268,7 @@ def redact_dict_secrets(
     data: dict[str, Any],
     secret_keys: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Create a copy of a dictionary with secret values redacted.
+    '''Create a copy of a dictionary with secret values redacted.
 
     This is useful for safely logging configuration dictionaries that may
     contain sensitive values.
@@ -287,7 +287,7 @@ def redact_dict_secrets(
         >>> config = {"api_key": "sk-secret", "model": "gpt-4"}
         >>> redact_dict_secrets(config)
         {'api_key': '[REDACTED]', 'model': 'gpt-4'}
-    """
+    '''
     if secret_keys is None:
         secret_keys = {
             'api_key',

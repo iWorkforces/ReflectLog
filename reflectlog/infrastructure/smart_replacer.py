@@ -45,7 +45,7 @@ class ReplacementDecision(BaseModel):
 
 @dataclass(frozen=True)
 class SmartReplacerConfig:
-    """Configuration for SmartReplacer.
+    '''Configuration for SmartReplacer.
 
     Attributes:
         api_key: OpenRouter API key for authentication.
@@ -57,7 +57,7 @@ class SmartReplacerConfig:
         max_retries: Maximum number of retry attempts for LLM calls.
         retry_delay: Base delay in seconds for exponential backoff.
         provider: LLM provider ('openai' or 'anthropic').
-    """
+    '''
 
     api_key: str
     base_url: str
@@ -381,7 +381,7 @@ def create_replacement_provider(
 
 
 class SmartReplacer(BaseModel):
-    """LLM-based smart memory replacement detector.
+    '''LLM-based smart memory replacement detector.
 
     This class determines if a new memory should replace an existing one
     by analyzing semantic similarity and contextual updates using an LLM.
@@ -401,7 +401,7 @@ class SmartReplacer(BaseModel):
         ...     new_memory="I don't like cats anymore",
         ...     existing_memory="I like cats"
         ... )
-    """
+    '''
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

@@ -1,4 +1,4 @@
-"""Unit tests for reflectlog.application.utils.numba_utils module."""
+'''Unit tests for reflectlog.application.utils.numba_utils module.'''
 
 from typing import cast
 from unittest.mock import patch
@@ -19,135 +19,135 @@ from reflectlog.application.utils.numba_utils import (
 
 
 class TestNormalizeScoresMinmax:
-    """Tests for normalize_scores_minmax function."""
+    '''Tests for normalize_scores_minmax function.'''
 
     def test_basic_normalization(self) -> None:
-        """Test basic min-max normalization."""
+        '''Test basic min-max normalization.'''
         scores = np.array([0.1, 0.5, 0.9], dtype=np.float64)
         result = normalize_scores_minmax(scores)
         np.testing.assert_array_almost_equal(result, [0.0, 0.5, 1.0])
 
     def test_empty_array(self) -> None:
-        """Test handling of empty array."""
+        '''Test handling of empty array.'''
         scores = np.array([], dtype=np.float64)
         result = normalize_scores_minmax(scores)
         assert len(result) == 0
 
     def test_single_element(self) -> None:
-        """Test handling of single-element array."""
+        '''Test handling of single-element array.'''
         scores = np.array([0.5], dtype=np.float64)
         result = normalize_scores_minmax(scores)
         # Single element has no range, so normalized to 0.5 (neutral midpoint)
         np.testing.assert_array_almost_equal(result, [0.5])
 
     def test_all_same_values(self) -> None:
-        """Test handling of array with all identical values."""
+        '''Test handling of array with all identical values.'''
         scores = np.array([0.5, 0.5, 0.5], dtype=np.float64)
         result = normalize_scores_minmax(scores)
         # All same values have no range, so normalized to 0.5 (neutral midpoint)
         np.testing.assert_array_almost_equal(result, [0.5, 0.5, 0.5])
 
     def test_negative_values(self) -> None:
-        """Test normalization with negative values."""
+        '''Test normalization with negative values.'''
         scores = np.array([-1.0, 0.0, 1.0], dtype=np.float64)
         result = normalize_scores_minmax(scores)
         np.testing.assert_array_almost_equal(result, [0.0, 0.5, 1.0])
 
     def test_does_not_modify_original(self) -> None:
-        """Test that original array is not modified."""
+        '''Test that original array is not modified.'''
         original = np.array([0.1, 0.5, 0.9], dtype=np.float64)
         original_copy = original.copy()
         _ = normalize_scores_minmax(original)
         np.testing.assert_array_equal(original, original_copy)
 
     def test_large_array(self) -> None:
-        """Test normalization of large array."""
+        '''Test normalization of large array.'''
         scores = np.random.random(10000).astype(np.float64)
         result = normalize_scores_minmax(scores)
         assert result.min() >= 0.0
         assert result.max() <= 1.0
 
     def test_zero_range(self) -> None:
-        """Test with min == max (zero range)."""
+        '''Test with min == max (zero range).'''
         scores = np.array([42.0, 42.0, 42.0], dtype=np.float64)
         result = normalize_scores_minmax(scores)
         # Zero range means no differentiation, so normalized to 0.5 (neutral midpoint)
         np.testing.assert_array_almost_equal(result, [0.5, 0.5, 0.5])
 
     def test_very_small_range(self) -> None:
-        """Test with very small value range."""
+        '''Test with very small value range.'''
         scores = np.array([1.0, 1.0 + 1e-10, 1.0 + 2e-10], dtype=np.float64)
         result = normalize_scores_minmax(scores)
         # Should still normalize correctly
         assert result[0] < result[1] < result[2]
 
     def test_already_normalized(self) -> None:
-        """Test array that's already in 0-1 range."""
+        '''Test array that's already in 0-1 range.'''
         scores = np.array([0.0, 0.5, 1.0], dtype=np.float64)
         result = normalize_scores_minmax(scores)
         np.testing.assert_array_almost_equal(result, [0.0, 0.5, 1.0])
 
 
 class TestFilterScoresByThreshold:
-    """Tests for filter_scores_by_threshold function."""
+    '''Tests for filter_scores_by_threshold function.'''
 
     def test_basic_filtering(self) -> None:
-        """Test basic threshold filtering."""
+        '''Test basic threshold filtering.'''
         scores = np.array([0.3, 0.8, 0.5, 0.9], dtype=np.float64)
         indices, filtered = filter_scores_by_threshold(scores, 0.6)
         np.testing.assert_array_equal(indices, [1, 3])
         np.testing.assert_array_almost_equal(filtered, [0.8, 0.9])
 
     def test_empty_array(self) -> None:
-        """Test filtering of empty array."""
+        '''Test filtering of empty array.'''
         scores = np.array([], dtype=np.float64)
         indices, filtered = filter_scores_by_threshold(scores, 0.5)
         assert len(indices) == 0
         assert len(filtered) == 0
 
     def test_all_pass_threshold(self) -> None:
-        """Test when all scores pass threshold."""
+        '''Test when all scores pass threshold.'''
         scores = np.array([0.6, 0.7, 0.8], dtype=np.float64)
         indices, filtered = filter_scores_by_threshold(scores, 0.5)
         np.testing.assert_array_equal(indices, [0, 1, 2])
         np.testing.assert_array_almost_equal(filtered, [0.6, 0.7, 0.8])
 
     def test_all_fail_threshold(self) -> None:
-        """Test when all scores fail threshold."""
+        '''Test when all scores fail threshold.'''
         scores = np.array([0.1, 0.2, 0.3], dtype=np.float64)
         indices, filtered = filter_scores_by_threshold(scores, 0.5)
         assert len(indices) == 0
         assert len(filtered) == 0
 
     def test_exact_threshold(self) -> None:
-        """Test scores exactly at threshold."""
+        '''Test scores exactly at threshold.'''
         scores = np.array([0.5, 0.5, 0.5], dtype=np.float64)
         indices, _filtered = filter_scores_by_threshold(scores, 0.5)
         # >= threshold, so should pass
         np.testing.assert_array_equal(indices, [0, 1, 2])
 
     def test_zero_threshold(self) -> None:
-        """Test with zero threshold."""
+        '''Test with zero threshold.'''
         scores = np.array([0.0, 0.1, 0.5], dtype=np.float64)
         indices, _filtered = filter_scores_by_threshold(scores, 0.0)
         np.testing.assert_array_equal(indices, [0, 1, 2])
 
     def test_one_threshold(self) -> None:
-        """Test with threshold of 1.0."""
+        '''Test with threshold of 1.0.'''
         scores = np.array([0.9, 1.0, 0.99], dtype=np.float64)
         indices, filtered = filter_scores_by_threshold(scores, 1.0)
         np.testing.assert_array_equal(indices, [1])
         np.testing.assert_array_almost_equal(filtered, [1.0])
 
     def test_single_element_pass(self) -> None:
-        """Test single element that passes."""
+        '''Test single element that passes.'''
         scores = np.array([0.8], dtype=np.float64)
         indices, filtered = filter_scores_by_threshold(scores, 0.5)
         np.testing.assert_array_equal(indices, [0])
         np.testing.assert_array_almost_equal(filtered, [0.8])
 
     def test_single_element_fail(self) -> None:
-        """Test single element that fails."""
+        '''Test single element that fails.'''
         scores = np.array([0.3], dtype=np.float64)
         indices, filtered = filter_scores_by_threshold(scores, 0.5)
         assert len(indices) == 0
@@ -155,10 +155,10 @@ class TestFilterScoresByThreshold:
 
 
 class TestComputeRrfScoresBatch:
-    """Tests for compute_rrf_scores_batch function."""
+    '''Tests for compute_rrf_scores_batch function.'''
 
     def test_basic_rrf_computation(self) -> None:
-        """Test basic RRF score computation."""
+        '''Test basic RRF score computation.'''
         # Doc 0: rank 1 in ranking 0, rank 2 in ranking 1
         # Doc 1: rank 2 in ranking 0, not in ranking 1 (0)
         ranks = np.array([[1, 2], [2, 0]], dtype=np.int64)
@@ -173,27 +173,27 @@ class TestComputeRrfScoresBatch:
         np.testing.assert_almost_equal(scores[1], expected_1, decimal=5)
 
     def test_all_zeros_ranks(self) -> None:
-        """Test with all zeros (no document in any ranking)."""
+        '''Test with all zeros (no document in any ranking).'''
         ranks = np.array([[0, 0], [0, 0]], dtype=np.int64)
         scores = compute_rrf_scores_batch(ranks, k=60)
         np.testing.assert_array_almost_equal(scores, [0.0, 0.0])
 
     def test_single_document(self) -> None:
-        """Test with single document."""
+        '''Test with single document.'''
         ranks = np.array([[1, 1]], dtype=np.int64)
         scores = compute_rrf_scores_batch(ranks, k=60)
         expected = 2 / 61  # 1/(60+1) + 1/(60+1)
         np.testing.assert_almost_equal(scores[0], expected, decimal=5)
 
     def test_single_ranking(self) -> None:
-        """Test with single ranking (one column)."""
+        '''Test with single ranking (one column).'''
         ranks = np.array([[1], [2], [3]], dtype=np.int64)
         scores = compute_rrf_scores_batch(ranks, k=60)
         expected = [1 / 61, 1 / 62, 1 / 63]
         np.testing.assert_array_almost_equal(scores, expected, decimal=5)
 
     def test_custom_k_value(self) -> None:
-        """Test with custom k value."""
+        '''Test with custom k value.'''
         ranks = np.array([[1, 1]], dtype=np.int64)
         scores_k30 = compute_rrf_scores_batch(ranks, k=30)
         scores_k60 = compute_rrf_scores_batch(ranks, k=60)
@@ -201,7 +201,7 @@ class TestComputeRrfScoresBatch:
         assert scores_k30[0] > scores_k60[0]
 
     def test_document_not_in_ranking(self) -> None:
-        """Test documents not present in some rankings (rank=0)."""
+        '''Test documents not present in some rankings (rank=0).'''
         # Doc 0: in both rankings at rank 1
         # Doc 1: only in ranking 0 at rank 2
         ranks = np.array([[1, 1], [2, 0]], dtype=np.int64)
@@ -211,14 +211,14 @@ class TestComputeRrfScoresBatch:
         assert scores[0] > scores[1]
 
     def test_high_ranks(self) -> None:
-        """Test with high rank values."""
+        '''Test with high rank values.'''
         ranks = np.array([[100, 200]], dtype=np.int64)
         scores = compute_rrf_scores_batch(ranks, k=60)
         expected = 1 / 160 + 1 / 260
         np.testing.assert_almost_equal(scores[0], expected, decimal=5)
 
     def test_large_matrix(self) -> None:
-        """Test with larger matrix."""
+        '''Test with larger matrix.'''
         # 100 docs, 5 rankings
         n_docs, n_rankings = 100, 5
         ranks = cast(
@@ -232,69 +232,69 @@ class TestComputeRrfScoresBatch:
 
 
 class TestDistanceToSimilarityCosine:
-    """Tests for distance_to_similarity_cosine function."""
+    '''Tests for distance_to_similarity_cosine function.'''
 
     def test_basic_conversion(self) -> None:
-        """Test basic distance to similarity conversion."""
+        '''Test basic distance to similarity conversion.'''
         distances = np.array([0.1, 0.3, 0.5], dtype=np.float32)
         similarities = distance_to_similarity_cosine(distances)
         np.testing.assert_array_almost_equal(similarities, [0.9, 0.7, 0.5])
 
     def test_zero_distance(self) -> None:
-        """Test zero distance (perfect match)."""
+        '''Test zero distance (perfect match).'''
         distances = np.array([0.0], dtype=np.float32)
         similarities = distance_to_similarity_cosine(distances)
         np.testing.assert_array_almost_equal(similarities, [1.0])
 
     def test_max_distance(self) -> None:
-        """Test maximum distance (opposite vectors)."""
+        '''Test maximum distance (opposite vectors).'''
         distances = np.array([1.0], dtype=np.float32)
         similarities = distance_to_similarity_cosine(distances)
         np.testing.assert_array_almost_equal(similarities, [0.0])
 
     def test_empty_array(self) -> None:
-        """Test empty array handling."""
+        '''Test empty array handling.'''
         distances = np.array([], dtype=np.float32)
         similarities = distance_to_similarity_cosine(distances)
         assert len(similarities) == 0
 
     def test_single_element(self) -> None:
-        """Test single element array."""
+        '''Test single element array.'''
         distances = np.array([0.25], dtype=np.float32)
         similarities = distance_to_similarity_cosine(distances)
         np.testing.assert_array_almost_equal(similarities, [0.75])
 
     def test_preserves_order(self) -> None:
-        """Test that order is preserved (inverted for similarity)."""
+        '''Test that order is preserved (inverted for similarity).'''
         distances = np.array([0.1, 0.2, 0.3], dtype=np.float32)
         similarities = distance_to_similarity_cosine(distances)
         # Lower distance = higher similarity
         assert similarities[0] > similarities[1] > similarities[2]
 
     def test_boundary_values(self) -> None:
-        """Test boundary values."""
+        '''Test boundary values.'''
         distances = np.array([0.0, 0.5, 1.0], dtype=np.float32)
         similarities = distance_to_similarity_cosine(distances)
         np.testing.assert_array_almost_equal(similarities, [1.0, 0.5, 0.0])
 
 
 class TestWarmupNumbaFunctions:
-    """Tests for warmup_numba_functions function."""
+    '''Tests for warmup_numba_functions function.'''
 
     def test_warmup_completes_without_error(self) -> None:
-        """Test that warmup runs without raising exceptions."""
+        '''Test that warmup runs without raising exceptions.'''
         # Should not raise any exceptions
         warmup_numba_functions()
 
     def test_warmup_is_idempotent(self) -> None:
-        """Test that warmup can be called multiple times."""
+        '''Test that warmup can be called multiple times.'''
         # Should not raise even when called multiple times
         warmup_numba_functions()
         warmup_numba_functions()
         warmup_numba_functions()
 
     def test_functions_work_after_warmup(self) -> None:
-        """Test that all functions work correctly after warmup."""
+        '''Test that all functions work correctly after warmup.'''
         warmup_numba_functions()
 
         # Test each function works
@@ -314,52 +314,52 @@ class TestWarmupNumbaFunctions:
 
 
 class TestFindMinmax:
-    """Tests for _find_minmax internal function."""
+    '''Tests for _find_minmax internal function.'''
 
     def test_empty_array_returns_zeros(self) -> None:
-        """Empty array should return (0.0, 0.0)."""
+        '''Empty array should return (0.0, 0.0).'''
         scores = np.array([], dtype=np.float64)
         min_val, max_val = _find_minmax(scores)
         assert min_val == 0.0
         assert max_val == 0.0
 
     def test_single_element(self) -> None:
-        """Single element returns same value for min and max."""
+        '''Single element returns same value for min and max.'''
         scores = np.array([3.14], dtype=np.float64)
         min_val, max_val = _find_minmax(scores)
         assert min_val == pytest.approx(3.14)
         assert max_val == pytest.approx(3.14)
 
     def test_sorted_ascending(self) -> None:
-        """Ascending sorted array finds correct min/max."""
+        '''Ascending sorted array finds correct min/max.'''
         scores = np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float64)
         min_val, max_val = _find_minmax(scores)
         assert min_val == pytest.approx(1.0)
         assert max_val == pytest.approx(5.0)
 
     def test_sorted_descending(self) -> None:
-        """Descending sorted array finds correct min/max."""
+        '''Descending sorted array finds correct min/max.'''
         scores = np.array([5.0, 4.0, 3.0, 2.0, 1.0], dtype=np.float64)
         min_val, max_val = _find_minmax(scores)
         assert min_val == pytest.approx(1.0)
         assert max_val == pytest.approx(5.0)
 
     def test_negative_values(self) -> None:
-        """Handles negative values correctly."""
+        '''Handles negative values correctly.'''
         scores = np.array([-10.0, -5.0, 0.0, 5.0, 10.0], dtype=np.float64)
         min_val, max_val = _find_minmax(scores)
         assert min_val == pytest.approx(-10.0)
         assert max_val == pytest.approx(10.0)
 
     def test_all_same_values(self) -> None:
-        """All identical values returns that value for both min and max."""
+        '''All identical values returns that value for both min and max.'''
         scores = np.array([7.0, 7.0, 7.0], dtype=np.float64)
         min_val, max_val = _find_minmax(scores)
         assert min_val == pytest.approx(7.0)
         assert max_val == pytest.approx(7.0)
 
     def test_two_elements(self) -> None:
-        """Two-element array finds correct min/max."""
+        '''Two-element array finds correct min/max.'''
         scores = np.array([9.0, 1.0], dtype=np.float64)
         min_val, max_val = _find_minmax(scores)
         assert min_val == pytest.approx(1.0)
@@ -367,37 +367,37 @@ class TestFindMinmax:
 
 
 class TestNormalizeInplace:
-    """Tests for _normalize_inplace internal function."""
+    '''Tests for _normalize_inplace internal function.'''
 
     def test_equal_min_max_sets_half(self) -> None:
-        """When min == max, all values become 0.5."""
+        '''When min == max, all values become 0.5.'''
         scores = np.array([3.0, 3.0, 3.0], dtype=np.float64)
         _normalize_inplace(scores, 3.0, 3.0)
         np.testing.assert_array_almost_equal(scores, [0.5, 0.5, 0.5])
 
     def test_standard_normalization(self) -> None:
-        """Standard min-max normalization maps to [0, 1]."""
+        '''Standard min-max normalization maps to [0, 1].'''
         scores = np.array([10.0, 20.0, 30.0], dtype=np.float64)
         _normalize_inplace(scores, 10.0, 30.0)
         np.testing.assert_array_almost_equal(scores, [0.0, 0.5, 1.0])
 
     def test_single_element_equal_range(self) -> None:
-        """Single element with equal min/max becomes 0.5."""
+        '''Single element with equal min/max becomes 0.5.'''
         scores = np.array([5.0], dtype=np.float64)
         _normalize_inplace(scores, 5.0, 5.0)
         np.testing.assert_array_almost_equal(scores, [0.5])
 
 
 class TestWarmupNumbaFunctionsFailure:
-    """Tests for warmup_numba_functions failure path."""
+    '''Tests for warmup_numba_functions failure path.'''
 
     def test_warmup_returns_true_on_success(self) -> None:
-        """Successful warmup returns True."""
+        '''Successful warmup returns True.'''
         result = warmup_numba_functions()
         assert result is True
 
     def test_warmup_returns_false_on_exception(self) -> None:
-        """Warmup returns False and emits warning when a function raises."""
+        '''Warmup returns False and emits warning when a function raises.'''
         with patch(
             "reflectlog.application.utils.numba_utils.normalize_scores_minmax",
             side_effect=RuntimeError("compilation failed"),
@@ -407,7 +407,7 @@ class TestWarmupNumbaFunctionsFailure:
             assert result is False
 
     def test_warmup_returns_false_on_numpy_error(self) -> None:
-        """Warmup returns False when numpy operations fail."""
+        '''Warmup returns False when numpy operations fail.'''
         with patch(
             "reflectlog.application.utils.numba_utils.np.array",
             side_effect=MemoryError("out of memory"),

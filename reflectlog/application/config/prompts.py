@@ -204,7 +204,7 @@ TOOL_ORDER: list[str] = ['add', 'get_all', 'search', 'remove', 'health_check']
 
 
 def build_instructions(tool_snippets: list[tuple[str, str]]) -> str:
-    """Build MCP instructions dynamically from tool snippets.
+    '''Build MCP instructions dynamically from tool snippets.
 
     Assembles the complete MCP_INSTRUCTIONS string by combining the header
     and tool documentation snippets (in canonical order).
@@ -220,7 +220,7 @@ def build_instructions(tool_snippets: list[tuple[str, str]]) -> str:
     Example:
         >>> snippets = [("add", "    • add(memories: list[str])\\n      ...")]
         >>> instructions = build_instructions(snippets)
-    """
+    '''
     if not tool_snippets:
         return f'{INSTRUCTIONS_HEADER}\n    (No tools available)'
 

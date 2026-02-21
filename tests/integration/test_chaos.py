@@ -1,4 +1,4 @@
-"""Chaos testing for ReflectLogMCP.
+'''Chaos testing for ReflectLogMCP.
 
 Simulates failure modes and edge cases to ensure
 system resilience under adverse conditions.
@@ -14,7 +14,7 @@ Usage:
     pytest tests/integration/test_chaos.py --engine=failure
     pytest tests/integration/test_chaos.py --network=timeout
     pytest tests/integration/test_chaos.py --resource=exhaustion
-"""
+'''
 
 import asyncio
 import pytest
@@ -27,13 +27,13 @@ from reflectlog.application.config import Config
 
 @pytest.fixture
 def manager(monkeypatch):
-    """Create a mocked MemoryManager for testing.
+    '''Create a mocked MemoryManager for testing.
 
     Mocks USearch/Tantivy/Embedder engines to avoid real external calls.
 
     Yields:
         MemoryManager: Mocked manager instance.
-    """
+    '''
     # Set required environment variables before creating config
     monkeypatch.setenv("PROJECT_ID", "test-chaos-project")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
@@ -75,17 +75,17 @@ def manager(monkeypatch):
 
 
 class TestEngineFailure:
-    """Tests system behavior when search engines fail.
+    '''Tests system behavior when search engines fail.
 
     Ensures graceful degradation and proper error handling.
-    """
+    '''
 
     @pytest.mark.asyncio
     async def test_tantivy_unavailable(self, manager, monkeypatch):
-        """Test search when Tantivy is unavailable.
+        '''Test search when Tantivy is unavailable.
 
         Should fallback to USearch-only search.
-        """
+        '''
 
         async def mock_tantivy_error():
             raise ConnectionError("Tantivy connection failed")
@@ -103,10 +103,10 @@ class TestEngineFailure:
 
     @pytest.mark.asyncio
     async def test_usearch_unavailable(self, manager, monkeypatch):
-        """Test search when USearch is unavailable.
+        '''Test search when USearch is unavailable.
 
         Should return empty results with graceful error.
-        """
+        '''
 
         async def mock_usearch_error():
             raise ConnectionError("USearch connection failed")
@@ -123,11 +123,11 @@ class TestEngineFailure:
 
     @pytest.mark.asyncio
     async def test_both_engines_fail(self, manager, monkeypatch):
-        """Test search when both engines are unavailable.
+        '''Test search when both engines are unavailable.
 
         With mocked pipeline, search returns gracefully.
         Real implementation would propagate errors from engines.
-        """
+        '''
 
         async def mock_both_error():
             raise ConnectionError("Both search engines unavailable")
@@ -149,10 +149,10 @@ class TestEngineFailure:
 
     @pytest.mark.asyncio
     async def test_llm_reranker_failure(self, manager, monkeypatch):
-        """Test search when LLM reranker fails.
+        '''Test search when LLM reranker fails.
 
         Should return fusion scores without reranking.
-        """
+        '''
 
         async def mock_reranker_error():
             raise ConnectionError("LLM reranker connection failed")
@@ -172,10 +172,10 @@ class TestEngineFailure:
 
     @pytest.mark.asyncio
     async def test_network_timeout(self, manager, monkeypatch):
-        """Test search with network timeout.
+        '''Test search with network timeout.
 
         Should complete without hanging indefinitely.
-        """
+        '''
 
         async def slow_search():
             from reflectlog.infrastructure import USearchConfig
@@ -201,10 +201,10 @@ class TestEngineFailure:
 
     @pytest.mark.asyncio
     async def test_concurrent_request_storm(self, manager):
-        """Test system under rapid concurrent requests.
+        '''Test system under rapid concurrent requests.
 
         Should handle gracefully without resource exhaustion.
-        """
+        '''
         # Note: In a real scenario, we'd use the actual async add method
         # For now, just verify the test structure
         tasks = [
@@ -219,18 +219,18 @@ class TestEngineFailure:
 
 
 class TestResourceExhaustion:
-    """Tests system behavior under resource constraints.
+    '''Tests system behavior under resource constraints.
 
     Ensures proper cleanup and no leaks.
-    """
+    '''
 
     @pytest.mark.asyncio
     async def test_disk_space_exhaustion(self, manager, tmp_path):
-        """Test behavior when disk space runs out.
+        '''Test behavior when disk space runs out.
 
         With mocked pipeline, add returns gracefully.
         Real implementation would raise OSError.
-        """
+        '''
         import os
 
         from unittest.mock import patch
@@ -248,10 +248,10 @@ class TestResourceExhaustion:
 
     @pytest.mark.asyncio
     async def test_memory_exhaustion(self, manager, monkeypatch):
-        """Test with large memory operations.
+        '''Test with large memory operations.
 
         Should complete without OOM errors.
-        """
+        '''
         large_text = "x" * 1000000
 
         await manager.add_memories_async([large_text])
@@ -260,11 +260,11 @@ class TestResourceExhaustion:
 
     @pytest.mark.asyncio
     async def test_connection_pool_exhaustion(self, manager, monkeypatch):
-        """Test with limited connection pool.
+        '''Test with limited connection pool.
 
         With mocked pipeline, search completes without calling underlying engine.
         Real implementation would queue requests when pool is exhausted.
-        """
+        '''
         from unittest.mock import AsyncMock
 
         mock_search = AsyncMock()
@@ -283,17 +283,17 @@ class TestResourceExhaustion:
 
 
 class TestDataCorruption:
-    """Tests resilience against corrupted data.
+    '''Tests resilience against corrupted data.
 
     Ensures data integrity checks catch corruption early.
-    """
+    '''
 
     @pytest.mark.asyncio
     async def test_invalid_embedding(self, manager, monkeypatch):
-        """Test handling of corrupted embedding data.
+        '''Test handling of corrupted embedding data.
 
         Should skip or handle gracefully.
-        """
+        '''
         corrupted_vector = [float("nan")] * manager.config.embedding_dims
 
         from unittest.mock import patch
@@ -307,10 +307,10 @@ class TestDataCorruption:
 
     @pytest.mark.asyncio
     async def test_config_reload_during_operation(self, manager, monkeypatch):
-        """Test config reload during active operations.
+        '''Test config reload during active operations.
 
         Should reload cleanly without data loss.
-        """
+        '''
         from reflectlog.application.utils.config_reload import ConfigReloadManager
         from reflectlog.application.config import Config
 
@@ -329,13 +329,13 @@ class TestDataCorruption:
 def run_chaos_tests(
     engine: str | None = None, network: str | None = None, resource: str | None = None
 ):
-    """Run chaos tests for specified scenario.
+    '''Run chaos tests for specified scenario.
 
     Args:
         engine: Engine to test (failure, network, resource)
         network: Network scenario (timeout)
         resource: Resource to test (disk, memory, pool)
-    """
+    '''
     import sys
 
     test_file = "tests/integration/test_chaos.py"

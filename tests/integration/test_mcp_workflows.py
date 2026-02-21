@@ -1,4 +1,4 @@
-"""Integration tests for MCP server workflows."""
+'''Integration tests for MCP server workflows.'''
 # mypy: disable-error-code="misc,var-annotated"
 
 import pytest
@@ -6,11 +6,11 @@ import pytest
 
 @pytest.mark.integration
 class TestMCPWorkflows:
-    """Integration tests for complete MCP tool workflows."""
+    '''Integration tests for complete MCP tool workflows.'''
 
     @pytest.mark.asyncio
     async def test_add_then_get_all_workflow(self, mcp_server, sample_memories):
-        """Test adding memories and retrieving them with get_all."""
+        '''Test adding memories and retrieving them with get_all.'''
         memories = sample_memories["multiple"]
 
         # Setup mocks
@@ -49,7 +49,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_add_then_search_workflow(self, mcp_server, create_search_results):
-        """Test adding memories and searching for them."""
+        '''Test adding memories and searching for them.'''
         memories = ["Python tutorial", "Java guide", "Python examples"]
 
         # Setup mocks
@@ -92,7 +92,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_add_remove_get_all_workflow(self, mcp_server, create_search_results):
-        """Test adding, removing, and verifying with get_all."""
+        '''Test adding, removing, and verifying with get_all.'''
         initial_memories = ["Memory 1", "Memory 2", "Memory 3"]
         memory_to_remove = "Memory 2"
 
@@ -168,7 +168,7 @@ class TestMCPWorkflows:
     async def test_add_search_remove_search_workflow(
         self, mcp_server, create_search_results
     ):
-        """Test complex workflow: add, search, remove subset, search again."""
+        '''Test complex workflow: add, search, remove subset, search again.'''
         memories = [
             "Python tutorial for beginners",
             "Advanced Python techniques",
@@ -243,7 +243,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_multiple_add_operations(self, mcp_server):
-        """Test multiple add operations in sequence."""
+        '''Test multiple add operations in sequence.'''
         stored_memories = []
 
         def add_side_effect(*, project_id=None, memories=None, infer=True):
@@ -277,7 +277,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_empty_store_operations(self, mcp_server):
-        """Test operations on empty store."""
+        '''Test operations on empty store.'''
         mcp_server.memory_manager.memory.get_all.return_value = []
         mcp_server.memory_manager.memory.search.return_value = []
 
@@ -309,7 +309,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_add_duplicate_memories(self, mcp_server, create_search_results):
-        """Test adding duplicate memories and removing them."""
+        '''Test adding duplicate memories and removing them.'''
         duplicate_memory = "Duplicate memory"
         memories = [duplicate_memory, "Unique memory", duplicate_memory]
 
@@ -378,7 +378,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_search_with_no_semantic_matches(self, mcp_server):
-        """Test search when semantic search returns no results."""
+        '''Test search when semantic search returns no results.'''
         mcp_server.memory_manager.memory.search.return_value = []
 
         search_func = None
@@ -393,7 +393,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_large_dataset_workflow(self, mcp_server, create_search_results):
-        """Test workflow with large number of memories."""
+        '''Test workflow with large number of memories.'''
         large_dataset = [f"Memory {i}" for i in range(100)]
 
         stored_memories = []
@@ -440,7 +440,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_special_characters_workflow(self, mcp_server, create_search_results):
-        """Test workflow with memories containing special characters."""
+        '''Test workflow with memories containing special characters.'''
         from unittest.mock import AsyncMock, MagicMock
 
         special_memories = [
@@ -496,7 +496,7 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_unicode_workflow(self, mcp_server, create_search_results):
-        """Test workflow with unicode memories."""
+        '''Test workflow with unicode memories.'''
         from unittest.mock import AsyncMock, MagicMock
 
         unicode_memories = [

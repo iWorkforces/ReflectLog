@@ -132,7 +132,7 @@ class StructuredLogger:
 def create_logger(
     name: str, project_id: str, log_level: str = 'INFO'
 ) -> StructuredLogger:
-    """Create a structured logger with default configuration.
+    '''Create a structured logger with default configuration.
 
     This function wraps fastmcp's logger to provide consistent structured logging
     across the application. The wrapper adds project context to all log messages.
@@ -151,7 +151,7 @@ def create_logger(
         fastmcp version but may conflict if fastmcp changes its logger management
         in future versions. The setLevel() call ensures our configuration is
         respected, but fastmcp may override this in some scenarios.
-    """
+    '''
     # Use fastmcp's logger which is already properly configured with handlers
     from fastmcp.utilities.logging import get_logger
 

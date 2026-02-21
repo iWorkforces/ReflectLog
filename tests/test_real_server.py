@@ -1,4 +1,4 @@
-"""Real server integration test using fastmcp.Client (refactored from plain HTTP)."""
+'''Real server integration test using fastmcp.Client (refactored from plain HTTP).'''
 
 import json
 import os
@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_real_server_workflow():
-    """Test real MCP server: add 10 memories, get_all, and search."""
+    '''Test real MCP server: add 10 memories, get_all, and search.'''
 
     print("\n" + "=" * 70)
     print("🌐 REAL SERVER TEST - Connecting to http://127.0.0.1:9103/mcp")
@@ -165,7 +165,7 @@ async def test_real_server_workflow():
             print("\n" + "=" * 70)
             print("🎉 REAL SERVER TEST COMPLETE!")
             print("=" * 70)
-            print(f"""
+            print(f'''
 Summary:
   ✅ Connected to MCP server at {server_url}
   ✅ Listed {len(tools)} available tools
@@ -181,7 +181,7 @@ This was a complete END-TO-END test with:
   • Real USearch vector database
   • Real OpenAI API calls
   • All tools tested (add, get_all, search)
-            """)
+            ''')
 
     except Exception as e:
         import traceback

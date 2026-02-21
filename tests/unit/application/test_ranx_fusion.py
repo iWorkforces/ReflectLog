@@ -1,4 +1,4 @@
-"""Unit tests for RanxFusionEngine class."""
+'''Unit tests for RanxFusionEngine class.'''
 
 from typing import List, Tuple
 from unittest.mock import MagicMock
@@ -15,79 +15,79 @@ from reflectlog.application.memory.fusion import (
 
 @pytest.mark.unit
 class TestRanxFusionEngineInitialization:
-    """Test RanxFusionEngine initialization."""
+    '''Test RanxFusionEngine initialization.'''
 
     def test_default_values(self) -> None:
-        """Test default method and k value."""
+        '''Test default method and k value.'''
         engine = RanxFusionEngine()
         assert engine.method == "rrf"
         assert engine.rrf_k == 60
 
     def test_custom_method(self) -> None:
-        """Test setting custom fusion method."""
+        '''Test setting custom fusion method.'''
         engine = RanxFusionEngine(method="sum")
         assert engine.method == "sum"
 
     def test_custom_rrf_k(self) -> None:
-        """Test setting custom RRF k value."""
+        '''Test setting custom RRF k value.'''
         engine = RanxFusionEngine(rrf_k=30)
         assert engine.rrf_k == 30
 
     def test_custom_normalization(self) -> None:
-        """Test setting custom normalization."""
+        '''Test setting custom normalization.'''
         engine = RanxFusionEngine(normalization="max")
         assert engine.normalization == "max"
 
     def test_with_logger(self) -> None:
-        """Test initialization with logger."""
+        '''Test initialization with logger.'''
         mock_logger = MagicMock()
         engine = RanxFusionEngine(logger=mock_logger)
         assert engine.logger is mock_logger
 
     def test_invalid_method_raises_error(self) -> None:
-        """Test that invalid method raises ValueError."""
+        '''Test that invalid method raises ValueError.'''
         with pytest.raises(ValueError, match="Unsupported fusion method"):
             RanxFusionEngine(method="invalid_method")
 
     def test_invalid_normalization_raises_error(self) -> None:
-        """Test that invalid normalization raises ValueError."""
+        '''Test that invalid normalization raises ValueError.'''
         with pytest.raises(ValueError, match="Unsupported normalization"):
             RanxFusionEngine(normalization="invalid_norm")
 
 
 @pytest.mark.unit
 class TestRanxFusionEngineSupportedMethods:
-    """Test all supported fusion methods."""
+    '''Test all supported fusion methods.'''
 
     @pytest.mark.parametrize("method", SUPPORTED_METHODS)
     def test_supported_method_initializes(self, method: str) -> None:
-        """Test that all supported methods can be initialized."""
+        '''Test that all supported methods can be initialized.'''
         engine = RanxFusionEngine(method=method)
         assert engine.method == method
 
     @pytest.mark.parametrize("norm", SUPPORTED_NORMALIZATIONS)
     def test_supported_normalization_initializes(self, norm: str) -> None:
-        """Test that all supported normalizations can be initialized."""
+        '''Test that all supported normalizations can be initialized.'''
         engine = RanxFusionEngine(normalization=norm)
         assert engine.normalization == norm
 
 
 @pytest.mark.unit
 class TestRanxFusionEngineAlgorithm:
-    """Test RanxFusionEngine fusion algorithm correctness."""
+    '''Test RanxFusionEngine fusion algorithm correctness.'''
 
     @pytest.fixture
     def engine(self) -> RanxFusionEngine:
-        """Create RanxFusionEngine instance with RRF."""
+        '''Create RanxFusionEngine instance with RRF.'''
         return RanxFusionEngine(method="rrf", rrf_k=60)
 
     def test_empty_inputs(self, engine: RanxFusionEngine) -> None:
-        """Test fusion with empty input lists."""
+        '''Test fusion with empty input lists.'''
         result = engine.fuse([], [])
         assert result == []
 
     def test_single_result_set(self, engine: RanxFusionEngine) -> None:
-        """Test fusion with single non-empty result set."""
+        '''Test fusion with single non-empty result set.'''
         results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.8)]
         results2: List[Tuple[str, float]] = []
 
@@ -101,7 +101,7 @@ class TestRanxFusionEngineAlgorithm:
     def test_document_in_both_lists_ranks_higher(
         self, engine: RanxFusionEngine
     ) -> None:
-        """Test that a document appearing in both lists gets higher score."""
+        '''Test that a document appearing in both lists gets higher score.'''
         # B appears in both lists
         results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.8)]
         results2: List[Tuple[str, float]] = [("B", 0.9), ("C", 0.8)]
@@ -112,7 +112,7 @@ class TestRanxFusionEngineAlgorithm:
         assert fused[0][0] == "B"
 
     def test_unique_documents_preserved(self, engine: RanxFusionEngine) -> None:
-        """Test that unique documents from each list are preserved."""
+        '''Test that unique documents from each list are preserved.'''
         results1: List[Tuple[str, float]] = [("A", 0.9)]
         results2: List[Tuple[str, float]] = [("B", 0.9)]
 
@@ -123,7 +123,7 @@ class TestRanxFusionEngineAlgorithm:
         assert "B" in doc_names
 
     def test_three_result_sets(self, engine: RanxFusionEngine) -> None:
-        """Test fusion with three result sets."""
+        '''Test fusion with three result sets.'''
         results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.8)]
         results2: List[Tuple[str, float]] = [("B", 0.9), ("C", 0.8)]
         results3: List[Tuple[str, float]] = [("B", 0.9), ("D", 0.8)]
@@ -134,7 +134,7 @@ class TestRanxFusionEngineAlgorithm:
         assert fused[0][0] == "B"
 
     def test_scores_are_descending(self, engine: RanxFusionEngine) -> None:
-        """Test that results are sorted by score descending."""
+        '''Test that results are sorted by score descending.'''
         results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.8), ("C", 0.7)]
         results2: List[Tuple[str, float]] = [("D", 0.9), ("E", 0.8), ("F", 0.7)]
 
@@ -146,10 +146,10 @@ class TestRanxFusionEngineAlgorithm:
 
 @pytest.mark.unit
 class TestRanxFusionEngineLogging:
-    """Test RanxFusionEngine logging behavior."""
+    '''Test RanxFusionEngine logging behavior.'''
 
     def test_logs_debug_info_when_logger_provided(self) -> None:
-        """Test that debug info is logged when logger is provided."""
+        '''Test that debug info is logged when logger is provided.'''
         mock_logger = MagicMock()
         engine = RanxFusionEngine(logger=mock_logger)
 
@@ -163,7 +163,7 @@ class TestRanxFusionEngineLogging:
         assert "Fusion completed" in call_args[0][0]
 
     def test_no_error_when_no_logger(self) -> None:
-        """Test that fusion works without logger."""
+        '''Test that fusion works without logger.'''
         engine = RanxFusionEngine(logger=None)
 
         results1: List[Tuple[str, float]] = [("A", 0.9)]
@@ -176,15 +176,15 @@ class TestRanxFusionEngineLogging:
 
 @pytest.mark.unit
 class TestRanxFusionEngineEdgeCases:
-    """Test RanxFusionEngine edge cases."""
+    '''Test RanxFusionEngine edge cases.'''
 
     @pytest.fixture
     def engine(self) -> RanxFusionEngine:
-        """Create RanxFusionEngine instance."""
+        '''Create RanxFusionEngine instance.'''
         return RanxFusionEngine(method="rrf", rrf_k=60)
 
     def test_duplicate_in_same_list(self, engine: RanxFusionEngine) -> None:
-        """Test handling of duplicates within the same list."""
+        '''Test handling of duplicates within the same list.'''
         # Same document appearing twice in one list (uses first occurrence)
         results1: List[Tuple[str, float]] = [("A", 0.9), ("A", 0.8)]
         results2: List[Tuple[str, float]] = []
@@ -196,7 +196,7 @@ class TestRanxFusionEngineEdgeCases:
         assert fused[0][0] == "A"
 
     def test_very_long_lists(self, engine: RanxFusionEngine) -> None:
-        """Test fusion with long lists."""
+        '''Test fusion with long lists.'''
         results1 = [(f"doc_{i}", 1.0 - i * 0.01) for i in range(100)]
         results2 = [(f"doc_{i + 50}", 1.0 - i * 0.01) for i in range(100)]
 
@@ -208,10 +208,10 @@ class TestRanxFusionEngineEdgeCases:
 
 @pytest.mark.unit
 class TestRanxFusionEngineDifferentMethods:
-    """Test different fusion methods."""
+    '''Test different fusion methods.'''
 
     def test_sum_fusion(self) -> None:
-        """Test CombSUM fusion method (named 'sum' in ranx)."""
+        '''Test CombSUM fusion method (named 'sum' in ranx).'''
         engine = RanxFusionEngine(method="sum")
 
         results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.8)]
@@ -223,7 +223,7 @@ class TestRanxFusionEngineDifferentMethods:
         assert fused[0][0] == "B"
 
     def test_max_fusion(self) -> None:
-        """Test CombMAX fusion method (named 'max' in ranx)."""
+        '''Test CombMAX fusion method (named 'max' in ranx).'''
         engine = RanxFusionEngine(method="max")
 
         results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.5)]
@@ -237,31 +237,31 @@ class TestRanxFusionEngineDifferentMethods:
 
 @pytest.mark.unit
 class TestCreateFusionEngineFactory:
-    """Test the create_fusion_engine factory function."""
+    '''Test the create_fusion_engine factory function.'''
 
     def test_creates_ranx_engine(self) -> None:
-        """Test that factory creates RanxFusionEngine."""
+        '''Test that factory creates RanxFusionEngine.'''
         engine = create_fusion_engine()
         assert isinstance(engine, RanxFusionEngine)
 
     def test_passes_method(self) -> None:
-        """Test that method is passed correctly."""
+        '''Test that method is passed correctly.'''
         engine = create_fusion_engine(method="sum")
         assert engine.method == "sum"
 
     def test_passes_normalization(self) -> None:
-        """Test that normalization is passed correctly."""
+        '''Test that normalization is passed correctly.'''
         engine = create_fusion_engine(normalization="max")
         assert engine.normalization == "max"
 
     def test_passes_rrf_k(self) -> None:
-        """Test that rrf_k is passed correctly."""
+        '''Test that rrf_k is passed correctly.'''
         engine = create_fusion_engine(rrf_k=30)
         assert isinstance(engine, RanxFusionEngine)
         assert engine.rrf_k == 30
 
     def test_passes_logger(self) -> None:
-        """Test that logger is passed correctly."""
+        '''Test that logger is passed correctly.'''
         mock_logger = MagicMock()
         engine = create_fusion_engine(logger=mock_logger)
         assert isinstance(engine, RanxFusionEngine)

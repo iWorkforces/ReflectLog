@@ -61,7 +61,7 @@ class ArchivedMemoryRecord:
 
 
 class MemoryStore(BaseModel):
-    """SQLite-backed memory storage for USearch engine.
+    '''SQLite-backed memory storage for USearch engine.
 
     Provides CRUD operations for memory text storage, using SQLite's
     auto-increment ID as the key for USearch vector index.
@@ -77,7 +77,7 @@ class MemoryStore(BaseModel):
         all_memories = store.get_all("my-project")
         store.delete(mem_id)
         ```
-    """
+    '''
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -141,7 +141,7 @@ class MemoryStore(BaseModel):
         return self._conn
 
     def _create_schema(self) -> None:
-        """Create database schema if it doesn't exist."""
+        '''Create database schema if it doesn't exist.'''
         cursor = self.connection.cursor()
         # Main memories table
         _ = cursor.execute(

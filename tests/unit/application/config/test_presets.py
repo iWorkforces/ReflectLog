@@ -1,4 +1,4 @@
-"""Tests for reflectlog.application.config.presets module."""
+'''Tests for reflectlog.application.config.presets module.'''
 
 import os
 
@@ -24,10 +24,10 @@ from reflectlog.application.config.presets import (
 
 @pytest.mark.unit
 class TestConfigPreset:
-    """Tests for the ConfigPreset dataclass."""
+    '''Tests for the ConfigPreset dataclass.'''
 
     def test_all_fields_default_to_none(self):
-        """All optional fields should default to None."""
+        '''All optional fields should default to None.'''
         preset = ConfigPreset(name="test")
         assert preset.search_limit is None
         assert preset.enable_hybrid_search is None
@@ -46,7 +46,7 @@ class TestConfigPreset:
         assert preset.usearch_exact_search is None
 
     def test_fields_can_be_set(self):
-        """All fields should accept explicit values."""
+        '''All fields should accept explicit values.'''
         preset = ConfigPreset(
             name="custom",
             search_limit=10,
@@ -90,10 +90,10 @@ class TestConfigPreset:
 
 @pytest.mark.unit
 class TestPresetConstants:
-    """Tests for pre-defined preset instances."""
+    '''Tests for pre-defined preset instances.'''
 
     def test_simple_preset_values(self):
-        """SIMPLE_PRESET should have low-resource settings."""
+        '''SIMPLE_PRESET should have low-resource settings.'''
         assert SIMPLE_PRESET.name == "simple"
         assert SIMPLE_PRESET.search_limit == 3
         assert SIMPLE_PRESET.enable_hybrid_search is False
@@ -107,7 +107,7 @@ class TestPresetConstants:
         assert SIMPLE_PRESET.usearch_exact_search is True
 
     def test_balanced_preset_all_none(self):
-        """BALANCED_PRESET should leave all optional fields as None."""
+        '''BALANCED_PRESET should leave all optional fields as None.'''
         assert BALANCED_PRESET.name == "balanced"
         assert BALANCED_PRESET.enable_hybrid_search is True
         # All others should be None (defer to defaults)
@@ -127,7 +127,7 @@ class TestPresetConstants:
         assert BALANCED_PRESET.usearch_exact_search is None
 
     def test_performance_preset_values(self):
-        """PERFORMANCE_PRESET should favor speed."""
+        '''PERFORMANCE_PRESET should favor speed.'''
         assert PERFORMANCE_PRESET.name == "performance"
         assert PERFORMANCE_PRESET.search_limit == 10
         assert PERFORMANCE_PRESET.enable_hybrid_search is True
@@ -144,7 +144,7 @@ class TestPresetConstants:
         assert PERFORMANCE_PRESET.usearch_exact_search is False
 
     def test_quality_preset_values(self):
-        """QUALITY_PRESET should favor accuracy."""
+        '''QUALITY_PRESET should favor accuracy.'''
         assert QUALITY_PRESET.name == "quality"
         assert QUALITY_PRESET.search_limit == 5
         assert QUALITY_PRESET.enable_hybrid_search is True
@@ -162,7 +162,7 @@ class TestPresetConstants:
         assert QUALITY_PRESET.usearch_exact_search is True
 
     def test_presets_dict_has_all_four(self):
-        """PRESETS dict should contain all four presets keyed by name."""
+        '''PRESETS dict should contain all four presets keyed by name.'''
         assert len(PRESETS) == 4
         assert set(PRESETS.keys()) == {"simple", "balanced", "performance", "quality"}
         assert PRESETS["simple"] is SIMPLE_PRESET
@@ -178,25 +178,25 @@ class TestPresetConstants:
 
 @pytest.mark.unit
 class TestGetActivePreset:
-    """Tests for the get_active_preset function."""
+    '''Tests for the get_active_preset function.'''
 
     def test_returns_none_when_env_not_set(self, monkeypatch):
-        """Should return None when REFLECTLOG_PROFILE is not set."""
+        '''Should return None when REFLECTLOG_PROFILE is not set.'''
         monkeypatch.delenv("REFLECTLOG_PROFILE", raising=False)
         assert get_active_preset() is None
 
     def test_returns_none_for_empty_string(self, monkeypatch):
-        """Should return None when REFLECTLOG_PROFILE is empty."""
+        '''Should return None when REFLECTLOG_PROFILE is empty.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "")
         assert get_active_preset() is None
 
     def test_returns_none_for_custom(self, monkeypatch):
-        """Should return None when REFLECTLOG_PROFILE is "custom"."""
+        '''Should return None when REFLECTLOG_PROFILE is "custom".'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "custom")
         assert get_active_preset() is None
 
     def test_returns_none_for_custom_uppercase(self, monkeypatch):
-        """Should return None when REFLECTLOG_PROFILE is "CUSTOM" (case-insensitive)."""
+        '''Should return None when REFLECTLOG_PROFILE is "CUSTOM" (case-insensitive).'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "CUSTOM")
         assert get_active_preset() is None
 
@@ -204,7 +204,7 @@ class TestGetActivePreset:
         "profile_name", ["simple", "balanced", "performance", "quality"]
     )
     def test_returns_correct_preset(self, monkeypatch, profile_name):
-        """Should return matching preset for valid profile names."""
+        '''Should return matching preset for valid profile names.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", profile_name)
         result = get_active_preset()
         assert result is not None
@@ -214,14 +214,14 @@ class TestGetActivePreset:
         "profile_name", ["SIMPLE", "Balanced", "PERFORMANCE", "Quality"]
     )
     def test_returns_preset_case_insensitive(self, monkeypatch, profile_name):
-        """Should handle case-insensitive profile names."""
+        '''Should handle case-insensitive profile names.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", profile_name)
         result = get_active_preset()
         assert result is not None
         assert result.name == profile_name.lower()
 
     def test_returns_none_for_unknown_profile(self, monkeypatch):
-        """Should return None for unrecognized profile names."""
+        '''Should return None for unrecognized profile names.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "turbo")
         assert get_active_preset() is None
 
@@ -233,11 +233,11 @@ class TestGetActivePreset:
 
 @pytest.mark.unit
 class TestApplyPresetToEnv:
-    """Tests for the apply_preset_to_env function."""
+    '''Tests for the apply_preset_to_env function.'''
 
     @pytest.fixture(autouse=True)
     def _clean_env(self, monkeypatch):
-        """Remove preset-related env vars before each test."""
+        '''Remove preset-related env vars before each test.'''
         env_keys = [
             "SEARCH_LIMIT",
             "ENABLE_HYBRID_SEARCH",
@@ -259,7 +259,7 @@ class TestApplyPresetToEnv:
             monkeypatch.delenv(key, raising=False)
 
     def test_simple_preset_sets_expected_env_vars(self):
-        """apply_preset_to_env with SIMPLE_PRESET should set all non-None fields."""
+        '''apply_preset_to_env with SIMPLE_PRESET should set all non-None fields.'''
         apply_preset_to_env(SIMPLE_PRESET)
 
         assert os.environ["SEARCH_LIMIT"] == "3"
@@ -274,7 +274,7 @@ class TestApplyPresetToEnv:
         assert os.environ["USEARCH_EXACT_SEARCH"] == "true"
 
     def test_simple_preset_does_not_set_none_fields(self):
-        """Fields that are None on the preset should not be set."""
+        '''Fields that are None on the preset should not be set.'''
         apply_preset_to_env(SIMPLE_PRESET)
 
         # These are None on SIMPLE_PRESET
@@ -285,7 +285,7 @@ class TestApplyPresetToEnv:
         assert "SMART_REPLACE_THRESHOLD" not in os.environ
 
     def test_balanced_preset_only_sets_hybrid_search(self):
-        """BALANCED_PRESET has only enable_hybrid_search=True; rest are None."""
+        '''BALANCED_PRESET has only enable_hybrid_search=True; rest are None.'''
         apply_preset_to_env(BALANCED_PRESET)
 
         assert os.environ["ENABLE_HYBRID_SEARCH"] == "true"
@@ -306,7 +306,7 @@ class TestApplyPresetToEnv:
         assert "USEARCH_EXACT_SEARCH" not in os.environ
 
     def test_performance_preset_sets_all_fields(self):
-        """PERFORMANCE_PRESET has all fields set."""
+        '''PERFORMANCE_PRESET has all fields set.'''
         apply_preset_to_env(PERFORMANCE_PRESET)
 
         assert os.environ["SEARCH_LIMIT"] == "10"
@@ -324,7 +324,7 @@ class TestApplyPresetToEnv:
         assert os.environ["USEARCH_EXACT_SEARCH"] == "false"
 
     def test_quality_preset_sets_all_fields(self):
-        """QUALITY_PRESET has all fields set including smart replace threshold."""
+        '''QUALITY_PRESET has all fields set including smart replace threshold.'''
         apply_preset_to_env(QUALITY_PRESET)
 
         assert os.environ["SEARCH_LIMIT"] == "5"
@@ -345,7 +345,7 @@ class TestApplyPresetToEnv:
         assert os.environ["USEARCH_EXACT_SEARCH"] == "true"
 
     def test_custom_preset_with_recency_decay_rate(self):
-        """Verify recency_decay_rate branch is covered."""
+        '''Verify recency_decay_rate branch is covered.'''
         preset = ConfigPreset(
             name="custom_decay",
             recency_decay_rate=0.05,
@@ -354,7 +354,7 @@ class TestApplyPresetToEnv:
         assert os.environ["RECENCY_DECAY_RATE"] == "0.05"
 
     def test_preset_with_all_none_sets_nothing(self):
-        """A preset with all None fields should not set any env vars."""
+        '''A preset with all None fields should not set any env vars.'''
         preset = ConfigPreset(name="empty")
         apply_preset_to_env(preset)
 
@@ -382,15 +382,15 @@ class TestApplyPresetToEnv:
 
 @pytest.mark.unit
 class TestGetPresetSummary:
-    """Tests for the get_preset_summary function."""
+    '''Tests for the get_preset_summary function.'''
 
     def test_returns_no_preset_when_unset(self, monkeypatch):
-        """Should return custom configuration message when no profile set."""
+        '''Should return custom configuration message when no profile set.'''
         monkeypatch.delenv("REFLECTLOG_PROFILE", raising=False)
         assert get_preset_summary() == "No preset (custom configuration)"
 
     def test_returns_no_preset_for_custom(self, monkeypatch):
-        """Should return custom configuration message for "custom" profile."""
+        '''Should return custom configuration message for "custom" profile.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "custom")
         assert get_preset_summary() == "No preset (custom configuration)"
 
@@ -406,12 +406,12 @@ class TestGetPresetSummary:
     def test_returns_active_preset_name_uppercased(
         self, monkeypatch, profile_name, expected_upper
     ):
-        """Should return formatted string with uppercased preset name."""
+        '''Should return formatted string with uppercased preset name.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", profile_name)
         result = get_preset_summary()
         assert result == f"Active preset: {expected_upper}"
 
     def test_returns_no_preset_for_unknown_profile(self, monkeypatch):
-        """Unknown profile should return custom configuration message."""
+        '''Unknown profile should return custom configuration message.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "nonexistent")
         assert get_preset_summary() == "No preset (custom configuration)"

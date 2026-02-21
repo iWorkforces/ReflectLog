@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test script to demonstrate enhanced scoring prompt for question-answer matching."""
+'''Test script to demonstrate enhanced scoring prompt for question-answer matching.'''
 
 import os
 import sys
@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Mock the scoring prompt evaluation
 def simulate_scoring(query: str, document: str, scoring_prompt: str) -> float:
-    """Simulate how the LLM would score with the enhanced prompt."""
+    '''Simulate how the LLM would score with the enhanced prompt.'''
     # This is a simulation - in reality the LLM does this
     query_lower = query.lower()
     doc_lower = document.lower()
@@ -49,7 +49,7 @@ def simulate_scoring(query: str, document: str, scoring_prompt: str) -> float:
 
 
 def test_scoring_examples():
-    """Test various query-document pairs with the enhanced scoring."""
+    '''Test various query-document pairs with the enhanced scoring.'''
 
     print("=" * 80)
     print("Testing Enhanced Scoring Prompt for Question-Answer Matching")

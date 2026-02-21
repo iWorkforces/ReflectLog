@@ -187,7 +187,7 @@ def apply_recency_decay(
     decay_rate: float,
     now: datetime | None = None,
 ) -> list[tuple[str, float]]:
-    """Apply recency decay to scored results.
+    '''Apply recency decay to scored results.
 
     Multiplies each score by its recency factor based on the document's age.
     Documents without timestamps in the map retain their original scores.
@@ -209,7 +209,7 @@ def apply_recency_decay(
         ... }
         >>> decayed = apply_recency_decay(scored, timestamps, 0.01)
         >>> # new_doc might now rank higher due to old_doc's decay
-    """
+    '''
     if not scored_results:
         return []
 

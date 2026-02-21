@@ -1,8 +1,8 @@
-"""Conftest for memory subsystem tests.
+'''Conftest for memory subsystem tests.
 
 Disables numba JIT so that ranx (which depends on numba) can import
 cleanly alongside coverage instrumentation.
-"""
+'''
 
 import importlib
 import os

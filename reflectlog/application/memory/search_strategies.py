@@ -69,7 +69,7 @@ class SearchResult:
 
 
 class SearchPipeline:
-    """Hybrid search pipeline orchestrator.
+    '''Hybrid search pipeline orchestrator.
 
     Implements a 4-step search pipeline:
     1. Parallel semantic + full-text search
@@ -78,7 +78,7 @@ class SearchPipeline:
     4. Reranking (LLM or CrossEncoder)
 
     Thread-safe: Uses MemoryManager's RLock for state changes.
-    """
+    '''
 
     def __init__(
         self,
@@ -449,11 +449,11 @@ class SearchPipeline:
         return filtered
 
     def _get_reranker(self):
-        """Get the appropriate reranker (lazy loading via memory_manager).
+        '''Get the appropriate reranker (lazy loading via memory_manager).
 
         Returns:
             Tuple of (reranker_type, reranker_instance) where type is 'llm', 'cross_encoder', or None.
-        """
+        '''
         if self._memory_manager is None:
             return None, None
 

@@ -12,12 +12,12 @@ class FusionEngine(Protocol):
 
     @property
     def method(self) -> str:
-        """Return the fusion method name (e.g., 'rrf', 'combsum')."""
+        '''Return the fusion method name (e.g., 'rrf', 'combsum').'''
         ...
 
     @property
     def normalization(self) -> str | None:
-        """Return the normalization strategy (e.g., 'min-max', 'rank')."""
+        '''Return the normalization strategy (e.g., 'min-max', 'rank').'''
         ...
 
     def fuse(

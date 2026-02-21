@@ -1,4 +1,4 @@
-"""Tests for MCP server tools: add, get_all, search, remove."""
+'''Tests for MCP server tools: add, get_all, search, remove.'''
 # mypy: disable-error-code="misc,var-annotated"
 # Tests are async because tool handlers are async functions
 
@@ -17,10 +17,10 @@ from reflectlog.application.memory.manager import AddResult
 
 @pytest.mark.unit
 class TestFastMCPServerInitialization:
-    """Test suite for FastMCPServer initialization."""
+    '''Test suite for FastMCPServer initialization.'''
 
     def test_server_initialization_success(self, mcp_server):
-        """Test successful server initialization."""
+        '''Test successful server initialization.'''
         assert mcp_server is not None
         assert mcp_server.mcp is not None
         assert mcp_server.memory_manager is not None
@@ -28,11 +28,11 @@ class TestFastMCPServerInitialization:
         assert mcp_server.memory_manager.memory is not None
 
     def test_server_initialization_missing_project_id(self):
-        """Test Config.from_environment fails without PROJECT_ID.
+        '''Test Config.from_environment fails without PROJECT_ID.
 
         Note: FastMCPServer uses a module-level config singleton, so we test
         the Config class directly to verify PROJECT_ID validation.
-        """
+        '''
         import os
 
         from reflectlog.application.config import Config
@@ -50,7 +50,7 @@ class TestFastMCPServerInitialization:
                 os.environ["PROJECT_ID"] = original
 
     def test_memory_config_structure(self, set_env_vars):
-        """Test USearchEngine is initialized with correct config."""
+        '''Test USearchEngine is initialized with correct config.'''
         from reflectlog.application.mcp_server import FastMCPServer
 
         with patch(
@@ -79,7 +79,7 @@ class TestFastMCPServerInitialization:
 
 @pytest.mark.unit
 class TestAddTool:
-    """Test suite for add() tool."""
+    '''Test suite for add() tool.'''
 
     async def test_add_single_memory_success(self, mcp_server, sample_memories):
         '''Test adding a single valid memory.'''
@@ -341,7 +341,7 @@ class TestAddTool:
 
 @pytest.mark.unit
 class TestGetAllTool:
-    """Test suite for get_all() tool."""
+    '''Test suite for get_all() tool.'''
 
     async def test_get_all_empty_store(self, mcp_server):
         '''Test get_all returns empty list when no memories stored.'''
@@ -491,10 +491,10 @@ class TestGetAllTool:
 
 @pytest.mark.unit
 class TestSearchTool:
-    """Test suite for search() tool."""
+    '''Test suite for search() tool.'''
 
     async def test_search_exact_match(self, mcp_server):
-        """Test search returns all semantic matches."""
+        '''Test search returns all semantic matches.'''
         from unittest.mock import AsyncMock
 
         query = "Hello"
@@ -522,7 +522,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search.assert_called_once()
 
     async def test_search_semantic_results(self, mcp_server):
-        """Test search returns all semantic results without substring filtering."""
+        '''Test search returns all semantic results without substring filtering.'''
         from unittest.mock import AsyncMock
 
         query = "World"
@@ -548,7 +548,7 @@ class TestSearchTool:
         )  # Now included even though it doesn't contain "World"
 
     async def test_search_returns_all_semantic_matches(self, mcp_server):
-        """Test search returns all semantic matches without filtering."""
+        '''Test search returns all semantic matches without filtering.'''
         from unittest.mock import AsyncMock
 
         query = "programming"
@@ -572,7 +572,7 @@ class TestSearchTool:
         assert "Database design" in result
 
     async def test_search_with_semantic_matches(self, mcp_server):
-        """Test search returns all semantic matches even if no substring matches."""
+        '''Test search returns all semantic matches even if no substring matches.'''
         from unittest.mock import AsyncMock
 
         query = "Programming"
@@ -596,7 +596,7 @@ class TestSearchTool:
         assert "Test" in result
 
     async def test_search_with_empty_semantic_results(self, mcp_server):
-        """Test search returns empty list when semantic search returns no results."""
+        '''Test search returns empty list when semantic search returns no results.'''
         from unittest.mock import AsyncMock
 
         query = "Python"
@@ -617,7 +617,7 @@ class TestSearchTool:
         assert result == []
 
     async def test_search_with_special_characters(self, mcp_server):
-        """Test search with special characters."""
+        '''Test search with special characters.'''
         from unittest.mock import AsyncMock
 
         query = "@user"
@@ -641,7 +641,7 @@ class TestSearchTool:
         assert "Another memory" in result
 
     async def test_search_with_unicode(self, mcp_server):
-        """Test search with unicode characters."""
+        '''Test search with unicode characters.'''
         from unittest.mock import AsyncMock
 
         query = "你好"
@@ -665,7 +665,7 @@ class TestSearchTool:
         assert "Hello World" in result  # Included even without Chinese characters
 
     async def test_search_single_character(self, mcp_server):
-        """Test search with single character query."""
+        '''Test search with single character query.'''
         from unittest.mock import AsyncMock
 
         query = "a"
@@ -689,7 +689,7 @@ class TestSearchTool:
         assert "Cherry" in result  # Included even without 'a'
 
     async def test_search_empty_result_from_memory(self, mcp_server):
-        """Test search when memory returns no semantic results."""
+        '''Test search when memory returns no semantic results.'''
         from unittest.mock import AsyncMock
 
         query = "test"
@@ -707,7 +707,7 @@ class TestSearchTool:
         assert result == []
 
     async def test_search_memory_failure_raises_search_error(self, mcp_server):
-        """Test memory search failure raises SearchError."""
+        '''Test memory search failure raises SearchError.'''
         from unittest.mock import AsyncMock
 
         query = "test"
@@ -736,7 +736,7 @@ class TestSearchTool:
     async def test_search_various_queries(
         self, mcp_server, query, memories, expected_count
     ):
-        """Test search returns all semantic results without substring filtering."""
+        '''Test search returns all semantic results without substring filtering.'''
         from unittest.mock import AsyncMock
 
         # Mock MemoryManager.search() to return all memories (semantic search behavior)
@@ -756,7 +756,7 @@ class TestSearchTool:
 
 @pytest.mark.unit
 class TestRemoveTool:
-    """Test suite for remove() tool."""
+    '''Test suite for remove() tool.'''
 
     async def test_remove_single_memory(self, mcp_server):
         '''Test removing a single memory.'''
@@ -1065,10 +1065,10 @@ class TestRemoveTool:
 
 @pytest.mark.unit
 class TestToolRegistrationConfiguration:
-    """Test suite for configurable tool registration."""
+    '''Test suite for configurable tool registration.'''
 
     def _build_server(self, monkeypatch, allowed_value: str | None):
-        """Helper to create a FastMCPServer with patched dependencies."""
+        '''Helper to create a FastMCPServer with patched dependencies.'''
         monkeypatch.setenv("PROJECT_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
@@ -1101,7 +1101,7 @@ class TestToolRegistrationConfiguration:
         return server, logger, fastmcp_instance
 
     def test_allowed_tools_subset(self, monkeypatch):
-        """Only tools listed in ALLOWED_TOOLS should register."""
+        '''Only tools listed in ALLOWED_TOOLS should register.'''
         server, logger, fastmcp_instance = self._build_server(
             monkeypatch, "add,get_all"
         )
@@ -1112,7 +1112,7 @@ class TestToolRegistrationConfiguration:
         logger.warning.assert_not_called()
 
     def test_allowed_tools_invalid_tokens(self, monkeypatch):
-        """Unknown tool names are ignored with a warning."""
+        '''Unknown tool names are ignored with a warning.'''
         server, logger, fastmcp_instance = self._build_server(
             monkeypatch, "add,unknown,remove_tool"
         )
@@ -1130,7 +1130,7 @@ class TestToolRegistrationConfiguration:
         assert "Ignoring unknown tool identifiers" in first_warning.args[0]
 
     def test_allowed_tools_none_keyword(self, monkeypatch):
-        """'none' disables all tools and surfaces a warning."""
+        ''''none' disables all tools and surfaces a warning.'''
         server, logger, fastmcp_instance = self._build_server(monkeypatch, "none")
 
         assert server.tools == []
@@ -1146,10 +1146,10 @@ class TestToolRegistrationConfiguration:
 
 @pytest.mark.unit
 class TestHealthCheckTool:
-    """Test suite for health_check() tool."""
+    '''Test suite for health_check() tool.'''
 
     async def test_health_check_returns_healthy_status(self, mcp_server):
-        """Test health check returns healthy status with all components."""
+        '''Test health check returns healthy status with all components.'''
         # Mock semantic and tantivy engines as initialized
         mcp_server.memory_manager._semantic_engine = MagicMock()
         mcp_server.memory_manager._tantivy_engine = MagicMock()
@@ -1173,7 +1173,7 @@ class TestHealthCheckTool:
         assert result["recency_boost_enabled"] is True
 
     async def test_health_check_with_tantivy_disabled(self, mcp_server):
-        """Test health check when Tantivy is disabled."""
+        '''Test health check when Tantivy is disabled.'''
         # Mock semantic engine as initialized, tantivy as None
         mcp_server.memory_manager._semantic_engine = MagicMock()
         mcp_server.memory_manager._tantivy_engine = None
@@ -1192,7 +1192,7 @@ class TestHealthCheckTool:
         assert result["tantivy_engine"] == "disabled"
 
     async def test_health_check_no_semantic_engine(self, mcp_server):
-        """Test health check when semantic engine is not initialized."""
+        '''Test health check when semantic engine is not initialized.'''
         mcp_server.memory_manager._semantic_engine = None
         mcp_server.memory_manager._tantivy_engine = None
 
@@ -1209,7 +1209,7 @@ class TestHealthCheckTool:
         assert result["tantivy_engine"] == "disabled"
 
     async def test_health_check_with_different_reranker(self, mcp_server):
-        """Test health check reports configured reranker engine."""
+        '''Test health check reports configured reranker engine.'''
         # The default reranker is "llm" - verify it's reported correctly
         mcp_server._memory_manager._semantic_engine = MagicMock()
         mcp_server._memory_manager._tantivy_engine = MagicMock()
@@ -1229,34 +1229,34 @@ class TestHealthCheckTool:
 
 @pytest.mark.unit
 class TestCanonicalizeToolToken:
-    """Test suite for FastMCPServer._canonicalize_tool_token edge cases."""
+    '''Test suite for FastMCPServer._canonicalize_tool_token edge cases.'''
 
     def test_empty_token_returns_none(self):
-        """Empty string after normalization returns None (line 202)."""
+        '''Empty string after normalization returns None (line 202).'''
         available = {"add", "search", "remove"}
         result = FastMCPServer._canonicalize_tool_token("", available)
         assert result is None
 
     def test_whitespace_only_token_returns_none(self):
-        """Whitespace-only token normalizes to empty and returns None."""
+        '''Whitespace-only token normalizes to empty and returns None.'''
         available = {"add", "search", "remove"}
         result = FastMCPServer._canonicalize_tool_token("   ", available)
         assert result is None
 
     def test_collapsed_underscore_match(self):
-        """Token without underscores matches name with underscores (line 210)."""
+        '''Token without underscores matches name with underscores (line 210).'''
         available = {"health_check", "add", "get_all"}
         result = FastMCPServer._canonicalize_tool_token("healthcheck", available)
         assert result == "health_check"
 
     def test_collapsed_match_get_all(self):
-        """Token "getall" matches "get_all" via collapsed comparison."""
+        '''Token "getall" matches "get_all" via collapsed comparison.'''
         available = {"health_check", "add", "get_all"}
         result = FastMCPServer._canonicalize_tool_token("getall", available)
         assert result == "get_all"
 
     def test_collapsed_match_with_hyphens(self):
-        """Hyphenated token "health-check" matches "health_check"."""
+        '''Hyphenated token "health-check" matches "health_check".'''
         available = {"health_check", "add"}
         result = FastMCPServer._canonicalize_tool_token("health-check", available)
         assert result == "health_check"
@@ -1264,10 +1264,10 @@ class TestCanonicalizeToolToken:
 
 @pytest.mark.unit
 class TestServerClose:
-    """Test suite for FastMCPServer.close() method."""
+    '''Test suite for FastMCPServer.close() method.'''
 
     def _build_server(self, monkeypatch):
-        """Helper to create a FastMCPServer with fully mocked dependencies."""
+        '''Helper to create a FastMCPServer with fully mocked dependencies.'''
         monkeypatch.setenv("PROJECT_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
         monkeypatch.delenv("ALLOWED_TOOLS", raising=False)
@@ -1295,7 +1295,7 @@ class TestServerClose:
         return server, mock_mm_instance, mock_logger
 
     def test_close_success(self, monkeypatch):
-        """close() persists data and logs success (lines 257-261)."""
+        '''close() persists data and logs success (lines 257-261).'''
         server, mock_mm, mock_logger = self._build_server(monkeypatch)
 
         server.close()
@@ -1307,7 +1307,7 @@ class TestServerClose:
         )
 
     def test_close_handles_exception(self, monkeypatch):
-        """close() catches and logs errors from MemoryManager.close() (lines 262-266)."""
+        '''close() catches and logs errors from MemoryManager.close() (lines 262-266).'''
         server, mock_mm, mock_logger = self._build_server(monkeypatch)
         mock_mm.close.side_effect = RuntimeError("disk full")
 
@@ -1321,10 +1321,10 @@ class TestServerClose:
 
 @pytest.mark.unit
 class TestMainFunction:
-    """Test suite for the main() entry point function."""
+    '''Test suite for the main() entry point function.'''
 
     def test_main_runtime_error_is_reraised(self, monkeypatch):
-        """main() re-raises RuntimeError after logging (lines 286-288)."""
+        '''main() re-raises RuntimeError after logging (lines 286-288).'''
         monkeypatch.setenv("PROJECT_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
@@ -1340,7 +1340,7 @@ class TestMainFunction:
                 main()
 
     def test_main_keyboard_interrupt_calls_close(self, monkeypatch):
-        """main() calls server.close() on KeyboardInterrupt (lines 289-292)."""
+        '''main() calls server.close() on KeyboardInterrupt (lines 289-292).'''
         monkeypatch.setenv("PROJECT_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
@@ -1359,7 +1359,7 @@ class TestMainFunction:
             mock_instance.close.assert_called_once()
 
     def test_main_unexpected_exception_calls_close_and_reraises(self, monkeypatch):
-        """main() calls server.close() then re-raises on unexpected Exception (lines 293-297)."""
+        '''main() calls server.close() then re-raises on unexpected Exception (lines 293-297).'''
         monkeypatch.setenv("PROJECT_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
@@ -1379,7 +1379,7 @@ class TestMainFunction:
             mock_instance.close.assert_called_once()
 
     def test_main_keyboard_interrupt_before_server_created(self, monkeypatch):
-        """main() handles KeyboardInterrupt when server is None (line 291 branch)."""
+        '''main() handles KeyboardInterrupt when server is None (line 291 branch).'''
         monkeypatch.setenv("PROJECT_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
@@ -1394,7 +1394,7 @@ class TestMainFunction:
             main()
 
     def test_main_unexpected_exception_before_server_created(self, monkeypatch):
-        """main() re-raises unexpected Exception when server is None (line 295 branch)."""
+        '''main() re-raises unexpected Exception when server is None (line 295 branch).'''
         monkeypatch.setenv("PROJECT_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 

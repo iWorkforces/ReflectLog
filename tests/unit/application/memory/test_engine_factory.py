@@ -1,4 +1,4 @@
-"""Unit tests for EngineFactory and standalone factory functions.
+'''Unit tests for EngineFactory and standalone factory functions.
 
 Tests cover:
 - EngineFactory.create_engines: Full engine creation pipeline
@@ -10,7 +10,7 @@ Tests cover:
 - create_llm_reranker: LLM reranker factory
 - create_cross_encoder_reranker: CrossEncoder reranker factory
 - create_smart_replacer: SmartReplacer factory
-"""
+'''
 
 from unittest.mock import Mock, patch
 
@@ -29,7 +29,7 @@ from reflectlog.application.utils import StructuredLogger
 
 @pytest.fixture
 def mock_config() -> Mock:
-    """Mock configuration with typical settings."""
+    '''Mock configuration with typical settings.'''
     config = Mock(spec=Config)
     config.project_id = "test_project"
     config.enable_hybrid_search = True
@@ -63,22 +63,22 @@ def mock_config() -> Mock:
 
 @pytest.fixture
 def mock_logger() -> Mock:
-    """Mock structured logger."""
+    '''Mock structured logger.'''
     return Mock(spec=StructuredLogger)
 
 
 @pytest.fixture
 def factory() -> EngineFactory:
-    """Create an EngineFactory instance."""
+    '''Create an EngineFactory instance.'''
     return EngineFactory()
 
 
 @pytest.mark.unit
 class TestEngineFactoryResult:
-    """Tests for EngineFactoryResult dataclass."""
+    '''Tests for EngineFactoryResult dataclass.'''
 
     def test_result_stores_all_fields(self) -> None:
-        """Result dataclass should store all engine references."""
+        '''Result dataclass should store all engine references.'''
         semantic = Mock()
         tantivy = Mock()
         fusion = Mock()
@@ -98,7 +98,7 @@ class TestEngineFactoryResult:
         assert result.enable_hybrid_search is True
 
     def test_result_with_none_tantivy(self) -> None:
-        """Result should accept None tantivy engine."""
+        '''Result should accept None tantivy engine.'''
         result = EngineFactoryResult(
             semantic_engine=Mock(),
             tantivy_engine=None,
@@ -113,17 +113,17 @@ class TestEngineFactoryResult:
 
 @pytest.mark.unit
 class TestEngineFactoryInit:
-    """Tests for EngineFactory initialization."""
+    '''Tests for EngineFactory initialization.'''
 
     def test_factory_initialization(self) -> None:
-        """Factory should initialize without errors."""
+        '''Factory should initialize without errors.'''
         factory = EngineFactory()
         assert factory is not None
 
 
 @pytest.mark.unit
 class TestCreateEngines:
-    """Tests for EngineFactory.create_engines orchestration."""
+    '''Tests for EngineFactory.create_engines orchestration.'''
 
     @patch("reflectlog.application.memory.engine_factory.create_fusion_engine")
     @patch("reflectlog.application.memory.engine_factory.TantivyEngine")
@@ -145,7 +145,7 @@ class TestCreateEngines:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """create_engines should create all engines when hybrid search enabled."""
+        '''create_engines should create all engines when hybrid search enabled.'''
         mock_config.enable_hybrid_search = True
         mock_config.reranker_engine = "llm"
 
@@ -174,7 +174,7 @@ class TestCreateEngines:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """create_engines should set tantivy_engine=None when hybrid disabled."""
+        '''create_engines should set tantivy_engine=None when hybrid disabled.'''
         mock_config.enable_hybrid_search = False
 
         result = factory.create_engines(mock_config, mock_logger)
@@ -200,7 +200,7 @@ class TestCreateEngines:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """create_engines should use base embedder when cache disabled."""
+        '''create_engines should use base embedder when cache disabled.'''
         mock_config.embedding_cache_enabled = False
 
         result = factory.create_engines(mock_config, mock_logger)
@@ -213,7 +213,7 @@ class TestCreateEngines:
 
 @pytest.mark.unit
 class TestCreateSemanticEngine:
-    """Tests for EngineFactory._create_semantic_engine."""
+    '''Tests for EngineFactory._create_semantic_engine.'''
 
     @patch("reflectlog.application.memory.engine_factory.USearchEngine")
     @patch("reflectlog.application.memory.engine_factory.USearchConfig")
@@ -229,7 +229,7 @@ class TestCreateSemanticEngine:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Semantic engine should be created with USearchConfig and embedder."""
+        '''Semantic engine should be created with USearchConfig and embedder.'''
         result = factory._create_semantic_engine(mock_config, mock_logger)
 
         mock_usearch_config_cls.from_app_config.assert_called_once_with(mock_config)
@@ -252,7 +252,7 @@ class TestCreateSemanticEngine:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Semantic engine should use base embedder when cache disabled."""
+        '''Semantic engine should use base embedder when cache disabled.'''
         mock_config.embedding_cache_enabled = False
 
         factory._create_semantic_engine(mock_config, mock_logger)
@@ -266,7 +266,7 @@ class TestCreateSemanticEngine:
 
 @pytest.mark.unit
 class TestCreateEmbedder:
-    """Tests for EngineFactory._create_embedder."""
+    '''Tests for EngineFactory._create_embedder.'''
 
     @patch("reflectlog.application.memory.engine_factory.CachedEmbeddings")
     @patch("reflectlog.application.memory.engine_factory.LangchainQwenEmbeddings")
@@ -278,7 +278,7 @@ class TestCreateEmbedder:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """When cache enabled, embedder should be wrapped with CachedEmbeddings."""
+        '''When cache enabled, embedder should be wrapped with CachedEmbeddings.'''
         mock_config.embedding_cache_enabled = True
         mock_config.embedding_cache_size = 200
 
@@ -302,7 +302,7 @@ class TestCreateEmbedder:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """When cache disabled, base embedder should be returned directly."""
+        '''When cache disabled, base embedder should be returned directly.'''
         mock_config.embedding_cache_enabled = False
 
         result = factory._create_embedder(mock_config, mock_logger)
@@ -318,7 +318,7 @@ class TestCreateEmbedder:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """OpenAI provider should use embedding_dims, not qwen_embedding_dims."""
+        '''OpenAI provider should use embedding_dims, not qwen_embedding_dims.'''
         mock_config.embedding_cache_enabled = False
         mock_config.embedder_provider = "openai"
         mock_config.embedding_dims = 3072
@@ -344,7 +344,7 @@ class TestCreateEmbedder:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Langchain provider should use qwen_embedding_dims."""
+        '''Langchain provider should use qwen_embedding_dims.'''
         mock_config.embedding_cache_enabled = False
         mock_config.embedder_provider = "langchain"
         mock_config.embedding_dims = 3072
@@ -370,7 +370,7 @@ class TestCreateEmbedder:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Embedder should receive model, api_key, base_url, and batch settings."""
+        '''Embedder should receive model, api_key, base_url, and batch settings.'''
         mock_config.embedding_cache_enabled = False
         mock_config.embedder_provider = "openai"
         mock_config.embedding_model = "test-model"
@@ -395,7 +395,7 @@ class TestCreateEmbedder:
 
 @pytest.mark.unit
 class TestCreateTantivyEngine:
-    """Tests for EngineFactory._create_tantivy_engine."""
+    '''Tests for EngineFactory._create_tantivy_engine.'''
 
     @patch("reflectlog.application.memory.engine_factory.TantivyEngine")
     @patch("reflectlog.application.memory.engine_factory.TantivyConfig")
@@ -407,7 +407,7 @@ class TestCreateTantivyEngine:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Tantivy engine should be created when hybrid search is enabled."""
+        '''Tantivy engine should be created when hybrid search is enabled.'''
         mock_config.enable_hybrid_search = True
         mock_config.project_id = "my_project"
         mock_config.tantivy_index_path_template = "indexes/{project_id}/tantivy"
@@ -432,7 +432,7 @@ class TestCreateTantivyEngine:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Should return None when hybrid search is disabled."""
+        '''Should return None when hybrid search is disabled.'''
         mock_config.enable_hybrid_search = False
 
         result = factory._create_tantivy_engine(mock_config, mock_logger)
@@ -449,7 +449,7 @@ class TestCreateTantivyEngine:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Tantivy index path should be lowercased."""
+        '''Tantivy index path should be lowercased.'''
         mock_config.enable_hybrid_search = True
         mock_config.project_id = "MyProject"
         mock_config.tantivy_index_path_template = "indexes/{project_id}/tantivy"
@@ -463,7 +463,7 @@ class TestCreateTantivyEngine:
 
 @pytest.mark.unit
 class TestCreateFusionEngine:
-    """Tests for EngineFactory._create_fusion_engine."""
+    '''Tests for EngineFactory._create_fusion_engine.'''
 
     @patch("reflectlog.application.memory.engine_factory.create_fusion_engine")
     def test_creates_fusion_with_config(
@@ -473,7 +473,7 @@ class TestCreateFusionEngine:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Fusion engine should be created with config parameters."""
+        '''Fusion engine should be created with config parameters.'''
         mock_config.fusion_method = "rrf"
         mock_config.fusion_normalization = "min-max"
         mock_config.fusion_rrf_k = 30
@@ -496,7 +496,7 @@ class TestCreateFusionEngine:
         mock_logger: Mock,
         factory: EngineFactory,
     ) -> None:
-        """Fusion engine should handle None normalization."""
+        '''Fusion engine should handle None normalization.'''
         mock_config.fusion_method = "sum"
         mock_config.fusion_normalization = None
         mock_config.fusion_rrf_k = 60
@@ -513,7 +513,7 @@ class TestCreateFusionEngine:
 
 @pytest.mark.unit
 class TestCreateLLMReranker:
-    """Tests for create_llm_reranker standalone factory function."""
+    '''Tests for create_llm_reranker standalone factory function.'''
 
     @patch("reflectlog.application.memory.engine_factory.LLMReranker")
     @patch("reflectlog.application.memory.engine_factory.LLMRerankerConfig")
@@ -524,7 +524,7 @@ class TestCreateLLMReranker:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Should create LLMReranker when reranker_engine is "llm"."""
+        '''Should create LLMReranker when reranker_engine is "llm".'''
         mock_config.reranker_engine = "llm"
 
         result = create_llm_reranker(mock_config, mock_logger)
@@ -541,7 +541,7 @@ class TestCreateLLMReranker:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Should return None when reranker_engine is not "llm"."""
+        '''Should return None when reranker_engine is not "llm".'''
         mock_config.reranker_engine = "cross_encoder"
 
         result = create_llm_reranker(mock_config, mock_logger)
@@ -553,7 +553,7 @@ class TestCreateLLMReranker:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Should return None when reranker_engine is "none"."""
+        '''Should return None when reranker_engine is "none".'''
         mock_config.reranker_engine = "none"
 
         result = create_llm_reranker(mock_config, mock_logger)
@@ -563,7 +563,7 @@ class TestCreateLLMReranker:
 
 @pytest.mark.unit
 class TestCreateCrossEncoderReranker:
-    """Tests for create_cross_encoder_reranker standalone factory function."""
+    '''Tests for create_cross_encoder_reranker standalone factory function.'''
 
     @patch("reflectlog.application.memory.engine_factory.CrossEncoderReranker")
     @patch("reflectlog.application.memory.engine_factory.CrossEncoderConfig")
@@ -574,7 +574,7 @@ class TestCreateCrossEncoderReranker:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Should create CrossEncoderReranker when reranker_engine is "cross_encoder"."""
+        '''Should create CrossEncoderReranker when reranker_engine is "cross_encoder".'''
         mock_config.reranker_engine = "cross_encoder"
 
         result = create_cross_encoder_reranker(mock_config, mock_logger)
@@ -591,7 +591,7 @@ class TestCreateCrossEncoderReranker:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Should return None when reranker_engine is not "cross_encoder"."""
+        '''Should return None when reranker_engine is not "cross_encoder".'''
         mock_config.reranker_engine = "llm"
 
         result = create_cross_encoder_reranker(mock_config, mock_logger)
@@ -603,7 +603,7 @@ class TestCreateCrossEncoderReranker:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Should return None when reranker_engine is "none"."""
+        '''Should return None when reranker_engine is "none".'''
         mock_config.reranker_engine = "none"
 
         result = create_cross_encoder_reranker(mock_config, mock_logger)
@@ -613,7 +613,7 @@ class TestCreateCrossEncoderReranker:
 
 @pytest.mark.unit
 class TestCreateSmartReplacer:
-    """Tests for create_smart_replacer standalone factory function."""
+    '''Tests for create_smart_replacer standalone factory function.'''
 
     @patch("reflectlog.application.memory.engine_factory.SmartReplacer")
     @patch("reflectlog.application.memory.engine_factory.SmartReplacerConfig")
@@ -624,7 +624,7 @@ class TestCreateSmartReplacer:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Should create SmartReplacer when enable_smart_replace is True."""
+        '''Should create SmartReplacer when enable_smart_replace is True.'''
         mock_config.enable_smart_replace = True
 
         result = create_smart_replacer(mock_config, mock_logger)
@@ -641,7 +641,7 @@ class TestCreateSmartReplacer:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Should return None when enable_smart_replace is False."""
+        '''Should return None when enable_smart_replace is False.'''
         mock_config.enable_smart_replace = False
 
         result = create_smart_replacer(mock_config, mock_logger)
@@ -651,7 +651,7 @@ class TestCreateSmartReplacer:
 
 @pytest.mark.unit
 class TestEndToEnd:
-    """Integration-style tests for EngineFactory orchestration."""
+    '''Integration-style tests for EngineFactory orchestration.'''
 
     @patch("reflectlog.application.memory.engine_factory.create_fusion_engine")
     @patch("reflectlog.application.memory.engine_factory.TantivyEngine")
@@ -672,7 +672,7 @@ class TestEndToEnd:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Full pipeline should wire embedder -> USearch, Tantivy, Fusion correctly."""
+        '''Full pipeline should wire embedder -> USearch, Tantivy, Fusion correctly.'''
         mock_config.enable_hybrid_search = True
         mock_config.embedding_cache_enabled = True
         mock_config.reranker_engine = "cross_encoder"
@@ -710,7 +710,7 @@ class TestEndToEnd:
         mock_config: Mock,
         mock_logger: Mock,
     ) -> None:
-        """Minimal pipeline with only semantic search (no hybrid, no cache)."""
+        '''Minimal pipeline with only semantic search (no hybrid, no cache).'''
         mock_config.enable_hybrid_search = False
         mock_config.embedding_cache_enabled = False
         mock_config.reranker_engine = "none"

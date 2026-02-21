@@ -1,4 +1,4 @@
-"""Reranking utilities for score normalization, filtering, and recency decay.
+'''Reranking utilities for score normalization, filtering, and recency decay.
 
 This module provides functions for:
 1. Normalizing reranker scores to a consistent [0, 1] range using batch min-max
@@ -22,7 +22,7 @@ Example:
     >>> # Apply recency decay
     >>> timestamps = {"doc1": "2024-01-10T00:00:00+00:00"}
     >>> decayed = apply_recency_decay(normalized, timestamps, decay_rate=0.01)
-"""
+'''
 
 from .normalization import (
     apply_recency_decay,

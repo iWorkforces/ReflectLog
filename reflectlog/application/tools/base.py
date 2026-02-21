@@ -46,7 +46,7 @@ class BaseTool(ABC):
 
     @abstractmethod
     def get_instruction_snippet(self) -> str:
-        """Get the instruction snippet for MCP_INSTRUCTIONS.
+        '''Get the instruction snippet for MCP_INSTRUCTIONS.
 
         Each tool must provide a formatted documentation snippet that will be
         included in the dynamic MCP_INSTRUCTIONS when the tool is registered.
@@ -58,7 +58,7 @@ class BaseTool(ABC):
 
         Example:
             '    • add(messages: list[str])\\n      Add messages with semantic embeddings.'
-        """
+        '''
         pass
 
     def log_invocation(self, tool_name: str, **kwargs: Any) -> None:

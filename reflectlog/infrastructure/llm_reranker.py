@@ -88,7 +88,7 @@ class RelevanceScore(BaseModel):
 
 @dataclass(frozen=True)
 class LLMRerankerConfig:
-    """Configuration for LLM reranking.
+    '''Configuration for LLM reranking.
 
     Attributes:
         api_key: OpenRouter API key for authentication.
@@ -101,7 +101,7 @@ class LLMRerankerConfig:
         batch_normalize: Enable batch min-max normalization.
         provider: LLM provider ('openai' or 'anthropic').
         enable_recency_boost: Include memory age in reranking context.
-    """
+    '''
 
     api_key: str
     base_url: str
@@ -152,7 +152,7 @@ class IRerankerProvider(Protocol):
         fallback_score: float,
         memory_age: str | None = None,
     ) -> tuple[str, float]:
-        """Score a document's relevance to the query.
+        '''Score a document's relevance to the query.
 
         Args:
             query: Search query string.
@@ -163,7 +163,7 @@ class IRerankerProvider(Protocol):
 
         Returns:
             Tuple of (document, score) where score is LLM relevance or fallback.
-        """
+        '''
         ...
 
 
@@ -186,7 +186,7 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
         fallback_score: float,
         memory_age: str | None = None,
     ) -> tuple[str, float]:
-        """Score a document's relevance using OpenAI API.
+        '''Score a document's relevance using OpenAI API.
 
         Args:
             query: Search query string.
@@ -197,7 +197,7 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
 
         Returns:
             Tuple of (document, score).
-        """
+        '''
         try:
             # Format the scoring prompt with or without temporal context
             if memory_age:
@@ -329,7 +329,7 @@ class AnthropicRerankerProvider:
         fallback_score: float,
         memory_age: str | None = None,
     ) -> tuple[str, float]:
-        """Score a document's relevance using Anthropic Claude.
+        '''Score a document's relevance using Anthropic Claude.
 
         Args:
             query: Search query string.
@@ -340,7 +340,7 @@ class AnthropicRerankerProvider:
 
         Returns:
             Tuple of (document, score).
-        """
+        '''
         # Lazy import to avoid dependency issues
         from reflectlog.utility import generate_content
 
@@ -434,7 +434,7 @@ def create_reranker_provider(
 
 
 class LLMReranker(BaseModel):
-    """LLM-based document reranker using configurable LLM providers.
+    '''LLM-based document reranker using configurable LLM providers.
 
     This class scores search result relevance using an LLM and reranks
     candidates based on their relevance scores. It supports parallel
@@ -452,7 +452,7 @@ class LLMReranker(BaseModel):
         >>> config = LLMRerankerConfig.from_app_config(app_config)
         >>> reranker = LLMReranker(config=config, logger=logger)
         >>> results = await reranker.rerank("Python tutorials", candidates)
-    """
+    '''
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -475,7 +475,7 @@ class LLMReranker(BaseModel):
         fallback_score: float,
         memory_age: str | None = None,
     ) -> tuple[str, float]:
-        """Score a single document's relevance to the query.
+        '''Score a single document's relevance to the query.
 
         Delegates to the configured provider for actual scoring.
 
@@ -489,7 +489,7 @@ class LLMReranker(BaseModel):
 
         Returns:
             Tuple of (document, score) where score is LLM relevance or fallback.
-        """
+        '''
         if self._provider is None:
             return (document, fallback_score)
 

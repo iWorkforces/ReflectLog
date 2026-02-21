@@ -87,7 +87,7 @@ class BaseOpenAIProvider:
         response_schema: type[IStructuredOutputSchema],
         max_tokens: int = 150,
     ) -> dict[str, Any]:
-        """Call LLM with structured output, falling back to json_object if unsupported.
+        '''Call LLM with structured output, falling back to json_object if unsupported.
 
         Tries json_schema mode first for guaranteed schema compliance.
         Falls back to json_object mode if the model doesn't support structured outputs.
@@ -102,7 +102,7 @@ class BaseOpenAIProvider:
 
         Raises:
             Exception: If both structured output and json_object fallback fail.
-        """
+        '''
         # Build structured output response format using Pydantic schema
         schema_name = response_schema.__name__.lower()
         structured_response_format = ResponseFormatJSONSchema(
