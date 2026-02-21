@@ -1,4 +1,4 @@
-"""Remove tool implementation for ReflectLogMCP Server."""
+'''Remove tool implementation for ReflectLogMCP Server.'''
 
 from typing import Any
 
@@ -10,26 +10,26 @@ from .base import BaseTool
 
 
 class RemoveTool(BaseTool):
-    """Tool for removing memories from memory storage."""
+    '''Tool for removing memories from memory storage.'''
 
     def get_name(self) -> str:
-        """Get the tool name."""
-        return "remove"
+        '''Get the tool name.'''
+        return 'remove'
 
     def get_instruction_snippet(self) -> str:
-        """Get the instruction snippet for MCP_INSTRUCTIONS."""
+        '''Get the instruction snippet for MCP_INSTRUCTIONS.'''
         return (
-            "    • remove(memories: list[str])\n"
-            "      Remove memories using exact string matching (case-sensitive).\n"
-            "      Uses USearch (source of truth) with Python-level exact matching.\n"
-            "      Removes all occurrences of each memory. Silently ignores non-existent memories."
+            '    • remove(memories: list[str])\n'
+            '      Remove memories using exact string matching (case-sensitive).\n'
+            '      Uses USearch (source of truth) with Python-level exact matching.\n'
+            '      Removes all occurrences of each memory. Silently ignores non-existent memories.'
         )
 
     def get_handler(self):
-        """Get the async tool handler function."""
+        '''Get the async tool handler function.'''
 
         async def remove(memories: list[str]) -> None:
-            """Remove memories from the memory store using exact string matching (async).
+            '''Remove memories from the memory store using exact string matching (async).
 
             This tool removes memories that exactly match the provided strings.
             Uses semantic search to find candidates, then filters for exact matches
@@ -62,34 +62,34 @@ class RemoveTool(BaseTool):
                 >>> get_all()
                 ["World"]
                 >>> remove(["NonExistent"])  # No error, silently ignored
-            """
+            '''
             # Handle empty list gracefully (no-op)
             if not memories:
-                self.log_invocation("remove", count=0)
-                self.logger.info("Remove called with empty list, skipping")
+                self.log_invocation('remove', count=0)
+                self.logger.info('Remove called with empty list, skipping')
                 return
 
             self.log_invocation(
-                "remove",
+                'remove',
                 requested_count=len(memories),
                 search_limit=self.config.remove_search_limit,
             )
 
             self.logger.info(
-                f"Attempting to remove {len(memories)} unique memory(ies)",
+                f'Attempting to remove {len(memories)} unique memory(ies)',
                 extra={
-                    "tool": "remove",
-                    "count": len(memories),
+                    'tool': 'remove',
+                    'count': len(memories),
                 },
             )
 
             for idx, memory in enumerate(memories, 1):
                 self.logger.info(
-                    f"  [{idx}/{len(memories)}] Target: {truncate_memory(memory)}",
+                    f'  [{idx}/{len(memories)}] Target: {truncate_memory(memory)}',
                     extra={
-                        "tool": "remove",
-                        "memory_index": idx,
-                        "total_memories": len(memories),
+                        'tool': 'remove',
+                        'memory_index': idx,
+                        'total_memories': len(memories),
                     },
                 )
 
@@ -109,34 +109,34 @@ class RemoveTool(BaseTool):
 
                 # Log final summary
                 self.logger.info(
-                    f"Removal complete: {actual_removed} total occurrence(s) removed, "
-                    f"{len(memories_not_found)} memory(ies) not found",
+                    f'Removal complete: {actual_removed} total occurrence(s) removed, '
+                    f'{len(memories_not_found)} memory(ies) not found',
                     extra={
-                        "tool": "remove",
-                        "requested_count": len(memories),
-                        "actual_removed": actual_removed,
-                        "not_found_count": len(memories_not_found),
+                        'tool': 'remove',
+                        'requested_count': len(memories),
+                        'actual_removed': actual_removed,
+                        'not_found_count': len(memories_not_found),
                     },
                 )
 
                 if actual_removed > 0:
                     self.logger.info(
-                        f"  Successfully deleted {actual_removed} memory occurrence(s)",
-                        extra={"tool": "remove", "actual_removed": actual_removed},
+                        f'  Successfully deleted {actual_removed} memory occurrence(s)',
+                        extra={'tool': 'remove', 'actual_removed': actual_removed},
                     )
 
                 if memories_not_found:
                     self.logger.info(
-                        f"  {len(memories_not_found)} memory(ies) were not found",
+                        f'  {len(memories_not_found)} memory(ies) were not found',
                         extra={
-                            "tool": "remove",
-                            "not_found_count": len(memories_not_found),
-                            "not_found_previews": memories_not_found,
+                            'tool': 'remove',
+                            'not_found_count': len(memories_not_found),
+                            'not_found_previews': memories_not_found,
                         },
                     )
 
                 self.log_completion(
-                    "remove",
+                    'remove',
                     requested=len(memories),
                     removed=actual_removed,
                     not_found=len(memories_not_found),
@@ -144,13 +144,13 @@ class RemoveTool(BaseTool):
 
             except Exception as e:
                 self.log_error(
-                    "remove",
+                    'remove',
                     e,
                     requested_count=len(memories),
                     actual_removed=actual_removed,
                 )
                 raise StorageError(
-                    f"Failed to remove memories from memory store: {e}"
+                    f'Failed to remove memories from memory store: {e}'
                 ) from e
 
         return remove
@@ -158,7 +158,7 @@ class RemoveTool(BaseTool):
     async def _remove_single_memory_async(
         self, memory: str, memory_idx: int, total_memories: int
     ) -> int:
-        """Remove a single memory and all its occurrences (async).
+        '''Remove a single memory and all its occurrences (async).
 
         Args:
             memory: The memory to remove.
@@ -167,13 +167,13 @@ class RemoveTool(BaseTool):
 
         Returns:
             Number of occurrences removed.
-        """
+        '''
         self.logger.info(
-            f"[{memory_idx}/{total_memories}] Searching for memory: {truncate_memory(memory)}",
+            f'[{memory_idx}/{total_memories}] Searching for memory: {truncate_memory(memory)}',
             extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "total_memories": total_memories,
+                'tool': 'remove',
+                'memory_index': memory_idx,
+                'total_memories': total_memories,
             },
         )
 
@@ -183,25 +183,25 @@ class RemoveTool(BaseTool):
         )(memory)
 
         self.logger.info(
-            f"[{memory_idx}/{total_memories}] Found {len(candidates)} semantic candidate(s)",
+            f'[{memory_idx}/{total_memories}] Found {len(candidates)} semantic candidate(s)',
             extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "candidates_found": len(candidates),
+                'tool': 'remove',
+                'memory_index': memory_idx,
+                'candidates_found': len(candidates),
             },
         )
 
         # Filter for exact matches FIRST - exact matches are definitively correct
         # regardless of score (scores can vary due to embedding quirks)
         self.logger.info(
-            f"[{memory_idx}/{total_memories}] Filtering for exact matches...",
+            f'[{memory_idx}/{total_memories}] Filtering for exact matches...',
             extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
+                'tool': 'remove',
+                'memory_index': memory_idx,
             },
         )
 
-        exact_matches = [item for item in candidates if item["memory"] == memory]
+        exact_matches = [item for item in candidates if item['memory'] == memory]
 
         # Log candidates with scores for debugging (only if no exact match found)
         if not exact_matches and candidates:
@@ -209,57 +209,57 @@ class RemoveTool(BaseTool):
 
         if not exact_matches:
             self.logger.info(
-                f"[{memory_idx}/{total_memories}] No exact match found",
+                f'[{memory_idx}/{total_memories}] No exact match found',
                 extra={
-                    "tool": "remove",
-                    "memory_index": memory_idx,
+                    'tool': 'remove',
+                    'memory_index': memory_idx,
                 },
             )
             return 0
 
         self.logger.info(
-            f"[{memory_idx}/{total_memories}] Found {len(exact_matches)} exact match(es)",
+            f'[{memory_idx}/{total_memories}] Found {len(exact_matches)} exact match(es)',
             extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "exact_matches": len(exact_matches),
+                'tool': 'remove',
+                'memory_index': memory_idx,
+                'exact_matches': len(exact_matches),
             },
         )
 
         for match_idx, exact_match in enumerate(exact_matches, 1):
             self.logger.info(
-                f"[{memory_idx}/{total_memories}] Deleting occurrence {match_idx}/{len(exact_matches)}",
+                f'[{memory_idx}/{total_memories}] Deleting occurrence {match_idx}/{len(exact_matches)}',
                 extra={
-                    "tool": "remove",
-                    "memory_index": memory_idx,
-                    "match_index": match_idx,
+                    'tool': 'remove',
+                    'memory_index': memory_idx,
+                    'match_index': match_idx,
                 },
             )
 
             delete_by_memory = getattr(
                 self.memory,
-                "delete_by_memory",
+                'delete_by_memory',
                 None,
             )
             if delete_by_memory is None:
                 delete_by_memory = self.memory.delete_by_message
-            _ = await asyncify(delete_by_memory)(exact_match["memory"])
+            _ = await asyncify(delete_by_memory)(exact_match['memory'])
 
             self.logger.info(
-                f"[{memory_idx}/{total_memories}] Deleted occurrence {match_idx}",
+                f'[{memory_idx}/{total_memories}] Deleted occurrence {match_idx}',
                 extra={
-                    "tool": "remove",
-                    "memory_index": memory_idx,
-                    "match_index": match_idx,
+                    'tool': 'remove',
+                    'memory_index': memory_idx,
+                    'match_index': match_idx,
                 },
             )
 
         self.logger.info(
-            f"[{memory_idx}/{total_memories}] Removed {len(exact_matches)} occurrence(s)",
+            f'[{memory_idx}/{total_memories}] Removed {len(exact_matches)} occurrence(s)',
             extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "occurrences_removed": len(exact_matches),
+                'tool': 'remove',
+                'memory_index': memory_idx,
+                'occurrences_removed': len(exact_matches),
             },
         )
 
@@ -271,37 +271,37 @@ class RemoveTool(BaseTool):
         memory_idx: int,
         total_memories: int,
     ) -> None:
-        """Log removal candidates for debugging.
+        '''Log removal candidates for debugging.
 
         Args:
             candidates: List of candidate records.
             memory_idx: Current memory index.
             total_memories: Total number of memories being removed.
-        """
+        '''
         self.logger.info(
-            f"[{memory_idx}/{total_memories}] Found {len(candidates)} candidate(s)",
+            f'[{memory_idx}/{total_memories}] Found {len(candidates)} candidate(s)',
             extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "candidates_count": len(candidates),
+                'tool': 'remove',
+                'memory_index': memory_idx,
+                'candidates_count': len(candidates),
             },
         )
 
         # Sort by score for visualization
         sorted_candidates = sorted(
-            candidates, key=lambda x: x.get("score", 0.0), reverse=True
+            candidates, key=lambda x: x.get('score', 0.0), reverse=True
         )
 
         for idx, candidate in enumerate(sorted_candidates[:3], 1):
-            score = candidate.get("score", 0.0)
-            preview = truncate_memory(candidate.get("memory", ""), max_length=50)
+            score = candidate.get('score', 0.0)
+            preview = truncate_memory(candidate.get('memory', ''), max_length=50)
 
             self.logger.info(
-                f"[{memory_idx}/{total_memories}]   [{idx}] Score: {score:.4f} → {preview}",
+                f'[{memory_idx}/{total_memories}]   [{idx}] Score: {score:.4f} → {preview}',
                 extra={
-                    "tool": "remove",
-                    "memory_index": memory_idx,
-                    "candidate_index": idx,
-                    "score": score,
+                    'tool': 'remove',
+                    'memory_index': memory_idx,
+                    'candidate_index': idx,
+                    'score': score,
                 },
             )

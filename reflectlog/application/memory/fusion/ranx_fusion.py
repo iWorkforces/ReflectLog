@@ -1,4 +1,4 @@
-"""ranx-based fusion engine implementation."""
+'''ranx-based fusion engine implementation.'''
 
 import logging
 import math
@@ -12,20 +12,20 @@ from reflectlog.application.utils.numba_utils import normalize_scores_minmax
 
 # Supported fusion methods (unsupervised, no training data required)
 # Note: ranx uses 'sum', 'mnz', 'max' instead of 'combsum', 'combmnz', 'combmax'
-SUPPORTED_METHODS: set[str] = {"rrf", "sum", "mnz", "max", "bordafuse"}
+SUPPORTED_METHODS: set[str] = {'rrf', 'sum', 'mnz', 'max', 'bordafuse'}
 
 # Supported normalization strategies
-SUPPORTED_NORMALIZATIONS: set[str] = {"min-max", "max", "sum", "zmuv", "rank", "borda"}
+SUPPORTED_NORMALIZATIONS: set[str] = {'min-max', 'max', 'sum', 'zmuv', 'rank', 'borda'}
 
 # Default normalization per fusion method (applied to inputs before fusion)
 # Note: We use None for RRF since it works on ranks, not scores
 # Output scores are normalized in _normalize_output_scores()
 DEFAULT_NORMALIZATIONS: dict[str, str | None] = {
-    "rrf": None,  # RRF uses rank positions, input normalization not needed
-    "sum": None,  # CombSUM: Will normalize inputs if scores are incomparable
-    "mnz": None,  # CombMNZ: weighted score addition
-    "max": None,  # CombMAX: maximum score
-    "bordafuse": None,
+    'rrf': None,  # RRF uses rank positions, input normalization not needed
+    'sum': None,  # CombSUM: Will normalize inputs if scores are incomparable
+    'mnz': None,  # CombMNZ: weighted score addition
+    'max': None,  # CombMAX: maximum score
+    'bordafuse': None,
 }
 
 
@@ -53,11 +53,11 @@ class RanxFusionEngine:
     """
 
     # Fixed query ID for single-query fusion scenario
-    _QUERY_ID = "q"
+    _QUERY_ID = 'q'
 
     def __init__(
         self,
-        method: str = "rrf",
+        method: str = 'rrf',
         normalization: str | None = None,
         rrf_k: int = 60,
         logger: Any | None = None,
@@ -82,13 +82,13 @@ class RanxFusionEngine:
         if method not in SUPPORTED_METHODS:
             raise ValueError(
                 f"Unsupported fusion method: '{method}'. "
-                f"Supported methods: {sorted(SUPPORTED_METHODS)}"
+                f'Supported methods: {sorted(SUPPORTED_METHODS)}'
             )
 
         if normalization is not None and normalization not in SUPPORTED_NORMALIZATIONS:
             raise ValueError(
                 f"Unsupported normalization: '{normalization}'. "
-                f"Supported normalizations: {sorted(SUPPORTED_NORMALIZATIONS)}"
+                f'Supported normalizations: {sorted(SUPPORTED_NORMALIZATIONS)}'
             )
 
         self._method = method
@@ -98,21 +98,21 @@ class RanxFusionEngine:
 
     @property
     def method(self) -> str:
-        """Return the fusion method name."""
+        '''Return the fusion method name.'''
         return self._method
 
     @property
     def normalization(self) -> str | None:
-        """Return the normalization strategy."""
+        '''Return the normalization strategy.'''
         return self._normalization
 
     @property
     def rrf_k(self) -> int:
-        """Return the RRF k parameter."""
+        '''Return the RRF k parameter.'''
         return self._rrf_k
 
     def _convert_to_run(self, result_set: list[tuple[str, float]], name: str) -> Run:
-        """Convert (memory, score) tuples to a ranx Run object.
+        '''Convert (memory, score) tuples to a ranx Run object.
 
         Handles duplicate documents within the same result set by averaging their
         scores. This provides better fusion quality than keeping only the first
@@ -132,7 +132,7 @@ class RanxFusionEngine:
         Returns:
             ranx Run object with memories as document IDs. Duplicate memories
             are represented once with their averaged score.
-        """
+        '''
         if not result_set:
             return Run({self._QUERY_ID: {}}, name=name)
 
@@ -157,14 +157,14 @@ class RanxFusionEngine:
         return Run({self._QUERY_ID: doc_scores}, name=name)
 
     def _convert_from_run(self, run: Run) -> list[tuple[str, float]]:
-        """Convert a ranx Run object back to (memory, score) tuples.
+        '''Convert a ranx Run object back to (memory, score) tuples.
 
         Args:
             run: ranx Run object after fusion.
 
         Returns:
             List of (memory, fused_score) tuples sorted by score descending.
-        """
+        '''
         if self._QUERY_ID not in run.run:
             return []
 
@@ -179,7 +179,7 @@ class RanxFusionEngine:
     def _normalize_output_scores(
         self, results: list[tuple[str, float]]
     ) -> list[tuple[str, float]]:
-        """Normalize output scores to 0-1 range using min-max normalization.
+        '''Normalize output scores to 0-1 range using min-max normalization.
 
         This ensures fusion scores are comparable to threshold values (e.g., 0.8).
 
@@ -190,7 +190,7 @@ class RanxFusionEngine:
 
         Returns:
             List with scores normalized to 0-1 range.
-        """
+        '''
         if not results:
             return results
 
@@ -211,7 +211,7 @@ class RanxFusionEngine:
         self,
         *result_sets: list[tuple[str, float]],
     ) -> list[tuple[str, float]]:
-        """Fuse multiple ranked lists using the configured algorithm.
+        '''Fuse multiple ranked lists using the configured algorithm.
 
         Args:
             *result_sets: Variable number of (memory, score) tuple lists.
@@ -219,7 +219,7 @@ class RanxFusionEngine:
 
         Returns:
             List of (memory, fused_score) tuples sorted by score descending.
-        """
+        '''
         # Filter out empty result sets
         non_empty = [rs for rs in result_sets if rs]
         if not non_empty:
@@ -242,21 +242,21 @@ class RanxFusionEngine:
                 # Log if any unusual conditions detected
                 if has_negative or has_nan or has_inf:
                     self.logger.debug(
-                        f"Unusual score range detected in result set {i}",
+                        f'Unusual score range detected in result set {i}',
                         extra={
-                            "result_set_index": i,
-                            "score_count": len(scores),
-                            "min_score": min_score,
-                            "max_score": max_score,
-                            "has_negative": has_negative,
-                            "has_nan": has_nan,
-                            "has_inf": has_inf,
+                            'result_set_index': i,
+                            'score_count': len(scores),
+                            'min_score': min_score,
+                            'max_score': max_score,
+                            'has_negative': has_negative,
+                            'has_nan': has_nan,
+                            'has_inf': has_inf,
                         },
                     )
 
         # Convert each result set to a ranx Run
         runs = [
-            self._convert_to_run(rs, name=f"run_{i}")
+            self._convert_to_run(rs, name=f'run_{i}')
             for i, rs in enumerate(result_sets)
             if rs
         ]
@@ -270,20 +270,20 @@ class RanxFusionEngine:
             normalized_results = self._normalize_output_scores(sorted_results)
             if self.logger:
                 self.logger.debug(
-                    f"Single result set - no fusion needed: {len(normalized_results)} results",
+                    f'Single result set - no fusion needed: {len(normalized_results)} results',
                     extra={
-                        "method": self._method,
-                        "input_sets": len(result_sets),
-                        "non_empty_sets": 1,
-                        "unique_count": len(normalized_results),
+                        'method': self._method,
+                        'input_sets': len(result_sets),
+                        'non_empty_sets': 1,
+                        'unique_count': len(normalized_results),
                     },
                 )
             return normalized_results
 
         # Build params for ranx.fuse()
         params: dict[str, Any] | None = None
-        if self._method == "rrf":
-            params = {"k": self._rrf_k}
+        if self._method == 'rrf':
+            params = {'k': self._rrf_k}
 
         # Perform fusion
         combined = ranx_fuse(
@@ -301,14 +301,14 @@ class RanxFusionEngine:
 
         if self.logger:
             self.logger.debug(
-                f"Fusion completed: {len(normalized_results)} unique results "
-                f"from {len(non_empty)} result sets",
+                f'Fusion completed: {len(normalized_results)} unique results '
+                f'from {len(non_empty)} result sets',
                 extra={
-                    "method": self._method,
-                    "normalization": self._normalization,
-                    "input_sets": len(result_sets),
-                    "non_empty_sets": len(non_empty),
-                    "unique_count": len(normalized_results),
+                    'method': self._method,
+                    'normalization': self._normalization,
+                    'input_sets': len(result_sets),
+                    'non_empty_sets': len(non_empty),
+                    'unique_count': len(normalized_results),
                 },
             )
 

@@ -1,4 +1,4 @@
-"""Search tool implementation for ReflectLogMCP Server."""
+'''Search tool implementation for ReflectLogMCP Server.'''
 
 import time
 from typing import Annotated
@@ -12,33 +12,33 @@ from .base import BaseTool
 
 
 class SearchTool(BaseTool):
-    """Tool for semantic search in memory storage."""
+    '''Tool for semantic search in memory storage.'''
 
     def get_name(self) -> str:
-        """Get the tool name."""
-        return "search"
+        '''Get the tool name.'''
+        return 'search'
 
     def get_instruction_snippet(self) -> str:
-        """Get the instruction snippet for MCP_INSTRUCTIONS."""
+        '''Get the instruction snippet for MCP_INSTRUCTIONS.'''
         return (
-            "    • search(query: str) -> list[str]\n"
-            "      Hybrid semantic + full-text search. Finds semantically similar\n"
-            "      memories using vector embeddings (limit: configurable, default 5)."
+            '    • search(query: str) -> list[str]\n'
+            '      Hybrid semantic + full-text search. Finds semantically similar\n'
+            '      memories using vector embeddings (limit: configurable, default 5).'
         )
 
     def get_handler(self):
-        """Get the async tool handler function."""
+        '''Get the async tool handler function.'''
 
         async def search(
             query: Annotated[
                 str,
                 Field(
                     min_length=1,
-                    description="Search query for semantic matching",
+                    description='Search query for semantic matching',
                 ),
             ],
         ) -> list[str]:
-            """Search for memories using semantic matching (async).
+            '''Search for memories using semantic matching (async).
 
             This tool performs hybrid semantic + full-text search to find memories
             conceptually similar to the query:
@@ -73,29 +73,29 @@ class SearchTool(BaseTool):
                 ["Programming basics", "Python tutorial", "JavaScript guide"]
                 >>> search("Ruby")
                 []  # No semantically similar content
-            """
+            '''
             try:
                 start_time = time.time()
-                self.log_invocation("search", query=query)
+                self.log_invocation('search', query=query)
 
                 # Log search header
                 self.logger.info(
-                    "=" * LOG_SEPARATOR_LENGTH,
-                    extra={"tool": "search", "section": "header"},
+                    '=' * LOG_SEPARATOR_LENGTH,
+                    extra={'tool': 'search', 'section': 'header'},
                 )
                 self.logger.info(
-                    "SEARCH OPERATION",
-                    extra={"tool": "search"},
+                    'SEARCH OPERATION',
+                    extra={'tool': 'search'},
                 )
                 self.logger.info(
                     f'   Query: "{query}"',
-                    extra={"tool": "search", "query": query},
+                    extra={'tool': 'search', 'query': query},
                 )
                 self.logger.info(
-                    f"   Settings: limit={self.config.search_limit}",
+                    f'   Settings: limit={self.config.search_limit}',
                     extra={
-                        "tool": "search",
-                        "limit": self.config.search_limit,
+                        'tool': 'search',
+                        'limit': self.config.search_limit,
                     },
                 )
 
@@ -110,15 +110,15 @@ class SearchTool(BaseTool):
                 # Log final results
                 if similar_memories:
                     self.logger.info(
-                        "=" * LOG_SEPARATOR_LENGTH,
-                        extra={"tool": "search", "section": "results"},
+                        '=' * LOG_SEPARATOR_LENGTH,
+                        extra={'tool': 'search', 'section': 'results'},
                     )
                     self.logger.info(
-                        f"FINAL RESULTS ({len(similar_memories)} memory(ies)):",
+                        f'FINAL RESULTS ({len(similar_memories)} memory(ies)):',
                         extra={
-                            "tool": "search",
-                            "query": query,
-                            "result_count": len(similar_memories),
+                            'tool': 'search',
+                            'query': query,
+                            'result_count': len(similar_memories),
                         },
                     )
 
@@ -126,51 +126,51 @@ class SearchTool(BaseTool):
                     for idx, memory in enumerate(similar_memories, 1):
                         preview = truncate_memory(memory, max_length=70)
                         self.logger.info(
-                            f"   [{idx}] {preview}",
+                            f'   [{idx}] {preview}',
                             extra={
-                                "tool": "search",
-                                "query": query,
-                                "result_index": idx,
-                                "total_results": len(similar_memories),
+                                'tool': 'search',
+                                'query': query,
+                                'result_index': idx,
+                                'total_results': len(similar_memories),
                             },
                         )
                 else:
                     self.logger.info(
-                        "=" * LOG_SEPARATOR_LENGTH,
-                        extra={"tool": "search", "section": "results"},
+                        '=' * LOG_SEPARATOR_LENGTH,
+                        extra={'tool': 'search', 'section': 'results'},
                     )
                     self.logger.info(
-                        "FINAL RESULTS: No matching memories found",
+                        'FINAL RESULTS: No matching memories found',
                         extra={
-                            "tool": "search",
-                            "query": query,
-                            "result_count": 0,
+                            'tool': 'search',
+                            'query': query,
+                            'result_count': 0,
                         },
                     )
 
                 # Log timing
                 total_duration = (time.time() - start_time) * 1000  # ms
                 self.logger.info(
-                    f"Search completed in {search_duration:.0f}ms (total: {total_duration:.0f}ms)",
+                    f'Search completed in {search_duration:.0f}ms (total: {total_duration:.0f}ms)',
                     extra={
-                        "tool": "search",
-                        "search_duration_ms": search_duration,
-                        "total_duration_ms": total_duration,
+                        'tool': 'search',
+                        'search_duration_ms': search_duration,
+                        'total_duration_ms': total_duration,
                     },
                 )
                 self.logger.info(
-                    "=" * LOG_SEPARATOR_LENGTH,
-                    extra={"tool": "search", "section": "footer"},
+                    '=' * LOG_SEPARATOR_LENGTH,
+                    extra={'tool': 'search', 'section': 'footer'},
                 )
 
                 self.log_completion(
-                    "search", query=query, result_count=len(similar_memories)
+                    'search', query=query, result_count=len(similar_memories)
                 )
 
                 return similar_memories
 
             except Exception as e:
-                self.log_error("search", e, query=query)
-                raise SearchError(f"Failed to search memory store: {e}") from e
+                self.log_error('search', e, query=query)
+                raise SearchError(f'Failed to search memory store: {e}') from e
 
         return search

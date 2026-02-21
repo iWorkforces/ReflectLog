@@ -1,4 +1,4 @@
-"""ReflectLogMCP Core Package.
+'''ReflectLogMCP Core Package.
 
 This package contains protocol definitions and abstractions that define the
 interface contracts for the application layer. All components depend on
@@ -16,7 +16,7 @@ Modules:
     reranking: Reranker protocols
     tools: Tool registration protocols
     logging: Logging protocols
-"""
+'''
 
 from typing import TYPE_CHECKING
 
@@ -75,41 +75,41 @@ if TYPE_CHECKING:
 
 __all__ = [
     # CamelCase
-    "ConfigAdapter",
-    "EmbedderConfigAdapter",
-    "IAppConfig",
-    "IEmbedderConfig",
-    "IFusionAlgorithm",
-    "ILogSink",
-    "ILoggingService",
-    "IMemoryBackend",
-    "IMemoryManager",
-    "IMemoryStore",
-    "IRankingResult",
-    "IReplacementConfig",
-    "IReranker",
-    "IRerankerConfig",
-    "IRerankerProvider",
-    "ISearchBackend",
-    "ISearchConfig",
-    "ISearchResult",
-    "IServerConfig",
-    "IStorageConfig",
-    "ITool",
-    "IToolRegistry",
-    "IToolResult",
-    "LogLevel",
-    "ReplacementConfigAdapter",
-    "RerankerConfigAdapter",
-    "SearchConfigAdapter",
-    "ServerConfigAdapter",
-    "StorageConfigAdapter",
+    'ConfigAdapter',
+    'EmbedderConfigAdapter',
+    'IAppConfig',
+    'IEmbedderConfig',
+    'IFusionAlgorithm',
+    'ILogSink',
+    'ILoggingService',
+    'IMemoryBackend',
+    'IMemoryManager',
+    'IMemoryStore',
+    'IRankingResult',
+    'IReplacementConfig',
+    'IReranker',
+    'IRerankerConfig',
+    'IRerankerProvider',
+    'ISearchBackend',
+    'ISearchConfig',
+    'ISearchResult',
+    'IServerConfig',
+    'IStorageConfig',
+    'ITool',
+    'IToolRegistry',
+    'IToolResult',
+    'LogLevel',
+    'ReplacementConfigAdapter',
+    'RerankerConfigAdapter',
+    'SearchConfigAdapter',
+    'ServerConfigAdapter',
+    'StorageConfigAdapter',
     # snake_case
-    "create_config_adapter",
-    "create_embedder_config_adapter",
-    "create_replacement_config_adapter",
-    "create_reranker_config_adapter",
-    "create_search_config_adapter",
-    "create_server_config_adapter",
-    "create_storage_config_adapter",
+    'create_config_adapter',
+    'create_embedder_config_adapter',
+    'create_replacement_config_adapter',
+    'create_reranker_config_adapter',
+    'create_search_config_adapter',
+    'create_server_config_adapter',
+    'create_storage_config_adapter',
 ]

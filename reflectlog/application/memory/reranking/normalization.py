@@ -1,4 +1,4 @@
-"""Score normalization and recency decay utilities for rerankers.
+'''Score normalization and recency decay utilities for rerankers.
 
 This module provides:
 1. Batch-level min-max normalization to transform reranker scores into a
@@ -23,7 +23,7 @@ Recency decay formula:
 - final_score = base_score * recency_factor
 - Newer memories (hours_old ≈ 0) get factor ≈ 1.0
 - Older memories get progressively lower factors
-"""
+'''
 
 from datetime import UTC, datetime
 import math
@@ -37,7 +37,7 @@ from reflectlog.application.utils.numba_utils import normalize_scores_minmax
 def normalize_reranker_scores(
     scored_results: list[tuple[str, float]],
 ) -> list[tuple[str, float]]:
-    """Normalize reranker scores to [0, 1] using batch min-max normalization.
+    '''Normalize reranker scores to [0, 1] using batch min-max normalization.
 
     This function transforms scores so that:
     - Best score in batch = 1.0
@@ -57,7 +57,7 @@ def normalize_reranker_scores(
         >>> normalized = normalize_reranker_scores(scored)
         >>> # normalized[0] = ("doc1", 1.0)  # best score
         >>> # normalized[2] = ("doc3", 0.0)  # worst score
-    """
+    '''
     if not scored_results:
         return []
 
@@ -86,7 +86,7 @@ def apply_threshold_with_safety_net(
     threshold: float,
     min_results: int = 0,
 ) -> list[tuple[str, float]]:
-    """Apply threshold filtering with optional min_results safety net.
+    '''Apply threshold filtering with optional min_results safety net.
 
     This function filters results by score threshold, with an optional safety
     net that guarantees at least min_results are returned (if candidates exist).
@@ -112,7 +112,7 @@ def apply_threshold_with_safety_net(
         >>> # With safety net enabled
         >>> filtered = apply_threshold_with_safety_net(scored, 0.5, min_results=1)
         >>> # filtered = [("doc1", 0.4)]  (top 1 returned despite being below threshold)
-    """
+    '''
     if not scored_results:
         return []
 
@@ -136,7 +136,7 @@ def calculate_recency_factor(
     decay_rate: float,
     now: datetime | None = None,
 ) -> float:
-    """Calculate recency decay factor from an ISO timestamp.
+    '''Calculate recency decay factor from an ISO timestamp.
 
     Uses exponential decay formula: recency_factor = exp(-decay_rate * hours_old)
 
@@ -157,7 +157,7 @@ def calculate_recency_factor(
         >>> # Memory created 69 hours ago (half-life point)
         >>> factor = calculate_recency_factor("2024-01-12T17:00:00+00:00", 0.01)
         >>> # factor ≈ 0.50 (exp(-0.01 * 69))
-    """
+    '''
     if now is None:
         now = datetime.now(UTC)
 

@@ -1,4 +1,4 @@
-"""USearch-based semantic search engine.
+'''USearch-based semantic search engine.
 
 This module provides a semantic search engine using USearch for vector
 similarity search, with SQLite for memory content storage. It implements
@@ -8,7 +8,7 @@ Clean Architecture Compliance:
     This module implements the ISemanticSearchEngine protocol defined in
     the application layer (reflectlog.application.types), following the
     Dependency Inversion Principle from SOLID.
-"""
+'''
 
 from dataclasses import dataclass
 import os
@@ -31,13 +31,13 @@ from reflectlog.application.utils.security import validate_project_id
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
-    """Type guard to check if config is a dict."""
+    '''Type guard to check if config is a dict.'''
     return isinstance(config, dict)
 
 
 @dataclass(frozen=True)
 class USearchConfig:
-    """Configuration for USearchEngine.
+    '''Configuration for USearchEngine.
 
     This dataclass defines the settings needed for USearch vector search
     with SQLite memory storage.
@@ -59,13 +59,13 @@ class USearchConfig:
             below this threshold. Set to 0 to disable auto-switching.
             When index size < threshold, exact search is used regardless of
             exact_search setting. Default: 0 (disabled).
-    """
+    '''
 
     project_id: str
     index_path: str
     db_path: str
     embedding_dims: int
-    metric: str = "cos"
+    metric: str = 'cos'
     connectivity: int = 16
     expansion_add: int = 128
     expansion_search: int = 64
@@ -74,7 +74,7 @@ class USearchConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> USearchConfig:
-        """Create USearchConfig from a dictionary with validation.
+        '''Create USearchConfig from a dictionary with validation.
 
         This method properly validates dict contents and returns a typed instance,
         avoiding the type: ignore needed when using **dict unpacking.
@@ -84,51 +84,51 @@ class USearchConfig:
 
         Returns:
             Validated USearchConfig instance.
-        """
+        '''
         return cls(
-            project_id=data.get("project_id", "") or "",
-            index_path=data.get("index_path", "") or "",
-            db_path=data.get("db_path", "") or "",
-            embedding_dims=int(data.get("embedding_dims", 3072)),
-            metric=data.get("metric", "cos") or "cos",
-            connectivity=int(data.get("connectivity", 16)),
-            expansion_add=int(data.get("expansion_add", 128)),
-            expansion_search=int(data.get("expansion_search", 64)),
-            exact_search=bool(data.get("exact_search", True)),
-            exact_search_threshold=int(data.get("exact_search_threshold", 0)),
+            project_id=data.get('project_id', '') or '',
+            index_path=data.get('index_path', '') or '',
+            db_path=data.get('db_path', '') or '',
+            embedding_dims=int(data.get('embedding_dims', 3072)),
+            metric=data.get('metric', 'cos') or 'cos',
+            connectivity=int(data.get('connectivity', 16)),
+            expansion_add=int(data.get('expansion_add', 128)),
+            expansion_search=int(data.get('expansion_search', 64)),
+            exact_search=bool(data.get('exact_search', True)),
+            exact_search_threshold=int(data.get('exact_search_threshold', 0)),
         )
 
     @classmethod
     def from_app_config(cls, config: Any) -> USearchConfig:
-        """Create USearchConfig from application Config.
+        '''Create USearchConfig from application Config.
 
         Args:
             config: Application Config instance.
 
         Returns:
             USearchConfig with extracted settings.
-        """
+        '''
         # Validate project_id to prevent path traversal attacks
         project_id = validate_project_id(config.project_id)
-        base_path = os.path.join(os.getcwd(), "indexes", project_id, "usearch")
+        base_path = os.path.join(os.getcwd(), 'indexes', project_id, 'usearch')
 
         # Determine embedding dims based on provider
         embedding_dims = (
             config.qwen_embedding_dims
-            if config.embedder_provider == "langchain"
+            if config.embedder_provider == 'langchain'
             else config.embedding_dims
         )
 
         # Get exact search settings with safe defaults for missing attributes
-        exact_search = getattr(config, "usearch_exact_search", False)
+        exact_search = getattr(config, 'usearch_exact_search', False)
         exact_search_threshold = getattr(
-            config, "usearch_exact_search_threshold", 10000
+            config, 'usearch_exact_search_threshold', 10000
         )
 
         return cls(
             project_id=project_id,
-            index_path=os.path.join(base_path, "vectors.usearch"),
-            db_path=os.path.join(base_path, "memories.db"),
+            index_path=os.path.join(base_path, 'vectors.usearch'),
+            db_path=os.path.join(base_path, 'memories.db'),
             embedding_dims=embedding_dims,
             exact_search=exact_search,
             exact_search_threshold=exact_search_threshold,
@@ -136,7 +136,7 @@ class USearchConfig:
 
 
 class USearchEngine(BaseModel):
-    """USearch-based semantic search engine.
+    '''USearch-based semantic search engine.
 
     Implements ISemanticSearchEngine protocol via structural subtyping.
     Uses USearch for vector similarity search and SQLite for memory content storage.
@@ -161,7 +161,7 @@ class USearchEngine(BaseModel):
         engine.add("my-project", "Hello world", infer=False)
         results = engine.search("hello", "my-project", limit=5)
         ```
-    """
+    '''
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -181,14 +181,14 @@ class USearchEngine(BaseModel):
         logger: Any | None = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize USearchEngine.
+        '''Initialize USearchEngine.
 
         Args:
             config: USearchConfig or dict with engine settings.
             embedder: Embedding provider implementing Embeddings interface.
             logger: Optional StructuredLogger instance.
             **kwargs: Additional arguments passed to BaseModel.
-        """
+        '''
         if _is_dict_config(config):
             config = USearchConfig.from_dict(config)
 
@@ -196,19 +196,19 @@ class USearchEngine(BaseModel):
 
     @property
     def name(self) -> str:
-        """Engine name for identification."""
-        return "usearch"
+        '''Engine name for identification.'''
+        return 'usearch'
 
     @property
     def index(self) -> Index:
-        """Get USearch index (thread-safe lazy initialization).
+        '''Get USearch index (thread-safe lazy initialization).
 
         Returns:
             USearch Index instance.
 
         Raises:
             RuntimeError: If index initialization fails.
-        """
+        '''
         if self._index is not None:
             return self._index
 
@@ -226,32 +226,32 @@ class USearchEngine(BaseModel):
                         loaded_index = Index.restore(self.config.index_path)
                         if loaded_index is None:
                             raise RuntimeError(
-                                f"Index.restore() returned None for {self.config.index_path}"
+                                f'Index.restore() returned None for {self.config.index_path}'
                             )
                         self._index = loaded_index
                         if self.logger:
                             self.logger.info(
-                                "Loaded existing USearch index",
+                                'Loaded existing USearch index',
                                 extra={
-                                    "project_id": self.config.project_id,
-                                    "index_path": self.config.index_path,
-                                    "size": len(loaded_index),
+                                    'project_id': self.config.project_id,
+                                    'index_path': self.config.index_path,
+                                    'size': len(loaded_index),
                                 },
                             )
                     except RuntimeError, FileNotFoundError, OSError:
                         # Index doesn't exist or is corrupted, create new one
                         if self.logger:
                             self.logger.debug(
-                                "USearch index not found, creating new index",
+                                'USearch index not found, creating new index',
                                 extra={
-                                    "project_id": self.config.project_id,
-                                    "index_path": self.config.index_path,
+                                    'project_id': self.config.project_id,
+                                    'index_path': self.config.index_path,
                                 },
                             )
                         new_index = Index(
                             ndim=self.config.embedding_dims,
                             metric=self.config.metric,
-                            dtype="f32",
+                            dtype='f32',
                             connectivity=self.config.connectivity,
                             expansion_add=self.config.expansion_add,
                             expansion_search=self.config.expansion_search,
@@ -259,26 +259,26 @@ class USearchEngine(BaseModel):
                         self._index = new_index
                         if self.logger:
                             self.logger.info(
-                                "Created new USearch index",
+                                'Created new USearch index',
                                 extra={
-                                    "project_id": self.config.project_id,
-                                    "index_path": self.config.index_path,
-                                    "dims": self.config.embedding_dims,
+                                    'project_id': self.config.project_id,
+                                    'index_path': self.config.index_path,
+                                    'dims': self.config.embedding_dims,
                                 },
                             )
 
                 except Exception as exc:
                     if self.logger:
                         self.logger.error(
-                            "Failed to initialize USearch index",
+                            'Failed to initialize USearch index',
                             extra={
-                                "project_id": self.config.project_id,
-                                "error": str(exc),
+                                'project_id': self.config.project_id,
+                                'error': str(exc),
                             },
                             exc_info=True,
                         )
                     raise RuntimeError(
-                        f"Failed to initialize USearch index: {exc}"
+                        f'Failed to initialize USearch index: {exc}'
                     ) from exc
 
         # _index is guaranteed to be non-None after successful initialization
@@ -287,11 +287,11 @@ class USearchEngine(BaseModel):
 
     @property
     def memory_store(self) -> Any:
-        """Get MemoryStore (thread-safe lazy initialization).
+        '''Get MemoryStore (thread-safe lazy initialization).
 
         Returns:
             MemoryStore instance.
-        """
+        '''
         if self._memory_store is not None:
             return self._memory_store
 
@@ -312,7 +312,7 @@ class USearchEngine(BaseModel):
         content: str,
         infer: bool,
     ) -> None:
-        """Add a memory to the USearch index.
+        '''Add a memory to the USearch index.
 
         Args:
             project_id: Project identifier for filtering.
@@ -321,13 +321,13 @@ class USearchEngine(BaseModel):
 
         Raises:
             RuntimeError: If add operation fails.
-        """
+        '''
         mem_id = None  # Track mem_id for rollback on embedding failure
         try:
             if infer and self.logger:
                 self.logger.warning(
-                    "infer=True not supported by USearchEngine, proceeding as infer=False",
-                    extra={"project_id": self.config.project_id},
+                    'infer=True not supported by USearchEngine, proceeding as infer=False',
+                    extra={'project_id': self.config.project_id},
                 )
 
             # Insert into SQLite (relies on UNIQUE INDEX for dedup - no pre-check needed)
@@ -342,14 +342,14 @@ class USearchEngine(BaseModel):
                 _ = self.memory_store.delete(mem_id)
                 if self.logger:
                     self.logger.error(
-                        "Embedding generation failed, rolled back SQLite insert",
+                        'Embedding generation failed, rolled back SQLite insert',
                         extra={
-                            "project_id": self.config.project_id,
-                            "error": str(embed_error),
+                            'project_id': self.config.project_id,
+                            'error': str(embed_error),
                         },
                     )
                 raise RuntimeError(
-                    f"Failed to generate embedding: {embed_error}"
+                    f'Failed to generate embedding: {embed_error}'
                 ) from embed_error
 
             # Add to USearch index
@@ -357,43 +357,43 @@ class USearchEngine(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    "Memory added to USearch index",
+                    'Memory added to USearch index',
                     extra={
-                        "project_id": self.config.project_id,
-                        "memory_id": mem_id,
-                        "memory_length": len(content),
+                        'project_id': self.config.project_id,
+                        'memory_id': mem_id,
+                        'memory_length': len(content),
                     },
                 )
 
         except (RuntimeError, StorageError) as e:
             # Handle duplicate memory (detected by database UNIQUE constraint)
-            if "Duplicate memory" in str(e):
+            if 'Duplicate memory' in str(e):
                 if self.logger:
                     self.logger.debug(
-                        "Skipping duplicate memory (detected by DB constraint)",
-                        extra={"project_id": self.config.project_id},
+                        'Skipping duplicate memory (detected by DB constraint)',
+                        extra={'project_id': self.config.project_id},
                     )
                 return
             # Re-raise other errors
             if self.logger:
                 self.logger.error(
-                    "Failed to add memory to USearch index",
+                    'Failed to add memory to USearch index',
                     extra={
-                        "project_id": self.config.project_id,
-                        "error": str(e),
+                        'project_id': self.config.project_id,
+                        'error': str(e),
                     },
                 )
             raise
         except Exception as e:
             if self.logger:
                 self.logger.error(
-                    "Failed to add memory to USearch index",
+                    'Failed to add memory to USearch index',
                     extra={
-                        "project_id": self.config.project_id,
-                        "error": str(e),
+                        'project_id': self.config.project_id,
+                        'error': str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to add memory: {e}") from e
+            raise RuntimeError(f'Failed to add memory: {e}') from e
 
     def add_batch(
         self,
@@ -401,7 +401,7 @@ class USearchEngine(BaseModel):
         contents: list[str],
         infer: bool,
     ) -> list[str]:
-        """Add multiple memories to the USearch index in a single batch.
+        '''Add multiple memories to the USearch index in a single batch.
 
         Args:
             project_id: Project identifier for filtering.
@@ -410,14 +410,14 @@ class USearchEngine(BaseModel):
 
         Returns:
             List of memory contents successfully added (duplicates skipped).
-        """
+        '''
         if not contents:
             return []
 
         if infer and self.logger:
             self.logger.warning(
-                "infer=True not supported by USearchEngine, proceeding as infer=False",
-                extra={"project_id": self.config.project_id},
+                'infer=True not supported by USearchEngine, proceeding as infer=False',
+                extra={'project_id': self.config.project_id},
             )
 
         inserted = []  # Track successfully inserted (content, mem_id) pairs
@@ -437,23 +437,23 @@ class USearchEngine(BaseModel):
                 vectors = self.embedder.embed_documents(inserted_contents)
                 if len(vectors) != len(inserted_contents):
                     raise RuntimeError(
-                        "Embedding batch size mismatch for USearch add_batch"
+                        'Embedding batch size mismatch for USearch add_batch'
                     )
             except Exception as embed_error:
                 # Rollback all SQLite inserts if embedding fails
                 if self.logger:
                     self.logger.error(
-                        "Embedding generation failed, rolling back batch",
+                        'Embedding generation failed, rolling back batch',
                         extra={
-                            "project_id": self.config.project_id,
-                            "count": len(inserted_ids),
-                            "error": str(embed_error),
+                            'project_id': self.config.project_id,
+                            'count': len(inserted_ids),
+                            'error': str(embed_error),
                         },
                     )
                 for mem_id in inserted_ids:
                     _ = self.memory_store.delete(mem_id)
                 raise RuntimeError(
-                    f"Failed to generate embeddings for batch: {embed_error}"
+                    f'Failed to generate embeddings for batch: {embed_error}'
                 ) from embed_error
 
             # Add vectors to USearch index
@@ -463,10 +463,10 @@ class USearchEngine(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    "Batch added memories to USearch index",
+                    'Batch added memories to USearch index',
                     extra={
-                        "project_id": self.config.project_id,
-                        "memory_count": len(inserted_contents),
+                        'project_id': self.config.project_id,
+                        'memory_count': len(inserted_contents),
                     },
                 )
 
@@ -476,20 +476,20 @@ class USearchEngine(BaseModel):
             # Clean up on any other error (shouldn't happen if above is correct)
             if self.logger:
                 self.logger.error(
-                    "Failed to add memory batch to USearch index",
+                    'Failed to add memory batch to USearch index',
                     extra={
-                        "project_id": self.config.project_id,
-                        "error": str(e),
+                        'project_id': self.config.project_id,
+                        'error': str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to add memory batch: {e}") from e
+            raise RuntimeError(f'Failed to add memory batch: {e}') from e
 
     def _should_use_exact_search(self) -> bool:
-        """Determine if exact search should be used based on config and index size.
+        '''Determine if exact search should be used based on config and index size.
 
         Returns:
             True if exact (brute-force) search should be used, False for HNSW approximate.
-        """
+        '''
         # If exact search is explicitly forced, use it
         if self.config.exact_search:
             return True
@@ -504,10 +504,10 @@ class USearchEngine(BaseModel):
         return False
 
     def _rank_scores(self, count: int) -> np.ndarray:
-        """Create rank-based scores from 1.0 to 0.0.
+        '''Create rank-based scores from 1.0 to 0.0.
 
         Used when distance-to-similarity conversion is ambiguous.
-        """
+        '''
         if count <= 0:
             return np.array([], dtype=np.float32)
         if count == 1:
@@ -515,22 +515,22 @@ class USearchEngine(BaseModel):
         return np.linspace(1.0, 0.0, num=count, dtype=np.float32)
 
     def _distances_to_scores(self, distances: np.ndarray) -> np.ndarray:
-        """Convert index distances to similarity scores.
+        '''Convert index distances to similarity scores.
 
         Cosine distances are mapped to [0, 1] similarity.
         L2 distances are converted with a monotonic 1 / (1 + d) transform.
         Other metrics fall back to rank-based scoring to preserve ordering.
-        """
+        '''
         metric = self.config.metric.lower()
-        if metric in ("cos", "cosine"):
+        if metric in ('cos', 'cosine'):
             return distance_to_similarity_cosine(distances)
-        if metric in ("l2", "euclidean"):
+        if metric in ('l2', 'euclidean'):
             return np.float32(1.0) / (np.float32(1.0) + distances)
 
         if self.logger:
             self.logger.warning(
-                "USearch metric has ambiguous distance scale; using rank-based scores",
-                extra={"metric": self.config.metric},
+                'USearch metric has ambiguous distance scale; using rank-based scores',
+                extra={'metric': self.config.metric},
             )
         return self._rank_scores(len(distances))
 
@@ -540,7 +540,7 @@ class USearchEngine(BaseModel):
         project_id: str,
         limit: int,
     ) -> list[tuple[str, float, str]]:
-        """Execute semantic search.
+        '''Execute semantic search.
 
         Supports both exact (brute-force) and approximate (HNSW) search modes:
         - **Exact search**: Bypasses HNSW indexing and performs brute-force search
@@ -564,14 +564,14 @@ class USearchEngine(BaseModel):
             List of (content, score, created_at) tuples sorted by relevance.
             created_at is an ISO format timestamp string (may be empty for
             backward compatibility with older data).
-        """
+        '''
         try:
             # Check if index is empty
             if len(self.index) == 0:
                 if self.logger:
                     self.logger.debug(
-                        "USearch index is empty",
-                        extra={"project_id": self.config.project_id},
+                        'USearch index is empty',
+                        extra={'project_id': self.config.project_id},
                     )
                 return []
 
@@ -581,16 +581,16 @@ class USearchEngine(BaseModel):
 
             if self.logger:
                 search_mode = (
-                    "exact (brute-force)" if use_exact else "approximate (HNSW)"
+                    'exact (brute-force)' if use_exact else 'approximate (HNSW)'
                 )
                 self.logger.debug(
-                    f"USearch search mode: {search_mode}",
+                    f'USearch search mode: {search_mode}',
                     extra={
-                        "project_id": self.config.project_id,
-                        "search_mode": "exact" if use_exact else "approximate",
-                        "index_size": index_size,
-                        "exact_search_config": self.config.exact_search,
-                        "exact_search_threshold": self.config.exact_search_threshold,
+                        'project_id': self.config.project_id,
+                        'search_mode': 'exact' if use_exact else 'approximate',
+                        'index_size': index_size,
+                        'exact_search_config': self.config.exact_search,
+                        'exact_search_threshold': self.config.exact_search_threshold,
                     },
                 )
 
@@ -636,14 +636,14 @@ class USearchEngine(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    "USearch search completed",
+                    'USearch search completed',
                     extra={
-                        "project_id": self.config.project_id,
-                        "query": query[:100],
-                        "search_mode": "exact" if use_exact else "approximate",
-                        "matches_found": len(matches),
-                        "results_after_filter": len(results),
-                        "numba_batch_size": len(filtered_matches),
+                        'project_id': self.config.project_id,
+                        'query': query[:100],
+                        'search_mode': 'exact' if use_exact else 'approximate',
+                        'matches_found': len(matches),
+                        'results_after_filter': len(results),
+                        'numba_batch_size': len(filtered_matches),
                     },
                 )
 
@@ -652,33 +652,33 @@ class USearchEngine(BaseModel):
         except Exception as e:
             if self.logger:
                 self.logger.error(
-                    "USearch search failed",
+                    'USearch search failed',
                     extra={
-                        "project_id": self.config.project_id,
-                        "query": query[:100],
-                        "error": str(e),
+                        'project_id': self.config.project_id,
+                        'query': query[:100],
+                        'error': str(e),
                     },
                 )
-            raise RuntimeError(f"USearch search failed: {e}") from e
+            raise RuntimeError(f'USearch search failed: {e}') from e
 
     def get_all(self, project_id: str) -> list[str]:
-        """Retrieve all stored memories for a project.
+        '''Retrieve all stored memories for a project.
 
         Args:
             project_id: Project identifier for filtering.
 
         Returns:
             List of all memories stored for the project.
-        """
+        '''
         try:
             memories = self.memory_store.get_all(project_id)
 
             if self.logger:
                 self.logger.debug(
-                    "Retrieved all memories",
+                    'Retrieved all memories',
                     extra={
-                        "project_id": self.config.project_id,
-                        "count": len(memories),
+                        'project_id': self.config.project_id,
+                        'count': len(memories),
                     },
                 )
 
@@ -687,23 +687,23 @@ class USearchEngine(BaseModel):
         except Exception as e:
             if self.logger:
                 self.logger.error(
-                    "Failed to retrieve memories",
+                    'Failed to retrieve memories',
                     extra={
-                        "project_id": self.config.project_id,
-                        "error": str(e),
+                        'project_id': self.config.project_id,
+                        'error': str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to retrieve memories: {e}") from e
+            raise RuntimeError(f'Failed to retrieve memories: {e}') from e
 
     def delete(self, memory_id: str) -> None:
-        """Delete a memory entry by its ID.
+        '''Delete a memory entry by its ID.
 
         Args:
             memory_id: The ID of the memory to delete (SQLite row ID as string).
 
         Raises:
             RuntimeError: If deletion fails.
-        """
+        '''
         try:
             mem_id = int(memory_id)
 
@@ -717,83 +717,83 @@ class USearchEngine(BaseModel):
             if self.logger:
                 if deleted:
                     self.logger.debug(
-                        "Memory deleted from USearch index",
+                        'Memory deleted from USearch index',
                         extra={
-                            "project_id": self.config.project_id,
-                            "memory_id": memory_id,
+                            'project_id': self.config.project_id,
+                            'memory_id': memory_id,
                         },
                     )
                 else:
                     self.logger.warning(
-                        "Memory not found for deletion",
+                        'Memory not found for deletion',
                         extra={
-                            "project_id": self.config.project_id,
-                            "memory_id": memory_id,
+                            'project_id': self.config.project_id,
+                            'memory_id': memory_id,
                         },
                     )
 
         except ValueError as e:
             if self.logger:
                 self.logger.error(
-                    "Invalid memory_id format",
+                    'Invalid memory_id format',
                     extra={
-                        "project_id": self.config.project_id,
-                        "memory_id": memory_id,
-                        "error": str(e),
+                        'project_id': self.config.project_id,
+                        'memory_id': memory_id,
+                        'error': str(e),
                     },
                 )
-            raise RuntimeError(f"Invalid memory_id format: {e}") from e
+            raise RuntimeError(f'Invalid memory_id format: {e}') from e
         except Exception as e:
             if self.logger:
                 self.logger.error(
-                    "Failed to delete memory",
+                    'Failed to delete memory',
                     extra={
-                        "project_id": self.config.project_id,
-                        "memory_id": memory_id,
-                        "error": str(e),
+                        'project_id': self.config.project_id,
+                        'memory_id': memory_id,
+                        'error': str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to delete memory: {e}") from e
+            raise RuntimeError(f'Failed to delete memory: {e}') from e
 
     def commit(self) -> None:
-        """Commit pending changes to the index.
+        '''Commit pending changes to the index.
 
         Saves the USearch index to disk. SQLite auto-commits.
-        """
+        '''
         try:
             if self._index is not None:
                 self.index.save(self.config.index_path)
                 if self.logger:
                     self.logger.debug(
-                        "USearch index saved",
+                        'USearch index saved',
                         extra={
-                            "project_id": self.config.project_id,
-                            "index_path": self.config.index_path,
-                            "size": len(self.index),
+                            'project_id': self.config.project_id,
+                            'index_path': self.config.index_path,
+                            'size': len(self.index),
                         },
                     )
         except Exception as e:
             if self.logger:
                 self.logger.error(
-                    "Failed to save USearch index",
+                    'Failed to save USearch index',
                     extra={
-                        "project_id": self.config.project_id,
-                        "error": str(e),
+                        'project_id': self.config.project_id,
+                        'error': str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to save USearch index: {e}") from e
+            raise RuntimeError(f'Failed to save USearch index: {e}') from e
 
     def ensure_initialized(self) -> None:
-        """Ensure the engine is fully initialized (thread-safe).
+        '''Ensure the engine is fully initialized (thread-safe).
 
         Forces the lazy initialization of USearch index and MemoryStore
         to complete. Call this before parallel operations.
-        """
+        '''
         _ = self.index
         self.memory_store.ensure_initialized()
 
     def get_id_by_content(self, project_id: str, content: str) -> int | None:
-        """Get the ID of a memory by its content.
+        '''Get the ID of a memory by its content.
 
         Args:
             project_id: Project identifier.
@@ -801,25 +801,25 @@ class USearchEngine(BaseModel):
 
         Returns:
             The memory ID if found, None otherwise.
-        """
+        '''
         return self.memory_store.get_id_by_content(project_id, content)
 
     def close(self) -> None:
-        """Close resources and cleanup.
+        '''Close resources and cleanup.
 
         Closes the MemoryStore SQLite connection.
-        """
+        '''
         if self._memory_store is not None:
             self._memory_store.close()
 
     def __enter__(self):
-        """Enter context manager.
+        '''Enter context manager.
 
         Ensures the engine is initialized before use.
 
         Returns:
             self
-        """
+        '''
         self.ensure_initialized()
         return self
 
@@ -829,7 +829,7 @@ class USearchEngine(BaseModel):
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> bool:
-        """Exit context manager.
+        '''Exit context manager.
 
         Ensures resources are cleaned up.
 
@@ -840,6 +840,6 @@ class USearchEngine(BaseModel):
 
         Returns:
             False to not suppress exceptions.
-        """
+        '''
         self.close()
         return False  # Don't suppress exceptions

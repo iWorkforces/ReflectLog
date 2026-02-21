@@ -1,4 +1,4 @@
-"""Infrastructure layer for external library wrappers.
+'''Infrastructure layer for external library wrappers.
 
 This module provides:
 - BaseOpenAIProvider: Base class for OpenAI-compatible LLM providers
@@ -17,7 +17,7 @@ This module also re-exports from subpackages:
 - infrastructure.reranking: Reranker implementations
 - infrastructure.memory: Memory storage implementations
 - infrastructure.llm: LLM provider implementations
-"""
+'''
 
 # Re-export from subpackages for convenient imports
 from . import embeddings, llm, memory, reranking, search
@@ -49,36 +49,36 @@ from .tantivy_engine import TantivyConfig, TantivyEngine
 from .usearch_engine import USearchConfig, USearchEngine
 
 __all__ = [
-    "AnthropicReplacementProvider",
-    "AnthropicRerankerProvider",
-    "BaseOpenAIProvider",
-    "CachedEmbeddings",
-    "CrossEncoderConfig",
-    "CrossEncoderReranker",
-    "IReplacementProvider",
-    "IRerankerProvider",
-    "IStructuredOutputSchema",
-    "LLMReranker",
-    "LLMRerankerConfig",
-    "LangchainQwenEmbeddings",
-    "MemoryRecord",
-    "MemoryStore",
-    "OpenAIReplacementProvider",
-    "OpenAIRerankerProvider",
-    "RelevanceScore",
-    "ReplacementDecision",
-    "SmartReplacer",
-    "SmartReplacerConfig",
-    "TantivyConfig",
-    "TantivyEngine",
-    "USearchConfig",
-    "USearchEngine",
-    "create_replacement_provider",
-    "create_reranker_provider",
-    "embeddings",
-    "format_memory_age",
-    "llm",
-    "memory",
-    "reranking",
-    "search",
+    'AnthropicReplacementProvider',
+    'AnthropicRerankerProvider',
+    'BaseOpenAIProvider',
+    'CachedEmbeddings',
+    'CrossEncoderConfig',
+    'CrossEncoderReranker',
+    'IReplacementProvider',
+    'IRerankerProvider',
+    'IStructuredOutputSchema',
+    'LLMReranker',
+    'LLMRerankerConfig',
+    'LangchainQwenEmbeddings',
+    'MemoryRecord',
+    'MemoryStore',
+    'OpenAIReplacementProvider',
+    'OpenAIRerankerProvider',
+    'RelevanceScore',
+    'ReplacementDecision',
+    'SmartReplacer',
+    'SmartReplacerConfig',
+    'TantivyConfig',
+    'TantivyEngine',
+    'USearchConfig',
+    'USearchEngine',
+    'create_replacement_provider',
+    'create_reranker_provider',
+    'embeddings',
+    'format_memory_age',
+    'llm',
+    'memory',
+    'reranking',
+    'search',
 ]

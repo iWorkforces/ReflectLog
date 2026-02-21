@@ -1,14 +1,14 @@
-"""Base protocol for fusion engines."""
+'''Base protocol for fusion engines.'''
 
 from typing import Protocol
 
 
 class FusionEngine(Protocol):
-    """Protocol for fusion engines.
+    '''Protocol for fusion engines.
 
     All fusion engines must implement this interface to be used
     interchangeably with the MemoryManager.
-    """
+    '''
 
     @property
     def method(self) -> str:
@@ -24,7 +24,7 @@ class FusionEngine(Protocol):
         self,
         *result_sets: list[tuple[str, float]],
     ) -> list[tuple[str, float]]:
-        """Fuse multiple ranked lists into a single ranking.
+        '''Fuse multiple ranked lists into a single ranking.
 
         Args:
             *result_sets: Variable number of (memory, score) tuple lists.
@@ -32,5 +32,5 @@ class FusionEngine(Protocol):
 
         Returns:
             List of (memory, fused_score) tuples sorted by score descending.
-        """
+        '''
         ...

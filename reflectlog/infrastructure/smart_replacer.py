@@ -1,4 +1,4 @@
-"""Smart memory replacement detector using LLM."""
+'''Smart memory replacement detector using LLM.'''
 
 import asyncio
 from dataclasses import dataclass
@@ -16,7 +16,7 @@ from reflectlog.infrastructure.llm_provider_base import (
 
 
 class ReplacementDecision(BaseModel):
-    """Schema for LLM replacement detection response.
+    '''Schema for LLM replacement detection response.
 
     Used with OpenAI Structured Outputs to guarantee valid JSON responses
     from the smart replacer.
@@ -25,21 +25,21 @@ class ReplacementDecision(BaseModel):
         should_replace: Whether the new memory should replace the old one.
         confidence: Confidence score from 0.0 to 1.0.
         reason: Brief explanation of the decision.
-    """
+    '''
 
     should_replace: bool = Field(
         ...,
-        description="Whether the new memory should replace the old one",
+        description='Whether the new memory should replace the old one',
     )
     confidence: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description="Confidence score from 0.0 to 1.0",
+        description='Confidence score from 0.0 to 1.0',
     )
     reason: str = Field(
         ...,
-        description="Brief explanation of the decision",
+        description='Brief explanation of the decision',
     )
 
 
@@ -67,18 +67,18 @@ class SmartReplacerConfig:
     timeout: float = 30.0
     max_retries: int = 3
     retry_delay: float = 1.0
-    provider: str = "openai"  # Provider: "openai" or "anthropic"
+    provider: str = 'openai'  # Provider: "openai" or "anthropic"
 
     @classmethod
     def from_app_config(cls, config: Config) -> SmartReplacerConfig:
-        """Create SmartReplacerConfig from application Config.
+        '''Create SmartReplacerConfig from application Config.
 
         Args:
             config: Application configuration object.
 
         Returns:
             SmartReplacerConfig instance configured from app settings.
-        """
+        '''
         return cls(
             api_key=config.openrouter_api_key.get_secret_value(),
             base_url=config.openrouter_base_url,
@@ -92,10 +92,10 @@ class SmartReplacerConfig:
 
 
 class IReplacementProvider(Protocol):
-    """Protocol for replacement detection providers.
+    '''Protocol for replacement detection providers.
 
     Defines the interface for LLM providers used in smart memory replacement.
-    """
+    '''
 
     async def detect_replacement(
         self,
@@ -103,7 +103,7 @@ class IReplacementProvider(Protocol):
         max_retries: int,
         retry_delay: float,
     ) -> tuple[bool, float, str]:
-        """Detect if replacement should occur.
+        '''Detect if replacement should occur.
 
         Args:
             prompt: The formatted replacement detection prompt.
@@ -115,12 +115,12 @@ class IReplacementProvider(Protocol):
                 - should_replace: Whether replacement is recommended
                 - confidence: Confidence score (0.0-1.0)
                 - reason: Brief explanation of the decision
-        """
+        '''
         ...
 
 
 class OpenAIReplacementProvider(BaseOpenAIProvider):
-    """OpenAI/OpenRouter-based replacement detection provider.
+    '''OpenAI/OpenRouter-based replacement detection provider.
 
     Uses AsyncOpenAI client with structured JSON output for reliable parsing.
     Supports fallback to json_object mode for models without structured output.
@@ -131,13 +131,13 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
     - Safe JSON parsing with clamping
 
     Retry logic is handled by the retry decorator.
-    """
+    '''
 
     async def _detect_replacement_once(
         self,
         prompt: str,
     ) -> tuple[bool, float, str]:
-        """Call LLM with structured output once.
+        '''Call LLM with structured output once.
 
         Args:
             prompt: The formatted replacement detection prompt.
@@ -147,7 +147,7 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
 
         Raises:
             Exception: If LLM call fails.
-        """
+        '''
         result = await self._call_llm_with_structured_output(
             prompt=prompt,
             response_schema=ReplacementDecision,
@@ -155,11 +155,11 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
         )
 
         should_replace = self._extract_bool_field(
-            result, "should_replace", default=False
+            result, 'should_replace', default=False
         )
-        confidence = self._extract_float_field(result, "confidence", default=0.0)
+        confidence = self._extract_float_field(result, 'confidence', default=0.0)
         reason = self._extract_string_field(
-            result, "reason", default="No reason provided"
+            result, 'reason', default='No reason provided'
         )
 
         return (should_replace, confidence, reason)
@@ -170,7 +170,7 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
         max_retries: int,
         retry_delay: float,
     ) -> tuple[bool, float, str]:
-        """Detect if replacement should occur using OpenAI API.
+        '''Detect if replacement should occur using OpenAI API.
 
         Args:
             prompt: The formatted replacement detection prompt.
@@ -179,7 +179,7 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
 
         Returns:
             Tuple of (should_replace, confidence, reason).
-        """
+        '''
         try:
             retry = async_retry_with_backoff(
                 max_retries=max_retries, base_delay=retry_delay
@@ -189,37 +189,37 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
         except Exception as e:
             if self._logger:
                 self._logger.warning(
-                    f"OpenAI replacement detection failed after {max_retries} retries",
+                    f'OpenAI replacement detection failed after {max_retries} retries',
                     extra={
-                        "max_retries": max_retries,
-                        "error": str(e),
+                        'max_retries': max_retries,
+                        'error': str(e),
                     },
                 )
 
-            error_msg = str(e) if e else "Unknown error"
-            return (False, 0.0, f"Error: {error_msg}")
+            error_msg = str(e) if e else 'Unknown error'
+            return (False, 0.0, f'Error: {error_msg}')
 
 
 class AnthropicReplacementProvider:
-    """Anthropic Claude-based replacement detection provider.
+    '''Anthropic Claude-based replacement detection provider.
 
     Uses Claude Agent SDK via utility module for LLM calls.
     Parses JSON from plain text responses with multiple fallback strategies.
-    """
+    '''
 
     def __init__(
         self,
         model: str | None = None,
         logger: Any = None,
     ):
-        """Initialize Anthropic replacement provider.
+        '''Initialize Anthropic replacement provider.
 
         Calls init_credentials() to set up OAuth credentials.
 
         Args:
             model: LLM model identifier (passed to generate_content).
             logger: Optional structured logger.
-        """
+        '''
         super().__init__()
 
         # Lazy import to avoid dependency issues
@@ -230,7 +230,7 @@ class AnthropicReplacementProvider:
         self._logger = logger
 
     def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
-        """Extract JSON from plain text response.
+        '''Extract JSON from plain text response.
 
         Handles multiple response formats:
         1. Pure JSON
@@ -245,7 +245,7 @@ class AnthropicReplacementProvider:
 
         Raises:
             ValueError: If JSON extraction fails.
-        """
+        '''
         text = response_text.strip()
 
         # Strategy 1: Direct JSON parse
@@ -255,7 +255,7 @@ class AnthropicReplacementProvider:
             pass
 
         # Strategy 2: Markdown code block
-        code_block_pattern = r"```(?:json)?\s*\n?([\s\S]*?)\n?```"
+        code_block_pattern = r'```(?:json)?\s*\n?([\s\S]*?)\n?```'
         match = re.search(code_block_pattern, text)
         if match:
             try:
@@ -264,7 +264,7 @@ class AnthropicReplacementProvider:
                 pass
 
         # Strategy 3: Find embedded JSON object
-        json_pattern = r"\{[\s\S]*?\}"
+        json_pattern = r'\{[\s\S]*?\}'
         matches = list(re.finditer(json_pattern, text))
         for match in matches:
             try:
@@ -272,7 +272,7 @@ class AnthropicReplacementProvider:
             except json.JSONDecodeError:
                 continue
 
-        raise ValueError(f"Could not extract JSON from response: {text[:200]}")
+        raise ValueError(f'Could not extract JSON from response: {text[:200]}')
 
     async def detect_replacement(
         self,
@@ -280,7 +280,7 @@ class AnthropicReplacementProvider:
         max_retries: int,
         retry_delay: float,
     ) -> tuple[bool, float, str]:
-        """Detect if replacement should occur using Anthropic Claude.
+        '''Detect if replacement should occur using Anthropic Claude.
 
         Args:
             prompt: The formatted replacement detection prompt.
@@ -289,7 +289,7 @@ class AnthropicReplacementProvider:
 
         Returns:
             Tuple of (should_replace, confidence, reason).
-        """
+        '''
         # Lazy import to avoid dependency issues
         from reflectlog.utility import generate_content
 
@@ -306,9 +306,9 @@ class AnthropicReplacementProvider:
 
                 # Parse JSON from response
                 result = self._extract_json_from_response(response_text)
-                should_replace = bool(result.get("should_replace", False))
-                confidence = float(result.get("confidence", 0.0))
-                reason = str(result.get("reason", "No reason provided"))
+                should_replace = bool(result.get('should_replace', False))
+                confidence = float(result.get('confidence', 0.0))
+                reason = str(result.get('reason', 'No reason provided'))
                 confidence = max(0.0, min(1.0, confidence))
 
                 return (should_replace, confidence, reason)
@@ -318,12 +318,12 @@ class AnthropicReplacementProvider:
 
                 if self._logger:
                     self._logger.warning(
-                        f"Anthropic replacement detection failed "
-                        f"(attempt {attempt}/{max_retries})",
+                        f'Anthropic replacement detection failed '
+                        f'(attempt {attempt}/{max_retries})',
                         extra={
-                            "attempt": attempt,
-                            "max_retries": max_retries,
-                            "error": str(e),
+                            'attempt': attempt,
+                            'max_retries': max_retries,
+                            'error': str(e),
                         },
                     )
 
@@ -331,21 +331,21 @@ class AnthropicReplacementProvider:
                     delay = retry_delay * (2 ** (attempt - 1))
                     if self._logger:
                         self._logger.debug(
-                            f"Retrying in {delay:.1f}s",
-                            extra={"delay": delay, "next_attempt": attempt + 1},
+                            f'Retrying in {delay:.1f}s',
+                            extra={'delay': delay, 'next_attempt': attempt + 1},
                         )
                     await asyncio.sleep(delay)
 
         # All retries exhausted - return safe defaults
-        error_msg = str(last_exception) if last_exception else "Unknown error"
-        return (False, 0.0, f"Error: {error_msg}")
+        error_msg = str(last_exception) if last_exception else 'Unknown error'
+        return (False, 0.0, f'Error: {error_msg}')
 
 
 def create_replacement_provider(
     config: SmartReplacerConfig,
     logger: Any = None,
 ) -> IReplacementProvider:
-    """Create a replacement provider based on configuration.
+    '''Create a replacement provider based on configuration.
 
     Factory function that returns the appropriate provider implementation
     based on the provider setting in config.
@@ -359,8 +359,8 @@ def create_replacement_provider(
 
     Raises:
         ValueError: If provider is not supported.
-    """
-    if config.provider == "openai":
+    '''
+    if config.provider == 'openai':
         return OpenAIReplacementProvider(
             api_key=config.api_key,
             base_url=config.base_url,
@@ -368,7 +368,7 @@ def create_replacement_provider(
             timeout=config.timeout,
             logger=logger,
         )
-    elif config.provider == "anthropic":
+    elif config.provider == 'anthropic':
         return AnthropicReplacementProvider(
             model=config.model,
             logger=logger,
@@ -411,7 +411,7 @@ class SmartReplacer(BaseModel):
     _provider: IReplacementProvider | None = PrivateAttr(default=None)
 
     def __init__(self, **data: Any):
-        """Initialize SmartReplacer with appropriate provider."""
+        '''Initialize SmartReplacer with appropriate provider.'''
         super().__init__(**data)
 
         if self.config.enabled:
@@ -422,7 +422,7 @@ class SmartReplacer(BaseModel):
         new_memory: str,
         existing_memory: str,
     ) -> tuple[bool, float, str]:
-        """Check if new memory should replace existing memory.
+        '''Check if new memory should replace existing memory.
 
         Uses LLM to analyze whether the new memory semantically replaces
         the existing memory (e.g., updated preference, contradictory statement).
@@ -436,12 +436,12 @@ class SmartReplacer(BaseModel):
                 - should_replace: True if replacement should occur
                 - confidence: LLM confidence score (0.0-1.0)
                 - reason: Brief explanation of the decision
-        """
+        '''
         if not self.config.enabled:
-            return (False, 0.0, "Smart replacement disabled")
+            return (False, 0.0, 'Smart replacement disabled')
 
         if self._provider is None:
-            return (False, 0.0, "Provider not initialized")
+            return (False, 0.0, 'Provider not initialized')
 
         try:
             # Format the replacement detection prompt
@@ -468,15 +468,15 @@ class SmartReplacer(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    f"Smart replacer decision: should_replace={should_replace}, "
-                    f"confidence={confidence:.2f}, threshold={self.config.threshold}",
+                    f'Smart replacer decision: should_replace={should_replace}, '
+                    f'confidence={confidence:.2f}, threshold={self.config.threshold}',
                     extra={
-                        "should_replace": should_replace,
-                        "final_should_replace": final_should_replace,
-                        "confidence": confidence,
-                        "threshold": self.config.threshold,
-                        "reason": reason[:100],
-                        "provider": self.config.provider,
+                        'should_replace': should_replace,
+                        'final_should_replace': final_should_replace,
+                        'confidence': confidence,
+                        'threshold': self.config.threshold,
+                        'reason': reason[:100],
+                        'provider': self.config.provider,
                     },
                 )
 
@@ -485,15 +485,15 @@ class SmartReplacer(BaseModel):
         except json.JSONDecodeError as e:
             if self.logger:
                 self.logger.warning(
-                    f"Invalid JSON from LLM for replacement detection: {e}",
-                    extra={"error": str(e), "provider": self.config.provider},
+                    f'Invalid JSON from LLM for replacement detection: {e}',
+                    extra={'error': str(e), 'provider': self.config.provider},
                 )
-            return (False, 0.0, f"JSON parse error: {e}")
+            return (False, 0.0, f'JSON parse error: {e}')
 
         except Exception as e:
             if self.logger:
                 self.logger.warning(
-                    f"Smart replacement check failed: {e}",
-                    extra={"error": str(e), "provider": self.config.provider},
+                    f'Smart replacement check failed: {e}',
+                    extra={'error': str(e), 'provider': self.config.provider},
                 )
-            return (False, 0.0, f"Error: {e}")
+            return (False, 0.0, f'Error: {e}')

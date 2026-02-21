@@ -1,4 +1,4 @@
-"""Memory management wrapper for hybrid search integration.
+'''Memory management wrapper for hybrid search integration.
 
 This module provides the MemoryManager class that orchestrates all memory
 operations. It combines semantic vector search (USearch) with full-text
@@ -26,7 +26,7 @@ Example:
         logger=logger,
         semantic_backend=mock_backend,
     )
-"""
+'''
 
 import threading
 import time
@@ -71,16 +71,16 @@ from .search_strategies import (
 
 
 class MemoryManager:
-    """Manages memory storage and retrieval using USearch with SQLite backend."""
+    '''Manages memory storage and retrieval using USearch with SQLite backend.'''
 
     def __init__(self, config: Config, logger: StructuredLogger):
-        """Initialize Hybrid MemoryManager with USearch semantic
+        '''Initialize Hybrid MemoryManager with USearch semantic
         & Tantivy full-text engines.
 
         Args:
             config: Application configuration.
             logger: Structured logger instance.
-        """
+        '''
         super().__init__()
         self.config = config
         self.logger = logger
@@ -125,14 +125,14 @@ class MemoryManager:
         usearch_config = USearchConfig.from_app_config(config)
         base_embedder = LangchainQwenEmbeddings(
             config={
-                "model": config.embedding_model,
-                "embedding_dims": config.qwen_embedding_dims
-                if config.embedder_provider == "langchain"
+                'model': config.embedding_model,
+                'embedding_dims': config.qwen_embedding_dims
+                if config.embedder_provider == 'langchain'
                 else config.embedding_dims,
-                "api_key": config.openrouter_api_key.get_secret_value(),
-                "openai_base_url": config.openrouter_base_url,
-                "batch_size": config.embedding_batch_size,
-                "max_concurrent_batches": config.embedding_max_concurrent_batches,
+                'api_key': config.openrouter_api_key.get_secret_value(),
+                'openai_base_url': config.openrouter_base_url,
+                'batch_size': config.embedding_batch_size,
+                'max_concurrent_batches': config.embedding_max_concurrent_batches,
             }
         )
 
@@ -176,25 +176,25 @@ class MemoryManager:
         self._llm_reranker: LLMReranker | None = None
         self._cross_encoder_reranker: CrossEncoderReranker | None = None
 
-        if self.config.reranker_engine == "llm":
+        if self.config.reranker_engine == 'llm':
             self.logger.info(
-                f"LLM reranker configured (lazy init) [model={config.llm_model}]",
-                extra={"reranker_engine": "llm", "model": config.llm_model},
+                f'LLM reranker configured (lazy init) [model={config.llm_model}]',
+                extra={'reranker_engine': 'llm', 'model': config.llm_model},
             )
-        elif self.config.reranker_engine == "cross_encoder":
+        elif self.config.reranker_engine == 'cross_encoder':
             self.logger.info(
-                f"CrossEncoder reranker configured (lazy init) "
-                f"[model={config.cross_encoder_model}]",
+                f'CrossEncoder reranker configured (lazy init) '
+                f'[model={config.cross_encoder_model}]',
                 extra={
-                    "reranker_engine": "cross_encoder",
-                    "model": config.cross_encoder_model,
-                    "device": config.cross_encoder_device,
+                    'reranker_engine': 'cross_encoder',
+                    'model': config.cross_encoder_model,
+                    'device': config.cross_encoder_device,
                 },
             )
         else:
             self.logger.info(
-                "Reranking disabled (RERANKER_ENGINE=none)",
-                extra={"reranker_engine": "none"},
+                'Reranking disabled (RERANKER_ENGINE=none)',
+                extra={'reranker_engine': 'none'},
             )
 
         # 5. SmartReplacer - lazily initialized via property
@@ -203,18 +203,18 @@ class MemoryManager:
 
         if self.config.enable_smart_replace:
             self.logger.info(
-                f"SmartReplacer configured (lazy init) [model={config.llm_model}, "
-                f"threshold={config.smart_replace_threshold}]",
+                f'SmartReplacer configured (lazy init) [model={config.llm_model}, '
+                f'threshold={config.smart_replace_threshold}]',
                 extra={
-                    "smart_replacer": "enabled",
-                    "model": config.llm_model,
-                    "threshold": config.smart_replace_threshold,
+                    'smart_replacer': 'enabled',
+                    'model': config.llm_model,
+                    'threshold': config.smart_replace_threshold,
                 },
             )
         else:
             self.logger.info(
-                "Smart memory replacement disabled (ENABLE_SMART_REPLACE=false)",
-                extra={"smart_replacer": "disabled"},
+                'Smart memory replacement disabled (ENABLE_SMART_REPLACE=false)',
+                extra={'smart_replacer': 'disabled'},
             )
 
         # 7. Initialize search pipeline
@@ -257,14 +257,14 @@ class MemoryManager:
         )
 
         self.logger.info(
-            f"Initialized Hybrid MemoryManager [project_id={self.project_id}, "
-            f"semantic_backend=usearch, "
-            f"hybrid_search={self.is_hybrid_search}, "
-            f"embedding_model={self.config.embedding_model}, "
+            f'Initialized Hybrid MemoryManager [project_id={self.project_id}, '
+            f'semantic_backend=usearch, '
+            f'hybrid_search={self.is_hybrid_search}, '
+            f'embedding_model={self.config.embedding_model}, '
         )
         self.logger.info(
-            f"tantivy_index={self.config.tantivy_index_path_template.format(project_id=self.project_id)}, "
-            f"embedder={config.embedder_provider}]",
+            f'tantivy_index={self.config.tantivy_index_path_template.format(project_id=self.project_id)}, '
+            f'embedder={config.embedder_provider}]',
         )
 
         # 6. Eager initialization (pre-warm engines if enabled)
@@ -272,7 +272,7 @@ class MemoryManager:
             self._eager_initialize_engines()
 
     def _eager_initialize_engines(self) -> None:
-        """Pre-warm storage engines for faster first operation.
+        '''Pre-warm storage engines for faster first operation.
 
         This method forces initialization of lazy-loaded resources based on
         granular configuration settings:
@@ -287,7 +287,7 @@ class MemoryManager:
 
         Useful for reducing first-request latency in production deployments.
         Called during __init__ when enabled.
-        """
+        '''
         start_time = time.time()
 
         # Determine which components to initialize
@@ -314,46 +314,46 @@ class MemoryManager:
         # Pre-warm search engines if configured
         if should_init_search:
             self.logger.info(
-                "Starting eager search engine initialization...",
-                extra={"project_id": self.project_id},
+                'Starting eager search engine initialization...',
+                extra={'project_id': self.project_id},
             )
 
             # Pre-warm USearch semantic engine
             self._semantic_engine.ensure_initialized()
-            engines_initialized.append("usearch")
+            engines_initialized.append('usearch')
 
             # Pre-warm Tantivy full-text engine
             if self._tantivy_engine is not None:
                 self._tantivy_engine.ensure_initialized()
-                engines_initialized.append("tantivy")
+                engines_initialized.append('tantivy')
 
         # Pre-warm reranker if explicitly configured (lazy by default)
         if should_init_reranker:
             # Validate that reranker engine type is supported
-            if self.config.reranker_engine not in ("llm", "cross_encoder"):
+            if self.config.reranker_engine not in ('llm', 'cross_encoder'):
                 raise ValueError(
-                    f"Invalid reranker_engine for eager initialization: "
-                    f"{self.config.reranker_engine!r}. "
+                    f'Invalid reranker_engine for eager initialization: '
+                    f'{self.config.reranker_engine!r}. '
                     f"Must be 'llm' or 'cross_encoder', or set "
-                    f"eager_initialize_reranker=false for lazy loading."
+                    f'eager_initialize_reranker=false for lazy loading.'
                 )
 
             self.logger.info(
-                "Starting eager reranker initialization...",
+                'Starting eager reranker initialization...',
                 extra={
-                    "project_id": self.project_id,
-                    "reranker_engine": self.config.reranker_engine,
+                    'project_id': self.project_id,
+                    'reranker_engine': self.config.reranker_engine,
                 },
             )
             reranker = self.get_reranker()
             if reranker is not None:
-                engines_initialized.append(f"reranker_{self.config.reranker_engine}")
+                engines_initialized.append(f'reranker_{self.config.reranker_engine}')
             else:
                 self.logger.warning(
-                    "Eager reranker initialization requested but no reranker configured",
+                    'Eager reranker initialization requested but no reranker configured',
                     extra={
-                        "project_id": self.project_id,
-                        "reranker_engine": self.config.reranker_engine,
+                        'project_id': self.project_id,
+                        'reranker_engine': self.config.reranker_engine,
                     },
                 )
 
@@ -362,33 +362,33 @@ class MemoryManager:
             # Validate that smart replacement is enabled
             if not self.config.enable_smart_replace:
                 raise ValueError(
-                    "Eager SmartReplacer initialization requested but "
-                    "enable_smart_replace is disabled. Set enable_smart_replace=true "
-                    "or set eager_initialize_smart_replacer=false for lazy loading."
+                    'Eager SmartReplacer initialization requested but '
+                    'enable_smart_replace is disabled. Set enable_smart_replace=true '
+                    'or set eager_initialize_smart_replacer=false for lazy loading.'
                 )
 
             self.logger.info(
-                "Starting eager SmartReplacer initialization...",
-                extra={"project_id": self.project_id},
+                'Starting eager SmartReplacer initialization...',
+                extra={'project_id': self.project_id},
             )
             _ = self.smart_replacer
-            engines_initialized.append("smart_replacer")
+            engines_initialized.append('smart_replacer')
 
         elapsed_ms = (time.time() - start_time) * 1000
 
         if engines_initialized:
             self.logger.info(
-                f"Eager initialization complete [{elapsed_ms:.1f}ms]",
+                f'Eager initialization complete [{elapsed_ms:.1f}ms]',
                 extra={
-                    "project_id": self.project_id,
-                    "elapsed_ms": elapsed_ms,
-                    "engines_initialized": engines_initialized,
+                    'project_id': self.project_id,
+                    'elapsed_ms': elapsed_ms,
+                    'engines_initialized': engines_initialized,
                 },
             )
         else:
             self.logger.info(
-                "Eager initialization skipped (all components set to lazy loading)",
-                extra={"project_id": self.project_id},
+                'Eager initialization skipped (all components set to lazy loading)',
+                extra={'project_id': self.project_id},
             )
 
     @property
@@ -402,21 +402,21 @@ class MemoryManager:
             RuntimeError: If reranker_engine is 'llm' but initialization fails.
         """
         # Fast path: already initialized or not configured
-        if self._llm_reranker is not None or self.config.reranker_engine != "llm":
+        if self._llm_reranker is not None or self.config.reranker_engine != 'llm':
             return self._llm_reranker
 
         # Slow path: need to initialize with lock
         with self._reranker_lock:
             # Double-check after acquiring lock
-            if self._llm_reranker is not None or self.config.reranker_engine != "llm":
+            if self._llm_reranker is not None or self.config.reranker_engine != 'llm':
                 return self._llm_reranker
 
             # Initialize LLM reranker
             reranker_config = LLMRerankerConfig.from_app_config(self.config)
             self._llm_reranker = LLMReranker(config=reranker_config, logger=self.logger)
             self.logger.info(
-                f"Lazy initialized LLM reranker [model={self.config.llm_model}]",
-                extra={"reranker_engine": "llm", "model": self.config.llm_model},
+                f'Lazy initialized LLM reranker [model={self.config.llm_model}]',
+                extra={'reranker_engine': 'llm', 'model': self.config.llm_model},
             )
             return self._llm_reranker
 
@@ -433,7 +433,7 @@ class MemoryManager:
         # Fast path: already initialized or not configured
         if (
             self._cross_encoder_reranker is not None
-            or self.config.reranker_engine != "cross_encoder"
+            or self.config.reranker_engine != 'cross_encoder'
         ):
             return self._cross_encoder_reranker
 
@@ -442,7 +442,7 @@ class MemoryManager:
             # Double-check after acquiring lock
             if (
                 self._cross_encoder_reranker is not None
-                or self.config.reranker_engine != "cross_encoder"
+                or self.config.reranker_engine != 'cross_encoder'
             ):
                 return self._cross_encoder_reranker
 
@@ -452,25 +452,25 @@ class MemoryManager:
                 config=ce_config, logger=self.logger
             )
             self.logger.info(
-                f"Lazy initialized CrossEncoder reranker [model={self.config.cross_encoder_model}]",
+                f'Lazy initialized CrossEncoder reranker [model={self.config.cross_encoder_model}]',
                 extra={
-                    "reranker_engine": "cross_encoder",
-                    "model": self.config.cross_encoder_model,
-                    "device": self.config.cross_encoder_device,
+                    'reranker_engine': 'cross_encoder',
+                    'model': self.config.cross_encoder_model,
+                    'device': self.config.cross_encoder_device,
                 },
             )
             return self._cross_encoder_reranker
 
     @property
     def smart_replacer(self) -> SmartReplacer | None:
-        """Get SmartReplacer (lazy initialization with thread-safety).
+        '''Get SmartReplacer (lazy initialization with thread-safety).
 
         Returns:
             SmartReplacer instance if smart replacement is enabled, None otherwise.
 
         Raises:
             RuntimeError: If ENABLE_SMART_REPLACE=true but initialization fails.
-        """
+        '''
         # Fast path: already initialized or not configured
         if self._smart_replacer is not None or not self.config.enable_smart_replace:
             return self._smart_replacer
@@ -487,16 +487,16 @@ class MemoryManager:
                 config=smart_replacer_config, logger=self.logger
             )
             self.logger.info(
-                f"Lazy initialized SmartReplacer [model={self.config.llm_model}]",
+                f'Lazy initialized SmartReplacer [model={self.config.llm_model}]',
                 extra={
-                    "smart_replacer": "enabled",
-                    "model": self.config.llm_model,
+                    'smart_replacer': 'enabled',
+                    'model': self.config.llm_model,
                 },
             )
             return self._smart_replacer
 
     def get_reranker(self) -> LLMReranker | CrossEncoderReranker | None:
-        """Get the appropriate reranker based on configuration.
+        '''Get the appropriate reranker based on configuration.
 
         Returns:
             The configured reranker instance (LLM or CrossEncoder), or None if disabled.
@@ -504,15 +504,15 @@ class MemoryManager:
         Note:
             This method provides a unified interface for the search pipeline
             to obtain the active reranker without needing to know the type.
-        """
-        if self.config.reranker_engine == "llm":
+        '''
+        if self.config.reranker_engine == 'llm':
             return self.llm_reranker
-        elif self.config.reranker_engine == "cross_encoder":
+        elif self.config.reranker_engine == 'cross_encoder':
             return self.cross_encoder_reranker
         return None
 
     def _add_memory(self, memory: str) -> bool:
-        """Add a single memory to BOTH USearch semantic and Tantivy full-text engines if not duplicate.
+        '''Add a single memory to BOTH USearch semantic and Tantivy full-text engines if not duplicate.
 
         Args:
             memory: The memory to store.
@@ -522,13 +522,13 @@ class MemoryManager:
 
         Raises:
             RuntimeError: If storage operation fails.
-        """
+        '''
         if self.config.deduplicate_memories and self._has_exact_match(memory):
             self.logger.info(
-                "Duplicate memory detected, skipping storage",
+                'Duplicate memory detected, skipping storage',
                 extra={
-                    "project_id": self.project_id,
-                    "memory_preview": memory[:200],
+                    'project_id': self.project_id,
+                    'memory_preview': memory[:200],
                 },
             )
             return False
@@ -546,23 +546,23 @@ class MemoryManager:
                 self._tantivy_engine.add(self.project_id, memory)
 
             self.logger.debug(
-                "Memory added to hybrid storage",
+                'Memory added to hybrid storage',
                 extra={
-                    "project_id": self.project_id,
-                    "memory_length": len(memory),
-                    "engines": ["semantic", "tantivy"],
+                    'project_id': self.project_id,
+                    'memory_length': len(memory),
+                    'engines': ['semantic', 'tantivy'],
                 },
             )
             return True
 
         except Exception as e:
-            raise StorageError(f"Failed to add memory to hybrid storage: {e}") from e
+            raise StorageError(f'Failed to add memory to hybrid storage: {e}') from e
 
     def _add_message(self, message: str) -> bool:
         return self._add_memory(message)
 
     def add_memories(self, memories: list[str]) -> int:
-        """Add multiple memories to memory store (thread-safe).
+        '''Add multiple memories to memory store (thread-safe).
 
         Thread-safe: Uses RLock to ensure consistent state during batch addition.
 
@@ -574,7 +574,7 @@ class MemoryManager:
 
         Raises:
             RuntimeError: If storage operation fails.
-        """
+        '''
         with self._write_lock, self._lock:
             stored_count = 0
             memories_to_add: list[str] = []
@@ -585,20 +585,20 @@ class MemoryManager:
                 if idx <= log_limit:
                     preview = truncate_memory(memory, max_length=60)
                     self.logger.info(
-                        f"  ⏳ [{idx}/{len(memories)}] Processing: {preview}",
+                        f'  ⏳ [{idx}/{len(memories)}] Processing: {preview}',
                         extra={
-                            "memory_index": idx,
-                            "total_memories": len(memories),
-                            "memory_length": len(memory),
+                            'memory_index': idx,
+                            'total_memories': len(memories),
+                            'memory_length': len(memory),
                         },
                     )
                 if memory in seen_memories:
                     if idx <= log_limit:
                         self.logger.info(
-                            "    Skipped (duplicate in batch)",
+                            '    Skipped (duplicate in batch)',
                             extra={
-                                "memory_index": idx,
-                                "reason": "batch_duplicate",
+                                'memory_index': idx,
+                                'reason': 'batch_duplicate',
                             },
                         )
                     continue
@@ -607,18 +607,18 @@ class MemoryManager:
                 if self.config.deduplicate_memories and self._has_exact_match(memory):
                     if idx <= log_limit:
                         self.logger.info(
-                            "    Skipped (duplicate detected)",
-                            extra={"memory_index": idx, "reason": "duplicate"},
+                            '    Skipped (duplicate detected)',
+                            extra={'memory_index': idx, 'reason': 'duplicate'},
                         )
                     continue
 
                 memories_to_add.append(memory)
             if len(memories) > log_limit:
                 self.logger.info(
-                    f"  ... {len(memories) - log_limit} more memory(s) omitted from logs",
+                    f'  ... {len(memories) - log_limit} more memory(s) omitted from logs',
                     extra={
-                        "omitted_count": len(memories) - log_limit,
-                        "total_memories": len(memories),
+                        'omitted_count': len(memories) - log_limit,
+                        'total_memories': len(memories),
                     },
                 )
 
@@ -644,28 +644,28 @@ class MemoryManager:
                         break
                     if memory in inserted_set:
                         self.logger.info(
-                            "    Stored in USearch (semantic) + Tantivy (full-text)",
+                            '    Stored in USearch (semantic) + Tantivy (full-text)',
                             extra={
-                                "memory_index": idx,
-                                "engines": ["usearch", "tantivy"]
+                                'memory_index': idx,
+                                'engines': ['usearch', 'tantivy']
                                 if self._tantivy_engine
-                                else ["usearch"],
+                                else ['usearch'],
                             },
                         )
                     else:
                         self.logger.warning(
-                            "    Skipped during batch insert",
+                            '    Skipped during batch insert',
                             extra={
-                                "memory_index": idx,
-                                "reason": "batch_insert_skipped",
+                                'memory_index': idx,
+                                'reason': 'batch_insert_skipped',
                             },
                         )
                 if len(memories_to_add) > stored_log_limit:
                     self.logger.info(
-                        f"  ... {len(memories_to_add) - stored_log_limit} more result(s) omitted from logs",
+                        f'  ... {len(memories_to_add) - stored_log_limit} more result(s) omitted from logs',
                         extra={
-                            "omitted_count": len(memories_to_add) - stored_log_limit,
-                            "total_memories": len(memories_to_add),
+                            'omitted_count': len(memories_to_add) - stored_log_limit,
+                            'total_memories': len(memories_to_add),
                         },
                     )
 
@@ -673,15 +673,15 @@ class MemoryManager:
             if self._tantivy_engine is not None:
                 self._tantivy_engine.commit()
                 self.logger.info(
-                    "  Tantivy index committed",
-                    extra={"engine": "tantivy"},
+                    '  Tantivy index committed',
+                    extra={'engine': 'tantivy'},
                 )
 
             # Commit USearch semantic engine changes
             self._semantic_engine.commit()
             self.logger.info(
-                "  USearch index committed",
-                extra={"engine": "usearch"},
+                '  USearch index committed',
+                extra={'engine': 'usearch'},
             )
 
             return stored_count
@@ -692,7 +692,7 @@ class MemoryManager:
     async def add_memories_async(
         self, memories: list[str], dry_run: bool = False
     ) -> AddResult:
-        """Add multiple memories with phased parallel processing (Sprint 2.2).
+        '''Add multiple memories with phased parallel processing (Sprint 2.2).
 
         Uses a 3-phase approach for optimal performance via AddPipeline:
         - Phase 1 (Parallel): Duplicate detection for all memories
@@ -714,7 +714,7 @@ class MemoryManager:
 
         Raises:
             RuntimeError: If storage operation fails (not raised in dry_run mode).
-        """
+        '''
         return await self._add_pipeline.execute(memories, dry_run)
 
     async def add_messages_async(
@@ -723,7 +723,7 @@ class MemoryManager:
         return await self.add_memories_async(messages, dry_run)
 
     def get_all(self) -> list[str]:
-        """Retrieve all stored memories with cross-engine consistency check (thread-safe).
+        '''Retrieve all stored memories with cross-engine consistency check (thread-safe).
 
         Thread-safe: Uses RLock to ensure consistent state during retrieval.
 
@@ -732,30 +732,30 @@ class MemoryManager:
 
         Raises:
             RuntimeError: If retrieval operation fails.
-        """
+        '''
         with self._lock:
             try:
                 memories = self._semantic_engine.get_all(project_id=self.project_id)
 
                 self.logger.info(
-                    f"Retrieved {len(memories)} memories (USearchEngine={len(memories)})",
+                    f'Retrieved {len(memories)} memories (USearchEngine={len(memories)})',
                     extra={
-                        "project_id": self.project_id,
-                        "count": len(memories),
+                        'project_id': self.project_id,
+                        'count': len(memories),
                     },
                 )
 
                 return memories
 
             except Exception as e:
-                raise StorageError(f"Failed to retrieve memories: {e}") from e
+                raise StorageError(f'Failed to retrieve memories: {e}') from e
 
     async def search(
         self,
         query: str,
         limit: int | None = None,
     ) -> list[str]:
-        """Hybrid semantic + full-text search with RRF ranking (async).
+        '''Hybrid semantic + full-text search with RRF ranking (async).
 
         This async method uses the SearchPipeline to execute a 4-step search:
         1. Parallel semantic + full-text search
@@ -772,14 +772,14 @@ class MemoryManager:
 
         Raises:
             RuntimeError: If search operation fails.
-        """
+        '''
         # Use defaults from config if not provided
         if limit is None:
             limit = self.config.search_limit
 
         # Calculate adaptive overfetch limit
         try:
-            engine_index = getattr(self._semantic_engine, "index", None)
+            engine_index = getattr(self._semantic_engine, 'index', None)
             index_size = len(engine_index) if engine_index is not None else 0
         except Exception:
             index_size = 0
@@ -836,38 +836,38 @@ class MemoryManager:
                 # Found exact match - return as candidate
                 candidates.append(
                     {
-                        "id": str(mem_id),  # Use database ID directly
-                        "memory": query,
-                        "score": 1.0,  # Exact match = perfect score
+                        'id': str(mem_id),  # Use database ID directly
+                        'memory': query,
+                        'score': 1.0,  # Exact match = perfect score
                     }
                 )
 
             self.logger.debug(
-                f"Direct lookup removal candidates: {len(candidates)}",
-                extra={"project_id": self.project_id, "query": query[:50]},
+                f'Direct lookup removal candidates: {len(candidates)}',
+                extra={'project_id': self.project_id, 'query': query[:50]},
             )
             return candidates
 
         except Exception as e:
-            raise SearchError(f"Failed to search for removal: {e}") from e
+            raise SearchError(f'Failed to search for removal: {e}') from e
 
     def delete_by_id(self, memory_id: str) -> None:
-        """Delete a memory entry by its ID.
+        '''Delete a memory entry by its ID.
 
         Args:
             memory_id: The ID of the memory to delete.
 
         Raises:
             StorageError: If deletion fails.
-        """
+        '''
         with self._write_lock:
             try:
                 self._semantic_engine.delete(memory_id=memory_id)
             except Exception as e:
-                raise StorageError(f"Failed to delete memory: {e}") from e
+                raise StorageError(f'Failed to delete memory: {e}') from e
 
     def delete_by_memory(self, memory: str) -> bool:
-        """Delete a memory entry by its exact memory content (thread-safe).
+        '''Delete a memory entry by its exact memory content (thread-safe).
 
         Thread-safe: Uses RLock to ensure consistent state during deletion.
 
@@ -884,7 +884,7 @@ class MemoryManager:
 
         Raises:
             RuntimeError: If deletion fails or results in inconsistent state.
-        """
+        '''
         with self._write_lock, self._lock:
             try:
                 # 1. Look up the SQLite ID from the memory content
@@ -892,10 +892,10 @@ class MemoryManager:
 
                 if mem_id is None:
                     self.logger.debug(
-                        "Memory not found for deletion",
+                        'Memory not found for deletion',
                         extra={
-                            "project_id": self.project_id,
-                            "memory_preview": memory[:50],
+                            'project_id': self.project_id,
+                            'memory_preview': memory[:50],
                         },
                     )
                     return False
@@ -912,26 +912,26 @@ class MemoryManager:
                     except Exception as tantivy_error:
                         # Log critical error - state is now inconsistent
                         self.logger.error(
-                            "Tantivy deletion failed after USearch deletion - INCONSISTENT STATE",
+                            'Tantivy deletion failed after USearch deletion - INCONSISTENT STATE',
                             extra={
-                                "project_id": self.project_id,
-                                "memory_id": mem_id,
-                                "error": str(tantivy_error),
+                                'project_id': self.project_id,
+                                'memory_id': mem_id,
+                                'error': str(tantivy_error),
                             },
                         )
                         raise InconsistentStateError(
-                            "USearch deletion succeeded but Tantivy deletion failed: "
-                            f"{tantivy_error}"
+                            'USearch deletion succeeded but Tantivy deletion failed: '
+                            f'{tantivy_error}'
                         ) from tantivy_error
 
                 self.logger.debug(
-                    "Memory deleted from hybrid storage",
+                    'Memory deleted from hybrid storage',
                     extra={
-                        "project_id": self.project_id,
-                        "memory_id": mem_id,
-                        "engines": ["usearch", "tantivy"]
+                        'project_id': self.project_id,
+                        'memory_id': mem_id,
+                        'engines': ['usearch', 'tantivy']
                         if self._tantivy_engine
-                        else ["usearch"],
+                        else ['usearch'],
                     },
                 )
 
@@ -940,19 +940,19 @@ class MemoryManager:
             except InconsistentStateError:
                 raise  # Re-raise inconsistent state errors with full context
             except Exception as e:
-                raise StorageError(f"Failed to delete memory: {e}") from e
+                raise StorageError(f'Failed to delete memory: {e}') from e
 
     def delete_by_message(self, message: str) -> bool:
         return self.delete_by_memory(message)
 
     def get_id_by_content(self, content: str) -> int | None:
-        """Get SQLite ID for exact memory content match.
+        '''Get SQLite ID for exact memory content match.
 
         Uses get_id_by_content() when available, with fallback to a
         legacy ID lookup API for compatibility.
-        """
+        '''
         semantic_engine: Any = self._semantic_engine
-        if hasattr(semantic_engine, "get_id_by_content"):
+        if hasattr(semantic_engine, 'get_id_by_content'):
             return semantic_engine.get_id_by_content(self.project_id, content)
         return self._semantic_engine.get_id_by_message(self.project_id, content)
 
@@ -960,7 +960,7 @@ class MemoryManager:
         return self.get_id_by_content(message)
 
     def _has_exact_match(self, content: str) -> bool:
-        """Check whether the exact memory already exists in storage.
+        '''Check whether the exact memory already exists in storage.
 
         Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
         falling back to direct database lookup otherwise. Both paths are O(log n)
@@ -968,7 +968,7 @@ class MemoryManager:
 
         Sprint 2.1 Optimization: Fallback now uses get_id_by_content() for direct
         indexed database lookup instead of semantic search with embedding API call.
-        """
+        '''
         return has_exact_match(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
@@ -978,7 +978,7 @@ class MemoryManager:
         )
 
     def close(self) -> None:
-        """Close all resources and persist data to disk (thread-safe).
+        '''Close all resources and persist data to disk (thread-safe).
 
         This method ensures all data is properly saved before shutdown:
         1. Commits and closes Tantivy full-text engine (if enabled)
@@ -988,11 +988,11 @@ class MemoryManager:
 
         Should be called during graceful shutdown (e.g., on SIGINT/SIGTERM)
         to prevent data loss.
-        """
+        '''
         with self._write_lock, self._lock:
             self.logger.info(
-                "Closing MemoryManager - persisting data to disk...",
-                extra={"project_id": self.project_id},
+                'Closing MemoryManager - persisting data to disk...',
+                extra={'project_id': self.project_id},
             )
 
             # 1. Close Tantivy engine first (if enabled)
@@ -1002,16 +1002,16 @@ class MemoryManager:
                     self._tantivy_engine.flush()
                     self._tantivy_engine.close()
                     self.logger.info(
-                        "Tantivy engine closed successfully",
-                        extra={"project_id": self.project_id, "engine": "tantivy"},
+                        'Tantivy engine closed successfully',
+                        extra={'project_id': self.project_id, 'engine': 'tantivy'},
                     )
                 except Exception as e:
                     self.logger.error(
-                        f"Error closing Tantivy engine: {e}",
+                        f'Error closing Tantivy engine: {e}',
                         extra={
-                            "project_id": self.project_id,
-                            "engine": "tantivy",
-                            "error": str(e),
+                            'project_id': self.project_id,
+                            'engine': 'tantivy',
+                            'error': str(e),
                         },
                     )
 
@@ -1021,20 +1021,20 @@ class MemoryManager:
                 self._semantic_engine.commit()
                 self._semantic_engine.close()
                 self.logger.info(
-                    "USearch engine closed successfully",
-                    extra={"project_id": self.project_id, "engine": "usearch"},
+                    'USearch engine closed successfully',
+                    extra={'project_id': self.project_id, 'engine': 'usearch'},
                 )
             except Exception as e:
                 self.logger.error(
-                    f"Error closing USearch engine: {e}",
+                    f'Error closing USearch engine: {e}',
                     extra={
-                        "project_id": self.project_id,
-                        "engine": "usearch",
-                        "error": str(e),
+                        'project_id': self.project_id,
+                        'engine': 'usearch',
+                        'error': str(e),
                     },
                 )
 
             self.logger.info(
-                "MemoryManager closed - all data persisted",
-                extra={"project_id": self.project_id},
+                'MemoryManager closed - all data persisted',
+                extra={'project_id': self.project_id},
             )

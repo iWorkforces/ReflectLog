@@ -46,10 +46,10 @@ class CrossEncoderConfig:
         max_length: Maximum token length for query-document pairs.
     """
 
-    model_name: str = "BAAI/bge-reranker-v2-m3"
+    model_name: str = 'BAAI/bge-reranker-v2-m3'
     enabled: bool = True
     top_k: int = 20
-    device: str = "cpu"
+    device: str = 'cpu'
     batch_size: int = 32
     score_threshold: float = 0.0
     use_fp16: bool = True
@@ -62,17 +62,17 @@ class CrossEncoderConfig:
 
     @classmethod
     def from_app_config(cls, config: Config) -> CrossEncoderConfig:
-        """Create CrossEncoderConfig from application Config.
+        '''Create CrossEncoderConfig from application Config.
 
         Args:
             config: Application configuration object.
 
         Returns:
             CrossEncoderConfig instance configured from app settings.
-        """
+        '''
         return cls(
             model_name=config.cross_encoder_model,
-            enabled=config.reranker_engine == "cross_encoder",
+            enabled=config.reranker_engine == 'cross_encoder',
             top_k=config.cross_encoder_top_k,
             device=config.cross_encoder_device,
             batch_size=config.cross_encoder_batch_size,
@@ -121,7 +121,7 @@ class CrossEncoderReranker(BaseModel):
 
     @property
     def model(self) -> Any:
-        """Get FlagReranker model (thread-safe lazy initialization).
+        '''Get FlagReranker model (thread-safe lazy initialization).
 
         Returns:
             Initialized FlagReranker model.
@@ -130,7 +130,7 @@ class CrossEncoderReranker(BaseModel):
             The model is loaded on first access and cached. Loading uses a
             lock to ensure thread safety in concurrent environments.
             FlagEmbedding is imported lazily for performance, not to avoid dependency issues.
-        """
+        '''
         if self._model is not None:
             return self._model
 
@@ -139,14 +139,14 @@ class CrossEncoderReranker(BaseModel):
             if self._model is None:
                 if self.logger:
                     self.logger.info(
-                        f"Loading FlagReranker model: {self.config.model_name}",
+                        f'Loading FlagReranker model: {self.config.model_name}',
                         extra={
-                            "device": self.config.device,
-                            "use_fp16": self.config.use_fp16,
+                            'device': self.config.device,
+                            'use_fp16': self.config.use_fp16,
                         },
                     )
 
-                flag_embedding_module = importlib.import_module("FlagEmbedding")
+                flag_embedding_module = importlib.import_module('FlagEmbedding')
                 flag_reranker_class = cast(
                     Any,
                     flag_embedding_module,
@@ -177,10 +177,10 @@ class CrossEncoderReranker(BaseModel):
 
                 if self.logger:
                     self.logger.info(
-                        "FlagReranker model loaded successfully",
+                        'FlagReranker model loaded successfully',
                         extra={
-                            "model": self.config.model_name,
-                            "use_fp16": self.config.use_fp16,
+                            'model': self.config.model_name,
+                            'use_fp16': self.config.use_fp16,
                         },
                     )
 
@@ -191,10 +191,10 @@ class CrossEncoderReranker(BaseModel):
             if self._model is None:
                 if self.logger:
                     self.logger.info(
-                        f"Loading FlagReranker model: {self.config.model_name}",
+                        f'Loading FlagReranker model: {self.config.model_name}',
                         extra={
-                            "device": self.config.device,
-                            "use_fp16": self.config.use_fp16,
+                            'device': self.config.device,
+                            'use_fp16': self.config.use_fp16,
                         },
                     )
 
@@ -223,10 +223,10 @@ class CrossEncoderReranker(BaseModel):
 
                 if self.logger:
                     self.logger.info(
-                        "FlagReranker model loaded successfully",
+                        'FlagReranker model loaded successfully',
                         extra={
-                            "model": self.config.model_name,
-                            "use_fp16": self.config.use_fp16,
+                            'model': self.config.model_name,
+                            'use_fp16': self.config.use_fp16,
                         },
                     )
 
@@ -246,24 +246,24 @@ class CrossEncoderReranker(BaseModel):
         # This is the cleanest solution if the tokenizer is accessible
         if self._model is not None:
             # FlagReranker may store tokenizer in different attributes
-            tokenizer = getattr(self._model, "tokenizer", None)
+            tokenizer = getattr(self._model, 'tokenizer', None)
             if tokenizer is None:
                 # Try accessing via the model's internal structure
-                model_obj = getattr(self._model, "model", None)
+                model_obj = getattr(self._model, 'model', None)
                 if model_obj is not None:
-                    tokenizer = getattr(model_obj, "tokenizer", None)
+                    tokenizer = getattr(model_obj, 'tokenizer', None)
 
-            if tokenizer is not None and hasattr(tokenizer, "deprecation_warnings"):
-                tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
+            if tokenizer is not None and hasattr(tokenizer, 'deprecation_warnings'):
+                tokenizer.deprecation_warnings['Asking-to-pad-a-fast-tokenizer'] = True
                 return
 
         # Approach 2: Use warnings filter as fallback
         # This catches the warning regardless of tokenizer accessibility
         warnings.filterwarnings(
-            "ignore",
+            'ignore',
             message=r"You're using a \w+TokenizerFast tokenizer.*using the `__call__` method is faster",
             category=UserWarning,
-            module=r"transformers\.tokenization_utils_base",
+            module=r'transformers\.tokenization_utils_base',
         )
 
     def rerank(
@@ -272,7 +272,7 @@ class CrossEncoderReranker(BaseModel):
         candidates: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None = None,
     ) -> list[tuple[str, float]]:
-        """Rerank candidates using FlagReranker scores with optional recency decay.
+        '''Rerank candidates using FlagReranker scores with optional recency decay.
 
         Scores each candidate document against the query using FlagReranker,
         applies score threshold filtering, optional recency decay, sorts by score
@@ -298,15 +298,15 @@ class CrossEncoderReranker(BaseModel):
             - With normalize=False, scores can be any real number
             - Recency decay is applied after normalization when
               enable_recency_boost=True
-        """
+        '''
         if not candidates:
             return []
 
         if not self.config.enabled:
             if self.logger:
                 self.logger.debug(
-                    "Cross-encoder disabled, returning original candidates",
-                    extra={"candidate_count": len(candidates)},
+                    'Cross-encoder disabled, returning original candidates',
+                    extra={'candidate_count': len(candidates)},
                 )
             return candidates
 
@@ -341,13 +341,13 @@ class CrossEncoderReranker(BaseModel):
             scored = normalize_reranker_scores(scored)
             if self.logger:
                 self.logger.info(
-                    f"   Batch normalization: enabled "
-                    f"(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} "
-                    f"-> normalized: 0.0-1.0)",
+                    f'   Batch normalization: enabled '
+                    f'(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} '
+                    f'-> normalized: 0.0-1.0)',
                     extra={
-                        "batch_normalize": True,
-                        "raw_min": min(raw_scores),
-                        "raw_max": max(raw_scores),
+                        'batch_normalize': True,
+                        'raw_min': min(raw_scores),
+                        'raw_max': max(raw_scores),
                     },
                 )
 
@@ -371,14 +371,14 @@ class CrossEncoderReranker(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    f"Recency decay: applied (rate={self.config.recency_decay_rate}), "
-                    f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
-                    f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
+                    f'Recency decay: applied (rate={self.config.recency_decay_rate}), '
+                    f'score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> '
+                    f'{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})',
                     extra={
-                        "recency_decay": True,
-                        "decay_rate": self.config.recency_decay_rate,
-                        "pre_decay_max": max(pre_decay_scores),
-                        "post_decay_max": max(post_decay_scores),
+                        'recency_decay': True,
+                        'decay_rate': self.config.recency_decay_rate,
+                        'pre_decay_max': max(pre_decay_scores),
+                        'post_decay_max': max(post_decay_scores),
                     },
                 )
 
@@ -386,28 +386,28 @@ class CrossEncoderReranker(BaseModel):
         if self.logger:
             threshold = self.config.score_threshold
             self.logger.info(
-                f"   FlagReranker scoring (threshold: {threshold:.2f}), "
-                f"normalize: {self.config.normalize}, batch_norm: {self.config.batch_normalize}):",
+                f'   FlagReranker scoring (threshold: {threshold:.2f}), '
+                f'normalize: {self.config.normalize}, batch_norm: {self.config.batch_normalize}):',
                 extra={
-                    "threshold": threshold,
-                    "normalize": self.config.normalize,
-                    "batch_normalize": self.config.batch_normalize,
-                    "candidate_count": len(scored),
+                    'threshold': threshold,
+                    'normalize': self.config.normalize,
+                    'batch_normalize': self.config.batch_normalize,
+                    'candidate_count': len(scored),
                 },
             )
 
             # Log each candidate with [KEEP]/[FILTER] status
             for idx, (doc, score) in enumerate(scored, 1):
-                status = "[KEEP]" if score >= threshold else "[FILTER]"
-                preview = doc[:60] + "..." if len(doc) > 60 else doc
+                status = '[KEEP]' if score >= threshold else '[FILTER]'
+                preview = doc[:60] + '...' if len(doc) > 60 else doc
                 self.logger.info(
-                    f"      [{idx}] {status} score={score:.4f} -> {preview}",
+                    f'      [{idx}] {status} score={score:.4f} -> {preview}',
                     extra={
-                        "candidate_index": idx,
-                        "score": score,
-                        "threshold": threshold,
-                        "status": "keep" if score >= threshold else "filter",
-                        "message_preview": preview,
+                        'candidate_index': idx,
+                        'score': score,
+                        'threshold': threshold,
+                        'status': 'keep' if score >= threshold else 'filter',
+                        'message_preview': preview,
                     },
                 )
 
@@ -430,15 +430,15 @@ class CrossEncoderReranker(BaseModel):
             kept = len(scored)
             filtered = pre_filter_count - kept
             self.logger.info(
-                f"   Score threshold filtering: {kept}/{pre_filter_count} "
-                f"passed (threshold: {self.config.score_threshold:.2f}), "
-                f"min_results: {self.config.min_results})",
+                f'   Score threshold filtering: {kept}/{pre_filter_count} '
+                f'passed (threshold: {self.config.score_threshold:.2f}), '
+                f'min_results: {self.config.min_results})',
                 extra={
-                    "threshold": self.config.score_threshold,
-                    "min_results": self.config.min_results,
-                    "passed": kept,
-                    "filtered": filtered,
-                    "total": pre_filter_count,
+                    'threshold': self.config.score_threshold,
+                    'min_results': self.config.min_results,
+                    'passed': kept,
+                    'filtered': filtered,
+                    'total': pre_filter_count,
                 },
             )
 
@@ -453,7 +453,7 @@ class CrossEncoderReranker(BaseModel):
         candidates: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None = None,
     ) -> list[tuple[str, float]]:
-        """Async wrapper for cross-encoder reranking.
+        '''Async wrapper for cross-encoder reranking.
 
         FlagReranker inference is CPU/GPU-bound, so we run it in a thread
         pool to avoid blocking the event loop.
@@ -467,7 +467,7 @@ class CrossEncoderReranker(BaseModel):
         Returns:
             List of (document, cross_encoder_score) tuples, sorted by score
             descending, filtered by score_threshold, and limited to top_k results.
-        """
+        '''
         from asyncer import asyncify
 
         return await asyncify(self.rerank)(query, candidates, timestamp_map)

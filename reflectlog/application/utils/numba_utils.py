@@ -1,4 +1,4 @@
-"""Numba-accelerated numerical utilities for performance-critical operations.
+'''Numba-accelerated numerical utilities for performance-critical operations.
 
 This module provides JIT-compiled functions using numba for numerical computations
 that benefit from machine code compilation. These are used in fusion scoring,
@@ -15,7 +15,7 @@ Note:
     - Functions are compiled on first call (JIT) with caching enabled
     - Subsequent calls use cached machine code for near-native performance
     - All functions operate on numpy arrays for maximum efficiency
-"""
+'''
 
 from numba import jit, prange
 import numpy as np
@@ -24,14 +24,14 @@ from numpy.typing import NDArray
 
 @jit(nopython=True, cache=True, fastmath=True)
 def _find_minmax(scores: NDArray[np.float64]) -> tuple[float, float]:
-    """Find min and max values in a single pass (numba-accelerated).
+    '''Find min and max values in a single pass (numba-accelerated).
 
     Args:
         scores: 1D numpy array of float64 scores.
 
     Returns:
         Tuple of (min_value, max_value).
-    """
+    '''
     if len(scores) == 0:
         return 0.0, 0.0
 
@@ -53,13 +53,13 @@ def _normalize_inplace(
     min_val: float,
     max_val: float,
 ) -> None:
-    """Normalize scores in-place using min-max normalization (numba-accelerated).
+    '''Normalize scores in-place using min-max normalization (numba-accelerated).
 
     Args:
         scores: 1D numpy array to normalize in-place.
         min_val: Minimum value for normalization.
         max_val: Maximum value for normalization.
-    """
+    '''
     if max_val == min_val:
         # All scores are the same - set to 0.5 (neutral) since we have no
         # differentiation information. Using 0.5 rather than 1.0 (optimistic)
@@ -74,7 +74,7 @@ def _normalize_inplace(
 
 
 def normalize_scores_minmax(scores: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Normalize scores to 0-1 range using min-max normalization.
+    '''Normalize scores to 0-1 range using min-max normalization.
 
     This is a high-level wrapper that handles edge cases and calls
     the numba-accelerated implementation.
@@ -89,7 +89,7 @@ def normalize_scores_minmax(scores: NDArray[np.float64]) -> NDArray[np.float64]:
         >>> scores = np.array([0.1, 0.5, 0.9])
         >>> normalized = normalize_scores_minmax(scores)
         >>> print(normalized)  # [0.0, 0.5, 1.0]
-    """
+    '''
     if len(scores) == 0:
         return scores.copy()
 
@@ -110,7 +110,7 @@ def _filter_by_threshold(
     scores: NDArray[np.float64],
     threshold: float,
 ) -> NDArray[np.bool_]:
-    """Create boolean mask for scores above threshold (numba-accelerated).
+    '''Create boolean mask for scores above threshold (numba-accelerated).
 
     Args:
         scores: 1D numpy array of scores.
@@ -118,7 +118,7 @@ def _filter_by_threshold(
 
     Returns:
         Boolean mask array where True indicates score >= threshold.
-    """
+    '''
     mask = np.empty(len(scores), dtype=np.bool_)
     for i in range(len(scores)):
         mask[i] = scores[i] >= threshold
@@ -129,7 +129,7 @@ def filter_scores_by_threshold(
     scores: NDArray[np.float64],
     threshold: float,
 ) -> tuple[NDArray[np.int64], NDArray[np.float64]]:
-    """Filter scores by threshold and return indices and filtered scores.
+    '''Filter scores by threshold and return indices and filtered scores.
 
     Args:
         scores: 1D numpy array of scores.
@@ -144,7 +144,7 @@ def filter_scores_by_threshold(
         >>> indices, filtered = filter_scores_by_threshold(scores, 0.6)
         >>> print(indices)   # [1, 3]
         >>> print(filtered)  # [0.8, 0.9]
-    """
+    '''
     mask = _filter_by_threshold(scores, threshold)
     indices = np.where(mask)[0]
     return indices, scores[mask]
@@ -204,7 +204,7 @@ def compute_rrf_scores_batch(
 def distance_to_similarity_cosine(
     distances: NDArray[np.float32],
 ) -> NDArray[np.float32]:
-    """Convert cosine distances to similarity scores (numba-accelerated).
+    '''Convert cosine distances to similarity scores (numba-accelerated).
 
     Cosine similarity = 1 - cosine distance
 
@@ -218,7 +218,7 @@ def distance_to_similarity_cosine(
         >>> distances = np.array([0.1, 0.3, 0.5], dtype=np.float32)
         >>> similarities = distance_to_similarity_cosine(distances)
         >>> print(similarities)  # [0.9, 0.7, 0.5]
-    """
+    '''
     result = np.empty_like(distances)
     for i in range(len(distances)):
         result[i] = 1.0 - distances[i]
@@ -263,7 +263,7 @@ def warmup_numba_functions() -> bool:
         import warnings
 
         warnings.warn(
-            f"Numba JIT warmup failed: {e}. First calls will be slower.",
+            f'Numba JIT warmup failed: {e}. First calls will be slower.',
             RuntimeWarning,
             stacklevel=2,
         )

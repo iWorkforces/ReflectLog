@@ -1,4 +1,4 @@
-"""Health check tool implementation for ReflectLogMCP Server."""
+'''Health check tool implementation for ReflectLogMCP Server.'''
 
 from typing import Any
 
@@ -6,24 +6,24 @@ from .base import BaseTool
 
 
 class HealthCheckTool(BaseTool):
-    """Tool for health checking the server and its components."""
+    '''Tool for health checking the server and its components.'''
 
     def get_name(self) -> str:
-        """Get the tool name."""
-        return "health_check"
+        '''Get the tool name.'''
+        return 'health_check'
 
     def get_instruction_snippet(self) -> str:
-        """Get the instruction snippet for MCP_INSTRUCTIONS."""
+        '''Get the instruction snippet for MCP_INSTRUCTIONS.'''
         return (
-            "    • health_check() -> dict[str, Any]\n"
-            "      Get server health status including component initialization state."
+            '    • health_check() -> dict[str, Any]\n'
+            '      Get server health status including component initialization state.'
         )
 
     def get_handler(self):
-        """Get the async tool handler function."""
+        '''Get the async tool handler function.'''
 
         async def health_check() -> dict[str, Any]:
-            """Get server health status (async).
+            '''Get server health status (async).
 
             Returns a health status dictionary with information about:
             - Overall server status
@@ -63,34 +63,34 @@ class HealthCheckTool(BaseTool):
                         "total_startup": 400.8
                     }
                 }
-            """
+            '''
             try:
-                self.log_invocation("health_check")
+                self.log_invocation('health_check')
 
                 # Check semantic engine state
                 semantic_engine_status = (
-                    "initialized"
+                    'initialized'
                     if self.memory._semantic_engine is not None
-                    else "not_initialized"
+                    else 'not_initialized'
                 )
 
                 # Check Tantivy engine state
                 tantivy_engine_status = (
-                    "initialized"
+                    'initialized'
                     if self.memory._tantivy_engine is not None
-                    else "disabled"
+                    else 'disabled'
                 )
 
                 # Build health status response
                 health_status = {
-                    "status": "healthy",
-                    "project_id": self.config.project_id,
-                    "semantic_engine": semantic_engine_status,
-                    "tantivy_engine": tantivy_engine_status,
-                    "reranker_engine": self.config.reranker_engine,
-                    "hybrid_search_enabled": self.config.enable_hybrid_search,
-                    "rrf_fusion_enabled": self.config.enable_rrf_fusion,
-                    "recency_boost_enabled": self.config.enable_recency_boost,
+                    'status': 'healthy',
+                    'project_id': self.config.project_id,
+                    'semantic_engine': semantic_engine_status,
+                    'tantivy_engine': tantivy_engine_status,
+                    'reranker_engine': self.config.reranker_engine,
+                    'hybrid_search_enabled': self.config.enable_hybrid_search,
+                    'rrf_fusion_enabled': self.config.enable_rrf_fusion,
+                    'recency_boost_enabled': self.config.enable_recency_boost,
                 }
 
                 # Add startup metrics if available
@@ -100,34 +100,34 @@ class HealthCheckTool(BaseTool):
                         phase: duration * 1000
                         for phase, duration in self.memory.startup_metrics.items()
                     }
-                    health_status["startup_metrics"] = startup_metrics_ms
+                    health_status['startup_metrics'] = startup_metrics_ms
 
-                self.log_completion("health_check", status=health_status["status"])
+                self.log_completion('health_check', status=health_status['status'])
 
                 return health_status
 
             except Exception as e:
-                self.log_error("health_check", e)
+                self.log_error('health_check', e)
                 # Return unhealthy status with diagnostic information
                 return {
-                    "status": "unhealthy",
-                    "project_id": self.config.project_id,
-                    "error": str(e),
-                    "error_type": type(e).__name__,
+                    'status': 'unhealthy',
+                    'project_id': self.config.project_id,
+                    'error': str(e),
+                    'error_type': type(e).__name__,
                     # Provide component states even during error
-                    "diagnostics": {
-                        "semantic_engine": (
-                            "initialized"
+                    'diagnostics': {
+                        'semantic_engine': (
+                            'initialized'
                             if self.memory._semantic_engine is not None
-                            else "not_initialized"
+                            else 'not_initialized'
                         ),
-                        "tantivy_engine": (
-                            "initialized"
+                        'tantivy_engine': (
+                            'initialized'
                             if self.memory._tantivy_engine is not None
-                            else "disabled"
+                            else 'disabled'
                         ),
-                        "reranker_engine": self.config.reranker_engine,
-                        "hybrid_search_enabled": self.config.enable_hybrid_search,
+                        'reranker_engine': self.config.reranker_engine,
+                        'hybrid_search_enabled': self.config.enable_hybrid_search,
                     },
                 }
 

@@ -1,4 +1,4 @@
-"""Linux credential retrieval via config files and secret-tool."""
+'''Linux credential retrieval via config files and secret-tool.'''
 
 import json
 import os
@@ -9,16 +9,16 @@ from .base import CredentialRetriever
 
 
 class LinuxCredentialRetriever(CredentialRetriever):
-    """Retrieve credentials from Linux config files or GNOME Keyring."""
+    '''Retrieve credentials from Linux config files or GNOME Keyring.'''
 
     def get_credential(self) -> str | None:
-        """Retrieve credential from Linux config files or secret-tool.
+        '''Retrieve credential from Linux config files or secret-tool.
 
         Checks config files first, then falls back to secret-tool.
 
         Returns:
             The API key if found and valid, None otherwise.
-        """
+        '''
         # First, check config files
         config_credential = self._check_config_files()
         if config_credential:
@@ -28,18 +28,18 @@ class LinuxCredentialRetriever(CredentialRetriever):
         return self._get_from_secret_tool()
 
     def _get_config_paths(self) -> list[Path]:
-        """Get list of potential credential file paths."""
+        '''Get list of potential credential file paths.'''
         home = Path.home()
-        xdg_config = os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))
+        xdg_config = os.environ.get('XDG_CONFIG_HOME', str(home / '.config'))
 
         return [
-            home / ".claude" / "credentials",
-            home / ".config" / "claude-code" / "credentials",
-            Path(xdg_config) / "claude-code" / "credentials",
+            home / '.claude' / 'credentials',
+            home / '.config' / 'claude-code' / 'credentials',
+            Path(xdg_config) / 'claude-code' / 'credentials',
         ]
 
     def _check_config_files(self) -> str | None:
-        """Check credential files in standard locations."""
+        '''Check credential files in standard locations.'''
         for config_path in self._get_config_paths():
             if config_path.exists():
                 try:
@@ -54,16 +54,16 @@ class LinuxCredentialRetriever(CredentialRetriever):
                         parsed = json.loads(content)
 
                         # OAuth JSON format
-                        oauth_data = parsed.get("claudeAiOauth")
+                        oauth_data = parsed.get('claudeAiOauth')
                         if isinstance(oauth_data, dict):
-                            oauth_token = oauth_data.get("accessToken")
+                            oauth_token = oauth_data.get('accessToken')
                             if oauth_token and oauth_token.startswith(
                                 self.token_prefix
                             ):
                                 return oauth_token
 
                         # Legacy apiKey format
-                        api_key = parsed.get("apiKey")
+                        api_key = parsed.get('apiKey')
                         if api_key and api_key.startswith(self.token_prefix):
                             return api_key
 
@@ -76,10 +76,10 @@ class LinuxCredentialRetriever(CredentialRetriever):
         return None
 
     def _get_from_secret_tool(self) -> str | None:
-        """Retrieve from GNOME Keyring via secret-tool."""
+        '''Retrieve from GNOME Keyring via secret-tool.'''
         try:
             result: subprocess.CompletedProcess = subprocess.run(
-                ["secret-tool", "lookup", "service", self.service_name],
+                ['secret-tool', 'lookup', 'service', self.service_name],
                 capture_output=True,
                 text=True,
                 timeout=10,

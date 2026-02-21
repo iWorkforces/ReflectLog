@@ -1,4 +1,4 @@
-"""Plugin system for ReflectLogMCP.
+'''Plugin system for ReflectLogMCP.
 
 This package provides mechanisms for discovering, registering, and loading
 plugins at runtime. It enables extensibility without modifying core code.
@@ -23,7 +23,7 @@ Example:
     await loader.discover()
     await loader.load_all()
     await loader.activate_all()
-"""
+'''
 
 from .discovery import (
     CompositeDiscovery,
@@ -51,22 +51,22 @@ from .registry import (
 
 __all__ = [
     # CamelCase
-    "CompositeDiscovery",
-    "DirectoryScanDiscovery",
-    "DiscoveredPlugin",
-    "EntryPointDiscovery",
-    "IPluggable",
-    "IPluginLifecycle",
-    "LifecycleHooks",
-    "PluginCapability",
-    "PluginDiscoverer",
-    "PluginDiscoveryStrategy",
-    "PluginLoader",
-    "PluginMetadata",
-    "PluginRegistry",
-    "PluginState",
-    "StaticRegistration",
-    "ToolRegistry",
+    'CompositeDiscovery',
+    'DirectoryScanDiscovery',
+    'DiscoveredPlugin',
+    'EntryPointDiscovery',
+    'IPluggable',
+    'IPluginLifecycle',
+    'LifecycleHooks',
+    'PluginCapability',
+    'PluginDiscoverer',
+    'PluginDiscoveryStrategy',
+    'PluginLoader',
+    'PluginMetadata',
+    'PluginRegistry',
+    'PluginState',
+    'StaticRegistration',
+    'ToolRegistry',
     # snake_case
-    "load_plugin",
+    'load_plugin',
 ]

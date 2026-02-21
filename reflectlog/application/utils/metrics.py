@@ -1,4 +1,4 @@
-"""Structured metrics collection for ReflectLogMCP Server.
+'''Structured metrics collection for ReflectLogMCP Server.
 
 This module provides a Prometheus-style metrics collection system for monitoring
 the health and performance of the memory management system.
@@ -9,7 +9,7 @@ Metrics are tracked for:
 - Error rates
 - Index sizes
 - Cache hit rates
-"""
+'''
 
 from collections import defaultdict
 from collections.abc import Callable
@@ -19,28 +19,28 @@ import threading
 import time
 from typing import Any, ParamSpec, TypeVar
 
-P = ParamSpec("P")
-R = TypeVar("R")
+P = ParamSpec('P')
+R = TypeVar('R')
 
 
 @dataclass
 class MetricValue:
-    """A single metric value with timestamp."""
+    '''A single metric value with timestamp.'''
 
     value: float
     timestamp: float
     labels: dict[str, str]
 
     def __str__(self) -> str:
-        """String representation for Prometheus export."""
-        labels_str = ",".join(f'{k}="{v}"' for k, v in self.labels.items())
+        '''String representation for Prometheus export.'''
+        labels_str = ','.join(f'{k}="{v}"' for k, v in self.labels.items())
         if labels_str:
-            return f"{{{labels_str}}} {self.value}"
-        return f"{self.value}"
+            return f'{{{labels_str}}} {self.value}'
+        return f'{self.value}'
 
 
 class MetricsRegistry:
-    """Thread-safe registry for collecting application metrics.
+    '''Thread-safe registry for collecting application metrics.
 
     This class tracks various metrics for monitoring the health and performance
     of the ReflectLogMCP server. Metrics can be exported in Prometheus format.
@@ -59,10 +59,10 @@ class MetricsRegistry:
         # Export metrics
         prometheus_text = metrics.export_prometheus()
         ```
-    """
+    '''
 
     def __init__(self) -> None:
-        """Initialize the metrics registry."""
+        '''Initialize the metrics registry.'''
         super().__init__()
         self._lock = threading.Lock()
         self._counters: dict[str, dict[str, float]] = defaultdict(
@@ -77,18 +77,18 @@ class MetricsRegistry:
         self._label_keys: dict[str, set[str]] = defaultdict(set)
 
     def _make_label_key(self, labels: dict[str, str]) -> str:
-        """Create a key from labels dictionary.
+        '''Create a key from labels dictionary.
 
         Args:
             labels: Dictionary of label names to values
 
         Returns:
             A string key suitable for dictionary lookups
-        """
+        '''
         if not labels:
-            return ""
+            return ''
         # Sort labels for consistent keys
-        return ",".join(f"{k}={v}" for k, v in sorted(labels.items()))
+        return ','.join(f'{k}={v}' for k, v in sorted(labels.items()))
 
     def increment(
         self,
@@ -96,7 +96,7 @@ class MetricsRegistry:
         value: float = 1.0,
         labels: dict[str, str] | None = None,
     ) -> None:
-        """Increment a counter metric.
+        '''Increment a counter metric.
 
         Counters are monotonically increasing values used for things like
         request counts, error counts, etc.
@@ -105,7 +105,7 @@ class MetricsRegistry:
             name: Metric name (e.g., "add_memories_total")
             value: Amount to increment by (default: 1.0)
             labels: Optional labels for this metric (e.g., {"status": "success"})
-        """
+        '''
         labels = labels or {}
         label_key = self._make_label_key(labels)
 
@@ -121,7 +121,7 @@ class MetricsRegistry:
         value: float,
         labels: dict[str, str] | None = None,
     ) -> None:
-        """Set a gauge metric.
+        '''Set a gauge metric.
 
         Gauges can go up or down and are used for things like current index size,
         cache hit rate, etc.
@@ -130,7 +130,7 @@ class MetricsRegistry:
             name: Metric name (e.g., "index_size")
             value: Value to set
             labels: Optional labels for this metric
-        """
+        '''
         labels = labels or {}
         label_key = self._make_label_key(labels)
 
@@ -146,7 +146,7 @@ class MetricsRegistry:
         value: float,
         labels: dict[str, str] | None = None,
     ) -> None:
-        """Record a value in a histogram metric.
+        '''Record a value in a histogram metric.
 
         Histograms track distributions of values like operation latencies.
         Summary statistics (count, sum, avg) are computed on export.
@@ -155,7 +155,7 @@ class MetricsRegistry:
             name: Metric name (e.g., "search_duration_seconds")
             value: Value to observe (e.g., latency in seconds)
             labels: Optional labels for this metric
-        """
+        '''
         labels = labels or {}
         label_key = self._make_label_key(labels)
 
@@ -171,7 +171,7 @@ class MetricsRegistry:
         name: str,
         labels: dict[str, str] | None = None,
     ):
-        """Context manager for timing operations.
+        '''Context manager for timing operations.
 
         Records the duration of the wrapped code block in a histogram.
 
@@ -187,7 +187,7 @@ class MetricsRegistry:
             with metrics.timer("add_memories_duration", labels={"batch_size": "10"}):
                 memory_manager.add_messages(memories)
             ```
-        """
+        '''
         start = time.perf_counter()
         try:
             yield
@@ -200,7 +200,7 @@ class MetricsRegistry:
         name: str,
         labels: dict[str, str] | None = None,
     ) -> float:
-        """Get the current value of a counter.
+        '''Get the current value of a counter.
 
         Args:
             name: Metric name
@@ -208,7 +208,7 @@ class MetricsRegistry:
 
         Returns:
             Current counter value
-        """
+        '''
         labels = labels or {}
         label_key = self._make_label_key(labels)
 
@@ -220,7 +220,7 @@ class MetricsRegistry:
         name: str,
         labels: dict[str, str] | None = None,
     ) -> float:
-        """Get the current value of a gauge.
+        '''Get the current value of a gauge.
 
         Args:
             name: Metric name
@@ -228,7 +228,7 @@ class MetricsRegistry:
 
         Returns:
             Current gauge value
-        """
+        '''
         labels = labels or {}
         label_key = self._make_label_key(labels)
 
@@ -240,7 +240,7 @@ class MetricsRegistry:
         name: str,
         labels: dict[str, str] | None = None,
     ) -> dict[str, float] | None:
-        """Get summary statistics for a histogram.
+        '''Get summary statistics for a histogram.
 
         Args:
             name: Metric name
@@ -248,7 +248,7 @@ class MetricsRegistry:
 
         Returns:
             Dictionary with count, sum, avg, min, max, or None if no data
-        """
+        '''
         labels = labels or {}
         label_key = self._make_label_key(labels)
 
@@ -258,18 +258,18 @@ class MetricsRegistry:
                 return None
 
             return {
-                "count": len(values),
-                "sum": sum(values),
-                "avg": sum(values) / len(values),
-                "min": min(values),
-                "max": max(values),
+                'count': len(values),
+                'sum': sum(values),
+                'avg': sum(values) / len(values),
+                'min': min(values),
+                'max': max(values),
             }
 
     def reset(self) -> None:
-        """Reset all metrics to zero/empty.
+        '''Reset all metrics to zero/empty.
 
         This is useful for testing or periodic metric cleanup.
-        """
+        '''
         with self._lock:
             self._counters.clear()
             self._gauges.clear()
@@ -277,7 +277,7 @@ class MetricsRegistry:
             self._label_keys.clear()
 
     def export_prometheus(self) -> str:
-        """Export all metrics in Prometheus text format.
+        '''Export all metrics in Prometheus text format.
 
         Returns:
             Prometheus-compatible text representation of all metrics
@@ -296,50 +296,50 @@ class MetricsRegistry:
             search_duration_seconds_count 100
             search_duration_seconds_sum 12.3
             ```
-        """
+        '''
         lines: list[str] = []
 
         with self._lock:
             # Export counters
             for name, label_sets in sorted(self._counters.items()):
                 if label_sets:
-                    lines.append(f"# HELP {name} Counter metric")
-                    lines.append(f"# TYPE {name} counter")
+                    lines.append(f'# HELP {name} Counter metric')
+                    lines.append(f'# TYPE {name} counter')
                     for label_key, value in sorted(label_sets.items()):
                         if label_key:
                             # Parse back the labels from the key
                             labels = dict(
-                                item.split("=") for item in label_key.split(",")
+                                item.split('=') for item in label_key.split(',')
                             )
-                            labels_str = ",".join(
+                            labels_str = ','.join(
                                 f'{k}="{v}"' for k, v in sorted(labels.items())
                             )
-                            lines.append(f"{name}{{{labels_str}}} {value}")
+                            lines.append(f'{name}{{{labels_str}}} {value}')
                         else:
-                            lines.append(f"{name} {value}")
+                            lines.append(f'{name} {value}')
 
             # Export gauges
             for name, label_sets in sorted(self._gauges.items()):
                 if label_sets:
-                    lines.append(f"# HELP {name} Gauge metric")
-                    lines.append(f"# TYPE {name} gauge")
+                    lines.append(f'# HELP {name} Gauge metric')
+                    lines.append(f'# TYPE {name} gauge')
                     for label_key, value in sorted(label_sets.items()):
                         if label_key:
                             labels = dict(
-                                item.split("=") for item in label_key.split(",")
+                                item.split('=') for item in label_key.split(',')
                             )
-                            labels_str = ",".join(
+                            labels_str = ','.join(
                                 f'{k}="{v}"' for k, v in sorted(labels.items())
                             )
-                            lines.append(f"{name}{{{labels_str}}} {value}")
+                            lines.append(f'{name}{{{labels_str}}} {value}')
                         else:
-                            lines.append(f"{name} {value}")
+                            lines.append(f'{name} {value}')
 
             # Export histograms
             for name, label_sets in sorted(self._histograms.items()):
                 if label_sets:
-                    lines.append(f"# HELP {name} Histogram metric")
-                    lines.append(f"# TYPE {name} histogram")
+                    lines.append(f'# HELP {name} Histogram metric')
+                    lines.append(f'# TYPE {name} histogram')
                     for label_key, values in sorted(label_sets.items()):
                         if not values:
                             continue
@@ -355,9 +355,9 @@ class MetricsRegistry:
                             quantile_value = values_sorted[max(0, min(idx, count - 1))]
                             if label_key:
                                 labels = dict(
-                                    item.split("=") for item in label_key.split(",")
+                                    item.split('=') for item in label_key.split(',')
                                 )
-                                labels_str = ",".join(
+                                labels_str = ','.join(
                                     f'{k}="{v}"' for k, v in sorted(labels.items())
                                 )
                                 lines.append(
@@ -371,40 +371,40 @@ class MetricsRegistry:
                         # Export count and sum
                         if label_key:
                             labels = dict(
-                                item.split("=") for item in label_key.split(",")
+                                item.split('=') for item in label_key.split(',')
                             )
-                            labels_str = ",".join(
+                            labels_str = ','.join(
                                 f'{k}="{v}"' for k, v in sorted(labels.items())
                             )
-                            lines.append(f"{name}{{{labels_str}_count}} {count}")
-                            lines.append(f"{name}{{{labels_str}_sum}} {total}")
+                            lines.append(f'{name}{{{labels_str}_count}} {count}')
+                            lines.append(f'{name}{{{labels_str}_sum}} {total}')
                         else:
-                            lines.append(f"{name}_count {count}")
-                            lines.append(f"{name}_sum {total}")
+                            lines.append(f'{name}_count {count}')
+                            lines.append(f'{name}_sum {total}')
 
-        return "\n".join(lines)
+        return '\n'.join(lines)
 
     def get_stats(self) -> dict[str, Any]:
-        """Get a summary of all tracked metrics.
+        '''Get a summary of all tracked metrics.
 
         Returns:
             Dictionary containing metric names and their label sets
-        """
+        '''
         with self._lock:
             return {
-                "counters": {
+                'counters': {
                     name: dict(label_sets)
                     for name, label_sets in self._counters.items()
                 },
-                "gauges": {
+                'gauges': {
                     name: dict(label_sets) for name, label_sets in self._gauges.items()
                 },
-                "histograms": {
+                'histograms': {
                     name: {
                         label_key: {
-                            "count": len(values),
-                            "sum": sum(values),
-                            "avg": sum(values) / len(values) if values else 0,
+                            'count': len(values),
+                            'sum': sum(values),
+                            'avg': sum(values) / len(values) if values else 0,
                         }
                         for label_key, values in label_sets.items()
                     }
@@ -418,7 +418,7 @@ def timed(
     name: str,
     labels: dict[str, str] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Decorator for timing function execution.
+    '''Decorator for timing function execution.
 
     Args:
         metrics: MetricsRegistry instance
@@ -436,7 +436,7 @@ def timed(
         def search(query: str) -> list[str]:
             return memory_manager.search(query)
         ```
-    """
+    '''
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -449,7 +449,7 @@ def timed(
 
 
 __all__ = [
-    "MetricValue",
-    "MetricsRegistry",
-    "timed",
+    'MetricValue',
+    'MetricsRegistry',
+    'timed',
 ]

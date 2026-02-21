@@ -1,4 +1,4 @@
-"""LLM-based document reranker for search results."""
+'''LLM-based document reranker for search results.'''
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,7 +20,7 @@ from reflectlog.infrastructure.llm_provider_base import (
 
 
 def format_memory_age(created_at: str | None) -> str | None:
-    """Format a timestamp into a human-readable age string.
+    '''Format a timestamp into a human-readable age string.
 
     Args:
         created_at: ISO 8601 timestamp string (e.g., "2024-01-15T10:30:00").
@@ -29,13 +29,13 @@ def format_memory_age(created_at: str | None) -> str | None:
     Returns:
         Human-readable age string like "2 hours ago", "3 days ago", etc.
         Returns None if timestamp is invalid or not provided.
-    """
+    '''
     if not created_at:
         return None
 
     try:
         # Parse ISO 8601 timestamp
-        created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
         now = datetime.now(created_dt.tzinfo) if created_dt.tzinfo else datetime.now()
 
         delta = now - created_dt
@@ -43,46 +43,46 @@ def format_memory_age(created_at: str | None) -> str | None:
 
         # Handle negative deltas (future timestamps)
         if total_seconds < 0:
-            return "just now"
+            return 'just now'
 
         # Convert to appropriate unit
         if total_seconds < 60:
-            return "just now"
+            return 'just now'
         elif total_seconds < 3600:
             minutes = int(total_seconds / 60)
-            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+            return f'{minutes} minute{"s" if minutes != 1 else ""} ago'
         elif total_seconds < 86400:
             hours = int(total_seconds / 3600)
-            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+            return f'{hours} hour{"s" if hours != 1 else ""} ago'
         elif total_seconds < 604800:
             days = int(total_seconds / 86400)
-            return f"{days} day{'s' if days != 1 else ''} ago"
+            return f'{days} day{"s" if days != 1 else ""} ago'
         elif total_seconds < 2592000:
             weeks = int(total_seconds / 604800)
-            return f"{weeks} week{'s' if weeks != 1 else ''} ago"
+            return f'{weeks} week{"s" if weeks != 1 else ""} ago'
         else:
             months = int(total_seconds / 2592000)
-            return f"{months} month{'s' if months != 1 else ''} ago"
+            return f'{months} month{"s" if months != 1 else ""} ago'
 
     except ValueError, TypeError:
         return None
 
 
 class RelevanceScore(BaseModel):
-    """Schema for LLM relevance scoring response.
+    '''Schema for LLM relevance scoring response.
 
     Used with OpenAI Structured Outputs to guarantee valid JSON responses
     from the LLM reranker.
 
     Attributes:
         score: Relevance score from 0.0 (no match) to 1.0 (perfect match).
-    """
+    '''
 
     score: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description="Relevance score from 0.0 (no match) to 1.0 (perfect match)",
+        description='Relevance score from 0.0 (no match) to 1.0 (perfect match)',
     )
 
 
@@ -111,20 +111,20 @@ class LLMRerankerConfig:
     timeout: float = 30.0  # 30 seconds default for reranking requests
     min_results: int = 0  # Safety net: min results to return (0 = disabled)
     batch_normalize: bool = True  # Enable batch min-max normalization
-    provider: str = "anthropic"  # Provider: "openai" or "anthropic"
+    provider: str = 'anthropic'  # Provider: "openai" or "anthropic"
     enable_recency_boost: bool = True  # Include memory age in reranking context
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
     def from_app_config(cls, config: Config) -> LLMRerankerConfig:
-        """Create LLMRerankerConfig from application Config.
+        '''Create LLMRerankerConfig from application Config.
 
         Args:
             config: Application configuration object.
 
         Returns:
             LLMRerankerConfig instance configured from app settings.
-        """
+        '''
         return cls(
             api_key=config.openrouter_api_key.get_secret_value(),
             base_url=config.openrouter_base_url,
@@ -140,10 +140,10 @@ class LLMRerankerConfig:
 
 
 class IRerankerProvider(Protocol):
-    """Protocol for reranker LLM providers.
+    '''Protocol for reranker LLM providers.
 
     Defines the interface for LLM providers used in document reranking.
-    """
+    '''
 
     async def score_document(
         self,
@@ -168,7 +168,7 @@ class IRerankerProvider(Protocol):
 
 
 class OpenAIRerankerProvider(BaseOpenAIProvider):
-    """OpenAI/OpenRouter-based reranking provider.
+    '''OpenAI/OpenRouter-based reranking provider.
 
     Uses AsyncOpenAI client with structured JSON output for reliable parsing.
     Supports fallback to json_object mode for models without structured output.
@@ -177,7 +177,7 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
     - AsyncOpenAI client initialization with HTTP/2 support
     - Structured output with fallback to json_object
     - Safe JSON parsing with clamping
-    """
+    '''
 
     async def score_document(
         self,
@@ -215,17 +215,17 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
             )
 
             # Extract and clamp score using base class helper
-            score = self._extract_float_field(result, "score", default=fallback_score)
+            score = self._extract_float_field(result, 'score', default=fallback_score)
 
             if self._logger:
                 self._logger.debug(
-                    f"LLM scored document: {score:.2f}",
+                    f'LLM scored document: {score:.2f}',
                     extra={
-                        "query": query[:50],
-                        "document_preview": document[:50],
-                        "llm_score": score,
-                        "provider": "openai",
-                        "memory_age": memory_age,
+                        'query': query[:50],
+                        'document_preview': document[:50],
+                        'llm_score': score,
+                        'provider': 'openai',
+                        'memory_age': memory_age,
                     },
                 )
 
@@ -234,40 +234,40 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
         except json.JSONDecodeError as e:
             if self._logger:
                 self._logger.warning(
-                    f"Invalid JSON from LLM, using fallback score: {e}",
-                    extra={"error": str(e), "fallback_score": fallback_score},
+                    f'Invalid JSON from LLM, using fallback score: {e}',
+                    extra={'error': str(e), 'fallback_score': fallback_score},
                 )
             return (document, fallback_score)
 
         except Exception as e:
             if self._logger:
                 self._logger.warning(
-                    f"LLM scoring failed, using fallback score: {e}",
-                    extra={"error": str(e), "fallback_score": fallback_score},
+                    f'LLM scoring failed, using fallback score: {e}',
+                    extra={'error': str(e), 'fallback_score': fallback_score},
                 )
             return (document, fallback_score)
 
 
 class AnthropicRerankerProvider:
-    """Anthropic Claude-based reranking provider.
+    '''Anthropic Claude-based reranking provider.
 
     Uses Claude Agent SDK via utility module for LLM calls.
     Parses JSON from plain text responses with multiple fallback strategies.
-    """
+    '''
 
     def __init__(
         self,
         model: str | None = None,
         logger: Any = None,
     ):
-        """Initialize Anthropic reranker provider.
+        '''Initialize Anthropic reranker provider.
 
         Calls init_credentials() to set up OAuth credentials.
 
         Args:
             model: LLM model identifier (passed to generate_content).
             logger: Optional structured logger.
-        """
+        '''
         super().__init__()
 
         # Lazy import to avoid dependency issues
@@ -278,7 +278,7 @@ class AnthropicRerankerProvider:
         self._logger = logger
 
     def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
-        """Extract JSON from plain text response.
+        '''Extract JSON from plain text response.
 
         Handles multiple response formats:
         1. Pure JSON
@@ -293,7 +293,7 @@ class AnthropicRerankerProvider:
 
         Raises:
             ValueError: If JSON extraction fails.
-        """
+        '''
         text = response_text.strip()
 
         # Strategy 1: Direct JSON parse
@@ -303,7 +303,7 @@ class AnthropicRerankerProvider:
             pass
 
         # Strategy 2: Markdown code block
-        code_block_pattern = r"```(?:json)?\s*\n?([\s\S]*?)\n?```"
+        code_block_pattern = r'```(?:json)?\s*\n?([\s\S]*?)\n?```'
         match = re.search(code_block_pattern, text)
         if match:
             try:
@@ -312,7 +312,7 @@ class AnthropicRerankerProvider:
                 pass
 
         # Strategy 3: Find embedded JSON object
-        json_pattern = r"\{[\s\S]*?\}"
+        json_pattern = r'\{[\s\S]*?\}'
         matches = list(re.finditer(json_pattern, text))
         for match in matches:
             try:
@@ -320,7 +320,7 @@ class AnthropicRerankerProvider:
             except json.JSONDecodeError:
                 continue
 
-        raise ValueError(f"Could not extract JSON from response: {text[:200]}")
+        raise ValueError(f'Could not extract JSON from response: {text[:200]}')
 
     async def score_document(
         self,
@@ -362,20 +362,20 @@ class AnthropicRerankerProvider:
 
             # Parse JSON from response
             result = self._extract_json_from_response(response_text)
-            score = float(result.get("score", fallback_score))
+            score = float(result.get('score', fallback_score))
 
             # Clamp score to valid range
             score = max(0.0, min(1.0, score))
 
             if self._logger:
                 self._logger.debug(
-                    f"LLM scored document: {score:.2f}",
+                    f'LLM scored document: {score:.2f}',
                     extra={
-                        "query": query[:50],
-                        "document_preview": document[:50],
-                        "llm_score": score,
-                        "provider": "anthropic",
-                        "memory_age": memory_age,
+                        'query': query[:50],
+                        'document_preview': document[:50],
+                        'llm_score': score,
+                        'provider': 'anthropic',
+                        'memory_age': memory_age,
                     },
                 )
 
@@ -384,11 +384,11 @@ class AnthropicRerankerProvider:
         except Exception as e:
             if self._logger:
                 self._logger.warning(
-                    f"Anthropic LLM scoring failed, using fallback score: {e}",
+                    f'Anthropic LLM scoring failed, using fallback score: {e}',
                     extra={
-                        "error": str(e),
-                        "fallback_score": fallback_score,
-                        "provider": "anthropic",
+                        'error': str(e),
+                        'fallback_score': fallback_score,
+                        'provider': 'anthropic',
                     },
                 )
             return (document, fallback_score)
@@ -398,7 +398,7 @@ def create_reranker_provider(
     config: LLMRerankerConfig,
     logger: Any = None,
 ) -> IRerankerProvider:
-    """Create a reranker provider based on configuration.
+    '''Create a reranker provider based on configuration.
 
     Factory function that returns the appropriate provider implementation
     based on the provider setting in config.
@@ -412,8 +412,8 @@ def create_reranker_provider(
 
     Raises:
         ValueError: If provider is not supported.
-    """
-    if config.provider == "openai":
+    '''
+    if config.provider == 'openai':
         return OpenAIRerankerProvider(
             api_key=config.api_key,
             base_url=config.base_url,
@@ -421,7 +421,7 @@ def create_reranker_provider(
             timeout=config.timeout,
             logger=logger,
         )
-    elif config.provider == "anthropic":
+    elif config.provider == 'anthropic':
         return AnthropicRerankerProvider(
             model=config.model,
             logger=logger,
@@ -462,7 +462,7 @@ class LLMReranker(BaseModel):
     _provider: IRerankerProvider | None = PrivateAttr(default=None)
 
     def __init__(self, **data: Any):
-        """Initialize LLMReranker with appropriate provider."""
+        '''Initialize LLMReranker with appropriate provider.'''
         super().__init__(**data)
 
         # Initialize provider based on configuration
@@ -505,7 +505,7 @@ class LLMReranker(BaseModel):
         candidates: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None = None,
     ) -> list[tuple[str, float]]:
-        """Rerank candidates by LLM relevance scores.
+        '''Rerank candidates by LLM relevance scores.
 
         Scores each candidate document against the query using the LLM,
         filters by score threshold, and returns results sorted by
@@ -523,7 +523,7 @@ class LLMReranker(BaseModel):
         Returns:
             Reranked list of (memory, llm_score) tuples, filtered by
             score_threshold and sorted by score descending.
-        """
+        '''
         if not candidates:
             return []
 
@@ -534,7 +534,7 @@ class LLMReranker(BaseModel):
         async def score_with_semaphore(
             idx: int, doc: str, fallback: float, memory_age: str | None
         ) -> None:
-            """Score document with semaphore for concurrency control."""
+            '''Score document with semaphore for concurrency control.'''
             async with semaphore:
                 results[idx] = await self._score_single(
                     query, doc, fallback, memory_age
@@ -572,13 +572,13 @@ class LLMReranker(BaseModel):
             scored_results = normalize_reranker_scores(scored_results)
             if self.logger:
                 self.logger.debug(
-                    f"Batch normalization: enabled "
-                    f"(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} "
-                    f"-> normalized: 0.0-1.0)",
+                    f'Batch normalization: enabled '
+                    f'(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} '
+                    f'-> normalized: 0.0-1.0)',
                     extra={
-                        "batch_normalize": True,
-                        "raw_min": min(raw_scores),
-                        "raw_max": max(raw_scores),
+                        'batch_normalize': True,
+                        'raw_min': min(raw_scores),
+                        'raw_max': max(raw_scores),
                     },
                 )
 
@@ -602,14 +602,14 @@ class LLMReranker(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    f"Recency decay: applied (rate={self.config.recency_decay_rate}), "
-                    f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
-                    f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
+                    f'Recency decay: applied (rate={self.config.recency_decay_rate}), '
+                    f'score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> '
+                    f'{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})',
                     extra={
-                        "recency_decay": True,
-                        "decay_rate": self.config.recency_decay_rate,
-                        "pre_decay_max": max(pre_decay_scores),
-                        "post_decay_max": max(post_decay_scores),
+                        'recency_decay': True,
+                        'decay_rate': self.config.recency_decay_rate,
+                        'pre_decay_max': max(pre_decay_scores),
+                        'post_decay_max': max(post_decay_scores),
                     },
                 )
         else:
@@ -630,16 +630,16 @@ class LLMReranker(BaseModel):
 
         if self.logger:
             self.logger.debug(
-                f"Reranking complete: {len(scored_results)}/{pre_filter_count} "
-                f"passed threshold",
+                f'Reranking complete: {len(scored_results)}/{pre_filter_count} '
+                f'passed threshold',
                 extra={
-                    "query": query[:50],
-                    "input_count": len(candidates),
-                    "output_count": len(scored_results),
-                    "threshold": self.config.score_threshold,
-                    "min_results": self.config.min_results,
-                    "batch_normalize": self.config.batch_normalize,
-                    "provider": self.config.provider,
+                    'query': query[:50],
+                    'input_count': len(candidates),
+                    'output_count': len(scored_results),
+                    'threshold': self.config.score_threshold,
+                    'min_results': self.config.min_results,
+                    'batch_normalize': self.config.batch_normalize,
+                    'provider': self.config.provider,
                 },
             )
 

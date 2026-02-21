@@ -1,15 +1,15 @@
-"""Base classes for search engines.
+'''Base classes for search engines.
 
 This module provides the base class that all search engine implementations
 should inherit from. It provides common functionality and ensures
 conformance to the ISearchBackend protocol.
-"""
+'''
 
 from reflectlog.core.search import ISearchResult
 
 
 class SearchEngineBase:
-    """Base class for search engine implementations.
+    '''Base class for search engine implementations.
 
     This class provides common functionality for search engines and
     ensures conformance to the ISearchBackend protocol. Implementations
@@ -17,13 +17,13 @@ class SearchEngineBase:
 
     Attributes:
         _name: Backend identifier for logging.
-    """
+    '''
 
-    _name: str = "base"
+    _name: str = 'base'
 
     @property
     def name(self) -> str:
-        """Backend identifier for logging."""
+        '''Backend identifier for logging.'''
         return self._name
 
     async def search(
@@ -32,7 +32,7 @@ class SearchEngineBase:
         project_id: str,
         limit: int,
     ) -> list[ISearchResult]:
-        """Default search implementation returns empty results.
+        '''Default search implementation returns empty results.
 
         Args:
             query: Search query string.
@@ -41,7 +41,7 @@ class SearchEngineBase:
 
         Returns:
             Empty list.
-        """
+        '''
         return []
 
     async def add(
@@ -49,33 +49,33 @@ class SearchEngineBase:
         project_id: str,
         documents: list[str],
     ) -> None:
-        """Default add implementation does nothing.
+        '''Default add implementation does nothing.
 
         Args:
             project_id: Project identifier.
             documents: Documents to add.
-        """
+        '''
         pass
 
     async def delete(
         self,
         document_id: str,
     ) -> None:
-        """Default delete implementation does nothing.
+        '''Default delete implementation does nothing.
 
         Args:
             document_id: Document identifier.
-        """
+        '''
         pass
 
     async def commit(self) -> None:
-        """Default commit does nothing."""
+        '''Default commit does nothing.'''
         pass
 
     async def close(self) -> None:
-        """Default close does nothing."""
+        '''Default close does nothing.'''
         pass
 
     def ensure_initialized(self) -> None:
-        """Default initialization does nothing."""
+        '''Default initialization does nothing.'''
         pass

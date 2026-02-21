@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test case: cats -> dogs replacement."""
+'''Test case: cats -> dogs replacement.'''
 
 import asyncio
 import os
@@ -17,7 +17,7 @@ load_dotenv(os.path.join(project_root, ".env"))
 
 
 async def main():
-    """Test the cats -> dogs replacement case."""
+    '''Test the cats -> dogs replacement case.'''
     project_id = "test-cats-dogs"
     index_path = f"indexes/{project_id}"
 

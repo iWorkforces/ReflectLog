@@ -14,13 +14,13 @@ from reflectlog.application.utils.http_client import HttpClientFactory
 
 @dataclass
 class EmbedderConfig:
-    """Configuration for embedding provider.
+    '''Configuration for embedding provider.
 
     Provides the configuration fields needed by LangchainQwenEmbeddings
     for connecting to OpenRouter embedding APIs.
-    """
+    '''
 
-    model: str = ""
+    model: str = ''
     embedding_dims: int = 1536
     api_key: str | None = None
     openai_base_url: str | None = None
@@ -43,15 +43,15 @@ class LangchainQwenEmbeddings(BaseModel):
 
         self.config.embedding_dims = self.config.embedding_dims or 1536
 
-        api_key = self.config.api_key or os.getenv("OPENROUTER_API_KEY")
+        api_key = self.config.api_key or os.getenv('OPENROUTER_API_KEY')
         base_url = (
             self.config.openai_base_url
-            or os.getenv("OPENROUTER_BASE_URL")
-            or "https://openrouter.ai/api/v1"
+            or os.getenv('OPENROUTER_BASE_URL')
+            or 'https://openrouter.ai/api/v1'
         )
         self.config.api_key = api_key
         self.config.openai_base_url = base_url
-        if os.environ.get("OPENAI_API_BASE"):
+        if os.environ.get('OPENAI_API_BASE'):
             warnings.warn(
                 "The environment variable 'OPENAI_API_BASE' is deprecated and will be removed in the 0.1.80. "
                 "Please use 'OPENROUTER_BASE_URL' instead.",
@@ -82,7 +82,7 @@ class LangchainQwenEmbeddings(BaseModel):
         return self._async_client
 
     def _sync_embed_with_retry(self, **kwargs: Any) -> list[list[float]]:
-        """Call sync embeddings API with exponential backoff retry.
+        '''Call sync embeddings API with exponential backoff retry.
 
         Uses exponential backoff with jitter to avoid overwhelming the API
         during recovery from transient failures.
@@ -95,7 +95,7 @@ class LangchainQwenEmbeddings(BaseModel):
 
         Raises:
             RuntimeError: If all retry attempts fail.
-        """
+        '''
         max_attempts = 3
         base_delay = 1.0  # seconds
         last_exc: Exception | None = None
@@ -103,7 +103,7 @@ class LangchainQwenEmbeddings(BaseModel):
         for attempt in range(1, max_attempts + 1):
             try:
                 if self._client is None:
-                    raise RuntimeError("Qwen embeddings client is not initialized.")
+                    raise RuntimeError('Qwen embeddings client is not initialized.')
                 response = self._client.embeddings.create(**kwargs)
                 return [d.embedding for d in response.data]
             except Exception as exc:
@@ -115,44 +115,44 @@ class LangchainQwenEmbeddings(BaseModel):
                     jitter = random.uniform(0, delay * 0.1)
                     time.sleep(delay + jitter)
 
-        raise RuntimeError("Embedding request failed after retries") from last_exc
+        raise RuntimeError('Embedding request failed after retries') from last_exc
 
     def embed_query(self, text: str) -> list[float]:
-        """Embed query text using synchronous client with retries.
+        '''Embed query text using synchronous client with retries.
 
         Args:
             text: Text to embed.
 
         Returns:
             Embedding.
-        """
-        text = text.replace("\n", " ")
+        '''
+        text = text.replace('\n', ' ')
         embeddings = self._sync_embed_with_retry(
             input=[text],
             model=self.config.model,
             dimensions=self.config.embedding_dims,
-            encoding_format="float",
+            encoding_format='float',
         )
         return embeddings[0] if embeddings else []
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed search docs using synchronous client with retries and batching.
+        '''Embed search docs using synchronous client with retries and batching.
 
         Args:
             texts: List of text to embed.
 
         Returns:
             List of embeddings.
-        """
+        '''
         if not texts:
             return []
 
-        cleaned_texts = [text.replace("\n", " ") for text in texts]
+        cleaned_texts = [text.replace('\n', ' ') for text in texts]
 
         # Batch size configurable via config or env var (default 512, was 64)
         # OpenRouter/OpenAI APIs support up to 2048 items per request
         batch_size = self.config.batch_size or int(
-            os.environ.get("EMBEDDING_BATCH_SIZE", "512")
+            os.environ.get('EMBEDDING_BATCH_SIZE', '512')
         )
         batch_size = max(1, batch_size)
         results: list[list[float]] = []
@@ -162,13 +162,13 @@ class LangchainQwenEmbeddings(BaseModel):
                 input=batch,
                 model=self.config.model,
                 dimensions=self.config.embedding_dims,
-                encoding_format="float",
+                encoding_format='float',
             )
             results.extend(batch_embeddings)
         return results
 
     async def _async_embed_with_retry(self, **kwargs: Any) -> list[list[float]]:
-        """Call async embeddings API with exponential backoff retry.
+        '''Call async embeddings API with exponential backoff retry.
 
         Uses exponential backoff with jitter to avoid overwhelming the API
         during recovery from transient failures.
@@ -181,7 +181,7 @@ class LangchainQwenEmbeddings(BaseModel):
 
         Raises:
             RuntimeError: If all retry attempts fail.
-        """
+        '''
         max_attempts = 3
         base_delay = 1.0  # seconds
         last_exc: Exception | None = None
@@ -200,21 +200,21 @@ class LangchainQwenEmbeddings(BaseModel):
                     jitter = random.uniform(0, delay * 0.1)
                     await anyio.sleep(delay + jitter)
 
-        raise RuntimeError("Async embedding request failed after retries") from last_exc
+        raise RuntimeError('Async embedding request failed after retries') from last_exc
 
     async def aembed_query(self, text: str) -> list[float]:
-        """Async version: Embed query text with retries."""
-        text = text.replace("\n", " ")
+        '''Async version: Embed query text with retries.'''
+        text = text.replace('\n', ' ')
         embeddings = await self._async_embed_with_retry(
             input=[text],
             model=self.config.model,
             dimensions=self.config.embedding_dims,
-            encoding_format="float",
+            encoding_format='float',
         )
         return embeddings[0] if embeddings else []
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Async version: Embed search docs with batching and concurrent execution.
+        '''Async version: Embed search docs with batching and concurrent execution.
 
         Batches texts for efficient API usage (batch_size texts per request),
         then processes batches concurrently with semaphore control.
@@ -228,22 +228,22 @@ class LangchainQwenEmbeddings(BaseModel):
 
         Returns:
             List of embeddings in the same order as input texts.
-        """
+        '''
         if not texts:
             return []
 
-        cleaned_texts = [text.replace("\n", " ") for text in texts]
+        cleaned_texts = [text.replace('\n', ' ') for text in texts]
 
         # Batch size configurable via config or env var (default 512)
         # OpenRouter/OpenAI APIs support up to 2048 items per request
         batch_size = self.config.batch_size or int(
-            os.environ.get("EMBEDDING_BATCH_SIZE", "512")
+            os.environ.get('EMBEDDING_BATCH_SIZE', '512')
         )
         batch_size = max(1, batch_size)
 
         # Max concurrent batches configurable via config or env var (default 4)
         max_concurrent_batches = self.config.max_concurrent_batches or int(
-            os.environ.get("EMBEDDING_MAX_CONCURRENT_BATCHES", "4")
+            os.environ.get('EMBEDDING_MAX_CONCURRENT_BATCHES', '4')
         )
         max_concurrent_batches = max(1, max_concurrent_batches)
 
@@ -260,18 +260,18 @@ class LangchainQwenEmbeddings(BaseModel):
         semaphore = anyio.Semaphore(max_concurrent_batches)
 
         async def embed_batch(start_idx: int, batch_texts: list[str]) -> None:
-            """Embed a batch of texts with semaphore control.
+            '''Embed a batch of texts with semaphore control.
 
             Wraps the embedding call in try-except to continue on error
             instead of cancelling all batches when one fails.
-            """
+            '''
             try:
                 async with semaphore:
                     batch_embeddings = await self._async_embed_with_retry(
                         input=batch_texts,
                         model=self.config.model,
                         dimensions=self.config.embedding_dims,
-                        encoding_format="float",
+                        encoding_format='float',
                     )
                     # Assign results to correct indices
                     for j, embedding in enumerate(batch_embeddings):
@@ -283,7 +283,7 @@ class LangchainQwenEmbeddings(BaseModel):
                 import warnings
 
                 warnings.warn(
-                    f"Embedding batch {start_idx} failed: {e}",
+                    f'Embedding batch {start_idx} failed: {e}',
                     RuntimeWarning,
                     stacklevel=2,
                 )
@@ -298,19 +298,19 @@ class LangchainQwenEmbeddings(BaseModel):
         return results
 
     async def aclose(self) -> None:
-        """Close the async client and cleanup resources.
+        '''Close the async client and cleanup resources.
 
         This method should be called when done with the embedder to properly
         close the async HTTP client and release resources.
-        """
+        '''
         if self._async_client is not None:
             await self._async_client.close()
             self._async_client = None
 
     async def __aenter__(self):
-        """Async context manager entry."""
+        '''Async context manager entry.'''
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
+        '''Async context manager exit.'''
         await self.aclose()

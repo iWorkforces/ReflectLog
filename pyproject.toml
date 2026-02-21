@@ -250,9 +250,10 @@ select = [
     "C4",    # flake8-comprehensions
     "SIM",   # flake8-simplify
     "RUF",   # Ruff-specific rules
+    "Q",     # flake8-quotes - enforce single quotes
 ]
 # Fixable rules (can be auto-fixed with --fix)
-fixable = ["UP", "I", "N", "F", "E", "W"]
+fixable = ["UP", "I", "N", "F", "E", "W", "Q"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "E501"]
@@ -271,3 +272,14 @@ ignore-names = ["test_*", "*_test"]
 [tool.ruff.lint.pyupgrade]
 # Python 3.14+ modernizations
 keep-runtime-typing = false
+
+[tool.ruff.lint.flake8-quotes]
+# Enforce triple single quotes for docstrings (project convention)
+inline-quotes = "single"
+multiline-quotes = "single"
+docstring-quotes = "single"
+avoid-escape = true
+
+[tool.ruff.format]
+# Use single quotes for strings (ruff formatter)
+quote-style = "single"

@@ -1,20 +1,20 @@
-"""Reranking protocols for ReflectLogMCP.
+'''Reranking protocols for ReflectLogMCP.
 
 This module defines protocols for relevance scoring and reranking operations.
 Rerankers improve search result quality by re-scoring results using
 additional signals like LLM relevance or cross-encoder similarity.
-"""
+'''
 
 from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
 class IRankingResult(Protocol):
-    """Result from a reranking operation.
+    '''Result from a reranking operation.
 
     This class represents a reranked document with its relevance score
     and any additional metadata from the reranking process.
-    """
+    '''
 
     content: str
     score: float
@@ -23,7 +23,7 @@ class IRankingResult(Protocol):
 
 @runtime_checkable
 class IReranker(Protocol):
-    """Protocol for relevance scoring implementations.
+    '''Protocol for relevance scoring implementations.
 
     This protocol defines the interface for reranking components that
     score documents by relevance to a query. Implementations can use
@@ -31,11 +31,11 @@ class IReranker(Protocol):
 
     Attributes:
         name: Reranker identifier for configuration.
-    """
+    '''
 
     @property
     def name(self) -> str:
-        """Reranker identifier for configuration."""
+        '''Reranker identifier for configuration.'''
         ...
 
     async def rerank(
@@ -44,7 +44,7 @@ class IReranker(Protocol):
         documents: list[str],
         context: dict[str, Any] | None = None,
     ) -> list[IRankingResult]:
-        """Score documents by relevance to query.
+        '''Score documents by relevance to query.
 
         Args:
             query: The search query.
@@ -53,7 +53,7 @@ class IReranker(Protocol):
 
         Returns:
             List of reranked results with scores.
-        """
+        '''
         ...
 
     async def rerank_single(
@@ -62,7 +62,7 @@ class IReranker(Protocol):
         document: str,
         context: dict[str, Any] | None = None,
     ) -> IRankingResult:
-        """Score a single document by relevance.
+        '''Score a single document by relevance.
 
         Args:
             query: The search query.
@@ -71,28 +71,28 @@ class IReranker(Protocol):
 
         Returns:
             Reranked result with score.
-        """
+        '''
         ...
 
     async def close(self) -> None:
-        """Release resources."""
+        '''Release resources.'''
         ...
 
 
 @runtime_checkable
 class IRerankerProvider(Protocol):
-    """Protocol for reranker provider implementations.
+    '''Protocol for reranker provider implementations.
 
     This protocol defines the interface for providers that handle
     communication with reranking backends (LLM APIs, local models, etc.).
 
     Attributes:
         name: Provider identifier.
-    """
+    '''
 
     @property
     def name(self) -> str:
-        """Provider identifier."""
+        '''Provider identifier.'''
         ...
 
     async def score_batch(
@@ -101,7 +101,7 @@ class IRerankerProvider(Protocol):
         documents: list[str],
         prompt: str,
     ) -> list[float]:
-        """Score multiple documents efficiently.
+        '''Score multiple documents efficiently.
 
         Args:
             query: The search query.
@@ -110,7 +110,7 @@ class IRerankerProvider(Protocol):
 
         Returns:
             List of scores in same order as documents.
-        """
+        '''
         ...
 
     async def score_single(
@@ -119,7 +119,7 @@ class IRerankerProvider(Protocol):
         document: str,
         prompt: str,
     ) -> float:
-        """Score a single document.
+        '''Score a single document.
 
         Args:
             query: The search query.
@@ -128,39 +128,39 @@ class IRerankerProvider(Protocol):
 
         Returns:
             Relevance score.
-        """
+        '''
         ...
 
 
 @runtime_checkable
 class IRerankerConfig(Protocol):
-    """Protocol for reranker configuration.
+    '''Protocol for reranker configuration.
 
     This protocol defines the configuration interface that rerankers
     use to configure themselves.
-    """
+    '''
 
     @property
     def reranker_engine(self) -> str:
-        """Reranker engine type."""
+        '''Reranker engine type.'''
         ...
 
     @property
     def llm_model(self) -> str:
-        """LLM model name."""
+        '''LLM model name.'''
         ...
 
     @property
     def llm_api_base_url(self) -> str:
-        """API base URL."""
+        '''API base URL.'''
         ...
 
     @property
     def cross_encoder_model(self) -> str:
-        """Cross-encoder model name."""
+        '''Cross-encoder model name.'''
         ...
 
     @property
     def cross_encoder_device(self) -> str:
-        """Cross-encoder device: cpu, cuda, mps."""
+        '''Cross-encoder device: cpu, cuda, mps.'''
         ...

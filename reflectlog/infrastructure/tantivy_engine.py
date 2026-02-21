@@ -1,8 +1,8 @@
-"""Tantivy full-text search engine wrapper.
+'''Tantivy full-text search engine wrapper.
 
 This module provides a wrapper around the Tantivy full-text search library,
 following the same patterns as qwen3_embedding.py for consistency.
-"""
+'''
 
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -22,13 +22,13 @@ from reflectlog.application.exceptions import SearchError
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
-    """Type guard to check if config is a dict."""
+    '''Type guard to check if config is a dict.'''
     return isinstance(config, dict)
 
 
 @dataclass(frozen=True)
 class TantivyConfig:
-    """Configuration for TantivyEngine.
+    '''Configuration for TantivyEngine.
 
     Attributes:
         project_id: Unique project identifier for filtering.
@@ -39,7 +39,7 @@ class TantivyConfig:
         tombstone_ttl_days: Days before tombstones are eligible for removal.
         tombstone_cache_max_size: Maximum number of project IDs to cache tombstones for.
         normalize_scores: Normalize BM25 scores to 0-1 range (batch min-max).
-    """
+    '''
 
     project_id: str
     index_path: str
@@ -52,7 +52,7 @@ class TantivyConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TantivyConfig:
-        """Create TantivyConfig from a dictionary with validation.
+        '''Create TantivyConfig from a dictionary with validation.
 
         This method properly validates dict contents and returns a typed instance,
         avoiding the type: ignore needed when using **dict unpacking.
@@ -62,18 +62,18 @@ class TantivyConfig:
 
         Returns:
             Validated TantivyConfig instance.
-        """
+        '''
         return cls(
-            project_id=data.get("project_id", "") or "",
-            index_path=data.get("index_path", "") or "",
-            soft_delete_enabled=bool(data.get("soft_delete_enabled", True)),
+            project_id=data.get('project_id', '') or '',
+            index_path=data.get('index_path', '') or '',
+            soft_delete_enabled=bool(data.get('soft_delete_enabled', True)),
             compaction_threshold_ratio=float(
-                data.get("compaction_threshold_ratio", 0.2)
+                data.get('compaction_threshold_ratio', 0.2)
             ),
-            compaction_max_tombstones=int(data.get("compaction_max_tombstones", 10000)),
-            tombstone_ttl_days=int(data.get("tombstone_ttl_days", 7)),
-            tombstone_cache_max_size=int(data.get("tombstone_cache_max_size", 100)),
-            normalize_scores=bool(data.get("normalize_scores", True)),
+            compaction_max_tombstones=int(data.get('compaction_max_tombstones', 10000)),
+            tombstone_ttl_days=int(data.get('tombstone_ttl_days', 7)),
+            tombstone_cache_max_size=int(data.get('tombstone_cache_max_size', 100)),
+            normalize_scores=bool(data.get('normalize_scores', True)),
         )
 
 
@@ -83,7 +83,7 @@ DEFAULT_TANTIVY_DOC_LIMIT = 100000  # Fallback if searcher doc count unavailable
 
 
 class TantivyEngine(BaseModel):
-    """Tantivy full-text search engine wrapper.
+    '''Tantivy full-text search engine wrapper.
 
     Implements a SearchEngine-compatible interface for hybrid search integration.
     Uses Pydantic BaseModel for consistency with LangchainQwenEmbeddings.
@@ -93,7 +93,7 @@ class TantivyEngine(BaseModel):
     - Lazy initialization of writer and searcher
     - Stemmed full-text search (en_stem tokenizer)
     - Project-level filtering via project_id field
-    """
+    '''
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -123,7 +123,7 @@ class TantivyEngine(BaseModel):
         logger: Any | None = None,
         **kwargs: Any,
     ):
-        """Initialize TantivyEngine.
+        '''Initialize TantivyEngine.
 
         Args:
             config: TantivyConfig or dict with project_id and index_path.
@@ -132,7 +132,7 @@ class TantivyEngine(BaseModel):
 
         Raises:
             RuntimeError: If index initialization fails.
-        """
+        '''
         if _is_dict_config(config):
             config = TantivyConfig.from_dict(config)
 
@@ -141,11 +141,11 @@ class TantivyEngine(BaseModel):
 
     @property
     def name(self) -> str:
-        """Engine name for logging purposes."""
-        return "tantivy"
+        '''Engine name for logging purposes.'''
+        return 'tantivy'
 
     def _build_schema(self) -> tantivy.Schema:
-        """Build Tantivy schema with project_id, content, and soft-delete fields.
+        '''Build Tantivy schema with project_id, content, and soft-delete fields.
 
         Returns:
             Tantivy schema with:
@@ -153,25 +153,25 @@ class TantivyEngine(BaseModel):
             - content: Stored text field with en_stem tokenizer (full-text search)
             - is_deleted: Stored unsigned field for soft-delete (0=active, 1=deleted)
             - deleted_at: Stored integer field for deletion timestamp in ms
-        """
+        '''
         schema_builder = tantivy.SchemaBuilder()
         _ = schema_builder.add_text_field(
-            "project_id", stored=True, tokenizer_name="raw"
+            'project_id', stored=True, tokenizer_name='raw'
         )
         _ = schema_builder.add_text_field(
-            "content", stored=True, tokenizer_name="en_stem"
+            'content', stored=True, tokenizer_name='en_stem'
         )
 
         # Soft-delete fields
         # is_deleted: 0 = active, 1 = deleted
         # indexed=True for filtering, fast=True for fast columnar access
         _ = schema_builder.add_unsigned_field(
-            "is_deleted", stored=True, indexed=True, fast=True
+            'is_deleted', stored=True, indexed=True, fast=True
         )
         # deleted_at: Unix timestamp in milliseconds (0 if not deleted)
         # indexed=True for range queries during compaction
         _ = schema_builder.add_integer_field(
-            "deleted_at", stored=True, indexed=True, fast=True
+            'deleted_at', stored=True, indexed=True, fast=True
         )
 
         return schema_builder.build()
@@ -193,10 +193,10 @@ class TantivyEngine(BaseModel):
             self._index = tantivy.Index.open(index_path)
             if self.logger:
                 self.logger.info(
-                    "Loaded existing Tantivy index",
+                    'Loaded existing Tantivy index',
                     extra={
-                        "project_id": self.config.project_id,
-                        "tantivy_index_path": index_path,
+                        'project_id': self.config.project_id,
+                        'tantivy_index_path': index_path,
                     },
                 )
         except Exception:
@@ -205,16 +205,16 @@ class TantivyEngine(BaseModel):
             self._index = tantivy.Index(schema, path=index_path, reuse=True)
             if self.logger:
                 self.logger.info(
-                    "Created new Tantivy index",
+                    'Created new Tantivy index',
                     extra={
-                        "project_id": self.config.project_id,
-                        "tantivy_index_path": index_path,
+                        'project_id': self.config.project_id,
+                        'tantivy_index_path': index_path,
                     },
                 )
 
     @property
     def writer(self) -> tantivy.IndexWriter:
-        """Get index writer (thread-safe lazy initialization).
+        '''Get index writer (thread-safe lazy initialization).
 
         Uses double-checked locking pattern for thread-safe initialization.
 
@@ -223,7 +223,7 @@ class TantivyEngine(BaseModel):
 
         Raises:
             RuntimeError: If index is not initialized.
-        """
+        '''
         # Fast path: already initialized
         if self._writer is not None:
             return self._writer
@@ -233,13 +233,13 @@ class TantivyEngine(BaseModel):
             # Double-check after acquiring lock
             if self._writer is None:
                 if self._index is None:
-                    raise RuntimeError("Tantivy index not initialized")
+                    raise RuntimeError('Tantivy index not initialized')
                 self._writer = self._index.writer()
         return self._writer
 
     @property
     def searcher(self) -> tantivy.Searcher:
-        """Get index searcher (thread-safe lazy initialization).
+        '''Get index searcher (thread-safe lazy initialization).
 
         Uses double-checked locking pattern for thread-safe initialization.
 
@@ -248,7 +248,7 @@ class TantivyEngine(BaseModel):
 
         Raises:
             RuntimeError: If index is not initialized.
-        """
+        '''
         # Fast path: already initialized
         if self._searcher is not None:
             return self._searcher
@@ -258,7 +258,7 @@ class TantivyEngine(BaseModel):
             # Double-check after acquiring lock
             if self._searcher is None:
                 if self._index is None:
-                    raise RuntimeError("Tantivy index not initialized")
+                    raise RuntimeError('Tantivy index not initialized')
                 self._searcher = self._index.searcher()
         return self._searcher
 
@@ -274,7 +274,7 @@ class TantivyEngine(BaseModel):
             self._writer = self._index.writer()
 
     def _get_all_docs(self, project_id: str) -> list[str]:
-        """Get all active (non-tombstoned) documents for a project.
+        '''Get all active (non-tombstoned) documents for a project.
 
         Uses cached tombstone set for O(1) post-filtering after first call.
 
@@ -283,7 +283,7 @@ class TantivyEngine(BaseModel):
 
         Returns:
             List of memory strings for the given project (excluding tombstoned).
-        """
+        '''
         if self._index is None:
             return []
 
@@ -296,7 +296,7 @@ class TantivyEngine(BaseModel):
             escaped_project_id = self._escape_tantivy_query(project_id)
             query = self._index.parse_query(
                 query=f'project_id:"{escaped_project_id}"',
-                default_field_names=["project_id"],
+                default_field_names=['project_id'],
             )
 
             # Get all results (use index doc count to avoid truncation)
@@ -307,7 +307,7 @@ class TantivyEngine(BaseModel):
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
-                memory = doc.get_first("content")
+                memory = doc.get_first('content')
                 if memory is not None:
                     msg_str = cast(str, memory)
                     # Skip tombstoned memories and duplicates
@@ -320,10 +320,10 @@ class TantivyEngine(BaseModel):
         except Exception as e:
             if self.logger:
                 self.logger.warning(
-                    "Failed to get all docs from Tantivy",
+                    'Failed to get all docs from Tantivy',
                     extra={
-                        "project_id": project_id,
-                        "error": str(e),
+                        'project_id': project_id,
+                        'error': str(e),
                     },
                 )
             return []
@@ -346,11 +346,11 @@ class TantivyEngine(BaseModel):
         return [doc for doc in all_docs if doc == content]
 
     def _get_all_docs_all_projects(self) -> list[tuple[str, str]]:
-        """Get all documents from all projects.
+        '''Get all documents from all projects.
 
         Returns:
             List of (project_id, content) tuples for all documents in the index.
-        """
+        '''
         if self._index is None:
             return []
 
@@ -371,16 +371,16 @@ class TantivyEngine(BaseModel):
             # Alternative approach: search for any document with project_id field
             # We'll use a very broad search since all docs have project_id
             query = self._index.parse_query(
-                query="*",
-                default_field_names=["content"],
+                query='*',
+                default_field_names=['content'],
             )
 
             top_docs = searcher.search(query=query, limit=doc_limit)
 
             for _, doc_addr in top_docs.hits:
                 doc = searcher.doc(doc_addr)
-                project_id = doc.get_first("project_id")
-                memory = doc.get_first("content")
+                project_id = doc.get_first('project_id')
+                memory = doc.get_first('content')
                 if project_id is not None and memory is not None:
                     results.append((cast(str, project_id), cast(str, memory)))
 
@@ -389,33 +389,33 @@ class TantivyEngine(BaseModel):
         except Exception as e:
             if self.logger:
                 self.logger.warning(
-                    "Failed to get all docs from Tantivy (all projects)",
-                    extra={"error": str(e)},
+                    'Failed to get all docs from Tantivy (all projects)',
+                    extra={'error': str(e)},
                 )
             return []
 
     def add(self, project_id: str, content: str) -> None:
-        """Add a document to the Tantivy index (thread-safe).
+        '''Add a document to the Tantivy index (thread-safe).
 
         Thread-safe: Uses writer lock since Tantivy IndexWriter is NOT thread-safe.
 
         Args:
             project_id: Project identifier for filtering.
             content: Memory content to index.
-        """
+        '''
         with self._writer_lock:
             doc = tantivy.Document()
-            doc.add_text("project_id", project_id)
-            doc.add_text("content", content)
+            doc.add_text('project_id', project_id)
+            doc.add_text('content', content)
 
             # Add soft-delete fields with default values
-            doc.add_unsigned("is_deleted", 0)  # 0 = active
-            doc.add_integer("deleted_at", 0)  # 0 = not deleted
+            doc.add_unsigned('is_deleted', 0)  # 0 = active
+            doc.add_integer('deleted_at', 0)  # 0 = not deleted
 
             _ = self.writer.add_document(doc)
 
     def commit(self) -> None:
-        """Commit pending changes and refresh searcher (thread-safe).
+        '''Commit pending changes and refresh searcher (thread-safe).
 
         Thread-safe: Uses both writer and searcher locks to ensure
         consistent state during commit and searcher refresh.
@@ -431,7 +431,7 @@ class TantivyEngine(BaseModel):
         and does NOT consume the writer. Only wait_merging_threads() consumes
         the writer by taking ownership (self). This allows reusing the same
         writer across multiple add-commit cycles for better performance.
-        """
+        '''
         with self._writer_lock:
             if self._writer:
                 self._writer.commit()
@@ -447,12 +447,12 @@ class TantivyEngine(BaseModel):
                 self._invalidate_tombstone_cache()
                 if self.logger:
                     self.logger.debug(
-                        "Tantivy index committed (writer reusable)",
-                        extra={"project_id": self.config.project_id},
+                        'Tantivy index committed (writer reusable)',
+                        extra={'project_id': self.config.project_id},
                     )
 
     def flush(self) -> None:
-        """Commit and wait for all background merging to complete (thread-safe).
+        '''Commit and wait for all background merging to complete (thread-safe).
 
         Unlike commit(), this also waits for segment merging threads.
         The writer becomes invalid after this call and will be recreated
@@ -466,7 +466,7 @@ class TantivyEngine(BaseModel):
 
         For normal operations, prefer commit() which is non-blocking and
         allows writer reuse.
-        """
+        '''
         with self._writer_lock:
             if self._writer:
                 self._writer.commit()
@@ -480,19 +480,19 @@ class TantivyEngine(BaseModel):
                 self._invalidate_tombstone_cache()
                 if self.logger:
                     self.logger.debug(
-                        "Tantivy index flushed (writer invalidated)",
-                        extra={"project_id": self.config.project_id},
+                        'Tantivy index flushed (writer invalidated)',
+                        extra={'project_id': self.config.project_id},
                     )
 
     def _invalidate_tombstone_cache(self, project_id: str | None = None) -> None:
-        """Invalidate tombstone cache for a project or all projects.
+        '''Invalidate tombstone cache for a project or all projects.
 
         Thread-safe cache invalidation. Call this after any operation that
         modifies tombstones (soft_delete, commit, compact).
 
         Args:
             project_id: Specific project to invalidate. If None, clears entire cache.
-        """
+        '''
         with self._tombstone_cache_lock:
             if project_id is None:
                 self._tombstone_cache.clear()
@@ -500,7 +500,7 @@ class TantivyEngine(BaseModel):
                 del self._tombstone_cache[project_id]
 
     def _get_tombstoned_memories(self, project_id: str) -> set[str]:
-        """Get set of memories that have tombstones for a project.
+        '''Get set of memories that have tombstones for a project.
 
         Uses bounded in-memory caching with LRU eviction for O(1) lookup.
         Cache is populated by querying is_deleted=1 documents directly.
@@ -514,7 +514,7 @@ class TantivyEngine(BaseModel):
 
         Returns:
             Set of memory strings that have tombstones.
-        """
+        '''
         # Fast path: check cache first (thread-safe read)
         with self._tombstone_cache_lock:
             if project_id in self._tombstone_cache:
@@ -534,7 +534,7 @@ class TantivyEngine(BaseModel):
             escaped_project_id = self._escape_tantivy_query(project_id)
             query = self._index.parse_query(
                 query=f'project_id:"{escaped_project_id}" AND is_deleted:[1 TO 1]',
-                default_field_names=["project_id"],
+                default_field_names=['project_id'],
             )
 
             top_docs = self.searcher.search(query=query, limit=doc_limit)
@@ -544,17 +544,17 @@ class TantivyEngine(BaseModel):
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
-                memory = doc.get_first("content")
+                memory = doc.get_first('content')
                 if memory is not None:
                     # Enforce per-project tombstone limit
                     if len(tombstoned) >= max_tombstones_per_project:
                         if self.logger:
                             self.logger.warning(
-                                "Tombstone cache per-project limit reached, truncating",
+                                'Tombstone cache per-project limit reached, truncating',
                                 extra={
-                                    "project_id": project_id,
-                                    "tombstone_count": len(tombstoned),
-                                    "max_per_project": max_tombstones_per_project,
+                                    'project_id': project_id,
+                                    'tombstone_count': len(tombstoned),
+                                    'max_per_project': max_tombstones_per_project,
                                 },
                             )
                         break
@@ -576,23 +576,23 @@ class TantivyEngine(BaseModel):
             # Query parsing errors - expected failure, log as warning
             if self.logger:
                 self.logger.warning(
-                    "Failed to get tombstoned memories (query parse error)",
-                    extra={"project_id": project_id, "error": str(e)},
+                    'Failed to get tombstoned memories (query parse error)',
+                    extra={'project_id': project_id, 'error': str(e)},
                 )
             return set()
         except Exception as e:
             # Unexpected errors - log as warning with more context
             if self.logger:
                 self.logger.warning(
-                    "Failed to get tombstoned memories",
-                    extra={"project_id": project_id, "error": str(e)},
+                    'Failed to get tombstoned memories',
+                    extra={'project_id': project_id, 'error': str(e)},
                 )
             return set()
 
     def _normalize_scores(
         self, results: list[tuple[str, float]]
     ) -> list[tuple[str, float]]:
-        """Normalize BM25 scores to 0-1 range using batch min-max.
+        '''Normalize BM25 scores to 0-1 range using batch min-max.
 
         Uses the existing JIT-optimized normalize_scores_minmax function.
 
@@ -603,7 +603,7 @@ class TantivyEngine(BaseModel):
             List of (memory, normalized_score) tuples with scores in 0-1 range.
             Single result returns score 1.0 (best by definition).
             All equal scores return 1.0 (equally good).
-        """
+        '''
         if len(results) <= 1:
             # Single result or empty: return with score 1.0
             return [(msg, 1.0) for msg, _ in results]
@@ -622,7 +622,7 @@ class TantivyEngine(BaseModel):
     def search(
         self, query: str, project_id: str, limit: int
     ) -> list[tuple[str, float]]:
-        """Execute full-text search.
+        '''Execute full-text search.
 
         Uses cached tombstone set for O(1) post-filtering after first search.
         Tombstone cache is populated lazily and invalidated on writes.
@@ -635,13 +635,13 @@ class TantivyEngine(BaseModel):
         Returns:
             List of (memory, score) tuples sorted by relevance.
             Empty list if search fails or no results found.
-        """
+        '''
         try:
             if self._index is None:
                 if self.logger:
                     self.logger.warning(
-                        "Tantivy search skipped: index not initialized",
-                        extra={"project_id": self.config.project_id},
+                        'Tantivy search skipped: index not initialized',
+                        extra={'project_id': self.config.project_id},
                     )
                 return []
 
@@ -661,7 +661,7 @@ class TantivyEngine(BaseModel):
 
             try:
                 parsed_query = self._index.parse_query(
-                    query=combined_query, default_field_names=["content"]
+                    query=combined_query, default_field_names=['content']
                 )
             except ValueError:
                 if not query_text:
@@ -671,15 +671,15 @@ class TantivyEngine(BaseModel):
                     f'({escaped_query_text}) AND project_id:"{escaped_project_id}"'
                 )
                 parsed_query = self._index.parse_query(
-                    query=combined_query, default_field_names=["content"]
+                    query=combined_query, default_field_names=['content']
                 )
                 if self.logger:
                     self.logger.debug(
-                        "Escaped Tantivy query after parse failure",
+                        'Escaped Tantivy query after parse failure',
                         extra={
-                            "project_id": self.config.project_id,
-                            "original_query": query_text[:100],
-                            "escaped_query": escaped_query_text[:100],
+                            'project_id': self.config.project_id,
+                            'original_query': query_text[:100],
+                            'escaped_query': escaped_query_text[:100],
                         },
                     )
 
@@ -688,14 +688,14 @@ class TantivyEngine(BaseModel):
 
             for score, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
-                memory = cast(str, doc.get_first("content"))
+                memory = cast(str, doc.get_first('content'))
 
                 # Skip tombstoned memories (post-filtering with cached set)
                 if memory in tombstoned_memories:
                     continue
 
                 if self.logger:
-                    self.logger.debug(f"Tantivy match: {memory[:100]}...")
+                    self.logger.debug(f'Tantivy match: {memory[:100]}...')
                 results.append((memory, score))
 
                 # Stop once we have enough results
@@ -712,12 +712,12 @@ class TantivyEngine(BaseModel):
             # Query parsing errors (malformed queries) - recoverable, log as warning
             if self.logger:
                 self.logger.warning(
-                    "Tantivy query parsing failed",
+                    'Tantivy query parsing failed',
                     extra={
-                        "project_id": self.config.project_id,
-                        "query": query[:100],
-                        "error": str(e),
-                        "error_type": "QueryParseError",
+                        'project_id': self.config.project_id,
+                        'query': query[:100],
+                        'error': str(e),
+                        'error_type': 'QueryParseError',
                     },
                 )
             return []
@@ -726,26 +726,26 @@ class TantivyEngine(BaseModel):
             # File system errors (permissions, disk full, etc.) - more serious
             if self.logger:
                 self.logger.error(
-                    "Tantivy file system error during search",
+                    'Tantivy file system error during search',
                     extra={
-                        "project_id": self.config.project_id,
-                        "index_path": self.config.index_path,
-                        "error": str(e),
-                        "error_type": "FileSystemError",
+                        'project_id': self.config.project_id,
+                        'index_path': self.config.index_path,
+                        'error': str(e),
+                        'error_type': 'FileSystemError',
                     },
                 )
             return []
 
         except Exception as e:
             # Unexpected errors - raise SearchError for caller to handle
-            raise SearchError(f"Tantivy search failed: {e}") from e
+            raise SearchError(f'Tantivy search failed: {e}') from e
 
     def ensure_initialized(self) -> None:
-        """Ensure the engine is fully initialized (thread-safe).
+        '''Ensure the engine is fully initialized (thread-safe).
 
         Forces the lazy initialization of the searcher to complete.
         Call this before parallel operations to prevent race conditions.
-        """
+        '''
         # Access the searcher property to trigger thread-safe lazy initialization
         _ = self.searcher
 
@@ -769,10 +769,10 @@ class TantivyEngine(BaseModel):
                 except Exception as e:
                     if self.logger:
                         self.logger.warning(
-                            "Error during Tantivy writer cleanup",
+                            'Error during Tantivy writer cleanup',
                             extra={
-                                "project_id": self.config.project_id,
-                                "error": str(e),
+                                'project_id': self.config.project_id,
+                                'error': str(e),
                             },
                         )
                 finally:
@@ -811,10 +811,10 @@ class TantivyEngine(BaseModel):
         if not existing:
             if self.logger:
                 self.logger.debug(
-                    "Soft-delete: memory not found",
+                    'Soft-delete: memory not found',
                     extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
+                        'project_id': project_id,
+                        'memory_preview': content[:50] if content else '',
                     },
                 )
             return False
@@ -822,26 +822,26 @@ class TantivyEngine(BaseModel):
         # Add tombstone document
         with self._writer_lock:
             doc = tantivy.Document()
-            doc.add_text("project_id", project_id)
-            doc.add_text("content", content)
-            doc.add_unsigned("is_deleted", 1)  # 1 = deleted (tombstone)
-            doc.add_integer("deleted_at", int(time.time() * 1000))  # Unix timestamp ms
+            doc.add_text('project_id', project_id)
+            doc.add_text('content', content)
+            doc.add_unsigned('is_deleted', 1)  # 1 = deleted (tombstone)
+            doc.add_integer('deleted_at', int(time.time() * 1000))  # Unix timestamp ms
 
             _ = self.writer.add_document(doc)
 
         if self.logger:
             self.logger.debug(
-                "Soft-delete: tombstone added",
+                'Soft-delete: tombstone added',
                 extra={
-                    "project_id": project_id,
-                    "memory_preview": content[:50] if content else "",
+                    'project_id': project_id,
+                    'memory_preview': content[:50] if content else '',
                 },
             )
 
         return True
 
     def delete(self, project_id: str, content: str) -> bool:
-        """Delete a document from the Tantivy index by exact memory match (thread-safe).
+        '''Delete a document from the Tantivy index by exact memory match (thread-safe).
 
         When soft-delete is enabled (default), uses O(1) tombstone marking.
         Otherwise, falls back to O(n) rebuild approach.
@@ -865,7 +865,7 @@ class TantivyEngine(BaseModel):
 
         Returns:
             True if document was found and deleted, False otherwise.
-        """
+        '''
         # Use soft-delete if enabled (O(1) vs O(n))
         if self.config.soft_delete_enabled:
             result = self.soft_delete(project_id, content)
@@ -889,10 +889,10 @@ class TantivyEngine(BaseModel):
             if not target_exists:
                 if self.logger:
                     self.logger.debug(
-                        "Tantivy delete: document not found",
+                        'Tantivy delete: document not found',
                         extra={
-                            "project_id": project_id,
-                            "memory_preview": content[:50] if content else "",
+                            'project_id': project_id,
+                            'memory_preview': content[:50] if content else '',
                         },
                     )
                 return False
@@ -908,12 +908,12 @@ class TantivyEngine(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    "Tantivy delete: found document(s) to delete",
+                    'Tantivy delete: found document(s) to delete',
                     extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
-                        "deleted_count": deleted_count,
-                        "remaining_count": len(docs_to_keep),
+                        'project_id': project_id,
+                        'memory_preview': content[:50] if content else '',
+                        'deleted_count': deleted_count,
+                        'remaining_count': len(docs_to_keep),
                     },
                 )
 
@@ -924,11 +924,11 @@ class TantivyEngine(BaseModel):
 
             if self.logger:
                 self.logger.debug(
-                    "Tantivy delete: completed successfully",
+                    'Tantivy delete: completed successfully',
                     extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
-                        "deleted_count": deleted_count,
+                        'project_id': project_id,
+                        'memory_preview': content[:50] if content else '',
+                        'deleted_count': deleted_count,
                     },
                 )
 
@@ -938,12 +938,12 @@ class TantivyEngine(BaseModel):
             # Query parsing errors - recoverable
             if self.logger:
                 self.logger.warning(
-                    "Tantivy delete query parsing failed",
+                    'Tantivy delete query parsing failed',
                     extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
-                        "error": str(e),
-                        "error_type": "QueryParseError",
+                        'project_id': project_id,
+                        'memory_preview': content[:50] if content else '',
+                        'error': str(e),
+                        'error_type': 'QueryParseError',
                     },
                 )
             return False
@@ -952,12 +952,12 @@ class TantivyEngine(BaseModel):
             # File system errors - more serious
             if self.logger:
                 self.logger.error(
-                    "Tantivy delete file system error",
+                    'Tantivy delete file system error',
                     extra={
-                        "project_id": project_id,
-                        "index_path": self.config.index_path,
-                        "error": str(e),
-                        "error_type": "FileSystemError",
+                        'project_id': project_id,
+                        'index_path': self.config.index_path,
+                        'error': str(e),
+                        'error_type': 'FileSystemError',
                     },
                 )
             return False
@@ -966,12 +966,12 @@ class TantivyEngine(BaseModel):
             # Unexpected errors - log at error level
             if self.logger:
                 self.logger.error(
-                    "Tantivy delete failed unexpectedly",
+                    'Tantivy delete failed unexpectedly',
                     extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
-                        "error": str(e),
-                        "error_type": type(e).__name__,
+                        'project_id': project_id,
+                        'memory_preview': content[:50] if content else '',
+                        'error': str(e),
+                        'error_type': type(e).__name__,
                     },
                 )
             return False
@@ -1023,22 +1023,22 @@ class TantivyEngine(BaseModel):
 
     @staticmethod
     def _escape_tantivy_query(query: str) -> str:
-        """Escape special characters for Tantivy query syntax.
+        '''Escape special characters for Tantivy query syntax.
 
         Args:
             query: Raw query string that may contain special characters.
 
         Returns:
             Escaped query string safe for use in Tantivy queries.
-        """
+        '''
         special_chars = r'+-&|!(){}[]^"~*?:\/'
         escaped: list[str] = []
         for char in query:
             if char in special_chars:
-                escaped.append(f"\\{char}")
+                escaped.append(f'\\{char}')
             else:
                 escaped.append(char)
-        return "".join(escaped)
+        return ''.join(escaped)
 
     def _get_doc_limit(self) -> int:
         """Get total document count for safe full scans.
@@ -1053,7 +1053,7 @@ class TantivyEngine(BaseModel):
         num_docs: int | None = None
 
         try:
-            num_docs_attr = getattr(searcher, "num_docs", None)
+            num_docs_attr = getattr(searcher, 'num_docs', None)
             if callable(num_docs_attr):
                 num_docs_result = num_docs_attr()
                 if isinstance(num_docs_result, (int, float)):
@@ -1063,35 +1063,35 @@ class TantivyEngine(BaseModel):
         except Exception as e:
             if self.logger:
                 self.logger.debug(
-                    "Failed to read Tantivy num_docs",
-                    extra={"error": str(e)},
+                    'Failed to read Tantivy num_docs',
+                    extra={'error': str(e)},
                 )
 
         if num_docs is None or num_docs < 0:
             if self.logger:
                 self.logger.warning(
-                    "Tantivy searcher num_docs unavailable; using fallback limit",
-                    extra={"fallback_limit": DEFAULT_TANTIVY_DOC_LIMIT},
+                    'Tantivy searcher num_docs unavailable; using fallback limit',
+                    extra={'fallback_limit': DEFAULT_TANTIVY_DOC_LIMIT},
                 )
             return DEFAULT_TANTIVY_DOC_LIMIT
 
         return max(1, num_docs)
 
     def get_tombstone_stats(self) -> dict[str, int]:
-        """Get statistics about tombstones in the index.
+        '''Get statistics about tombstones in the index.
 
         Returns dictionary with:
         - total_docs: Total documents in index (including tombstones)
         - active_docs: Documents with is_deleted=0
         - tombstones: Documents with is_deleted=1
         - unique_active_memories: Unique memories after filtering tombstones
-        """
+        '''
         if self._index is None:
             return {
-                "total_docs": 0,
-                "active_docs": 0,
-                "tombstones": 0,
-                "unique_active_memories": 0,
+                'total_docs': 0,
+                'active_docs': 0,
+                'tombstones': 0,
+                'unique_active_memories': 0,
             }
 
         try:
@@ -1099,8 +1099,8 @@ class TantivyEngine(BaseModel):
 
             # Get all documents across all projects
             query = self._index.parse_query(
-                query="*",
-                default_field_names=["content"],
+                query='*',
+                default_field_names=['content'],
             )
             top_docs = self.searcher.search(query=query, limit=doc_limit)
 
@@ -1113,9 +1113,9 @@ class TantivyEngine(BaseModel):
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
                 total_docs += 1
-                memory = doc.get_first("content")
+                memory = doc.get_first('content')
 
-                is_deleted_val = doc.get_first("is_deleted")
+                is_deleted_val = doc.get_first('is_deleted')
                 is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
                 if is_deleted == 1:
                     tombstones += 1
@@ -1130,44 +1130,44 @@ class TantivyEngine(BaseModel):
             unique_active = active_memories - tombstoned_memories
 
             return {
-                "total_docs": total_docs,
-                "active_docs": active_docs,
-                "tombstones": tombstones,
-                "unique_active_memories": len(unique_active),
+                'total_docs': total_docs,
+                'active_docs': active_docs,
+                'tombstones': tombstones,
+                'unique_active_memories': len(unique_active),
             }
 
         except Exception as e:
             if self.logger:
                 self.logger.warning(
-                    "Failed to get tombstone stats",
-                    extra={"error": str(e)},
+                    'Failed to get tombstone stats',
+                    extra={'error': str(e)},
                 )
             return {
-                "total_docs": 0,
-                "active_docs": 0,
-                "tombstones": 0,
-                "unique_active_memories": 0,
+                'total_docs': 0,
+                'active_docs': 0,
+                'tombstones': 0,
+                'unique_active_memories': 0,
             }
 
     def needs_compaction(self) -> bool:
-        """Check if the index needs compaction based on configured thresholds.
+        '''Check if the index needs compaction based on configured thresholds.
 
         Compaction is needed when:
         - Tombstones > compaction_max_tombstones (absolute threshold), OR
         - Tombstones / total_docs > compaction_threshold_ratio (percentage threshold)
-        """
+        '''
         stats = self.get_tombstone_stats()
-        tombstones = stats["tombstones"]
-        total_docs = stats["total_docs"]
+        tombstones = stats['tombstones']
+        total_docs = stats['total_docs']
 
         # Check absolute threshold
         if tombstones >= self.config.compaction_max_tombstones:
             if self.logger:
                 self.logger.info(
-                    "Compaction needed: tombstone count exceeded threshold",
+                    'Compaction needed: tombstone count exceeded threshold',
                     extra={
-                        "tombstones": tombstones,
-                        "threshold": self.config.compaction_max_tombstones,
+                        'tombstones': tombstones,
+                        'threshold': self.config.compaction_max_tombstones,
                     },
                 )
             return True
@@ -1178,12 +1178,12 @@ class TantivyEngine(BaseModel):
             if ratio >= self.config.compaction_threshold_ratio:
                 if self.logger:
                     self.logger.info(
-                        "Compaction needed: tombstone ratio exceeded threshold",
+                        'Compaction needed: tombstone ratio exceeded threshold',
                         extra={
-                            "tombstones": tombstones,
-                            "total_docs": total_docs,
-                            "ratio": round(ratio, 3),
-                            "threshold": self.config.compaction_threshold_ratio,
+                            'tombstones': tombstones,
+                            'total_docs': total_docs,
+                            'ratio': round(ratio, 3),
+                            'threshold': self.config.compaction_threshold_ratio,
                         },
                     )
                 return True
@@ -1216,11 +1216,11 @@ class TantivyEngine(BaseModel):
 
         if not force and not self.needs_compaction():
             return {
-                "compacted": False,
-                "removed_tombstones": 0,
-                "removed_originals": 0,
-                "remaining_docs": 0,
-                "elapsed_ms": 0,
+                'compacted': False,
+                'removed_tombstones': 0,
+                'removed_originals': 0,
+                'remaining_docs': 0,
+                'elapsed_ms': 0,
             }
 
         try:
@@ -1229,8 +1229,8 @@ class TantivyEngine(BaseModel):
 
             # Get all documents with their deletion status
             query = self._index.parse_query(  # type: ignore[union-attr]
-                query="*",
-                default_field_names=["content"],
+                query='*',
+                default_field_names=['content'],
             )
             top_docs = self.searcher.search(query=query, limit=100000)
 
@@ -1242,9 +1242,9 @@ class TantivyEngine(BaseModel):
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
-                project_id = doc.get_first("project_id")
-                memory = doc.get_first("content")
-                is_deleted_val = doc.get_first("is_deleted")
+                project_id = doc.get_first('project_id')
+                memory = doc.get_first('content')
+                is_deleted_val = doc.get_first('is_deleted')
                 is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
 
                 if project_id is not None and memory is not None:
@@ -1277,35 +1277,35 @@ class TantivyEngine(BaseModel):
 
             if self.logger:
                 self.logger.info(
-                    "Tantivy compaction completed",
+                    'Tantivy compaction completed',
                     extra={
-                        "removed_tombstones": removed_tombstones,
-                        "removed_originals": removed_originals,
-                        "remaining_docs": len(docs_to_keep),
-                        "elapsed_ms": elapsed_ms,
-                        "docs_before": stats_before["total_docs"],
+                        'removed_tombstones': removed_tombstones,
+                        'removed_originals': removed_originals,
+                        'remaining_docs': len(docs_to_keep),
+                        'elapsed_ms': elapsed_ms,
+                        'docs_before': stats_before['total_docs'],
                     },
                 )
 
             return {
-                "compacted": True,
-                "removed_tombstones": removed_tombstones,
-                "removed_originals": removed_originals,
-                "remaining_docs": len(docs_to_keep),
-                "elapsed_ms": elapsed_ms,
+                'compacted': True,
+                'removed_tombstones': removed_tombstones,
+                'removed_originals': removed_originals,
+                'remaining_docs': len(docs_to_keep),
+                'elapsed_ms': elapsed_ms,
             }
 
         except Exception as e:
             elapsed_ms = int((time.time() - start_time) * 1000)
             if self.logger:
                 self.logger.error(
-                    "Tantivy compaction failed",
-                    extra={"error": str(e), "elapsed_ms": elapsed_ms},
+                    'Tantivy compaction failed',
+                    extra={'error': str(e), 'elapsed_ms': elapsed_ms},
                 )
             return {
-                "compacted": False,
-                "removed_tombstones": 0,
-                "removed_originals": 0,
-                "remaining_docs": 0,
-                "elapsed_ms": elapsed_ms,
+                'compacted': False,
+                'removed_tombstones': 0,
+                'removed_originals': 0,
+                'remaining_docs': 0,
+                'elapsed_ms': elapsed_ms,
             }

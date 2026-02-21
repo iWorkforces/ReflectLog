@@ -1,4 +1,4 @@
-"""Memory management module for ReflectLogMCP Server."""
+'''Memory management module for ReflectLogMCP Server.'''
 
 from .add_phases import (
     AddPipeline,
@@ -17,21 +17,21 @@ from .protocols import SearchEngine
 from .search_strategies import SearchContext, SearchPipeline, SearchResult
 
 __all__ = [
-    "AddPipeline",
-    "AddResult",
-    "DuplicateDetectionPhase",
-    "FusionEngine",
-    "MemoryManager",
-    "Phase1Result",
-    "Phase2Result",
-    "Phase3Result",
-    "RanxFusionEngine",
-    "ReplacementInfo",
-    "SearchContext",
-    "SearchEngine",
-    "SearchPipeline",
-    "SearchResult",
-    "SmartReplacementPhase",
-    "StoragePhase",
-    "create_fusion_engine",
+    'AddPipeline',
+    'AddResult',
+    'DuplicateDetectionPhase',
+    'FusionEngine',
+    'MemoryManager',
+    'Phase1Result',
+    'Phase2Result',
+    'Phase3Result',
+    'RanxFusionEngine',
+    'ReplacementInfo',
+    'SearchContext',
+    'SearchEngine',
+    'SearchPipeline',
+    'SearchResult',
+    'SmartReplacementPhase',
+    'StoragePhase',
+    'create_fusion_engine',
 ]

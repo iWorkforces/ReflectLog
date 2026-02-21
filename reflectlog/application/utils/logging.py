@@ -1,4 +1,4 @@
-"""Structured logging utilities for ReflectLogMCP Server."""
+'''Structured logging utilities for ReflectLogMCP Server.'''
 
 from contextlib import contextmanager
 import logging
@@ -6,26 +6,26 @@ from typing import Any
 
 
 class StructuredLogger:
-    """Wrapper for structured logging with consistent formatting."""
+    '''Wrapper for structured logging with consistent formatting.'''
 
     def __init__(
         self, logger: logging.Logger, default_extra: dict[str, Any] | None = None
     ):
-        """Initialize structured logger.
+        '''Initialize structured logger.
 
         Args:
             logger: The underlying Python logger.
             default_extra: Default extra fields to include in all log messages.
-        """
+        '''
         self.logger = logger
         self.default_extra = default_extra or {}
 
     def _merge_extra(self, extra: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Merge default extra fields with provided extras.
+        '''Merge default extra fields with provided extras.
 
         Performance optimized: avoids dict copying when possible.
         Automatically redacts sensitive patterns in extra fields.
-        """
+        '''
         if extra is None:
             # Return copy to prevent accidental mutation of default
             return self.default_extra.copy() if self.default_extra else {}
@@ -35,7 +35,7 @@ class StructuredLogger:
         return self._redact_sensitive_data(merged)
 
     def _redact_sensitive_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Redact sensitive patterns in log data.
+        '''Redact sensitive patterns in log data.
 
         Integrates with redact_dict_secrets to automatically redact
         API keys, passwords, and other sensitive patterns.
@@ -45,20 +45,20 @@ class StructuredLogger:
 
         Returns:
             Dictionary with sensitive values redacted.
-        """
+        '''
         from .security import redact_dict_secrets
 
         return redact_dict_secrets(data)
 
     def is_enabled_for(self, level: int) -> bool:
-        """Check if logger is enabled for the given level.
+        '''Check if logger is enabled for the given level.
 
         Use this to guard expensive logging operations.
 
         Example:
             if logger.is_enabled_for(logging.DEBUG):
                 logger.debug("Expensive: %s", expensive_computation())
-        """
+        '''
         return self.logger.isEnabledFor(level)
 
     def info(
@@ -67,7 +67,7 @@ class StructuredLogger:
         extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
-        """Log info message with structured data."""
+        '''Log info message with structured data.'''
         self.logger.info(message, extra=self._merge_extra(extra), exc_info=exc_info)
 
     def error(
@@ -76,7 +76,7 @@ class StructuredLogger:
         extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
-        """Log error message with structured data."""
+        '''Log error message with structured data.'''
         self.logger.error(message, extra=self._merge_extra(extra), exc_info=exc_info)
 
     def warning(
@@ -85,7 +85,7 @@ class StructuredLogger:
         extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
-        """Log warning message with structured data."""
+        '''Log warning message with structured data.'''
         self.logger.warning(message, extra=self._merge_extra(extra), exc_info=exc_info)
 
     def debug(
@@ -94,12 +94,12 @@ class StructuredLogger:
         extra: dict[str, Any] | None = None,
         exc_info: bool = False,
     ) -> None:
-        """Log debug message with structured data."""
+        '''Log debug message with structured data.'''
         self.logger.debug(message, extra=self._merge_extra(extra), exc_info=exc_info)
 
     @contextmanager
     def operation(self, operation_name: str, **kwargs: Any):
-        """Context manager for logging operation start and completion.
+        '''Context manager for logging operation start and completion.
 
         Args:
             operation_name: Name of the operation being performed.
@@ -113,24 +113,24 @@ class StructuredLogger:
                 # Do operation
                 ctx["added"] = 3
             # Automatically logs completion with results
-        """
-        context = {"operation": operation_name, **kwargs}
+        '''
+        context = {'operation': operation_name, **kwargs}
 
-        self.info(f"Starting {operation_name}", extra=context)
+        self.info(f'Starting {operation_name}', extra=context)
 
         try:
             yield context
-            self.info(f"Completed {operation_name}", extra=context)
+            self.info(f'Completed {operation_name}', extra=context)
         except Exception as e:
-            context["error"] = str(e)
-            context["error_type"] = type(e).__name__
-            self.error(f"Failed {operation_name}: {e}", extra=context, exc_info=True)
+            context['error'] = str(e)
+            context['error_type'] = type(e).__name__
+            self.error(f'Failed {operation_name}: {e}', extra=context, exc_info=True)
             # Re-raise with operation context in the exception message
             raise RuntimeError(f"Operation '{operation_name}' failed: {e}") from e
 
 
 def create_logger(
-    name: str, project_id: str, log_level: str = "INFO"
+    name: str, project_id: str, log_level: str = 'INFO'
 ) -> StructuredLogger:
     """Create a structured logger with default configuration.
 
@@ -160,11 +160,11 @@ def create_logger(
     # We set it here to ensure our configuration is respected
     logger.setLevel(getattr(logging, log_level.upper()))
 
-    return StructuredLogger(logger, default_extra={"project_id": project_id})
+    return StructuredLogger(logger, default_extra={'project_id': project_id})
 
 
 def format_fusion_score_status(score: float, threshold: float) -> tuple[str, str]:
-    """Format fusion score with status and interpretation.
+    '''Format fusion score with status and interpretation.
 
     Args:
         score: The normalized RRF fusion score (0-1 range).
@@ -172,16 +172,16 @@ def format_fusion_score_status(score: float, threshold: float) -> tuple[str, str
 
     Returns:
         Tuple of (status_indicator, interpretation).
-    """
-    status = "KEEP" if score >= threshold else "FILTER"
+    '''
+    status = 'KEEP' if score >= threshold else 'FILTER'
 
     if score >= 0.8:
-        interpretation = "High fusion confidence"
+        interpretation = 'High fusion confidence'
     elif score >= 0.6:
-        interpretation = "Moderate fusion confidence"
+        interpretation = 'Moderate fusion confidence'
     elif score >= 0.4:
-        interpretation = "Low fusion confidence"
+        interpretation = 'Low fusion confidence'
     else:
-        interpretation = "Minimal fusion overlap"
+        interpretation = 'Minimal fusion overlap'
 
     return status, interpretation

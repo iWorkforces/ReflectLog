@@ -1,8 +1,8 @@
-"""CCOAuth2 Utility - Cross-platform Anthropic API key retrieval.
+'''CCOAuth2 Utility - Cross-platform Anthropic API key retrieval.
 
 This module provides functions to retrieve Anthropic API keys from
 environment variables and platform-specific credential stores.
-"""
+'''
 
 import os
 import platform
@@ -21,7 +21,7 @@ from .types import OAUTH_TOKEN_PREFIX, ApiKeyResult
 
 
 def get_claude_code_api_key(verbose: bool = False) -> str | None:
-    """Retrieve Claude Code API key from system keychain/credential store.
+    '''Retrieve Claude Code API key from system keychain/credential store.
 
     Platform-specific retrieval:
     - macOS: Uses `security find-generic-password`
@@ -36,9 +36,9 @@ def get_claude_code_api_key(verbose: bool = False) -> str | None:
 
     Note:
         Returns None silently on any error (matching TypeScript behavior).
-    """
+    '''
     if verbose:
-        print(f"Retrieving from {platform.system()} credential store.", file=sys.stderr)
+        print(f'Retrieving from {platform.system()} credential store.', file=sys.stderr)
 
     try:
         retriever = get_platform_retriever()
@@ -68,14 +68,14 @@ def get_anthropic_api_key() -> ApiKeyResult | None:
         ...     print(f"Key from {result['source']}: {result['api_key'][:20]}...")
     """
     # Check environment variable first
-    env_key = os.environ.get("ANTHROPIC_API_KEY")
+    env_key = os.environ.get('ANTHROPIC_API_KEY')
     if env_key:
-        return {"api_key": env_key, "source": "env"}
+        return {'api_key': env_key, 'source': 'env'}
 
     # Fall back to Claude Code keychain
     claude_code_key = get_claude_code_api_key()
     if claude_code_key:
-        return {"api_key": claude_code_key, "source": "claude-code"}
+        return {'api_key': claude_code_key, 'source': 'claude-code'}
 
     return None
 
@@ -98,7 +98,7 @@ def init_credentials(verbose: bool = True) -> str | None:
         >>> token = init_credentials()
         >>> # Token is now available in os.environ["ANTHROPIC_AUTH_TOKEN"]
     """
-    oauth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN")
+    oauth_token = os.environ.get('ANTHROPIC_AUTH_TOKEN')
 
     if not oauth_token:
         # Try to retrieve from keychain directly
@@ -106,31 +106,31 @@ def init_credentials(verbose: bool = True) -> str | None:
 
         if keychain_token and keychain_token.startswith(OAUTH_TOKEN_PREFIX):
             oauth_token = keychain_token
-            os.environ["ANTHROPIC_AUTH_TOKEN"] = oauth_token
+            os.environ['ANTHROPIC_AUTH_TOKEN'] = oauth_token
             if verbose:
                 print(
-                    f"ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}... "
-                    "(retrieved from keychain)"
+                    f'ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}... '
+                    '(retrieved from keychain)'
                 )
         elif keychain_token:
             # It's a regular API key, not an OAuth token
             if verbose:
                 print(
-                    "Found API key in keychain, but it is not an "
-                    "OAuth token (sk-ant-oat01-*)."
+                    'Found API key in keychain, but it is not an '
+                    'OAuth token (sk-ant-oat01-*).'
                 )
                 print(
-                    "OAuth tokens are only available with Claude Pro/Max subscriptions."
+                    'OAuth tokens are only available with Claude Pro/Max subscriptions.'
                 )
-                print("SDK will use stored credentials.\n")
+                print('SDK will use stored credentials.\n')
         else:
             if verbose:
                 print(
-                    "ANTHROPIC_AUTH_TOKEN: <not set> (SDK will use stored credentials)"
+                    'ANTHROPIC_AUTH_TOKEN: <not set> (SDK will use stored credentials)'
                 )
     else:
         if verbose:
-            print(f"ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}...")
+            print(f'ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}...')
 
     return oauth_token
 
@@ -169,10 +169,10 @@ async def generate_content(
         model=model,
         system_prompt=system_prompt,
         allowed_tools=allowed_tools or [],
-        permission_mode="bypassPermissions",
+        permission_mode='bypassPermissions',
     )
 
-    result_text = ""
+    result_text = ''
 
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, AssistantMessage):
@@ -180,6 +180,6 @@ async def generate_content(
                 if isinstance(block, TextBlock):
                     result_text += block.text
         elif isinstance(message, ResultMessage) and message.is_error:
-            raise RuntimeError(f"Query failed: {message.subtype}")
+            raise RuntimeError(f'Query failed: {message.subtype}')
 
     return result_text.strip()

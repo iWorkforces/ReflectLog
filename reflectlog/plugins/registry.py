@@ -1,9 +1,9 @@
-"""Plugin registry for managing registered plugins.
+'''Plugin registry for managing registered plugins.
 
 This module provides the PluginRegistry class that tracks registered
 plugins and their capabilities, enabling queries like "find all tools"
 or "find reranker plugins".
-"""
+'''
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -12,41 +12,41 @@ from typing import Protocol, TypeVar, runtime_checkable
 
 
 def utc_now() -> datetime:
-    """Get current UTC time in a timezone-aware format.
+    '''Get current UTC time in a timezone-aware format.
 
     This function replaces the deprecated datetime.utcnow() and returns
     a timezone-aware datetime object in UTC.
-    """
+    '''
     return datetime.now(UTC)
 
 
 class PluginState(Enum):
-    """Plugin lifecycle states."""
+    '''Plugin lifecycle states.'''
 
-    DISCOVERED = "discovered"
-    LOADED = "loaded"
-    ACTIVATED = "activated"
-    DEACTIVATED = "deactivated"
-    UNLOADED = "unloaded"
-    ERROR = "error"
+    DISCOVERED = 'discovered'
+    LOADED = 'loaded'
+    ACTIVATED = 'activated'
+    DEACTIVATED = 'deactivated'
+    UNLOADED = 'unloaded'
+    ERROR = 'error'
 
 
 @dataclass
 class PluginCapability:
-    """A capability provided by a plugin."""
+    '''A capability provided by a plugin.'''
 
     name: str
-    version: str = "0.0.0"
+    version: str = '0.0.0'
 
 
 @dataclass
 class PluginMetadata:
-    """Metadata about a registered plugin."""
+    '''Metadata about a registered plugin.'''
 
     name: str
     version: str
-    description: str = ""
-    author: str = ""
+    description: str = ''
+    author: str = ''
     capabilities: list[PluginCapability] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
     state: PluginState = PluginState.DISCOVERED
@@ -56,26 +56,26 @@ class PluginMetadata:
     activated_at: datetime | None = None
 
 
-T = TypeVar("T")
+T = TypeVar('T')
 
 
 @runtime_checkable
 class IPluggable(Protocol):
-    """Protocol for pluggable components."""
+    '''Protocol for pluggable components.'''
 
     @property
     def plugin_name(self) -> str:
-        """Plugin identifier."""
+        '''Plugin identifier.'''
         ...
 
     @property
     def plugin_version(self) -> str:
-        """Plugin version."""
+        '''Plugin version.'''
         ...
 
 
 class PluginRegistry[T]:
-    """Registry for managing plugins and their capabilities.
+    '''Registry for managing plugins and their capabilities.
 
     This class provides methods for registering, unregistering, and
     querying plugins by various criteria.
@@ -84,10 +84,10 @@ class PluginRegistry[T]:
         registry = PluginRegistry[ITool]()
         registry.register(my_tool)
         tools = registry.list_by_type(ITool)
-    """
+    '''
 
     def __init__(self):
-        """Initialize empty plugin registry."""
+        '''Initialize empty plugin registry.'''
         self._plugins: dict[str, PluginMetadata] = {}
         self._instances: dict[str, T] = {}
 
@@ -96,7 +96,7 @@ class PluginRegistry[T]:
         plugin: T,
         metadata: PluginMetadata | None = None,
     ) -> PluginMetadata:
-        """Register a plugin instance.
+        '''Register a plugin instance.
 
         Args:
             plugin: Plugin instance to register.
@@ -104,18 +104,18 @@ class PluginRegistry[T]:
 
         Returns:
             PluginMetadata for the registered plugin.
-        """
+        '''
         if metadata is None:
             # Auto-generate metadata from plugin
             # Use getattr with default to satisfy type checker
             name = (
-                getattr(plugin, "plugin_name", None)
-                or getattr(plugin, "__class__", type(plugin)).__name__
+                getattr(plugin, 'plugin_name', None)
+                or getattr(plugin, '__class__', type(plugin)).__name__
             )
 
             version = (
-                getattr(plugin, "plugin_version", None)
-                or getattr(plugin, "__class__", type(plugin)).__module__.split(".")[-1]
+                getattr(plugin, 'plugin_version', None)
+                or getattr(plugin, '__class__', type(plugin)).__module__.split('.')[-1]
             )
 
             metadata = PluginMetadata(
@@ -132,14 +132,14 @@ class PluginRegistry[T]:
         return metadata
 
     def unregister(self, name: str) -> bool:
-        """Unregister a plugin by name.
+        '''Unregister a plugin by name.
 
         Args:
             name: Plugin name to unregister.
 
         Returns:
             True if unregistered, False if not found.
-        """
+        '''
         if name not in self._plugins:
             return False
 
@@ -150,55 +150,55 @@ class PluginRegistry[T]:
         return True
 
     def get(self, name: str) -> T | None:
-        """Get a plugin instance by name.
+        '''Get a plugin instance by name.
 
         Args:
             name: Plugin name.
 
         Returns:
             Plugin instance or None if not found.
-        """
+        '''
         return self._instances.get(name)
 
     def get_metadata(self, name: str) -> PluginMetadata | None:
-        """Get plugin metadata by name.
+        '''Get plugin metadata by name.
 
         Args:
             name: Plugin name.
 
         Returns:
             PluginMetadata or None if not found.
-        """
+        '''
         return self._plugins.get(name)
 
     def list_all(self) -> list[str]:
-        """List all registered plugin names.
+        '''List all registered plugin names.
 
         Returns:
             List of plugin names.
-        """
+        '''
         return list(self._plugins.keys())
 
     def list_by_state(self, state: PluginState) -> list[str]:
-        """List plugins by state.
+        '''List plugins by state.
 
         Args:
             state: Plugin state to filter by.
 
         Returns:
             List of plugin names in the given state.
-        """
+        '''
         return [name for name, meta in self._plugins.items() if meta.state == state]
 
     def list_by_capability(self, capability_name: str) -> list[str]:
-        """List plugins that provide a capability.
+        '''List plugins that provide a capability.
 
         Args:
             capability_name: Name of capability.
 
         Returns:
             List of plugin names with the capability.
-        """
+        '''
         return [
             name
             for name, meta in self._plugins.items()
@@ -206,14 +206,14 @@ class PluginRegistry[T]:
         ]
 
     def list_by_type(self, plugin_type: type) -> list[T]:
-        """List plugins that are instances of a type.
+        '''List plugins that are instances of a type.
 
         Args:
             plugin_type: Type to filter by.
 
         Returns:
             List of plugin instances of the given type.
-        """
+        '''
         return [
             plugin
             for plugin in self._instances.values()
@@ -221,14 +221,14 @@ class PluginRegistry[T]:
         ]
 
     def activate(self, name: str) -> bool:
-        """Activate a registered plugin.
+        '''Activate a registered plugin.
 
         Args:
             name: Plugin name to activate.
 
         Returns:
             True if activated, False if not found or already active.
-        """
+        '''
         if name not in self._plugins:
             return False
 
@@ -241,14 +241,14 @@ class PluginRegistry[T]:
         return True
 
     def deactivate(self, name: str) -> bool:
-        """Deactivate a registered plugin.
+        '''Deactivate a registered plugin.
 
         Args:
             name: Plugin name to deactivate.
 
         Returns:
             True if deactivated, False if not found or not active.
-        """
+        '''
         if name not in self._plugins:
             return False
 
@@ -260,7 +260,7 @@ class PluginRegistry[T]:
         return True
 
     def set_error(self, name: str, error_message: str) -> bool:
-        """Set plugin to error state.
+        '''Set plugin to error state.
 
         Args:
             name: Plugin name.
@@ -268,7 +268,7 @@ class PluginRegistry[T]:
 
         Returns:
             True if set, False if not found.
-        """
+        '''
         if name not in self._plugins:
             return False
 
@@ -278,38 +278,38 @@ class PluginRegistry[T]:
         return True
 
     def clear(self) -> None:
-        """Remove all registered plugins."""
+        '''Remove all registered plugins.'''
         self._plugins.clear()
         self._instances.clear()
 
     def count(self) -> int:
-        """Get number of registered plugins.
+        '''Get number of registered plugins.
 
         Returns:
             Number of registered plugins.
-        """
+        '''
         return len(self._plugins)
 
     @property
     def plugins(self) -> dict[str, PluginMetadata]:
-        """Get copy of plugin metadata registry."""
+        '''Get copy of plugin metadata registry.'''
         return self._plugins.copy()
 
     @property
     def instances(self) -> dict[str, T]:
-        """Get copy of plugin instances registry."""
+        '''Get copy of plugin instances registry.'''
         return self._instances.copy()
 
 
 class ToolRegistry(PluginRegistry[T]):
-    """Specialized registry for MCP tools.
+    '''Specialized registry for MCP tools.
 
     This registry provides additional methods for querying and
     managing MCP tool plugins.
-    """
+    '''
 
     def __init__(self):
-        """Initialize tool registry."""
+        '''Initialize tool registry.'''
         super().__init__()
         self._tool_names: set[str] = set()
 
@@ -317,10 +317,10 @@ class ToolRegistry(PluginRegistry[T]):
         self,
         tool: T,
         name: str,
-        description: str = "",
-        version: str = "0.0.0",
+        description: str = '',
+        version: str = '0.0.0',
     ) -> PluginMetadata:
-        """Register a tool with metadata.
+        '''Register a tool with metadata.
 
         Args:
             tool: Tool instance.
@@ -330,7 +330,7 @@ class ToolRegistry(PluginRegistry[T]):
 
         Returns:
             PluginMetadata for the registered tool.
-        """
+        '''
         if name in self._tool_names:
             raise ValueError(f"Tool '{name}' is already registered")
 
@@ -341,21 +341,21 @@ class ToolRegistry(PluginRegistry[T]):
             version=version,
             description=description,
             capabilities=[
-                PluginCapability(name="tool", version=version),
+                PluginCapability(name='tool', version=version),
             ],
         )
 
         return self.register(tool, metadata)
 
     def unregister_tool(self, name: str) -> bool:
-        """Unregister a tool by name.
+        '''Unregister a tool by name.
 
         Args:
             name: Tool name.
 
         Returns:
             True if unregistered, False if not found.
-        """
+        '''
         if name not in self._tool_names:
             return False
 
@@ -363,31 +363,31 @@ class ToolRegistry(PluginRegistry[T]):
         return self.unregister(name)
 
     def get_tool(self, name: str) -> T | None:
-        """Get a tool by name.
+        '''Get a tool by name.
 
         Args:
             name: Tool name.
 
         Returns:
             Tool instance or None if not found.
-        """
+        '''
         return self.get(name)
 
     def list_tool_names(self) -> list[str]:
-        """List all registered tool names.
+        '''List all registered tool names.
 
         Returns:
             List of tool names.
-        """
+        '''
         return sorted(self._tool_names)
 
     def has_tool(self, name: str) -> bool:
-        """Check if a tool is registered.
+        '''Check if a tool is registered.
 
         Args:
             name: Tool name.
 
         Returns:
             True if registered, False otherwise.
-        """
+        '''
         return name in self._tool_names
