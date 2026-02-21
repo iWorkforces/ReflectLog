@@ -265,6 +265,17 @@ class FastMCPServer:
                 extra={"error": str(e)},
             )
 
+    def set_startup_metrics(self, metrics: dict[str, float]) -> None:
+        '''Store startup timing metrics on the memory manager.
+
+        Called by server.py after initialization to record per-phase timing
+        data that the health_check tool exposes to callers.
+
+        Args:
+            metrics: Mapping of phase name to elapsed seconds.
+        '''
+        self._memory_manager.startup_metrics = metrics
+
 
 def main() -> None:
     """Entry point for the ReflectLogMCP server.

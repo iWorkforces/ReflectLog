@@ -210,7 +210,7 @@ class CachedEmbeddings(BaseModel):
         """
         return await self.embedder.aembed_documents(texts)
 
-    def get_cache_stats(self) -> dict[str, int]:
+    def get_cache_stats(self) -> dict[str, int | float]:
         """Get cache statistics.
 
         Returns:

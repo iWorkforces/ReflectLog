@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import re
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 import anyio
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -17,9 +17,6 @@ from reflectlog.application.config import (
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
-
-if TYPE_CHECKING:
-    from reflectlog.core.logging import IStructuredLogger
 
 
 def format_memory_age(created_at: str | None) -> str | None:

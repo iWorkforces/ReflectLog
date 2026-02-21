@@ -112,7 +112,7 @@ class MemoryManager:
         # #
         # Startup timing metrics (set by server.py after initialization)
         self._write_lock = threading.Lock()
-        self._startup_metrics: dict[str, float] | None = None
+        self.startup_metrics: dict[str, float] | None = None
 
         # Lazy initialization locks for thread-safe resource creation
         self._reranker_lock = threading.RLock()

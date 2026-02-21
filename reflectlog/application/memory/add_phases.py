@@ -187,15 +187,15 @@ class DuplicateDetectionPhase:
                 return (memory, is_dup)
 
         # Run all duplicate checks in parallel
+        results: list[tuple[str, bool]] = []
         async with create_task_group() as tg:
-            results: list[tuple[str, bool]] = []
 
             async def collect_result(memory: str) -> None:
                 res = await check_duplicate(memory)
                 results.append(res)
 
             for memory in unique_memories:
-                tg.soonify(collect_result)(memory)
+                _ = tg.soonify(collect_result)(memory)
 
         # Process results
         for memory, is_dup in results:
@@ -291,6 +291,15 @@ class SmartReplacementPhase:
             return None
         return self._memory_manager.smart_replacer
 
+    @property
+    def smart_replace_enabled(self) -> bool:
+        '''Check if smart replacement is configured and available.
+
+        Returns:
+            True if SmartReplacer is configured, False otherwise.
+        '''
+        return self._get_smart_replacer() is not None
+
     async def execute(self, memories: list[str]) -> Phase2Result:
         """Execute Phase 2: Parallel smart replacement detection.
 
@@ -321,8 +330,8 @@ class SmartReplacementPhase:
         # Limit concurrent replacement checks to avoid overload
         semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
+        replacement_results: list[tuple[str, list[ReplacementInfo]]] = []
         async with create_task_group() as tg:
-            replacement_results: list[tuple[str, list[ReplacementInfo]]] = []
 
             async def check_replacement_for_memory(memory: str) -> None:
                 """Check replacement for a single memory."""
@@ -331,7 +340,7 @@ class SmartReplacementPhase:
                 replacement_results.append((memory, infos))
 
             for memory in memories:
-                tg.soonify(check_replacement_for_memory)(memory)
+                _ = tg.soonify(check_replacement_for_memory)(memory)
 
         # Collect results
         for memory, infos in replacement_results:
@@ -373,7 +382,7 @@ class SmartReplacementPhase:
             List of ReplacementInfo objects for memories that should be replaced.
             Empty list if no replacements needed.
         """
-        replacements: list[ReplacementInfo] = []
+
 
         try:
             # Step 1: Find top N most similar memories via semantic search
@@ -506,9 +515,7 @@ class SmartReplacementPhase:
                     tg.start_soon(collect_result, existing_memory, similarity_score)
 
             # Filter out None results (failed checks or no replacement needed)
-            replacements = [r for r in results if r is not None]
-
-            return replacements
+            return [r for r in results if r is not None]
 
         except Exception as e:
             # Graceful degradation: log warning and proceed without replacement
@@ -953,7 +960,7 @@ class AddPipeline:
             f"Starting phased parallel memory addition [{mode_str}]: {len(memories)} memories",
             extra={
                 "total_memories": len(memories),
-                "smart_replace_enabled": self._phase2._get_smart_replacer() is not None,
+                "smart_replace_enabled": self._phase2.smart_replace_enabled,
                 "dry_run": dry_run,
                 "optimization": "phased_parallel",
             },
