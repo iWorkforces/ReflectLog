@@ -1,8 +1,8 @@
 """Memory operation protocols for ReflectLogMCP.
 
 This module defines protocols for memory storage and retrieval operations.
-These abstractions enable different memory backends—whether based on vector
-databases, document stores, or hybrid approaches—while presenting a
+These abstractions enable different memory backends-whether based on vector
+databases, document stores, or hybrid approaches-while presenting a
 consistent interface to the application layer.
 """
 
@@ -20,14 +20,14 @@ class IMemoryStore(Protocol):
     async def add(
         self,
         project_id: str,
-        message: str,
+        content: str,
         metadata: dict[str, object] | None = None,
     ) -> str:
         """Add a memory entry to the store.
 
         Args:
             project_id: Project identifier for filtering.
-            message: Memory content to store.
+            content: Memory content to store.
             metadata: Optional additional metadata.
 
         Returns:
@@ -39,7 +39,7 @@ class IMemoryStore(Protocol):
         self,
         project_id: str,
         memory_id: str,
-    ) -> dict | None:
+    ) -> dict[str, object] | None:
         """Retrieve a memory entry by ID.
 
         Args:
@@ -54,7 +54,7 @@ class IMemoryStore(Protocol):
     async def get_all(
         self,
         project_id: str,
-    ) -> list[dict]:
+    ) -> list[dict[str, object]]:
         """Retrieve all memories for a project.
 
         Args:
@@ -85,15 +85,15 @@ class IMemoryStore(Protocol):
         self,
         project_id: str,
         memory_id: str,
-        message: str,
-        metadata: dict | None = None,
+        content: str,
+        metadata: dict[str, object] | None = None,
     ) -> bool:
         """Update a memory entry.
 
         Args:
             project_id: Project identifier.
             memory_id: Memory identifier.
-            message: New memory content.
+            content: New memory content.
             metadata: Optional new metadata.
 
         Returns:
@@ -104,13 +104,13 @@ class IMemoryStore(Protocol):
     async def find_by_content(
         self,
         project_id: str,
-        message: str,
-    ) -> dict | None:
+        content: str,
+    ) -> dict[str, object] | None:
         """Find a memory by exact content match.
 
         Args:
             project_id: Project identifier.
-            message: Memory content to find.
+            content: Memory content to find.
 
         Returns:
             Memory entry dict or None if not found.
@@ -120,13 +120,13 @@ class IMemoryStore(Protocol):
     async def exists(
         self,
         project_id: str,
-        message: str,
+        content: str,
     ) -> bool:
         """Check if a memory with exact content exists.
 
         Args:
             project_id: Project identifier.
-            message: Memory content to check.
+            content: Memory content to check.
 
         Returns:
             True if exists, False otherwise.
@@ -178,36 +178,36 @@ class IMemoryBackend(IMemoryStore, Protocol):
             limit: Maximum results.
 
         Returns:
-            List of (message, score, memory_id) tuples.
+            List of (content, score, memory_id) tuples.
         """
         ...
 
     async def add_batch(
         self,
         project_id: str,
-        messages: list[str],
+        contents: list[str],
     ) -> list[str]:
         """Add multiple memories efficiently.
 
         Args:
             project_id: Project identifier.
-            messages: List of messages to store.
+            contents: List of memory contents to store.
 
         Returns:
-            List of stored message strings (may differ from input due to dedup).
+            List of stored memory content strings (may differ from input due to dedup).
         """
         ...
 
-    async def get_id_by_message(
+    async def get_id_by_content(
         self,
         project_id: str,
-        message: str,
+        content: str,
     ) -> int | None:
-        """Get internal ID by message content.
+        """Get internal ID by memory content.
 
         Args:
             project_id: Project identifier.
-            message: Message content.
+            content: Memory content.
 
         Returns:
             Internal ID or None if not found.
@@ -239,15 +239,15 @@ class IMemoryManager(Protocol):
         """Whether hybrid search is enabled."""
         ...
 
-    async def add_messages(
+    async def add_memories(
         self,
-        messages: list[str],
+        memories: list[str],
         dry_run: bool = False,
-    ) -> dict:
-        """Add multiple messages with processing.
+    ) -> dict[str, int]:
+        """Add multiple memories with processing.
 
         Args:
-            messages: List of messages to store.
+            memories: List of memories to store.
             dry_run: If True, only check without making changes.
 
         Returns:
@@ -256,10 +256,10 @@ class IMemoryManager(Protocol):
         ...
 
     async def get_all(self) -> list[str]:
-        """Retrieve all stored messages.
+        """Retrieve all stored memories.
 
         Returns:
-            List of all message strings.
+            List of all memory strings.
         """
         ...
 
@@ -275,15 +275,15 @@ class IMemoryManager(Protocol):
             limit: Maximum results.
 
         Returns:
-            List of matching message strings.
+            List of matching memory strings.
         """
         ...
 
-    async def delete_by_message(self, message: str) -> bool:
+    async def delete_by_memory(self, memory: str) -> bool:
         """Delete a memory by its content.
 
         Args:
-            message: Message content to delete.
+            memory: Memory content to delete.
 
         Returns:
             True if deleted, False if not found.

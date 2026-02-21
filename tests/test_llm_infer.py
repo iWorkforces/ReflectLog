@@ -56,46 +56,46 @@ async def test_with_infer_enabled():
         async with Client("http://127.0.0.1:9103/mcp") as client:
             print("✅ Connected to server with ENABLE_LLM_INFER=true")
 
-            # Add a simple message
-            test_message = "Python tutorial"
-            print(f"\n📤 Adding message: '{test_message}'")
+            # Add a simple memory
+            test_memory = "Python tutorial"
+            print(f"\n📤 Adding memory: '{test_memory}'")
 
-            await client.call_tool("add", arguments={"messages": [test_message]})
-            print("✅ Message added")
+            await client.call_tool("add", arguments={"memories": [test_memory]})
+            print("✅ Memory added")
 
             # Small delay for persistence
             await anyio.sleep(2)
 
-            # Retrieve all messages
-            print("\n📥 Retrieving all messages...")
+            # Retrieve all memories
+            print("\n📥 Retrieving all memories...")
             result: CallToolResult = await client.call_tool("get_all", arguments={})
 
-            messages = []
+            memories = []
             for content in result.content:
                 if hasattr(content, "text"):
                     try:
-                        messages = json.loads(content.text)
+                        memories = json.loads(content.text)
                     except Exception:
                         if isinstance(content.text, list):
-                            messages = content.text
+                            memories = content.text
 
-            print("\n📊 Stored messages:")
-            for msg in messages:
-                print(f"  - {msg}")
+            print("\n📊 Stored memories:")
+            for mem in memories:
+                print(f"  - {mem}")
 
-            if messages and messages[0] != test_message:
+            if memories and memories[0] != test_memory:
                 print("\n✅ LLM INFERENCE IS ACTIVE:")
-                print(f"   Original: '{test_message}'")
-                print(f"   Stored:   '{messages[0]}'")
-                print("   The message was transformed by the LLM!")
+                print(f"   Original: '{test_memory}'")
+                print(f"   Stored:   '{memories[0]}'")
+                print("   The memory was transformed by the LLM!")
             else:
                 print(
-                    "\n⚠️ Message appears unchanged (LLM might not have transformed it)"
+                    "\n⚠️ Memory appears unchanged (LLM might not have transformed it)"
                 )
 
             # Clean up
-            if messages:
-                await client.call_tool("remove", arguments={"messages": messages})
+            if memories:
+                await client.call_tool("remove", arguments={"memories": memories})
 
     finally:
         # Kill the server
@@ -146,49 +146,49 @@ async def test_with_infer_disabled():
         async with Client("http://127.0.0.1:9105/mcp") as client:
             print("✅ Connected to server with ENABLE_LLM_INFER=false")
 
-            # Add a simple message
-            test_message = "Python tutorial"
-            print(f"\n📤 Adding message: '{test_message}'")
+            # Add a simple memory
+            test_memory = "Python tutorial"
+            print(f"\n📤 Adding memory: '{test_memory}'")
 
-            await client.call_tool("add", arguments={"messages": [test_message]})
-            print("✅ Message added")
+            await client.call_tool("add", arguments={"memories": [test_memory]})
+            print("✅ Memory added")
 
             # Small delay for persistence
             await anyio.sleep(2)
 
-            # Retrieve all messages
-            print("\n📥 Retrieving all messages...")
+            # Retrieve all memories
+            print("\n📥 Retrieving all memories...")
             result: CallToolResult = await client.call_tool("get_all", arguments={})
 
-            messages = []
+            memories = []
             for content in result.content:
                 if hasattr(content, "text"):
                     try:
-                        messages = json.loads(content.text)
+                        memories = json.loads(content.text)
                     except Exception:
                         if isinstance(content.text, list):
-                            messages = content.text
+                            memories = content.text
 
-            print("\n📊 Stored messages:")
-            for msg in messages:
-                print(f"  - {msg}")
+            print("\n📊 Stored memories:")
+            for mem in memories:
+                print(f"  - {mem}")
 
-            if messages and messages[0] == test_message:
+            if memories and memories[0] == test_memory:
                 print("\n✅ LLM INFERENCE IS DISABLED:")
-                print(f"   Original: '{test_message}'")
-                print(f"   Stored:   '{messages[0]}'")
-                print("   The message was stored exactly as provided!")
+                print(f"   Original: '{test_memory}'")
+                print(f"   Stored:   '{memories[0]}'")
+                print("   The memory was stored exactly as provided!")
             else:
                 print(
-                    "\n⚠️ Unexpected: Message was transformed even though inference is disabled"
+                    "\n⚠️ Unexpected: Memory was transformed even though inference is disabled"
                 )
-                if messages:
-                    print(f"   Original: '{test_message}'")
-                    print(f"   Stored:   '{messages[0]}'")
+                if memories:
+                    print(f"   Original: '{test_memory}'")
+                    print(f"   Stored:   '{memories[0]}'")
 
             # Clean up
-            if messages:
-                await client.call_tool("remove", arguments={"messages": messages})
+            if memories:
+                await client.call_tool("remove", arguments={"memories": memories})
 
     finally:
         # Kill the server
@@ -205,7 +205,7 @@ async def main():
     print("🎯 ENABLE_LLM_INFER FUNCTIONALITY TEST")
     print("=" * 70)
     print("   This test demonstrates how ENABLE_LLM_INFER controls")
-    print("   whether the LLM processes messages during storage.")
+    print("   whether the LLM processes memories during storage.")
     print("=" * 70)
 
     try:
@@ -228,12 +228,12 @@ async def main():
         print("=" * 70)
         print("""
 Summary:
-  ✅ ENABLE_LLM_INFER=false (default): Messages stored exactly as provided
-  ⚠️ ENABLE_LLM_INFER=true: Would transform messages using LLM (requires API key)
+  ✅ ENABLE_LLM_INFER=false (default): Memories stored exactly as provided
+  ⚠️ ENABLE_LLM_INFER=true: Would transform memories using LLM (requires API key)
 
 Key Points:
-  • Default behavior (false) is faster and preserves exact message content
-  • Enabling LLM inference allows the AI to enhance messages with context
+  • Default behavior (false) is faster and preserves exact memory content
+  • Enabling LLM inference allows the AI to enhance memories with context
   • The choice depends on your use case and whether you want AI enhancement
         """)
 

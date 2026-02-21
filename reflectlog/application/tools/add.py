@@ -1,18 +1,19 @@
 """Add tool implementation for ReflectLogMCP Server."""
 
 import time
+from typing import Any, cast
 
 from ..constants import (
-    LOG_ADD_MESSAGE_PREVIEW_LIMIT,
+    LOG_ADD_MEMORY_PREVIEW_LIMIT,
     LOG_SEPARATOR_LENGTH,
 )
 from ..exceptions import StorageError
-from ..utils import truncate_message, validate_messages
+from ..utils import truncate_memory, validate_memories
 from .base import BaseTool
 
 
 class AddTool(BaseTool):
-    """Tool for adding messages to memory storage."""
+    """Tool for adding memories to memory storage."""
 
     def get_name(self) -> str:
         """Get the tool name."""
@@ -21,40 +22,40 @@ class AddTool(BaseTool):
     def get_instruction_snippet(self) -> str:
         """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
-            "    • add(messages: list[str])\n"
-            "      Add messages with semantic embeddings. Empty lists are no-op.\n"
-            "      Messages must be 1-30720 characters, non-whitespace."
+            "    • add(memories: list[str])\n"
+            "      Add memories with semantic embeddings. Empty lists are no-op.\n"
+            "      Memories must be 1-30720 characters, non-whitespace."
         )
 
     def get_handler(self):
         """Get the async tool handler function."""
 
-        async def add(messages: list[str], dry_run: bool = False) -> None:
-            """Add messages to the message store with parallel processing (async).
+        async def add(memories: list[str], dry_run: bool = False) -> None:
+            """Add memories to the memory store with parallel processing (async).
 
-            This tool stores one or more text messages in the memory store using
-            semantic embeddings. Messages are processed concurrently for improved
-            performance when adding multiple messages. Messages are stored with
+            This tool stores one or more text memories in the memory store using
+            semantic embeddings. Memories are processed concurrently for improved
+            performance when adding multiple memories. Memories are stored with
             vector embeddings and will be available via get_all() or search().
 
-            Note: Uses async add_messages_async() for concurrent processing of
+            Note: Uses async add_memories_async() for concurrent processing of
             batch additions without blocking the event loop.
 
             Args:
-                messages: List of message strings to add to storage. Empty list
-                    is treated as no-op. Each message must be 1-30720 characters
+                memories: List of memory strings to add to storage. Empty list
+                    is treated as no-op. Each memory must be 1-30720 characters
                     and contain non-whitespace content.
                 dry_run: If True, performs smart replacement detection without
-                    actually storing messages. Useful for testing what changes
+                    actually storing memories. Useful for testing what changes
                     would occur. When enabled, returns AddResult without
                     modifying storage. Default is False (live mode).
 
             Returns:
-                None. Messages are stored successfully if no error is raised.
+                None. Memories are stored successfully if no error is raised.
                 (In dry_run mode, no changes are made to storage.)
 
             Raises:
-                ValueError: If any message is invalid (empty, too long, whitespace-only).
+                ValueError: If any memory is invalid (empty, too long, whitespace-only).
                 RuntimeError: If storage operation fails (not raised in dry_run mode).
 
             Examples:
@@ -64,69 +65,72 @@ class AddTool(BaseTool):
                 >>> add(["Test message"], dry_run=True)  # Check replacements without storing
             """
             # Handle empty list gracefully (no-op, no error)
-            if not messages:
+            if not memories:
                 self.log_invocation("add", count=0)
                 self.logger.info("Add called with empty list, nothing to store")
                 return
 
-            # Validate messages
-            is_valid, error_msg = validate_messages(
-                messages, self.config.min_message_length, self.config.max_message_length
+            # Validate memories
+            is_valid, error_msg = validate_memories(
+                memories, self.config.min_memory_length, self.config.max_memory_length
             )
 
             if not is_valid:
-                self.log_error("add", ValueError(error_msg), count=len(messages))
-                raise ValueError(f"Invalid message: {error_msg}")
+                self.log_error("add", ValueError(error_msg), count=len(memories))
+                raise ValueError(f"Invalid memory: {error_msg}")
 
             # Log invocation with detailed info
             start_time = time.time()
             mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.log_invocation(
-                "add", count=len(messages), mode=mode_str, dry_run=dry_run
+                "add", count=len(memories), mode=mode_str, dry_run=dry_run
             )
 
             # Log operation header
-            total_chars = sum(len(m) for m in messages)
+            total_chars = sum(len(m) for m in memories)
             self.logger.info(
                 "=" * LOG_SEPARATOR_LENGTH,
                 extra={"tool": "add", "section": "header"},
             )
             self.logger.info(
-                f"ADD OPERATION: Storing {len(messages)} message(s) "
+                f"ADD OPERATION: Storing {len(memories)} memory(ies) "
                 f"({total_chars:,} total characters)",
                 extra={
                     "tool": "add",
-                    "message_count": len(messages),
+                    "memory_count": len(memories),
                     "total_characters": total_chars,
                     "hybrid_mode": self.config.enable_hybrid_search,
                 },
             )
 
-            # Log message previews (throttled for large batches)
-            log_limit = min(len(messages), LOG_ADD_MESSAGE_PREVIEW_LIMIT)
-            for idx, message in enumerate(messages[:log_limit], 1):
-                preview = truncate_message(message, max_length=80)
+            # Log memory previews (throttled for large batches)
+            log_limit = min(len(memories), LOG_ADD_MEMORY_PREVIEW_LIMIT)
+            for idx, memory in enumerate(memories[:log_limit], 1):
+                preview = truncate_memory(memory, max_length=80)
                 self.logger.info(
-                    f"  Message {idx}/{len(messages)} ({len(message):,} chars): {preview}",
+                    f"  Memory {idx}/{len(memories)} ({len(memory):,} chars): {preview}",
                     extra={
                         "tool": "add",
-                        "message_index": idx,
-                        "message_length": len(message),
+                        "memory_index": idx,
+                        "memory_length": len(memory),
                     },
                 )
-            if len(messages) > log_limit:
+            if len(memories) > log_limit:
                 self.logger.info(
-                    f"  ... {len(messages) - log_limit} more message(s) omitted from logs",
+                    f"  ... {len(memories) - log_limit} more memory(ies) omitted from logs",
                     extra={
                         "tool": "add",
-                        "omitted_count": len(messages) - log_limit,
-                        "message_count": len(messages),
+                        "omitted_count": len(memories) - log_limit,
+                        "memory_count": len(memories),
                     },
                 )
 
-            # Store messages using async method for better concurrency
+            # Store memories using async method for better concurrency
             try:
-                result = await self.memory.add_messages_async(messages, dry_run=dry_run)
+                memory_manager = cast(Any, self.memory)
+                result = await memory_manager.add_memories_async(
+                    memories, dry_run=dry_run
+                )
 
                 # Log completion summary with timing
                 duration = (time.time() - start_time) * 1000  # ms
@@ -140,7 +144,7 @@ class AddTool(BaseTool):
                 )
 
                 # Build summary message
-                summary_parts = []
+                summary_parts: list[str] = []
                 if stored_count > 0:
                     summary_parts.append(f"{stored_count} stored")
                 if replaced_count > 0:
@@ -161,7 +165,7 @@ class AddTool(BaseTool):
                     )
                 else:
                     self.logger.info(
-                        f"ADD COMPLETE: All {stored_count} message(s) stored successfully",
+                        f"ADD COMPLETE: All {stored_count} memory(ies) stored successfully",
                         extra={
                             "tool": "add",
                             "stored_count": stored_count,
@@ -181,13 +185,13 @@ class AddTool(BaseTool):
                         },
                     )
 
-                avg_time = duration / len(messages) if messages else 0
+                avg_time = duration / len(memories) if memories else 0
                 self.logger.info(
-                    f"Completed in {duration:.0f}ms ({avg_time:.0f}ms/message avg)",
+                    f"Completed in {duration:.0f}ms ({avg_time:.0f}ms/memory avg)",
                     extra={
                         "tool": "add",
                         "duration_ms": duration,
-                        "avg_ms_per_message": avg_time,
+                        "avg_ms_per_memory": avg_time,
                     },
                 )
                 self.logger.info(
@@ -195,12 +199,12 @@ class AddTool(BaseTool):
                     extra={"tool": "add", "section": "footer"},
                 )
 
-                self.log_completion("add", requested=len(messages), stored=stored_count)
+                self.log_completion("add", requested=len(memories), stored=stored_count)
 
             except Exception as e:
-                self.log_error("add", e, count=len(messages))
+                self.log_error("add", e, count=len(memories))
                 raise StorageError(
-                    f"Failed to add messages to memory store: {e}"
+                    f"Failed to add memories to memory store: {e}"
                 ) from e
 
         return add

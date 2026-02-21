@@ -129,7 +129,7 @@ class TestUSearchEngineInitialization:
     def test_lazy_initialization(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Index and message store should be lazily initialized."""
+        """Index and memory store should be lazily initialized."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -147,19 +147,19 @@ class TestUSearchEngineInitialization:
 class TestUSearchEngineAdd:
     """Tests for USearchEngine.add method."""
 
-    def test_add_message(
+    def test_add_content(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Add should store message in both index and SQLite."""
+        """Add should store content in both index and SQLite."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
             engine.add("user1", "Hello world", infer=False)
 
-            # Message should be in SQLite
-            messages = engine.get_all("user1")
-            assert "Hello world" in messages
+            # Content should be in SQLite
+            contents = engine.get_all("user1")
+            assert "Hello world" in contents
 
             # Embedder should have been called
             assert embedder.call_count == 1
@@ -169,7 +169,7 @@ class TestUSearchEngineAdd:
     def test_add_skips_duplicates(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Add should skip duplicate messages."""
+        """Add should skip duplicate contents."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -177,9 +177,9 @@ class TestUSearchEngineAdd:
             engine.add("user1", "Hello world", infer=False)
             engine.add("user1", "Hello world", infer=False)  # Duplicate
 
-            # Only one message should be stored
-            messages = engine.get_all("user1")
-            assert len(messages) == 1
+            # Only one content should be stored
+            contents = engine.get_all("user1")
+            assert len(contents) == 1
 
             # Embedder should only be called once
             assert embedder.call_count == 1
@@ -225,7 +225,7 @@ class TestUSearchEngineSearch:
     def test_search_returns_matches(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search should return matching messages with scores."""
+        """Search should return matching contents with scores."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
@@ -236,7 +236,7 @@ class TestUSearchEngineSearch:
             results = engine.search("Hello", "user1", limit=5)
 
             assert len(results) > 0
-            # Results should be (message, score, created_at) tuples
+            # Results should be (content, score, created_at) tuples
             assert all(isinstance(r, tuple) and len(r) == 3 for r in results)
         finally:
             engine.close()
@@ -244,20 +244,20 @@ class TestUSearchEngineSearch:
     def test_search_filters_by_project_id(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Search should only return messages for the specified project."""
+        """Search should only return contents for the specified project."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
-            engine.add("user1", "User1 message", infer=False)
-            engine.add("user2", "User2 message", infer=False)
+            engine.add("user1", "User1 content", infer=False)
+            engine.add("user2", "User2 content", infer=False)
 
-            results = engine.search("message", "user1", limit=5)
+            results = engine.search("content", "user1", limit=5)
 
-            # Should only return user1's message
-            messages = [r[0] for r in results]
-            assert "User1 message" in messages
-            assert "User2 message" not in messages
+            # Should only return user1's content
+            contents = [r[0] for r in results]
+            assert "User1 content" in contents
+            assert "User2 content" not in contents
         finally:
             engine.close()
 
@@ -269,11 +269,11 @@ class TestUSearchEngineSearch:
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
-            # Add many messages
+            # Add many contents
             for i in range(10):
-                engine.add("user1", f"Message {i}", infer=False)
+                engine.add("user1", f"Content {i}", infer=False)
 
-            results = engine.search("message", "user1", limit=3)
+            results = engine.search("content", "user1", limit=3)
 
             assert len(results) <= 3
         finally:
@@ -291,27 +291,27 @@ class TestUSearchEngineGetAll:
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
-            messages = engine.get_all("user1")
-            assert messages == []
+            contents = engine.get_all("user1")
+            assert contents == []
         finally:
             engine.close()
 
-    def test_get_all_returns_messages(
+    def test_get_all_returns_contents(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Get all should return all messages for user."""
+        """Get all should return all contents for user."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
-            engine.add("user1", "Message 1", infer=False)
-            engine.add("user1", "Message 2", infer=False)
+            engine.add("user1", "Content 1", infer=False)
+            engine.add("user1", "Content 2", infer=False)
 
-            messages = engine.get_all("user1")
+            contents = engine.get_all("user1")
 
-            assert len(messages) == 2
-            assert "Message 1" in messages
-            assert "Message 2" in messages
+            assert len(contents) == 2
+            assert "Content 1" in contents
+            assert "Content 2" in contents
         finally:
             engine.close()
 
@@ -319,32 +319,32 @@ class TestUSearchEngineGetAll:
 class TestUSearchEngineDelete:
     """Tests for USearchEngine.delete method."""
 
-    def test_delete_existing_message(
+    def test_delete_existing_content(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Delete should remove message from both index and SQLite."""
+        """Delete should remove content from both index and SQLite."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
             engine.add("user1", "Hello world", infer=False)
 
-            # Get the message ID from SQLite
-            msg_id = engine.message_store.get_id_by_message("user1", "Hello world")
-            assert msg_id is not None
+            # Get the content ID from SQLite
+            content_id = engine.memory_store.get_id_by_content("user1", "Hello world")
+            assert content_id is not None
 
-            engine.delete(str(msg_id))
+            engine.delete(str(content_id))
 
-            # Message should be removed
-            messages = engine.get_all("user1")
-            assert "Hello world" not in messages
+            # Content should be removed
+            contents = engine.get_all("user1")
+            assert "Hello world" not in contents
         finally:
             engine.close()
 
     def test_delete_nonexistent_logs_warning(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Delete of non-existent message should log warning."""
+        """Delete of non-existent content should log warning."""
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -400,13 +400,13 @@ class TestUSearchEnginePersistence:
     def test_persistence_across_restart(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Messages should persist across engine restart."""
+        """Contents should persist across engine restart."""
         config, embedder, _ = temp_engine
 
         # First engine instance
         engine1 = USearchEngine(config=config, embedder=embedder)
         try:
-            engine1.add("user1", "Persistent message", infer=False)
+            engine1.add("user1", "Persistent content", infer=False)
             engine1.commit()
         finally:
             engine1.close()
@@ -414,9 +414,9 @@ class TestUSearchEnginePersistence:
         # Second engine instance (simulating restart)
         engine2 = USearchEngine(config=config, embedder=embedder)
         try:
-            # Message should still be accessible
-            messages = engine2.get_all("user1")
-            assert "Persistent message" in messages
+            # Content should still be accessible
+            contents = engine2.get_all("user1")
+            assert "Persistent content" in contents
         finally:
             engine2.close()
 
@@ -483,9 +483,9 @@ class TestUSearchEngineExactSearch:
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
-            # Add a few messages (below threshold)
+            # Add a few contents (below threshold)
             for i in range(5):
-                engine.add("user1", f"Message {i}", infer=False)
+                engine.add("user1", f"Content {i}", infer=False)
 
             # Index size is 5, below threshold of 1000
             assert len(engine.index) == 5
@@ -509,9 +509,9 @@ class TestUSearchEngineExactSearch:
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
-            # Add messages to exceed threshold
+            # Add contents to exceed threshold
             for i in range(5):
-                engine.add("user1", f"Message {i}", infer=False)
+                engine.add("user1", f"Content {i}", infer=False)
 
             # Index size is 5, above threshold of 3
             assert len(engine.index) == 5
@@ -539,7 +539,7 @@ class TestUSearchEngineExactSearch:
 
             results = engine.search("Hello", "user1", limit=5)
 
-            # Should return valid results (3-tuples: message, score, created_at)
+            # Should return valid results (3-tuples: content, score, created_at)
             assert len(results) > 0
             assert all(isinstance(r, tuple) and len(r) == 3 for r in results)
         finally:
@@ -751,8 +751,8 @@ class TestUSearchEngineAddErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to generate embedding"):
                 engine.add("user1", "rollback test", infer=False)
 
-            messages = engine.get_all("user1")
-            assert "rollback test" not in messages
+            contents = engine.get_all("user1")
+            assert "rollback test" not in contents
             logger.error.assert_called()
         finally:
             engine.close()
@@ -769,7 +769,7 @@ class TestUSearchEngineAddErrorPaths:
             engine.ensure_initialized()
             mock_store = MagicMock()
             mock_store.insert.side_effect = StorageError("Duplicate message detected")
-            object.__setattr__(engine, "_message_store", mock_store)
+            object.__setattr__(engine, "_memory_store", mock_store)
 
             engine.add("user1", "dup msg", infer=False)
 
@@ -789,9 +789,9 @@ class TestUSearchEngineAddErrorPaths:
             engine.ensure_initialized()
             mock_store = MagicMock()
             mock_store.insert.side_effect = TypeError("unexpected type error")
-            object.__setattr__(engine, "_message_store", mock_store)
+            object.__setattr__(engine, "_memory_store", mock_store)
 
-            with pytest.raises(RuntimeError, match="Failed to add message"):
+            with pytest.raises(RuntimeError, match="Failed to add content"):
                 engine.add("user1", "error msg", infer=False)
 
             logger.error.assert_called()
@@ -810,7 +810,7 @@ class TestUSearchEngineAddErrorPaths:
             engine.ensure_initialized()
             mock_store = MagicMock()
             mock_store.insert.side_effect = RuntimeError("connection lost")
-            object.__setattr__(engine, "_message_store", mock_store)
+            object.__setattr__(engine, "_memory_store", mock_store)
 
             with pytest.raises(RuntimeError, match="connection lost"):
                 engine.add("user1", "error msg", infer=False)
@@ -839,17 +839,17 @@ class TestUSearchEngineAddBatch:
     def test_add_batch_success(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """add_batch should add multiple messages and return them."""
+        """add_batch should add multiple contents and return them."""
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
-            messages = ["Batch msg 1", "Batch msg 2", "Batch msg 3"]
-            result = engine.add_batch("user1", messages, infer=False)
+            contents = ["Batch msg 1", "Batch msg 2", "Batch msg 3"]
+            result = engine.add_batch("user1", contents, infer=False)
 
             assert len(result) == 3
-            assert set(result) == set(messages)
+            assert set(result) == set(contents)
 
             all_msgs = engine.get_all("user1")
             assert len(all_msgs) == 3
@@ -884,7 +884,7 @@ class TestUSearchEngineAddBatch:
             engine.ensure_initialized()
             mock_store = MagicMock()
             mock_store.insert_many.return_value = []
-            object.__setattr__(engine, "_message_store", mock_store)
+            object.__setattr__(engine, "_memory_store", mock_store)
 
             result = engine.add_batch("user1", ["dup1", "dup2"], infer=False)
             assert result == []
@@ -902,12 +902,12 @@ class TestUSearchEngineAddBatch:
         try:
             engine.ensure_initialized()
 
-            with pytest.raises(RuntimeError, match="Failed to add message batch"):
+            with pytest.raises(RuntimeError, match="Failed to add content batch"):
                 engine.add_batch("user1", ["rb1", "rb2"], infer=False)
 
-            messages = engine.get_all("user1")
-            assert "rb1" not in messages
-            assert "rb2" not in messages
+            contents = engine.get_all("user1")
+            assert "rb1" not in contents
+            assert "rb2" not in contents
         finally:
             engine.close()
 
@@ -920,7 +920,7 @@ class TestUSearchEngineAddBatch:
         engine = USearchEngine(config=config, embedder=bad_embedder, logger=logger)
 
         try:
-            with pytest.raises(RuntimeError, match="Failed to add message batch"):
+            with pytest.raises(RuntimeError, match="Failed to add content batch"):
                 engine.add_batch("user1", ["m1", "m2"], infer=False)
         finally:
             engine.close()
@@ -1085,7 +1085,7 @@ class TestUSearchEngineGetAllErrorPaths:
     def test_get_all_with_logger(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """get_all with logger should log message count."""
+        """get_all with logger should log content count."""
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
@@ -1108,13 +1108,13 @@ class TestUSearchEngineGetAllErrorPaths:
 
         try:
             engine.ensure_initialized()
-            original_store = engine.message_store
+            original_store = engine.memory_store
             original_store.close()
             mock_store = MagicMock()
             mock_store.get_all.side_effect = OSError("disk read error")
-            object.__setattr__(engine, "_message_store", mock_store)
+            object.__setattr__(engine, "_memory_store", mock_store)
 
-            with pytest.raises(RuntimeError, match="Failed to retrieve messages"):
+            with pytest.raises(RuntimeError, match="Failed to retrieve contents"):
                 engine.get_all("user1")
 
             logger.error.assert_called()
@@ -1128,17 +1128,17 @@ class TestUSearchEngineDeleteErrorPaths:
     def test_delete_existing_with_logger_logs_debug(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """Deleting an existing message with logger should log debug."""
+        """Deleting an existing content with logger should log debug."""
         config, embedder, _ = temp_engine
         logger = MagicMock()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
             engine.add("user1", "to delete", infer=False)
-            msg_id = engine.message_store.get_id_by_message("user1", "to delete")
-            assert msg_id is not None
+            content_id = engine.memory_store.get_id_by_content("user1", "to delete")
+            assert content_id is not None
 
-            engine.delete(str(msg_id))
+            engine.delete(str(content_id))
 
             debug_calls = [str(c) for c in logger.debug.call_args_list]
             assert any("deleted" in c.lower() for c in debug_calls)
@@ -1176,7 +1176,7 @@ class TestUSearchEngineDeleteErrorPaths:
                 side_effect=OSError("corrupted index")
             )
 
-            with pytest.raises(RuntimeError, match="Failed to delete message"):
+            with pytest.raises(RuntimeError, match="Failed to delete content"):
                 engine.delete("42")
 
             logger.error.assert_called()
@@ -1237,35 +1237,35 @@ class TestUSearchEngineCommitErrorPaths:
             engine.close()
 
 
-class TestUSearchEngineGetIdByMessage:
-    """Tests for get_id_by_message() method."""
+class TestUSearchEngineGetIdByContent:
+    """Tests for get_id_by_content() method."""
 
-    def test_get_id_by_message_found(
+    def test_get_id_by_content_found(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """get_id_by_message should return ID for existing message."""
+        """get_id_by_content should return ID for existing content."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
             engine.add("user1", "findable msg", infer=False)
-            msg_id = engine.get_id_by_message("user1", "findable msg")
-            assert msg_id is not None
-            assert isinstance(msg_id, int)
+            content_id = engine.get_id_by_content("user1", "findable msg")
+            assert content_id is not None
+            assert isinstance(content_id, int)
         finally:
             engine.close()
 
-    def test_get_id_by_message_not_found(
+    def test_get_id_by_content_not_found(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """get_id_by_message should return None for non-existent message."""
+        """get_id_by_content should return None for non-existent content."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 
         try:
             engine.ensure_initialized()
-            msg_id = engine.get_id_by_message("user1", "nonexistent")
-            assert msg_id is None
+            content_id = engine.get_id_by_content("user1", "nonexistent")
+            assert content_id is None
         finally:
             engine.close()
 
@@ -1294,10 +1294,10 @@ class TestUSearchEngineContextManager:
             with USearchEngine(config=config, embedder=embedder) as engine:
                 raise ValueError("test error")
 
-    def test_close_with_no_message_store(
+    def test_close_with_no_memory_store(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        """close() when _message_store is None should be a no-op."""
+        """close() when _memory_store is None should be a no-op."""
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
         engine.close()

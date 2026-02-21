@@ -40,7 +40,7 @@ class ReflectLogMCPUser(HttpUser):
         self.client.post(
             "/mcp/add",
             json={
-                "messages": [f"Memory {randint(1000, 9999)}"],
+                "memories": [f"Memory {randint(1000, 9999)}"],
             },
         )
         self.wait()

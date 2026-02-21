@@ -38,7 +38,7 @@ def mock_config() -> Config:
     config.index_base_path = "/tmp/test_indexes"
     config.search_limit = 5
     config.search_score_threshold = 0.8
-    config.deduplicate_messages = True
+    config.deduplicate_memories = True
     config.enable_llm_infer = False
     config.remove_search_limit = 5
     config.remove_score_threshold = 0.9
@@ -121,7 +121,7 @@ def _make_manager(config, logger):
     ):
         mock_usearch = MagicMock()
         mock_usearch.add_batch.side_effect = (
-            lambda project_id, messages, infer: messages
+            lambda project_id, memories, infer: memories
         )
         usearch_cls.return_value = mock_usearch
 
@@ -441,40 +441,40 @@ class TestSmartReplacerProperty:
 
 
 # ---------------------------------------------------------------------------
-# Tests: _add_message  (lines 527-560)
+# Tests: _add_memory  (lines 527-560)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestAddMessage:
-    """Tests for _add_message method."""
+class TestAddMemory:
+    """Tests for _add_memory method."""
 
-    def test_add_message_duplicate_skipped(self, mock_config, mock_logger):
-        """Duplicate message returns False (lines 527-535)."""
+    def test_add_memory_duplicate_skipped(self, mock_config, mock_logger):
+        """Duplicate memory returns False (lines 527-535)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         # Tantivy search returns exact match
         mock_tantivy.search.return_value = [("hello world", 1.0)]
 
-        result = manager._add_message("hello world")
+        result = manager._add_memory("hello world")
         assert result is False
         mock_usearch.add.assert_not_called()
 
-    def test_add_message_success(self, mock_config, mock_logger):
+    def test_add_memory_success(self, mock_config, mock_logger):
         """Successful add returns True (lines 537-557)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.search.return_value = []  # No duplicate
 
-        result = manager._add_message("new message")
+        result = manager._add_memory("new memory")
         assert result is True
         mock_usearch.add.assert_called_once_with(
             project_id="test_project",
-            message="new message",
+            content="new memory",
             infer=False,
         )
-        mock_tantivy.add.assert_called_once_with("test_project", "new message")
+        mock_tantivy.add.assert_called_once_with("test_project", "new memory")
 
-    def test_add_message_without_tantivy(self, mock_config, mock_logger):
-        """Add message without Tantivy engine (semantic only)."""
+    def test_add_memory_without_tantivy(self, mock_config, mock_logger):
+        """Add memory without Tantivy engine (semantic only)."""
         mock_config.enable_hybrid_search = False
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -484,87 +484,87 @@ class TestAddMessage:
             mock_usearch = MagicMock()
             usearch_cls.return_value = mock_usearch
             # No duplicate via database lookup
-            mock_usearch.get_id_by_message.return_value = None
+            mock_usearch.get_id_by_content.return_value = None
 
             manager = MemoryManager(mock_config, mock_logger)
-            result = manager._add_message("solo message")
+            result = manager._add_memory("solo memory")
             assert result is True
             mock_usearch.add.assert_called_once()
 
-    def test_add_message_storage_error(self, mock_config, mock_logger):
+    def test_add_memory_storage_error(self, mock_config, mock_logger):
         """Storage exception wraps in StorageError (lines 559-560)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.search.return_value = []
         mock_usearch.add.side_effect = RuntimeError("disk full")
 
-        with pytest.raises(StorageError, match="Failed to add message"):
-            manager._add_message("error msg")
+        with pytest.raises(StorageError, match="Failed to add memory"):
+            manager._add_memory("error content")
 
-    def test_add_message_dedup_disabled(self, mock_config, mock_logger):
-        """When deduplicate_messages=False, skip duplicate check."""
-        mock_config.deduplicate_messages = False
+    def test_add_memory_dedup_disabled(self, mock_config, mock_logger):
+        """When deduplicate_memories=False, skip duplicate check."""
+        mock_config.deduplicate_memories = False
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        result = manager._add_message("any message")
+        result = manager._add_memory("any memory")
         assert result is True
         # Should not call search for dedup
         mock_tantivy.search.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Tests: add_messages batch dedup/logging  (lines 594-602, 642, 654, 662)
+# Tests: add_memories batch dedup/logging  (lines 594-602, 642, 654, 662)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestAddMessagesBatchLogging:
-    """Tests for add_messages batch dedup and logging edge cases."""
+class TestAddMemoriesBatchLogging:
+    """Tests for add_memories batch dedup and logging edge cases."""
 
-    def test_add_messages_in_batch_duplicate(self, mock_config, mock_logger):
+    def test_add_memories_in_batch_duplicate(self, mock_config, mock_logger):
         """Duplicate within batch should be skipped (lines 593-602)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.add_batch.side_effect = (
-            lambda project_id, messages, infer: messages
+            lambda project_id, memories, infer: memories
         )
 
-        result = manager.add_messages(["msg1", "msg1", "msg2"])
-        # "msg1" repeated: first stored, second skipped
-        assert result == 2  # msg1 + msg2
+        result = manager.add_memories(["mem1", "mem1", "mem2"])
+        # "mem1" repeated: first stored, second skipped
+        assert result == 2  # mem1 + mem2
 
-    def test_add_messages_batch_insert_skipped_warning(self, mock_config, mock_logger):
-        """Messages skipped during batch insert should log warning (line 654)."""
+    def test_add_memories_batch_insert_skipped_warning(self, mock_config, mock_logger):
+        """Memories skipped during batch insert should log warning (line 654)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
-        # add_batch returns only subset - some messages skipped
+        # add_batch returns only subset - some memories skipped
         # Must clear side_effect (set by _make_manager) before setting return_value
         mock_usearch.add_batch.side_effect = None
-        mock_usearch.add_batch.return_value = ["msg1"]
+        mock_usearch.add_batch.return_value = ["mem1"]
 
-        result = manager.add_messages(["msg1", "msg2"])
+        result = manager.add_memories(["mem1", "mem2"])
         assert result == 1
-        # Verify warning logged for skipped message
+        # Verify warning logged for skipped memory
         warning_logged = any(
             "Skipped during batch insert" in str(call)
             for call in mock_logger.warning.call_args_list
         )
         assert warning_logged
 
-    def test_add_messages_stored_log_limit_exceeded(self, mock_config, mock_logger):
-        """When stored messages exceed LOG_ADD_MESSAGE_PREVIEW_LIMIT (line 662)."""
+    def test_add_memories_stored_log_limit_exceeded(self, mock_config, mock_logger):
+        """When stored memories exceed LOG_ADD_MEMORY_PREVIEW_LIMIT (line 662)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
-        # Create more messages than LOG_ADD_MESSAGE_PREVIEW_LIMIT (20)
-        messages = [f"msg_{i}" for i in range(25)]
-        mock_usearch.add_batch.return_value = messages
+        # Create more memories than LOG_ADD_MEMORY_PREVIEW_LIMIT (20)
+        memories = [f"mem_{i}" for i in range(25)]
+        mock_usearch.add_batch.return_value = memories
 
-        result = manager.add_messages(messages)
+        result = manager.add_memories(memories)
         assert result == 25
 
-    def test_add_messages_log_limit_exceeded(self, mock_config, mock_logger):
-        """When total messages exceed LOG_ADD_MESSAGE_PREVIEW_LIMIT (line 642)."""
+    def test_add_memories_log_limit_exceeded(self, mock_config, mock_logger):
+        """When total memories exceed LOG_ADD_MEMORY_PREVIEW_LIMIT (line 642)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
-        # Create more messages than LOG_ADD_MESSAGE_PREVIEW_LIMIT (20)
-        messages = [f"msg_{i}" for i in range(25)]
-        mock_usearch.add_batch.return_value = messages
+        # Create more memories than LOG_ADD_MEMORY_PREVIEW_LIMIT (20)
+        memories = [f"mem_{i}" for i in range(25)]
+        mock_usearch.add_batch.return_value = memories
 
-        result = manager.add_messages(messages)
+        result = manager.add_memories(memories)
         assert result == 25
         # Should have logged omission notice
         omit_logged = any(
@@ -613,20 +613,20 @@ class TestSearchForRemovalError:
     ):
         """Exception during lookup raises SearchError (lines 841-842)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
-        mock_usearch.get_id_by_message.side_effect = RuntimeError("db error")
+        mock_usearch.get_id_by_content.side_effect = RuntimeError("db error")
 
         with pytest.raises(SearchError, match="Failed to search for removal"):
             manager.search_for_removal("test")
 
 
 # ---------------------------------------------------------------------------
-# Tests: delete_by_id and delete_by_message  (lines 853-857, 904-914, 933)
+# Tests: delete_by_id and delete_by_memory  (lines 853-857, 904-914, 933)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestDeleteOperations:
-    """Tests for delete_by_id and delete_by_message error paths."""
+    """Tests for delete_by_id and delete_by_memory error paths."""
 
     def test_delete_by_id_success(self, mock_config, mock_logger):
         """delete_by_id calls semantic engine delete (lines 853-855)."""
@@ -644,64 +644,64 @@ class TestDeleteOperations:
         with pytest.raises(StorageError, match="Failed to delete memory"):
             manager.delete_by_id("42")
 
-    def test_delete_by_message_tantivy_failure_inconsistent_state(
+    def test_delete_by_memory_tantivy_failure_inconsistent_state(
         self, mock_config, mock_logger
     ):
         """Tantivy failure after USearch delete raises InconsistentStateError (lines 904-917)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        mock_usearch.get_id_by_message.return_value = 42
+        mock_usearch.get_id_by_content.return_value = 42
         mock_tantivy.delete.side_effect = RuntimeError("tantivy broken")
 
         with pytest.raises(
             InconsistentStateError,
             match="USearch deletion succeeded but Tantivy deletion failed",
         ):
-            manager.delete_by_message("test message")
+            manager.delete_by_memory("test memory")
 
         # USearch delete should have been called
         mock_usearch.delete.assert_called_once_with(memory_id="42")
 
-    def test_delete_by_message_inconsistent_state_reraise(
+    def test_delete_by_memory_inconsistent_state_reraise(
         self, mock_config, mock_logger
     ):
         """InconsistentStateError is re-raised, not wrapped (line 933)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        mock_usearch.get_id_by_message.return_value = 42
+        mock_usearch.get_id_by_content.return_value = 42
         mock_tantivy.delete.side_effect = RuntimeError("tantivy broken")
 
         with pytest.raises(InconsistentStateError):
-            manager.delete_by_message("test message")
+            manager.delete_by_memory("test memory")
 
-    def test_delete_by_message_generic_exception_raises_storage_error(
+    def test_delete_by_memory_generic_exception_raises_storage_error(
         self, mock_config, mock_logger
     ):
         """Generic exception during delete wraps in StorageError (line 935)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
-        mock_usearch.get_id_by_message.side_effect = RuntimeError("lookup failed")
+        mock_usearch.get_id_by_content.side_effect = RuntimeError("lookup failed")
 
-        with pytest.raises(StorageError, match="Failed to delete message"):
-            manager.delete_by_message("test message")
+        with pytest.raises(StorageError, match="Failed to delete memory"):
+            manager.delete_by_memory("test memory")
 
-    def test_delete_by_message_not_found(self, mock_config, mock_logger):
-        """delete_by_message returns False when not found."""
+    def test_delete_by_memory_not_found(self, mock_config, mock_logger):
+        """delete_by_memory returns False when not found."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
-        mock_usearch.get_id_by_message.return_value = None
+        mock_usearch.get_id_by_content.return_value = None
 
-        result = manager.delete_by_message("nonexistent")
+        result = manager.delete_by_memory("nonexistent")
         assert result is False
 
-    def test_delete_by_message_success(self, mock_config, mock_logger):
-        """delete_by_message returns True on success."""
+    def test_delete_by_memory_success(self, mock_config, mock_logger):
+        """delete_by_memory returns True on success."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        mock_usearch.get_id_by_message.return_value = 42
+        mock_usearch.get_id_by_content.return_value = 42
 
-        result = manager.delete_by_message("test message")
+        result = manager.delete_by_memory("test memory")
         assert result is True
         mock_usearch.delete.assert_called_once_with(memory_id="42")
-        mock_tantivy.delete.assert_called_once_with("test_project", "test message")
+        mock_tantivy.delete.assert_called_once_with("test_project", "test memory")
 
-    def test_delete_by_message_without_tantivy(self, mock_config, mock_logger):
-        """delete_by_message works without Tantivy."""
+    def test_delete_by_memory_without_tantivy(self, mock_config, mock_logger):
+        """delete_by_memory works without Tantivy."""
         mock_config.enable_hybrid_search = False
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -709,11 +709,11 @@ class TestDeleteOperations:
             patch(f"{MODULE}.TantivyEngine"),
         ):
             mock_usearch = MagicMock()
-            mock_usearch.get_id_by_message.return_value = 42
+            mock_usearch.get_id_by_content.return_value = 42
             usearch_cls.return_value = mock_usearch
 
             manager = MemoryManager(mock_config, mock_logger)
-            result = manager.delete_by_message("test message")
+            result = manager.delete_by_memory("test memory")
             assert result is True
             mock_usearch.delete.assert_called_once_with(memory_id="42")
 
@@ -787,12 +787,12 @@ class TestGetAll:
     """Tests for get_all method."""
 
     def test_get_all_success(self, mock_config, mock_logger):
-        """get_all returns messages from semantic engine."""
+        """get_all returns memories from semantic engine."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
-        mock_usearch.get_all.return_value = ["msg1", "msg2"]
+        mock_usearch.get_all.return_value = ["mem1", "mem2"]
 
         result = manager.get_all()
-        assert result == ["msg1", "msg2"]
+        assert result == ["mem1", "mem2"]
         mock_usearch.get_all.assert_called_once_with(project_id="test_project")
 
     def test_get_all_exception_raises_storage_error(self, mock_config, mock_logger):
@@ -800,7 +800,7 @@ class TestGetAll:
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.get_all.side_effect = RuntimeError("db error")
 
-        with pytest.raises(StorageError, match="Failed to retrieve messages"):
+        with pytest.raises(StorageError, match="Failed to retrieve memories"):
             manager.get_all()
 
 

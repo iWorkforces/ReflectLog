@@ -1,4 +1,4 @@
-"""Unit tests for MessageStore SQLite storage."""
+"""Unit tests for MemoryStore SQLite storage."""
 
 import os
 import tempfile
@@ -8,21 +8,21 @@ from unittest.mock import MagicMock
 import pytest
 
 from reflectlog.application.exceptions import StorageError
-from reflectlog.infrastructure.message_store import (
-    ArchivedMessageRecord,
-    MessageRecord,
-    MessageStore,
+from reflectlog.infrastructure.memory_store import (
+    ArchivedMemoryRecord,
+    MemoryRecord,
+    MemoryStore,
 )
 
 
-class TestMessageStoreInitialization:
-    """Tests for MessageStore initialization."""
+class TestMemoryStoreInitialization:
+    """Tests for MemoryStore initialization."""
 
     def test_creates_database_file(self) -> None:
         """Database file should be created on first access."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             # Access connection to trigger creation
             _ = store.connection
@@ -34,7 +34,7 @@ class TestMessageStoreInitialization:
         """Parent directories should be created if they don't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "nested", "path", "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
@@ -45,7 +45,7 @@ class TestMessageStoreInitialization:
         """Connection should not be created until accessed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             # Before accessing connection, file should not exist
             assert not os.path.exists(db_path)
@@ -58,29 +58,29 @@ class TestMessageStoreInitialization:
             store.close()
 
 
-class TestMessageStoreInsert:
-    """Tests for MessageStore.insert method."""
+class TestMemoryStoreInsert:
+    """Tests for MemoryStore.insert method."""
 
     def test_insert_returns_id(self) -> None:
         """Insert should return auto-increment ID."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            msg_id = store.insert("user1", "Hello world")
+            memory_id = store.insert("user1", "Hello world")
 
-            assert msg_id == 1
+            assert memory_id == 1
             store.close()
 
     def test_insert_increments_id(self) -> None:
         """Subsequent inserts should return incrementing IDs."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            id1 = store.insert("user1", "Message 1")
-            id2 = store.insert("user1", "Message 2")
-            id3 = store.insert("user1", "Message 3")
+            id1 = store.insert("user1", "Memory 1")
+            id2 = store.insert("user1", "Memory 2")
+            id3 = store.insert("user1", "Memory 3")
 
             assert id1 == 1
             assert id2 == 2
@@ -88,23 +88,23 @@ class TestMessageStoreInsert:
             store.close()
 
     def test_insert_duplicate_raises_error(self) -> None:
-        """Inserting duplicate message for same user should raise error."""
+        """Inserting duplicate memory for same user should raise error."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            store.insert("user1", "Hello world")
+            _ = store.insert("user1", "Hello world")
 
-            with pytest.raises(StorageError, match="Duplicate message"):
-                store.insert("user1", "Hello world")
+            with pytest.raises(StorageError, match="Duplicate memory"):
+                _ = store.insert("user1", "Hello world")
 
             store.close()
 
-    def test_insert_same_message_different_users(self) -> None:
-        """Same message for different users should be allowed."""
+    def test_insert_same_memory_different_users(self) -> None:
+        """Same memory for different users should be allowed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             id1 = store.insert("user1", "Hello world")
             id2 = store.insert("user2", "Hello world")
@@ -114,29 +114,29 @@ class TestMessageStoreInsert:
             store.close()
 
 
-class TestMessageStoreGet:
-    """Tests for MessageStore.get method."""
+class TestMemoryStoreGet:
+    """Tests for MemoryStore.get method."""
 
-    def test_get_existing_message(self) -> None:
-        """Get should return MessageRecord for existing ID."""
+    def test_get_existing_memory(self) -> None:
+        """Get should return MemoryRecord for existing ID."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            msg_id = store.insert("user1", "Hello world")
-            record = store.get(msg_id)
+            memory_id = store.insert("user1", "Hello world")
+            record = store.get(memory_id)
 
             assert record is not None
-            assert record.id == msg_id
+            assert record.id == memory_id
             assert record.project_id == "user1"
-            assert record.message == "Hello world"
+            assert record.content == "Hello world"
             store.close()
 
-    def test_get_nonexistent_message(self) -> None:
+    def test_get_nonexistent_memory(self) -> None:
         """Get should return None for non-existent ID."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             record = store.get(999)
 
@@ -144,75 +144,75 @@ class TestMessageStoreGet:
             store.close()
 
 
-class TestMessageStoreGetAll:
-    """Tests for MessageStore.get_all method."""
+class TestMemoryStoreGetAll:
+    """Tests for MemoryStore.get_all method."""
 
     def test_get_all_empty(self) -> None:
-        """Get all should return empty list when no messages."""
+        """Get all should return empty list when no memories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            messages = store.get_all("user1")
+            memories = store.get_all("user1")
 
-            assert messages == []
+            assert memories == []
             store.close()
 
     def test_get_all_single_user(self) -> None:
-        """Get all should return messages for specific user."""
+        """Get all should return memories for specific user."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            store.insert("user1", "Message 1")
-            store.insert("user1", "Message 2")
-            store.insert("user2", "Other message")
+            _ = store.insert("user1", "Memory 1")
+            _ = store.insert("user1", "Memory 2")
+            _ = store.insert("user2", "Other memory")
 
-            messages = store.get_all("user1")
+            memories = store.get_all("user1")
 
-            assert len(messages) == 2
-            assert "Message 1" in messages
-            assert "Message 2" in messages
-            assert "Other message" not in messages
+            assert len(memories) == 2
+            assert "Memory 1" in memories
+            assert "Memory 2" in memories
+            assert "Other memory" not in memories
             store.close()
 
     def test_get_all_preserves_order(self) -> None:
-        """Get all should return messages in insertion order."""
+        """Get all should return memories in insertion order."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            store.insert("user1", "First")
-            store.insert("user1", "Second")
-            store.insert("user1", "Third")
+            _ = store.insert("user1", "First")
+            _ = store.insert("user1", "Second")
+            _ = store.insert("user1", "Third")
 
-            messages = store.get_all("user1")
+            memories = store.get_all("user1")
 
-            assert messages == ["First", "Second", "Third"]
+            assert memories == ["First", "Second", "Third"]
             store.close()
 
 
-class TestMessageStoreDelete:
-    """Tests for MessageStore.delete method."""
+class TestMemoryStoreDelete:
+    """Tests for MemoryStore.delete method."""
 
-    def test_delete_existing_message(self) -> None:
-        """Delete should return True for existing message."""
+    def test_delete_existing_memory(self) -> None:
+        """Delete should return True for existing memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            msg_id = store.insert("user1", "Hello world")
-            deleted = store.delete(msg_id)
+            memory_id = store.insert("user1", "Hello world")
+            deleted = store.delete(memory_id)
 
             assert deleted is True
-            assert store.get(msg_id) is None
+            assert store.get(memory_id) is None
             store.close()
 
-    def test_delete_nonexistent_message(self) -> None:
-        """Delete should return False for non-existent message."""
+    def test_delete_nonexistent_memory(self) -> None:
+        """Delete should return False for non-existent memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             deleted = store.delete(999)
 
@@ -220,89 +220,89 @@ class TestMessageStoreDelete:
             store.close()
 
 
-class TestMessageStoreExists:
-    """Tests for MessageStore.exists method."""
+class TestMemoryStoreExists:
+    """Tests for MemoryStore.exists method."""
 
     def test_exists_returns_true_for_existing(self) -> None:
-        """Exists should return True for existing message."""
+        """Exists should return True for existing memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            store.insert("user1", "Hello world")
+            _ = store.insert("user1", "Hello world")
 
             assert store.exists("user1", "Hello world") is True
             store.close()
 
     def test_exists_returns_false_for_nonexistent(self) -> None:
-        """Exists should return False for non-existent message."""
+        """Exists should return False for non-existent memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             assert store.exists("user1", "Hello world") is False
             store.close()
 
     def test_exists_checks_project_id(self) -> None:
-        """Exists should check project_id, not just message."""
+        """Exists should check project_id, not just memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            store.insert("user1", "Hello world")
+            _ = store.insert("user1", "Hello world")
 
             assert store.exists("user1", "Hello world") is True
             assert store.exists("user2", "Hello world") is False
             store.close()
 
 
-class TestMessageStoreGetIdByMessage:
-    """Tests for MessageStore.get_id_by_message method."""
+class TestMemoryStoreGetIdByMemory:
+    """Tests for MemoryStore.get_id_by_content method."""
 
-    def test_get_id_by_message_existing(self) -> None:
-        """Get ID by message should return ID for existing message."""
+    def test_get_id_by_content_existing(self) -> None:
+        """Get ID by memory should return ID for existing memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            msg_id = store.insert("user1", "Hello world")
-            found_id = store.get_id_by_message("user1", "Hello world")
+            memory_id = store.insert("user1", "Hello world")
+            found_id = store.get_id_by_content("user1", "Hello world")
 
-            assert found_id == msg_id
+            assert found_id == memory_id
             store.close()
 
-    def test_get_id_by_message_nonexistent(self) -> None:
-        """Get ID by message should return None for non-existent message."""
+    def test_get_id_by_content_nonexistent(self) -> None:
+        """Get ID by memory should return None for non-existent memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            found_id = store.get_id_by_message("user1", "Hello world")
+            found_id = store.get_id_by_content("user1", "Hello world")
 
             assert found_id is None
             store.close()
 
 
-class TestMessageStoreThreadSafety:
-    """Tests for MessageStore thread safety."""
+class TestMemoryStoreThreadSafety:
+    """Tests for MemoryStore thread safety."""
 
     @pytest.mark.skip(reason="Concurrent test causes system instability in CI")
     def test_concurrent_inserts(self) -> None:
         """Concurrent inserts should be thread-safe."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             results: list[int] = []
             lock = threading.Lock()
 
-            def insert_message(i: int) -> None:
-                msg_id = store.insert("user1", f"Message {i}")
+            def insert_memory(i: int) -> None:
+                memory_id = store.insert("user1", f"Memory {i}")
                 with lock:
-                    results.append(msg_id)
+                    results.append(memory_id)
 
             threads = [
-                threading.Thread(target=insert_message, args=(i,)) for i in range(10)
+                threading.Thread(target=insert_memory, args=(i,)) for i in range(10)
             ]
 
             for t in threads:
@@ -316,17 +316,17 @@ class TestMessageStoreThreadSafety:
             store.close()
 
 
-class TestMessageStoreLogging:
-    """Tests for MessageStore logging."""
+class TestMemoryStoreLogging:
+    """Tests for MemoryStore logging."""
 
     def test_logs_insert_on_debug(self) -> None:
         """Insert should log on debug level."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
-            store.insert("user1", "Hello world")
+            _ = store.insert("user1", "Hello world")
 
             logger.debug.assert_called()
             store.close()
@@ -336,12 +336,12 @@ class TestMessageStoreLogging:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
-            msg_id = store.insert("user1", "Hello world")
+            memory_id = store.insert("user1", "Hello world")
             logger.reset_mock()
 
-            store.delete(msg_id)
+            _ = store.delete(memory_id)
 
             logger.debug.assert_called()
             store.close()
@@ -351,28 +351,28 @@ class TestMessageStoreLogging:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             logger.debug.assert_called_once()
             call_args = logger.debug.call_args
-            assert "MessageStore initialized" in call_args[0][0]
+            assert "MemoryStore initialized" in call_args[0][0]
             store.close()
 
     def test_logs_delete_not_found(self) -> None:
-        """Logger should log when message not found for deletion."""
+        """Logger should log when memory not found for deletion."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.delete(999)
 
-            # Should have called debug with "not found" message
+            # Should have called debug with "not found" memory
             debug_calls = logger.debug.call_args_list
-            messages = [call[0][0] for call in debug_calls]
-            assert any("not found" in m for m in messages)
+            memories = [call[0][0] for call in debug_calls]
+            assert any("not found" in m for m in memories)
             store.close()
 
     def test_logs_close_on_debug(self) -> None:
@@ -380,7 +380,7 @@ class TestMessageStoreLogging:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             # Force initialization
             _ = store.connection
@@ -390,14 +390,14 @@ class TestMessageStoreLogging:
 
             logger.debug.assert_called_once()
             call_args = logger.debug.call_args
-            assert "MessageStore closed" in call_args[0][0]
+            assert "MemoryStore closed" in call_args[0][0]
 
     def test_logs_duplicate_insert_on_debug(self) -> None:
-        """Logger should log duplicate message detection."""
+        """Logger should log duplicate memory detection."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert("user1", "Hello world")
 
@@ -405,8 +405,8 @@ class TestMessageStoreLogging:
                 _ = store.insert("user1", "Hello world")
 
             debug_calls = logger.debug.call_args_list
-            messages = [call[0][0] for call in debug_calls]
-            assert any("Duplicate" in m or "duplicate" in m for m in messages)
+            memories = [call[0][0] for call in debug_calls]
+            assert any("Duplicate" in m or "duplicate" in m for m in memories)
             store.close()
 
     def test_logs_batch_insert_on_debug(self) -> None:
@@ -414,13 +414,13 @@ class TestMessageStoreLogging:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert_many("user1", ["msg1", "msg2"])
 
             debug_calls = logger.debug.call_args_list
-            messages = [call[0][0] for call in debug_calls]
-            assert any("Batch insert" in m or "batch" in m.lower() for m in messages)
+            memories = [call[0][0] for call in debug_calls]
+            assert any("Batch insert" in m or "batch" in m.lower() for m in memories)
             store.close()
 
     def test_logs_batch_delete_on_debug(self) -> None:
@@ -428,7 +428,7 @@ class TestMessageStoreLogging:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             id1 = store.insert("user1", "msg1")
             id2 = store.insert("user1", "msg2")
@@ -440,17 +440,17 @@ class TestMessageStoreLogging:
             store.close()
 
     def test_logs_archive_on_debug(self) -> None:
-        """Logger should log message archival."""
+        """Logger should log memory archival."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             # Insert directly into archive table to test logging
             cursor = store.connection.cursor()
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, confidence) "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj", "old msg", "new msg", "updated", 0.9),
             )
@@ -459,17 +459,17 @@ class TestMessageStoreLogging:
             store.close()
 
     def test_logs_restore_on_info(self) -> None:
-        """Logger should log message restoration."""
+        """Logger should log memory restoration."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             # Manually insert archive record
             cursor = store.connection.cursor()
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, confidence) "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj", "old msg", "new msg", "updated", 0.9),
             )
@@ -489,13 +489,13 @@ class TestMessageStoreLogging:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             # Insert a very old archive record
             cursor = store.connection.cursor()
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-100 days'))",
                 (1, "proj", "old msg", "new msg", "outdated", 0.9),
@@ -511,32 +511,32 @@ class TestMessageStoreLogging:
             store.close()
 
 
-class TestMessageStoreInsertMany:
-    """Tests for MessageStore.insert_many method."""
+class TestMemoryStoreInsertMany:
+    """Tests for MemoryStore.insert_many method."""
 
     def test_insert_many_returns_pairs(self) -> None:
-        """insert_many should return list of (message, id) tuples."""
+        """insert_many should return list of (memory, id) tuples."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             result = store.insert_many("proj1", ["msg1", "msg2", "msg3"])
 
             assert len(result) == 3
-            messages = [r[0] for r in result]
-            assert "msg1" in messages
-            assert "msg2" in messages
-            assert "msg3" in messages
+            memories = [r[0] for r in result]
+            assert "msg1" in memories
+            assert "msg2" in memories
+            assert "msg3" in memories
             # IDs should be positive integers
-            for _, msg_id in result:
-                assert msg_id > 0
+            for _, memory_id in result:
+                assert memory_id > 0
             store.close()
 
     def test_insert_many_empty_list(self) -> None:
         """insert_many with empty list should return empty list."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             result = store.insert_many("proj1", [])
 
@@ -544,22 +544,22 @@ class TestMessageStoreInsertMany:
             store.close()
 
     def test_insert_many_skips_duplicates(self) -> None:
-        """insert_many should skip duplicate messages."""
+        """insert_many should skip duplicate memories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
-            # Insert first message
+            # Insert first memory
             _ = store.insert("proj1", "existing")
 
             # Batch insert with duplicate
             result = store.insert_many("proj1", ["existing", "new1", "new2"])
 
             assert len(result) == 2
-            messages = [r[0] for r in result]
-            assert "existing" not in messages
-            assert "new1" in messages
-            assert "new2" in messages
+            memories = [r[0] for r in result]
+            assert "existing" not in memories
+            assert "new1" in memories
+            assert "new2" in memories
             store.close()
 
     def test_insert_many_skips_duplicates_with_logger(self) -> None:
@@ -567,7 +567,7 @@ class TestMessageStoreInsertMany:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert("proj1", "dup")
             logger.reset_mock()
@@ -576,15 +576,15 @@ class TestMessageStoreInsertMany:
 
             # Should have logged the duplicate skip
             debug_calls = logger.debug.call_args_list
-            messages = [call[0][0] for call in debug_calls]
-            assert any("Duplicate" in m or "duplicate" in m.lower() for m in messages)
+            memories = [call[0][0] for call in debug_calls]
+            assert any("Duplicate" in m or "duplicate" in m.lower() for m in memories)
             store.close()
 
     def test_insert_many_all_duplicates(self) -> None:
         """insert_many should return empty when all are duplicates."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.insert("proj1", "msg1")
             _ = store.insert("proj1", "msg2")
@@ -598,18 +598,18 @@ class TestMessageStoreInsertMany:
         """insert_many should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             # Force initialization
             _ = store.connection
 
             # Corrupt the table by dropping it
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to insert message batch"):
+            with pytest.raises(StorageError, match="Failed to insert memory batch"):
                 _ = store.insert_many("proj1", ["msg1"])
             store.close()
 
@@ -618,12 +618,12 @@ class TestMessageStoreInsertMany:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -637,13 +637,13 @@ class TestMessageStoreInsertMany:
         """insert_many should re-raise non-integrity sqlite errors."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             # Drop the table to cause a non-IntegrityError sqlite error
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -652,14 +652,14 @@ class TestMessageStoreInsertMany:
             store.close()
 
 
-class TestMessageStoreGetBatch:
-    """Tests for MessageStore.get_batch method."""
+class TestMemoryStoreGetBatch:
+    """Tests for MemoryStore.get_batch method."""
 
     def test_get_batch_returns_records(self) -> None:
-        """get_batch should return dict of message ID to record."""
+        """get_batch should return dict of memory ID to record."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             id1 = store.insert("proj1", "msg1")
             id2 = store.insert("proj1", "msg2")
@@ -668,16 +668,16 @@ class TestMessageStoreGetBatch:
             result = store.get_batch([id1, id2, id3])
 
             assert len(result) == 3
-            assert result[id1].message == "msg1"
-            assert result[id2].message == "msg2"
-            assert result[id3].message == "msg3"
+            assert result[id1].content == "msg1"
+            assert result[id2].content == "msg2"
+            assert result[id3].content == "msg3"
             store.close()
 
     def test_get_batch_empty_list(self) -> None:
         """get_batch with empty list should return empty dict."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             result = store.get_batch([])
 
@@ -688,7 +688,7 @@ class TestMessageStoreGetBatch:
         """get_batch should exclude missing IDs from result."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             id1 = store.insert("proj1", "msg1")
 
@@ -700,20 +700,20 @@ class TestMessageStoreGetBatch:
             store.close()
 
     def test_get_batch_record_fields(self) -> None:
-        """get_batch should return MessageRecord with all fields."""
+        """get_batch should return MemoryRecord with all fields."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             id1 = store.insert("proj1", "hello")
 
             result = store.get_batch([id1])
 
             record = result[id1]
-            assert isinstance(record, MessageRecord)
+            assert isinstance(record, MemoryRecord)
             assert record.id == id1
             assert record.project_id == "proj1"
-            assert record.message == "hello"
+            assert record.content == "hello"
             assert record.created_at != ""
             store.close()
 
@@ -721,16 +721,16 @@ class TestMessageStoreGetBatch:
         """get_batch should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to retrieve message batch"):
+            with pytest.raises(StorageError, match="Failed to retrieve memory batch"):
                 _ = store.get_batch([1, 2])
             store.close()
 
@@ -739,12 +739,12 @@ class TestMessageStoreGetBatch:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -755,14 +755,14 @@ class TestMessageStoreGetBatch:
             store.close()
 
 
-class TestMessageStoreDeleteBatch:
-    """Tests for MessageStore.delete_batch method."""
+class TestMemoryStoreDeleteBatch:
+    """Tests for MemoryStore.delete_batch method."""
 
     def test_delete_batch_returns_count(self) -> None:
-        """delete_batch should return number of deleted messages."""
+        """delete_batch should return number of deleted memories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             id1 = store.insert("proj1", "msg1")
             id2 = store.insert("proj1", "msg2")
@@ -781,7 +781,7 @@ class TestMessageStoreDeleteBatch:
         """delete_batch with empty list should return 0."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             deleted = store.delete_batch([])
 
@@ -792,7 +792,7 @@ class TestMessageStoreDeleteBatch:
         """delete_batch with some missing IDs should delete existing ones."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             id1 = store.insert("proj1", "msg1")
 
@@ -805,7 +805,7 @@ class TestMessageStoreDeleteBatch:
         """delete_batch with all missing IDs should return 0."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             deleted = store.delete_batch([999, 1000])
 
@@ -816,16 +816,16 @@ class TestMessageStoreDeleteBatch:
         """delete_batch should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to delete message batch"):
+            with pytest.raises(StorageError, match="Failed to delete memory batch"):
                 _ = store.delete_batch([1, 2])
             store.close()
 
@@ -834,12 +834,12 @@ class TestMessageStoreDeleteBatch:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -850,23 +850,23 @@ class TestMessageStoreDeleteBatch:
             store.close()
 
 
-class TestMessageStoreArchive:
-    """Tests for MessageStore.archive method."""
+class TestMemoryStoreArchive:
+    """Tests for MemoryStore.archive method."""
 
     def test_archive_raises_on_sql_error(self) -> None:
         """archive should raise StorageError due to SQL mismatch."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             # The archive method has a SQL bug: 6 columns but 5 placeholders
             # This should raise StorageError wrapping the sqlite3 error
-            with pytest.raises(StorageError, match="Failed to archive message"):
+            with pytest.raises(StorageError, match="Failed to archive memory"):
                 _ = store.archive(
-                    message_id=1,
+                    memory_id=1,
                     project_id="proj1",
-                    message="old message",
-                    replaced_by="new message",
+                    content="old memory",
+                    replaced_by="new memory",
                     reason="updated info",
                     confidence=0.9,
                 )
@@ -877,13 +877,13 @@ class TestMessageStoreArchive:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             with pytest.raises(StorageError):
                 _ = store.archive(
-                    message_id=1,
+                    memory_id=1,
                     project_id="proj1",
-                    message="old",
+                    content="old",
                     replaced_by="new",
                     reason="reason",
                     confidence=0.8,
@@ -893,14 +893,14 @@ class TestMessageStoreArchive:
             store.close()
 
 
-class TestMessageStoreGetArchived:
-    """Tests for MessageStore.get_archived method."""
+class TestMemoryStoreGetArchived:
+    """Tests for MemoryStore.get_archived method."""
 
     def test_get_archived_empty(self) -> None:
         """get_archived should return empty list when no archives exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             result = store.get_archived("proj1")
 
@@ -908,16 +908,16 @@ class TestMessageStoreGetArchived:
             store.close()
 
     def test_get_archived_returns_records(self) -> None:
-        """get_archived should return ArchivedMessageRecord objects."""
+        """get_archived should return ArchivedMemoryRecord objects."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             # Manually insert archive record (bypass buggy archive method)
             cursor = store.connection.cursor()
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, confidence) "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj1", "old msg", "new msg", "updated", 0.85),
             )
@@ -928,10 +928,10 @@ class TestMessageStoreGetArchived:
 
             assert len(result) == 1
             record = result[0]
-            assert isinstance(record, ArchivedMessageRecord)
+            assert isinstance(record, ArchivedMemoryRecord)
             assert record.original_id == 1
             assert record.project_id == "proj1"
-            assert record.message == "old msg"
+            assert record.content == "old msg"
             assert record.replaced_by == "new msg"
             assert record.reason == "updated"
             assert record.confidence == 0.85
@@ -942,18 +942,18 @@ class TestMessageStoreGetArchived:
         """get_archived should only return records for specified project."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             cursor = store.connection.cursor()
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, confidence) "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj1", "msg1", "new1", "reason1", 0.9),
             )
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, confidence) "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (2, "proj2", "msg2", "new2", "reason2", 0.8),
             )
@@ -970,13 +970,13 @@ class TestMessageStoreGetArchived:
         """get_archived should respect the limit parameter."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             cursor = store.connection.cursor()
             for i in range(5):
                 _ = cursor.execute(
-                    "INSERT INTO archived_messages "
-                    "(original_id, project_id, message, replaced_by, "
+                    "INSERT INTO archived_memories "
+                    "(original_id, project_id, content, replaced_by, "
                     "reason, confidence) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
                     (i, "proj1", f"msg{i}", f"new{i}", "reason", 0.9),
@@ -993,19 +993,19 @@ class TestMessageStoreGetArchived:
         """get_archived should return newest archives first."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             cursor = store.connection.cursor()
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, '2025-01-01 00:00:00')",
                 (1, "proj1", "old", "new_old", "reason", 0.9),
             )
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, '2025-06-01 00:00:00')",
                 (2, "proj1", "newer", "new_newer", "reason", 0.8),
@@ -1017,20 +1017,20 @@ class TestMessageStoreGetArchived:
 
             assert len(result) == 2
             # Newest first
-            assert result[0].message == "newer"
-            assert result[1].message == "old"
+            assert result[0].content == "newer"
+            assert result[1].content == "old"
             store.close()
 
     def test_get_archived_db_error_raises_storage_error(self) -> None:
         """get_archived should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE archived_messages")
+            _ = cursor.execute("DROP TABLE archived_memories")
             store.connection.commit()
             cursor.close()
 
@@ -1043,12 +1043,12 @@ class TestMessageStoreGetArchived:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE archived_messages")
+            _ = cursor.execute("DROP TABLE archived_memories")
             store.connection.commit()
             cursor.close()
 
@@ -1059,20 +1059,20 @@ class TestMessageStoreGetArchived:
             store.close()
 
 
-class TestMessageStoreRestoreFromArchive:
-    """Tests for MessageStore.restore_from_archive method."""
+class TestMemoryStoreRestoreFromArchive:
+    """Tests for MemoryStore.restore_from_archive method."""
 
     def test_restore_success(self) -> None:
-        """restore_from_archive should insert message and remove archive."""
+        """restore_from_archive should insert memory and remove archive."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             # Manually create archive record
             cursor = store.connection.cursor()
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, confidence) "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj1", "restored msg", "replacement", "reason", 0.9),
             )
@@ -1084,10 +1084,10 @@ class TestMessageStoreRestoreFromArchive:
             assert new_id is not None
             assert new_id > 0
 
-            # Message should be in messages table
+            # Memory should be in memories table
             record = store.get(new_id)
             assert record is not None
-            assert record.message == "restored msg"
+            assert record.content == "restored msg"
             assert record.project_id == "proj1"
 
             # Archive record should be removed
@@ -1099,7 +1099,7 @@ class TestMessageStoreRestoreFromArchive:
         """restore_from_archive should return None for missing archive."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             result = store.restore_from_archive(999)
 
@@ -1111,7 +1111,7 @@ class TestMessageStoreRestoreFromArchive:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.restore_from_archive(999)
 
@@ -1124,12 +1124,12 @@ class TestMessageStoreRestoreFromArchive:
         """restore_from_archive should raise StorageError on failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE archived_messages")
+            _ = cursor.execute("DROP TABLE archived_memories")
             store.connection.commit()
             cursor.close()
 
@@ -1142,12 +1142,12 @@ class TestMessageStoreRestoreFromArchive:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE archived_messages")
+            _ = cursor.execute("DROP TABLE archived_memories")
             store.connection.commit()
             cursor.close()
 
@@ -1158,14 +1158,14 @@ class TestMessageStoreRestoreFromArchive:
             store.close()
 
 
-class TestMessageStoreCleanupExpiredArchive:
-    """Tests for MessageStore.cleanup_expired_archive method."""
+class TestMemoryStoreCleanupExpiredArchive:
+    """Tests for MemoryStore.cleanup_expired_archive method."""
 
     def test_cleanup_zero_ttl_returns_zero(self) -> None:
         """cleanup_expired_archive with 0 ttl should return 0 (no cleanup)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             result = store.cleanup_expired_archive(0)
 
@@ -1176,7 +1176,7 @@ class TestMessageStoreCleanupExpiredArchive:
         """cleanup_expired_archive with negative ttl should return 0."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             result = store.cleanup_expired_archive(-5)
 
@@ -1187,21 +1187,21 @@ class TestMessageStoreCleanupExpiredArchive:
         """cleanup_expired_archive should remove records older than TTL."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             cursor = store.connection.cursor()
             # Insert old record (100 days ago)
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-100 days'))",
                 (1, "proj1", "old msg", "new msg", "reason", 0.9),
             )
             # Insert recent record (1 day ago)
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-1 day'))",
                 (2, "proj1", "recent msg", "new msg", "reason", 0.8),
@@ -1215,19 +1215,19 @@ class TestMessageStoreCleanupExpiredArchive:
             # Recent record should still exist
             remaining = store.get_archived("proj1")
             assert len(remaining) == 1
-            assert remaining[0].message == "recent msg"
+            assert remaining[0].content == "recent msg"
             store.close()
 
     def test_cleanup_no_expired_records(self) -> None:
         """cleanup_expired_archive should return 0 when no records expired."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             cursor = store.connection.cursor()
             _ = cursor.execute(
-                "INSERT INTO archived_messages "
-                "(original_id, project_id, message, replaced_by, reason, confidence) "
+                "INSERT INTO archived_memories "
+                "(original_id, project_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj1", "recent", "new", "reason", 0.9),
             )
@@ -1243,12 +1243,12 @@ class TestMessageStoreCleanupExpiredArchive:
         """cleanup_expired_archive should raise StorageError on failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE archived_messages")
+            _ = cursor.execute("DROP TABLE archived_memories")
             store.connection.commit()
             cursor.close()
 
@@ -1261,12 +1261,12 @@ class TestMessageStoreCleanupExpiredArchive:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE archived_messages")
+            _ = cursor.execute("DROP TABLE archived_memories")
             store.connection.commit()
             cursor.close()
 
@@ -1277,14 +1277,14 @@ class TestMessageStoreCleanupExpiredArchive:
             store.close()
 
 
-class TestMessageStoreClose:
-    """Tests for MessageStore.close and ensure_initialized methods."""
+class TestMemoryStoreClose:
+    """Tests for MemoryStore.close and ensure_initialized methods."""
 
     def test_close_without_connection(self) -> None:
         """close should be safe to call without prior initialization."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             # Should not raise
             store.close()
@@ -1293,7 +1293,7 @@ class TestMessageStoreClose:
         """close should close the database connection."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection  # Force init
             store.close()
@@ -1306,7 +1306,7 @@ class TestMessageStoreClose:
         """Calling close twice should be safe."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
             store.close()
@@ -1316,7 +1316,7 @@ class TestMessageStoreClose:
         """ensure_initialized should force lazy initialization."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             assert not os.path.exists(db_path)
 
@@ -1329,7 +1329,7 @@ class TestMessageStoreClose:
         """ensure_initialized should be safe to call multiple times."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             store.ensure_initialized()
             store.ensure_initialized()  # Should not raise
@@ -1337,23 +1337,23 @@ class TestMessageStoreClose:
             store.close()
 
 
-class TestMessageStoreErrorPaths:
-    """Tests for error handling paths in get, get_all, delete, exists, get_id_by_message."""
+class TestMemoryStoreErrorPaths:
+    """Tests for error handling paths in get, get_all, delete, exists, get_id_by_content."""
 
     def test_get_db_error_raises_storage_error(self) -> None:
         """get should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to retrieve message"):
+            with pytest.raises(StorageError, match="Failed to retrieve memory"):
                 _ = store.get(1)
             store.close()
 
@@ -1362,12 +1362,12 @@ class TestMessageStoreErrorPaths:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -1381,16 +1381,16 @@ class TestMessageStoreErrorPaths:
         """get_all should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to retrieve all messages"):
+            with pytest.raises(StorageError, match="Failed to retrieve all memories"):
                 _ = store.get_all("proj1")
             store.close()
 
@@ -1399,12 +1399,12 @@ class TestMessageStoreErrorPaths:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -1418,16 +1418,16 @@ class TestMessageStoreErrorPaths:
         """delete should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to delete message"):
+            with pytest.raises(StorageError, match="Failed to delete memory"):
                 _ = store.delete(1)
             store.close()
 
@@ -1436,12 +1436,12 @@ class TestMessageStoreErrorPaths:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -1455,16 +1455,16 @@ class TestMessageStoreErrorPaths:
         """exists should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to check message existence"):
+            with pytest.raises(StorageError, match="Failed to check memory existence"):
                 _ = store.exists("proj1", "msg")
             store.close()
 
@@ -1473,12 +1473,12 @@ class TestMessageStoreErrorPaths:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -1488,39 +1488,39 @@ class TestMessageStoreErrorPaths:
             logger.error.assert_called()
             store.close()
 
-    def test_get_id_by_message_db_error_raises_storage_error(self) -> None:
-        """get_id_by_message should raise StorageError on database failure."""
+    def test_get_id_by_content_db_error_raises_storage_error(self) -> None:
+        """get_id_by_content should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to get message ID"):
-                _ = store.get_id_by_message("proj1", "msg")
+            with pytest.raises(StorageError, match="Failed to get memory ID"):
+                _ = store.get_id_by_content("proj1", "msg")
             store.close()
 
-    def test_get_id_by_message_db_error_with_logger(self) -> None:
-        """get_id_by_message should log on database failure."""
+    def test_get_id_by_content_db_error_with_logger(self) -> None:
+        """get_id_by_content should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
             with pytest.raises(StorageError):
-                _ = store.get_id_by_message("proj1", "msg")
+                _ = store.get_id_by_content("proj1", "msg")
 
             logger.error.assert_called()
             store.close()
@@ -1529,16 +1529,16 @@ class TestMessageStoreErrorPaths:
         """insert should raise StorageError for non-duplicate db errors."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
-            with pytest.raises(StorageError, match="Failed to insert message"):
+            with pytest.raises(StorageError, match="Failed to insert memory"):
                 _ = store.insert("proj1", "msg")
             store.close()
 
@@ -1547,12 +1547,12 @@ class TestMessageStoreErrorPaths:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock()
-            store = MessageStore(db_path=db_path, logger=logger)
+            store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
 
             cursor = store.connection.cursor()
-            _ = cursor.execute("DROP TABLE messages")
+            _ = cursor.execute("DROP TABLE memories")
             store.connection.commit()
             cursor.close()
 
@@ -1563,41 +1563,41 @@ class TestMessageStoreErrorPaths:
             store.close()
 
 
-class TestMessageRecordDataclass:
-    """Tests for MessageRecord dataclass."""
+class TestMemoryRecordDataclass:
+    """Tests for MemoryRecord dataclass."""
 
-    def test_message_record_fields(self) -> None:
-        """MessageRecord should store all fields correctly."""
-        record = MessageRecord(
-            id=1, project_id="proj1", message="hello", created_at="2025-01-01"
+    def test_memory_record_fields(self) -> None:
+        """MemoryRecord should store all fields correctly."""
+        record = MemoryRecord(
+            id=1, project_id="proj1", content="hello", created_at="2025-01-01"
         )
         assert record.id == 1
         assert record.project_id == "proj1"
-        assert record.message == "hello"
+        assert record.content == "hello"
         assert record.created_at == "2025-01-01"
 
-    def test_message_record_default_created_at(self) -> None:
-        """MessageRecord should default created_at to empty string."""
-        record = MessageRecord(id=1, project_id="proj1", message="hello")
+    def test_memory_record_default_created_at(self) -> None:
+        """MemoryRecord should default created_at to empty string."""
+        record = MemoryRecord(id=1, project_id="proj1", content="hello")
         assert record.created_at == ""
 
-    def test_message_record_frozen(self) -> None:
-        """MessageRecord should be immutable (frozen dataclass)."""
-        record = MessageRecord(id=1, project_id="proj1", message="hello")
+    def test_memory_record_frozen(self) -> None:
+        """MemoryRecord should be immutable (frozen dataclass)."""
+        record = MemoryRecord(id=1, project_id="proj1", content="hello")
         with pytest.raises(AttributeError):
-            record.message = "changed"  # type: ignore[misc]
+            record.content = "changed"  # type: ignore[misc]
 
 
-class TestArchivedMessageRecordDataclass:
-    """Tests for ArchivedMessageRecord dataclass."""
+class TestArchivedMemoryRecordDataclass:
+    """Tests for ArchivedMemoryRecord dataclass."""
 
     def test_archived_record_fields(self) -> None:
-        """ArchivedMessageRecord should store all fields correctly."""
-        record = ArchivedMessageRecord(
+        """ArchivedMemoryRecord should store all fields correctly."""
+        record = ArchivedMemoryRecord(
             id=1,
             original_id=10,
             project_id="proj1",
-            message="old msg",
+            content="old msg",
             replaced_by="new msg",
             reason="updated",
             confidence=0.85,
@@ -1606,59 +1606,59 @@ class TestArchivedMessageRecordDataclass:
         assert record.id == 1
         assert record.original_id == 10
         assert record.project_id == "proj1"
-        assert record.message == "old msg"
+        assert record.content == "old msg"
         assert record.replaced_by == "new msg"
         assert record.reason == "updated"
         assert record.confidence == 0.85
         assert record.archived_at == "2025-01-01"
 
     def test_archived_record_frozen(self) -> None:
-        """ArchivedMessageRecord should be immutable (frozen dataclass)."""
-        record = ArchivedMessageRecord(
+        """ArchivedMemoryRecord should be immutable (frozen dataclass)."""
+        record = ArchivedMemoryRecord(
             id=1,
             original_id=10,
             project_id="proj1",
-            message="old",
+            content="old",
             replaced_by="new",
             reason="reason",
             confidence=0.9,
             archived_at="2025-01-01",
         )
         with pytest.raises(AttributeError):
-            record.message = "changed"  # type: ignore[misc]
+            record.content = "changed"  # type: ignore[misc]
 
 
-class TestMessageStoreCustomTimeout:
-    """Tests for MessageStore with custom timeout."""
+class TestMemoryStoreCustomTimeout:
+    """Tests for MemoryStore with custom timeout."""
 
     def test_custom_timeout(self) -> None:
-        """MessageStore should accept custom timeout."""
+        """MemoryStore should accept custom timeout."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path, timeout=60.0)
+            store = MemoryStore(db_path=db_path, timeout=60.0)
 
             assert store.timeout == 60.0
             store.ensure_initialized()
             store.close()
 
     def test_default_timeout(self) -> None:
-        """MessageStore should have 30s default timeout."""
+        """MemoryStore should have 30s default timeout."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             assert store.timeout == 30.0
             store.close()
 
 
-class TestMessageStoreConnectionProperty:
-    """Tests for MessageStore.connection property edge cases."""
+class TestMemoryStoreConnectionProperty:
+    """Tests for MemoryStore.connection property edge cases."""
 
     def test_connection_without_directory(self) -> None:
         """Connection should work with db_path in current directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             conn = store.connection
 
@@ -1669,7 +1669,7 @@ class TestMessageStoreConnectionProperty:
         """Accessing connection multiple times should return same object."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             conn1 = store.connection
             conn2 = store.connection
@@ -1681,7 +1681,7 @@ class TestMessageStoreConnectionProperty:
         """Accessing connection after close should create new connection."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            store = MessageStore(db_path=db_path)
+            store = MemoryStore(db_path=db_path)
 
             conn1 = store.connection
             store.close()

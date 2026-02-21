@@ -121,7 +121,7 @@ class TestAddToolErrorHandling:
         with pytest.raises(StorageError) as exc_info:
             await add_tool(["Test message"])
 
-        assert "Failed to add messages" in str(exc_info.value)
+        assert "Failed to add memories" in str(exc_info.value)
         assert "Storage failure" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -219,7 +219,7 @@ class TestGetAllToolErrorHandling:
         with pytest.raises(StorageError) as exc_info:
             await get_all_tool()
 
-        assert "Failed to retrieve messages" in str(exc_info.value)
+        assert "Failed to retrieve memories" in str(exc_info.value)
         assert "Retrieval failure" in str(exc_info.value)
 
 
@@ -312,7 +312,7 @@ class TestRemoveToolErrorHandling:
         mock_cached_embedder.embedder = MagicMock()
         mock_cached_embedder_class.return_value = mock_cached_embedder
 
-        mock_usearch_engine.get_id_by_message.return_value = 1
+        mock_usearch_engine.get_id_by_memory.return_value = 1
         # Configure mock to raise exception on delete
         mock_usearch_engine.delete.side_effect = Exception("Delete failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
@@ -325,14 +325,14 @@ class TestRemoveToolErrorHandling:
         with pytest.raises(StorageError) as exc_info:
             await remove_tool(["Test message"])
 
-        assert "Failed to remove messages" in str(exc_info.value)
+        assert "Failed to remove memories" in str(exc_info.value)
         assert "Delete failure" in str(exc_info.value)
 
     @pytest.mark.asyncio
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
     @patch("reflectlog.application.memory.manager.USearchEngine")
     @patch("reflectlog.application.memory.manager.CachedEmbeddings")
-    async def test_remove_message_not_found(
+    async def test_remove_memory_not_found(
         self,
         mock_cached_embedder_class,
         mock_usearch_engine_class,
@@ -340,13 +340,13 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test remove tool when message is not found."""
+        """Test remove tool when memory is not found."""
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
         mock_cached_embedder_class.return_value = mock_cached_embedder
 
-        mock_usearch_engine.get_id_by_message.return_value = None
+        mock_usearch_engine.get_id_by_memory.return_value = None
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from reflectlog.application.mcp_server import FastMCPServer
@@ -355,7 +355,7 @@ class TestRemoveToolErrorHandling:
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
 
         # Should not raise any errors, just silently skip
-        await remove_tool(["Nonexistent message"])
+        await remove_tool(["Nonexistent memory"])
 
         # Verify delete was never called
         mock_usearch_engine.delete.assert_not_called()

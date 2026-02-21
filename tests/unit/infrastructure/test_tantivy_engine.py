@@ -637,7 +637,7 @@ class TestTantivySoftDelete:
 
             engine.close()
 
-    def test_soft_delete_nonexistent_message_returns_false(self) -> None:
+    def test_soft_delete_nonexistent_content_returns_false(self) -> None:
         """Test that soft_delete returns False for non-existent message."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
@@ -680,7 +680,7 @@ class TestTantivySoftDelete:
 
             engine.close()
 
-    def test_search_filters_tombstoned_messages(self) -> None:
+    def test_search_filters_tombstoned_memories(self) -> None:
         """Test that search excludes tombstoned messages."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
@@ -811,7 +811,7 @@ class TestTantivyCompaction:
             assert stats["total_docs"] == 4
             assert stats["tombstones"] == 1
             # 2 unique active messages (Message 1, Message 3)
-            assert stats["unique_active_messages"] == 2
+            assert stats["unique_active_memories"] == 2
 
             engine.close()
 
@@ -922,7 +922,7 @@ class TestTantivyCompaction:
             # After compaction, no tombstones
             stats_after = engine.get_tombstone_stats()
             assert stats_after["tombstones"] == 0
-            assert stats_after["unique_active_messages"] == 1
+            assert stats_after["unique_active_memories"] == 1
 
             # Kept message still searchable
             results = engine.search("Keep", "test", limit=10)
@@ -981,8 +981,8 @@ class TestTantivyCompaction:
 class TestTantivyTombstoneHelpers:
     """Tests for tombstone helper methods."""
 
-    def test_get_tombstoned_messages_empty(self) -> None:
-        """Test _get_tombstoned_messages on empty index."""
+    def test_get_tombstoned_memories_empty(self) -> None:
+        """Test _get_tombstoned_memories on empty index."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -991,13 +991,13 @@ class TestTantivyTombstoneHelpers:
             )
             engine = TantivyEngine(config)
 
-            tombstoned = engine._get_tombstoned_messages("test")
+            tombstoned = engine._get_tombstoned_memories("test")
             assert tombstoned == set()
 
             engine.close()
 
-    def test_get_tombstoned_messages_returns_deleted(self) -> None:
-        """Test _get_tombstoned_messages returns soft-deleted messages."""
+    def test_get_tombstoned_memories_returns_deleted(self) -> None:
+        """Test _get_tombstoned_memories returns soft-deleted messages."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
                 project_id="test",
@@ -1013,12 +1013,12 @@ class TestTantivyTombstoneHelpers:
             engine.soft_delete("test", "Message A")
             engine.commit()
 
-            tombstoned = engine._get_tombstoned_messages("test")
+            tombstoned = engine._get_tombstoned_memories("test")
             assert tombstoned == {"Message A"}
 
             engine.close()
 
-    def test_multiple_soft_deletes_same_message(self) -> None:
+    def test_multiple_soft_deletes_same_content(self) -> None:
         """Test that multiple soft-deletes of same message work correctly."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
@@ -1537,8 +1537,8 @@ class TestInvalidateTombstoneCache:
             engine.add("proj-a", "msg a")
             engine.add("proj-b", "msg b")
             engine.commit()
-            engine._get_tombstoned_messages("proj-a")
-            engine._get_tombstoned_messages("proj-b")
+            engine._get_tombstoned_memories("proj-a")
+            engine._get_tombstoned_memories("proj-b")
             assert "proj-a" in engine._tombstone_cache
             assert "proj-b" in engine._tombstone_cache
 
@@ -1564,7 +1564,7 @@ class TestInvalidateTombstoneCache:
 
             engine.add("proj-a", "msg")
             engine.commit()
-            engine._get_tombstoned_messages("proj-a")
+            engine._get_tombstoned_memories("proj-a")
             assert len(engine._tombstone_cache) > 0
 
             engine._invalidate_tombstone_cache(None)
@@ -1573,7 +1573,7 @@ class TestInvalidateTombstoneCache:
 
 @pytest.mark.unit
 class TestGetTombstonedMessagesCacheAndErrors:
-    """Tests for _get_tombstoned_messages cache LRU eviction and error paths."""
+    """Tests for _get_tombstoned_memories cache LRU eviction and error paths."""
 
     def test_cache_hit_returns_cached(self) -> None:
         """Test that cached tombstones are returned without re-querying."""
@@ -1585,9 +1585,9 @@ class TestGetTombstonedMessagesCacheAndErrors:
             engine.commit()
 
             # First call populates cache
-            result1 = engine._get_tombstoned_messages("test")
+            result1 = engine._get_tombstoned_memories("test")
             # Second call should hit cache
-            result2 = engine._get_tombstoned_messages("test")
+            result2 = engine._get_tombstoned_memories("test")
             assert result1 == result2
 
     def test_lru_eviction_when_cache_full(self) -> None:
@@ -1606,9 +1606,9 @@ class TestGetTombstonedMessagesCacheAndErrors:
             engine.commit()
 
             # Query all three to fill cache beyond max_size=2
-            engine._get_tombstoned_messages("proj-0")
-            engine._get_tombstoned_messages("proj-1")
-            engine._get_tombstoned_messages("proj-2")
+            engine._get_tombstoned_memories("proj-0")
+            engine._get_tombstoned_memories("proj-1")
+            engine._get_tombstoned_memories("proj-2")
 
             # proj-0 should have been evicted (oldest)
             assert "proj-0" not in engine._tombstone_cache
@@ -1616,17 +1616,17 @@ class TestGetTombstonedMessagesCacheAndErrors:
             assert "proj-2" in engine._tombstone_cache
 
     def test_index_none_returns_empty_set(self) -> None:
-        """Test that _get_tombstoned_messages returns empty set when _index is None."""
+        """Test that _get_tombstoned_memories returns empty set when _index is None."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(project_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine._index = None
 
-            result = engine._get_tombstoned_messages("test")
+            result = engine._get_tombstoned_memories("test")
             assert result == set()
 
     def test_value_error_with_logger(self) -> None:
-        """Test ValueError handling in _get_tombstoned_messages with logger."""
+        """Test ValueError handling in _get_tombstoned_memories with logger."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1636,14 +1636,14 @@ class TestGetTombstonedMessagesCacheAndErrors:
             mock_index.parse_query.side_effect = ValueError("bad query")
             engine._index = mock_index
 
-            result = engine._get_tombstoned_messages("test")
+            result = engine._get_tombstoned_memories("test")
 
             assert result == set()
             calls = [str(c) for c in mock_logger.warning.call_args_list]
             assert any("query parse error" in c for c in calls)
 
     def test_generic_exception_with_logger(self) -> None:
-        """Test generic exception handling in _get_tombstoned_messages with logger."""
+        """Test generic exception handling in _get_tombstoned_memories with logger."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(project_id="test", index_path=tmpdir)
@@ -1653,11 +1653,11 @@ class TestGetTombstonedMessagesCacheAndErrors:
             mock_index.parse_query.side_effect = RuntimeError("fail")
             engine._index = mock_index
 
-            result = engine._get_tombstoned_messages("test")
+            result = engine._get_tombstoned_memories("test")
 
             assert result == set()
             calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("Failed to get tombstoned messages" in c for c in calls)
+            assert any("Failed to get tombstoned memories" in c for c in calls)
 
     def test_generic_exception_without_logger(self) -> None:
         """Test generic exception without logger returns empty set."""
@@ -1669,7 +1669,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
             mock_index.parse_query.side_effect = RuntimeError("fail")
             engine._index = mock_index
 
-            result = engine._get_tombstoned_messages("test")
+            result = engine._get_tombstoned_memories("test")
 
             assert result == set()
 
@@ -1928,7 +1928,7 @@ class TestSoftDeleteWithLogger:
             result = engine.soft_delete("test", "nonexistent")
             assert result is False
             calls = [str(c) for c in mock_logger.debug.call_args_list]
-            assert any("message not found" in c for c in calls)
+            assert any("memory not found" in c for c in calls)
 
     def test_soft_delete_success_with_logger(self) -> None:
         """Test soft_delete logs debug when tombstone added."""
@@ -1963,7 +1963,7 @@ class TestDeleteWithSoftDeleteDisabled:
         )
         return TantivyEngine(config)
 
-    def test_delete_rebuild_existing_message(
+    def test_delete_rebuild_existing_content(
         self, engine_no_soft_delete: TantivyEngine
     ) -> None:
         """Test delete with rebuild removes the message."""
@@ -1979,7 +1979,7 @@ class TestDeleteWithSoftDeleteDisabled:
         assert "Keep this" in docs
         assert "Delete this" not in docs
 
-    def test_delete_rebuild_nonexistent_message(
+    def test_delete_rebuild_nonexistent_content(
         self, engine_no_soft_delete: TantivyEngine
     ) -> None:
         """Test delete rebuild returns False for nonexistent message."""
@@ -2310,7 +2310,7 @@ class TestGetTombstoneStatsEdgeCases:
             assert stats["total_docs"] == 0
             assert stats["active_docs"] == 0
             assert stats["tombstones"] == 0
-            assert stats["unique_active_messages"] == 0
+            assert stats["unique_active_memories"] == 0
 
     def test_stats_exception_with_logger(self) -> None:
         """Test get_tombstone_stats returns zeros on exception with logger."""

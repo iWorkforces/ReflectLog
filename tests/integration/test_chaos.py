@@ -62,7 +62,7 @@ def manager(monkeypatch):
     mgr._write_lock = MagicMock()
     mgr._search_pipeline = MagicMock()
     mock_search_result = MagicMock()
-    mock_search_result.messages = []
+    mock_search_result.memories = []
     mgr._search_pipeline.execute = AsyncMock(return_value=mock_search_result)
     mgr._add_pipeline = MagicMock()
     mgr._add_pipeline.execute = AsyncMock(
@@ -241,8 +241,8 @@ class TestResourceExhaustion:
 
         with patch("os.statvfs", mock_disk_full):
             # Mock pipeline handles errors gracefully - returns success
-            result = await manager.add_messages_async(
-                [f"Large message {i}" for i in range(10)]
+            result = await manager.add_memories_async(
+                [f"Large memory {i}" for i in range(10)]
             )
             assert result is not None
 
@@ -254,7 +254,7 @@ class TestResourceExhaustion:
         """
         large_text = "x" * 1000000
 
-        await manager.add_messages_async([large_text])
+        await manager.add_memories_async([large_text])
 
         assert True  # Should complete successfully
 
@@ -303,7 +303,7 @@ class TestDataCorruption:
             "_embed_query",
             return_value=corrupted_vector,
         ):
-            await manager.add_messages_async(["test message"])
+            await manager.add_memories_async(["test memory"])
 
     @pytest.mark.asyncio
     async def test_config_reload_during_operation(self, manager, monkeypatch):
@@ -320,7 +320,7 @@ class TestDataCorruption:
         original_reload = reload_manager.reload_config
         reload_manager.reload_config = Mock(return_value=Config.from_environment())  # type: ignore[assignment]
 
-        await manager.add_messages_async(["test message"])
+        await manager.add_memories_async(["test memory"])
 
         # Restore original
         reload_manager.reload_config = original_reload  # type: ignore[assignment]

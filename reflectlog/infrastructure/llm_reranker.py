@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import re
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import anyio
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -17,6 +17,9 @@ from reflectlog.application.config import (
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
+
+if TYPE_CHECKING:
+    from reflectlog.core.logging import IStructuredLogger
 
 
 def format_memory_age(created_at: str | None) -> str | None:
@@ -268,10 +271,12 @@ class AnthropicRerankerProvider:
             model: LLM model identifier (passed to generate_content).
             logger: Optional structured logger.
         """
+        super().__init__()
+
         # Lazy import to avoid dependency issues
         from reflectlog.utility import init_credentials
 
-        init_credentials(verbose=False)
+        _ = init_credentials(verbose=False)
         self._model = model
         self._logger = logger
 
@@ -511,15 +516,15 @@ class LLMReranker(BaseModel):
 
         Args:
             query: Search query string.
-            candidates: List of (message, fusion_score) tuples from
+            candidates: List of (memory, fusion_score) tuples from
                 RRF fusion. The fusion_score is used as fallback if
                 LLM scoring fails for a document.
-            timestamp_map: Optional mapping from message text to ISO 8601
+            timestamp_map: Optional mapping from memory text to ISO 8601
                 timestamp string. Used to provide temporal context to the
                 LLM when enable_recency_boost is True.
 
         Returns:
-            Reranked list of (message, llm_score) tuples, filtered by
+            Reranked list of (memory, llm_score) tuples, filtered by
             score_threshold and sorted by score descending.
         """
         if not candidates:

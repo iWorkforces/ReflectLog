@@ -12,7 +12,7 @@ class MockMemorySearchResult:
         """Initialize mock search result.
 
         Args:
-            text: The message text content
+            text: The memory text content
             index: Unique identifier for the result
         """
         self._text = text
@@ -94,10 +94,10 @@ def set_env_vars(monkeypatch):
         "MCP_PATH": "/mcp",
         "SEARCH_LIMIT": "5",
         "REMOVE_SEARCH_LIMIT": "5",
-        "MAX_MESSAGE_LENGTH": "30720",
-        "MIN_MESSAGE_LENGTH": "1",
+        "MAX_MEMORY_LENGTH": "30720",
+        "MIN_MEMORY_LENGTH": "1",
         "LOG_LEVEL": "INFO",
-        "DEDUPLICATE_MESSAGES": "true",
+        "DEDUPLICATE_MEMORIES": "true",
         "ADD_MAX_CONCURRENCY": "8",
         "RERANKER_ENGINE": "llm",
         # Disable embedding cache in tests to avoid issues with mocked embedders
@@ -177,11 +177,11 @@ def mcp_server(set_env_vars, mock_usearch_engine):
 
 
 @pytest.fixture
-def sample_messages():
-    """Provide sample messages for testing.
+def sample_memories():
+    """Provide sample memories for testing.
 
     Returns:
-        Dictionary of sample message lists for various test scenarios
+        Dictionary of sample memory lists for various test scenarios
     """
     return {
         "single": ["Hello, World!"],
@@ -258,17 +258,17 @@ def create_search_results(mock_search_result):
         mock_search_result: Factory fixture for single results (unused, kept for compatibility)
 
     Returns:
-        Callable that creates lists of tuples (message, score, created_at) for USearchEngine.search()
+        Callable that creates lists of tuples (memory, score, created_at) for USearchEngine.search()
     """
 
-    def _create_results(messages: list[str]) -> list[tuple[str, float, str]]:
+    def _create_results(memories: list[str]) -> list[tuple[str, float, str]]:
         # USearchEngine.search returns List[Tuple[str, float, str]]
         # Default scores decrease from 0.9 for ranking
         results: list[tuple[str, float, str]] = []
-        for idx, msg in enumerate(messages):
+        for idx, memory in enumerate(memories):
             score = 0.9 - (idx * 0.1)
             created_at = f"2024-01-{idx + 1:02d}T00:00:00"
-            results.append((msg, score, created_at))
+            results.append((memory, score, created_at))
         return results
 
     return _create_results
@@ -282,10 +282,10 @@ def create_search_response():
         Callable that creates search response format: {'results': [{'memory': '...', 'id': '...'}]}
     """
 
-    def _create_response(messages: list[str], include_ids: bool = True) -> dict:
+    def _create_response(memories: list[str], include_ids: bool = True) -> dict:
         results = []
-        for idx, msg in enumerate(messages):
-            result = {"memory": msg}
+        for idx, memory in enumerate(memories):
+            result = {"memory": memory}
             if include_ids:
                 result["id"] = f"id_{idx}"
             results.append(result)

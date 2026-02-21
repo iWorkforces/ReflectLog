@@ -116,7 +116,7 @@ class TestSearchPipelineWithRRFToggle:
         config.index_base_path = "/tmp/test_indexes"
         config.search_limit = 5
         config.search_score_threshold = 0.8
-        config.deduplicate_messages = True
+        config.deduplicate_memories = True
         config.enable_llm_infer = False
         config.remove_search_limit = 5
         config.remove_score_threshold = 0.9
@@ -163,7 +163,7 @@ class TestSearchPipelineWithRRFToggle:
         config.index_base_path = "/tmp/test_indexes"
         config.search_limit = 5
         config.search_score_threshold = 0.8
-        config.deduplicate_messages = True
+        config.deduplicate_memories = True
         config.enable_llm_infer = False
         config.remove_search_limit = 5
         config.remove_score_threshold = 0.9

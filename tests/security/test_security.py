@@ -55,7 +55,7 @@ def manager(monkeypatch):
     mgr._write_lock = MagicMock()
     mgr._search_pipeline = MagicMock()
     mock_search_result = MagicMock()
-    mock_search_result.messages = []
+    mock_search_result.memories = []
     mgr._search_pipeline.execute = AsyncMock(return_value=mock_search_result)
     mgr._add_pipeline = MagicMock()
     mgr._add_pipeline.execute = AsyncMock(
@@ -129,7 +129,7 @@ class TestInputSanitization:
 
         for content in xss_attempts:
             # With mock, add returns success (doesn't crash)
-            result = await manager.add_messages_async([content])
+            result = await manager.add_memories_async([content])
             assert result is not None
 
     @pytest.mark.asyncio
@@ -178,7 +178,7 @@ class TestRateLimiting:
 
         With mock, rate limiting isn't enforced - verifies no crashes.
         """
-        _ = await manager.add_messages_async(["Test"] * 200)
+        _ = await manager.add_memories_async(["Test"] * 200)
 
         # Small delay
         await asyncio.sleep(0.01)
@@ -193,8 +193,8 @@ class TestRateLimiting:
 
         With mock, verifies system handles concurrent requests without crashing.
         """
-        _ = await manager.add_messages_async(["Burst 1"] * 50)
-        _ = await manager.add_messages_async(["Burst 2"] * 30)
+        _ = await manager.add_memories_async(["Burst 1"] * 50)
+        _ = await manager.add_memories_async(["Burst 2"] * 30)
 
         # Multiple searches should work (mock doesn't rate limit)
         for i in range(10):

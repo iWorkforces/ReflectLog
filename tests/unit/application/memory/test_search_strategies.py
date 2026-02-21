@@ -148,12 +148,12 @@ class TestSearchResult:
     def test_construction(self) -> None:
         """Fields should be stored correctly."""
         result = SearchResult(
-            messages=["a", "b"],
+            memories=["a", "b"],
             timestamp_map={"a": "2025-01-01T00:00:00Z"},
             semantic_results=[("a", 0.9, "2025-01-01T00:00:00Z")],
             tantivy_results=[("b", 0.8)],
         )
-        assert result.messages == ["a", "b"]
+        assert result.memories == ["a", "b"]
         assert len(result.semantic_results) == 1
         assert len(result.tantivy_results) == 1
 
@@ -191,7 +191,7 @@ class TestSearchPipelineExecute:
 
         result = await pipeline.execute(ctx)
 
-        assert result.messages == ["msg1"]
+        assert result.memories == ["msg1"]
         assert result.tantivy_results == []
 
     @pytest.mark.asyncio
@@ -213,7 +213,7 @@ class TestSearchPipelineExecute:
 
         result = await pipeline.execute(ctx)
 
-        assert len(result.messages) >= 1
+        assert len(result.memories) >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +279,7 @@ class TestConcatenateResults:
         assert combined[1][0] == "t1"
 
     def test_deduplication_across_engines(self, pipeline) -> None:
-        """Duplicate messages across engines are skipped."""
+        """Duplicate memories across engines are skipped."""
         semantic = [("shared", 0.9)]
         tantivy = [("shared", 0.6), ("unique", 0.5)]
 
@@ -597,7 +597,7 @@ class TestHybridSearchIntegration:
         ctx = _make_context(enable_hybrid_search=True, enable_rrf_fusion=True)
         result = await pipeline.execute(ctx)
 
-        assert result.messages == []
+        assert result.memories == []
 
     @pytest.mark.asyncio
     async def test_single_result_skips_reranking(
@@ -620,7 +620,7 @@ class TestHybridSearchIntegration:
         ctx = _make_context(enable_hybrid_search=True, enable_rrf_fusion=True)
         result = await pipeline.execute(ctx)
 
-        assert result.messages == ["msg1"]
+        assert result.memories == ["msg1"]
         # Check skip-reranking log was called
         skip_logged = any(
             "skipped" in str(call).lower() for call in mock_logger.info.call_args_list
@@ -648,8 +648,8 @@ class TestHybridSearchIntegration:
         )
         result = await pipeline.execute(ctx)
 
-        assert "msg1" in result.messages
-        assert "msg2" in result.messages
+        assert "msg1" in result.memories
+        assert "msg2" in result.memories
 
 
 # ---------------------------------------------------------------------------

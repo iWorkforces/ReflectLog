@@ -672,7 +672,7 @@ class TestSearchPipeline:
         assert "hit1" in results
 
     @pytest.mark.asyncio
-    async def test_reranker_skipped_for_empty_messages(
+    async def test_reranker_skipped_for_empty_memories(
         self,
         mock_backend_executor: AsyncMock,
         mock_logger: MagicMock,

@@ -220,10 +220,12 @@ class AnthropicReplacementProvider:
             model: LLM model identifier (passed to generate_content).
             logger: Optional structured logger.
         """
+        super().__init__()
+
         # Lazy import to avoid dependency issues
         from reflectlog.utility import init_credentials
 
-        init_credentials(verbose=False)
+        _ = init_credentials(verbose=False)
         self._model = model
         self._logger = logger
 
@@ -390,7 +392,7 @@ class SmartReplacer(BaseModel):
 
     Attributes:
         config: SmartReplacerConfig with API credentials and settings.
-        logger: Optional structured logger for debug/info messages.
+        logger: Optional structured logger for debug/info memory details.
 
     Example:
         >>> config = SmartReplacerConfig.from_app_config(app_config)

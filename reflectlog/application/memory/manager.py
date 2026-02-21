@@ -32,8 +32,7 @@ import threading
 import time
 from typing import Any
 
-from reflectlog.application.constants import LOG_ADD_MESSAGE_PREVIEW_LIMIT
-from reflectlog.application.types import ISemanticSearchEngine
+from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
 from reflectlog.infrastructure import (
     CachedEmbeddings,
     CrossEncoderConfig,
@@ -53,7 +52,7 @@ from ..config import Config
 from ..exceptions import InconsistentStateError, SearchError, StorageError
 from ..utils import (
     StructuredLogger,
-    truncate_message,
+    truncate_memory,
 )
 from .add_phases import (
     AddPipeline,
@@ -82,6 +81,7 @@ class MemoryManager:
             config: Application configuration.
             logger: Structured logger instance.
         """
+        super().__init__()
         self.config = config
         self.logger = logger
         self.project_id = config.project_id
@@ -122,7 +122,6 @@ class MemoryManager:
         self.is_hybrid_search = self.config.enable_hybrid_search
 
         # 1. Initialize USearch semantic engine
-        self._semantic_engine: ISemanticSearchEngine
         usearch_config = USearchConfig.from_app_config(config)
         base_embedder = LangchainQwenEmbeddings(
             config={
@@ -148,7 +147,7 @@ class MemoryManager:
         else:
             embedder = base_embedder
 
-        self._semantic_engine = USearchEngine(
+        self._semantic_engine: Any = USearchEngine(
             usearch_config, embedder=embedder, logger=self.logger
         )
 
@@ -310,7 +309,7 @@ class MemoryManager:
             else False  # SmartReplacer is lazy by default
         )
 
-        engines_initialized = []
+        engines_initialized: list[str] = []
 
         # Pre-warm search engines if configured
         if should_init_search:
@@ -512,24 +511,24 @@ class MemoryManager:
             return self.cross_encoder_reranker
         return None
 
-    def _add_message(self, message: str) -> bool:
-        """Add a single message to BOTH USearch semantic and Tantivy full-text engines if not duplicate.
+    def _add_memory(self, memory: str) -> bool:
+        """Add a single memory to BOTH USearch semantic and Tantivy full-text engines if not duplicate.
 
         Args:
-            message: The message to store.
+            memory: The memory to store.
 
         Returns:
-            True if the message was stored, False if it was skipped as a duplicate.
+            True if the memory was stored, False if it was skipped as a duplicate.
 
         Raises:
             RuntimeError: If storage operation fails.
         """
-        if self.config.deduplicate_messages and self._has_exact_match(message):
+        if self.config.deduplicate_memories and self._has_exact_match(memory):
             self.logger.info(
-                "Duplicate message detected, skipping storage",
+                "Duplicate memory detected, skipping storage",
                 extra={
                     "project_id": self.project_id,
-                    "message_preview": message[:200],
+                    "memory_preview": memory[:200],
                 },
             )
             return False
@@ -538,113 +537,116 @@ class MemoryManager:
             # 1. Add to USearch semantic engine
             self._semantic_engine.add(
                 project_id=self.project_id,
-                message=message,
+                message=memory,
                 infer=self.config.enable_llm_infer,
             )
 
             # 2. Add to Tantivy full-text search engine
             if self._tantivy_engine is not None:
-                self._tantivy_engine.add(self.project_id, message)
+                self._tantivy_engine.add(self.project_id, memory)
 
             self.logger.debug(
-                "Message added to hybrid storage",
+                "Memory added to hybrid storage",
                 extra={
                     "project_id": self.project_id,
-                    "message_length": len(message),
+                    "memory_length": len(memory),
                     "engines": ["semantic", "tantivy"],
                 },
             )
             return True
 
         except Exception as e:
-            raise StorageError(f"Failed to add message to hybrid storage: {e}") from e
+            raise StorageError(f"Failed to add memory to hybrid storage: {e}") from e
 
-    def add_messages(self, messages: list[str]) -> int:
-        """Add multiple messages to memory store (thread-safe).
+    def _add_message(self, message: str) -> bool:
+        return self._add_memory(message)
+
+    def add_memories(self, memories: list[str]) -> int:
+        """Add multiple memories to memory store (thread-safe).
 
         Thread-safe: Uses RLock to ensure consistent state during batch addition.
 
         Args:
-            messages: List of messages to store.
+            memories: List of memories to store.
 
         Returns:
-            Number of messages actually stored (duplicates skipped).
+            Number of memories actually stored (duplicates skipped).
 
         Raises:
             RuntimeError: If storage operation fails.
         """
         with self._write_lock, self._lock:
             stored_count = 0
-            messages_to_add: list[str] = []
-            seen_messages: set[str] = set()
+            memories_to_add: list[str] = []
+            seen_memories: set[str] = set()
 
-            log_limit = min(len(messages), LOG_ADD_MESSAGE_PREVIEW_LIMIT)
-            for idx, message in enumerate(messages, 1):
+            log_limit = min(len(memories), LOG_ADD_MEMORY_PREVIEW_LIMIT)
+            for idx, memory in enumerate(memories, 1):
                 if idx <= log_limit:
-                    preview = truncate_message(message, max_length=60)
+                    preview = truncate_memory(memory, max_length=60)
                     self.logger.info(
-                        f"  ⏳ [{idx}/{len(messages)}] Processing: {preview}",
+                        f"  ⏳ [{idx}/{len(memories)}] Processing: {preview}",
                         extra={
-                            "message_index": idx,
-                            "total_messages": len(messages),
-                            "message_length": len(message),
+                            "memory_index": idx,
+                            "total_memories": len(memories),
+                            "memory_length": len(memory),
                         },
                     )
-                if message in seen_messages:
+                if memory in seen_memories:
                     if idx <= log_limit:
                         self.logger.info(
                             "    Skipped (duplicate in batch)",
                             extra={
-                                "message_index": idx,
+                                "memory_index": idx,
                                 "reason": "batch_duplicate",
                             },
                         )
                     continue
-                seen_messages.add(message)
+                seen_memories.add(memory)
 
-                if self.config.deduplicate_messages and self._has_exact_match(message):
+                if self.config.deduplicate_memories and self._has_exact_match(memory):
                     if idx <= log_limit:
                         self.logger.info(
                             "    Skipped (duplicate detected)",
-                            extra={"message_index": idx, "reason": "duplicate"},
+                            extra={"memory_index": idx, "reason": "duplicate"},
                         )
                     continue
 
-                messages_to_add.append(message)
-            if len(messages) > log_limit:
+                memories_to_add.append(memory)
+            if len(memories) > log_limit:
                 self.logger.info(
-                    f"  ... {len(messages) - log_limit} more message(s) omitted from logs",
+                    f"  ... {len(memories) - log_limit} more memory(s) omitted from logs",
                     extra={
-                        "omitted_count": len(messages) - log_limit,
-                        "total_messages": len(messages),
+                        "omitted_count": len(memories) - log_limit,
+                        "total_memories": len(memories),
                     },
                 )
 
-            if messages_to_add:
-                inserted_messages = self._semantic_engine.add_batch(
+            if memories_to_add:
+                inserted_memories = self._semantic_engine.add_batch(
                     project_id=self.project_id,
-                    messages=messages_to_add,
+                    messages=memories_to_add,
                     infer=self.config.enable_llm_infer,
                 )
 
                 if self._tantivy_engine is not None:
-                    for message in inserted_messages:
-                        self._tantivy_engine.add(self.project_id, message)
+                    for memory in inserted_memories:
+                        self._tantivy_engine.add(self.project_id, memory)
 
-                stored_count = len(inserted_messages)
-                inserted_set = set(inserted_messages)
+                stored_count = len(inserted_memories)
+                inserted_set = set(inserted_memories)
 
                 stored_log_limit = min(
-                    len(messages_to_add), LOG_ADD_MESSAGE_PREVIEW_LIMIT
+                    len(memories_to_add), LOG_ADD_MEMORY_PREVIEW_LIMIT
                 )
-                for idx, message in enumerate(messages_to_add, 1):
+                for idx, memory in enumerate(memories_to_add, 1):
                     if idx > stored_log_limit:
                         break
-                    if message in inserted_set:
+                    if memory in inserted_set:
                         self.logger.info(
                             "    Stored in USearch (semantic) + Tantivy (full-text)",
                             extra={
-                                "message_index": idx,
+                                "memory_index": idx,
                                 "engines": ["usearch", "tantivy"]
                                 if self._tantivy_engine
                                 else ["usearch"],
@@ -654,16 +656,16 @@ class MemoryManager:
                         self.logger.warning(
                             "    Skipped during batch insert",
                             extra={
-                                "message_index": idx,
+                                "memory_index": idx,
                                 "reason": "batch_insert_skipped",
                             },
                         )
-                if len(messages_to_add) > stored_log_limit:
+                if len(memories_to_add) > stored_log_limit:
                     self.logger.info(
-                        f"  ... {len(messages_to_add) - stored_log_limit} more result(s) omitted from logs",
+                        f"  ... {len(memories_to_add) - stored_log_limit} more result(s) omitted from logs",
                         extra={
-                            "omitted_count": len(messages_to_add) - stored_log_limit,
-                            "total_messages": len(messages_to_add),
+                            "omitted_count": len(memories_to_add) - stored_log_limit,
+                            "total_memories": len(memories_to_add),
                         },
                     )
 
@@ -684,61 +686,69 @@ class MemoryManager:
 
             return stored_count
 
-    async def add_messages_async(
-        self, messages: list[str], dry_run: bool = False
+    def add_messages(self, messages: list[str]) -> int:
+        return self.add_memories(messages)
+
+    async def add_memories_async(
+        self, memories: list[str], dry_run: bool = False
     ) -> AddResult:
-        """Add multiple messages with phased parallel processing (Sprint 2.2).
+        """Add multiple memories with phased parallel processing (Sprint 2.2).
 
         Uses a 3-phase approach for optimal performance via AddPipeline:
-        - Phase 1 (Parallel): Duplicate detection for all messages
+        - Phase 1 (Parallel): Duplicate detection for all memories
         - Phase 2 (Parallel): Smart replacement detection for non-duplicates
         - Phase 3 (Sequential): Database writes to avoid SQLite corruption
 
         This approach provides 5-8x speedup over sequential processing for
-        multiple messages by maximizing I/O parallelism in phases 1-2 while
+        multiple memories by maximizing I/O parallelism in phases 1-2 while
         maintaining data consistency in phase 3.
 
         Args:
-            messages: List of messages to store.
+            memories: List of memories to store.
             dry_run: If True, only check for replacements without making changes.
                 Returns what WOULD happen without actually storing or deleting.
 
         Returns:
             AddResult with detailed information about stored, skipped, and replaced
-            messages, including full replacement details.
+            memories, including full replacement details.
 
         Raises:
             RuntimeError: If storage operation fails (not raised in dry_run mode).
         """
-        return await self._add_pipeline.execute(messages, dry_run)
+        return await self._add_pipeline.execute(memories, dry_run)
+
+    async def add_messages_async(
+        self, messages: list[str], dry_run: bool = False
+    ) -> AddResult:
+        return await self.add_memories_async(messages, dry_run)
 
     def get_all(self) -> list[str]:
-        """Retrieve all stored messages with cross-engine consistency check (thread-safe).
+        """Retrieve all stored memories with cross-engine consistency check (thread-safe).
 
         Thread-safe: Uses RLock to ensure consistent state during retrieval.
 
         Returns:
-            List of all messages from USearchEngine (source of truth).
+            List of all memories from USearchEngine (source of truth).
 
         Raises:
             RuntimeError: If retrieval operation fails.
         """
         with self._lock:
             try:
-                messages = self._semantic_engine.get_all(project_id=self.project_id)
+                memories = self._semantic_engine.get_all(project_id=self.project_id)
 
                 self.logger.info(
-                    f"Retrieved {len(messages)} messages (USearchEngine={len(messages)})",
+                    f"Retrieved {len(memories)} memories (USearchEngine={len(memories)})",
                     extra={
                         "project_id": self.project_id,
-                        "count": len(messages),
+                        "count": len(memories),
                     },
                 )
 
-                return messages
+                return memories
 
             except Exception as e:
-                raise StorageError(f"Failed to retrieve messages: {e}") from e
+                raise StorageError(f"Failed to retrieve memories: {e}") from e
 
     async def search(
         self,
@@ -758,7 +768,7 @@ class MemoryManager:
             limit: Maximum number of results (uses config default if None).
 
         Returns:
-            List of hybrid-ranked messages from both engines.
+            List of hybrid-ranked memories from both engines.
 
         Raises:
             RuntimeError: If search operation fails.
@@ -790,19 +800,19 @@ class MemoryManager:
         # Execute search pipeline
         result = await self._search_pipeline.execute(context)
 
-        return result.messages
+        return result.memories
 
     def search_for_removal(
         self, query: str, limit: int | None = None
     ) -> list[dict[str, Any]]:
-        """Search for messages to potentially remove using direct database lookup.
+        """Search for memories to potentially remove using direct database lookup.
 
         Uses O(log n) indexed database lookup instead of O(n) iteration through
-        all messages. This is a significant performance improvement for large
+        all memories. This is a significant performance improvement for large
         collections.
 
         Args:
-            query: The exact message content to find for removal.
+            query: The exact memory content to find for removal.
             limit: Maximum number of candidates (uses config default if None).
                    Note: Since we're looking for exact match, we'll return at most 1.
 
@@ -820,13 +830,13 @@ class MemoryManager:
             candidates: list[dict[str, Any]] = []
 
             # Direct database lookup - O(log n) instead of O(n) get_all() + iteration
-            msg_id = self._semantic_engine.get_id_by_message(self.project_id, query)
+            mem_id = self.get_id_by_content(query)
 
-            if msg_id is not None:
+            if mem_id is not None:
                 # Found exact match - return as candidate
                 candidates.append(
                     {
-                        "id": str(msg_id),  # Use database ID directly
+                        "id": str(mem_id),  # Use database ID directly
                         "memory": query,
                         "score": 1.0,  # Exact match = perfect score
                     }
@@ -856,58 +866,56 @@ class MemoryManager:
             except Exception as e:
                 raise StorageError(f"Failed to delete memory: {e}") from e
 
-    def delete_by_message(self, message: str) -> bool:
-        """Delete a memory entry by its exact message content (thread-safe).
+    def delete_by_memory(self, memory: str) -> bool:
+        """Delete a memory entry by its exact memory content (thread-safe).
 
         Thread-safe: Uses RLock to ensure consistent state during deletion.
 
-        This method looks up the message in the database and deletes it from
+        This method looks up the memory in the database and deletes it from
         both USearch (semantic) and Tantivy (full-text) engines atomically.
         If Tantivy deletion fails after USearch deletion succeeds, the operation
         raises an error to alert about the inconsistent state.
 
         Args:
-            message: The exact message content to delete.
+            memory: The exact memory content to delete.
 
         Returns:
-            True if the message was found and deleted, False if not found.
+            True if the memory was found and deleted, False if not found.
 
         Raises:
             RuntimeError: If deletion fails or results in inconsistent state.
         """
         with self._write_lock, self._lock:
             try:
-                # 1. Look up the SQLite ID from the message content
-                msg_id = self._semantic_engine.get_id_by_message(
-                    self.project_id, message
-                )
+                # 1. Look up the SQLite ID from the memory content
+                mem_id = self.get_id_by_content(memory)
 
-                if msg_id is None:
+                if mem_id is None:
                     self.logger.debug(
-                        "Message not found for deletion",
+                        "Memory not found for deletion",
                         extra={
                             "project_id": self.project_id,
-                            "message_preview": message[:50],
+                            "memory_preview": memory[:50],
                         },
                     )
                     return False
 
                 # 2. Delete from USearch semantic engine using the numeric ID
-                self._semantic_engine.delete(memory_id=str(msg_id))
+                self._semantic_engine.delete(memory_id=str(mem_id))
 
                 # 3. Delete from Tantivy full-text engine
                 # If this fails after USearch deletion, we have inconsistent state
                 if self._tantivy_engine is not None:
                     try:
                         # delete() commits internally for both soft-delete and rebuild modes
-                        self._tantivy_engine.delete(self.project_id, message)
+                        _ = self._tantivy_engine.delete(self.project_id, memory)
                     except Exception as tantivy_error:
                         # Log critical error - state is now inconsistent
                         self.logger.error(
                             "Tantivy deletion failed after USearch deletion - INCONSISTENT STATE",
                             extra={
                                 "project_id": self.project_id,
-                                "message_id": msg_id,
+                                "memory_id": mem_id,
                                 "error": str(tantivy_error),
                             },
                         )
@@ -917,10 +925,10 @@ class MemoryManager:
                         ) from tantivy_error
 
                 self.logger.debug(
-                    "Message deleted from hybrid storage",
+                    "Memory deleted from hybrid storage",
                     extra={
                         "project_id": self.project_id,
-                        "message_id": msg_id,
+                        "memory_id": mem_id,
                         "engines": ["usearch", "tantivy"]
                         if self._tantivy_engine
                         else ["usearch"],
@@ -932,23 +940,40 @@ class MemoryManager:
             except InconsistentStateError:
                 raise  # Re-raise inconsistent state errors with full context
             except Exception as e:
-                raise StorageError(f"Failed to delete message: {e}") from e
+                raise StorageError(f"Failed to delete memory: {e}") from e
 
-    def _has_exact_match(self, message: str) -> bool:
-        """Check whether the exact message already exists in storage.
+    def delete_by_message(self, message: str) -> bool:
+        return self.delete_by_memory(message)
+
+    def get_id_by_content(self, content: str) -> int | None:
+        """Get SQLite ID for exact memory content match.
+
+        Uses get_id_by_content() when available, with fallback to a
+        legacy ID lookup API for compatibility.
+        """
+        semantic_engine: Any = self._semantic_engine
+        if hasattr(semantic_engine, "get_id_by_content"):
+            return semantic_engine.get_id_by_content(self.project_id, content)
+        return self._semantic_engine.get_id_by_message(self.project_id, content)
+
+    def get_id_by_message(self, message: str) -> int | None:
+        return self.get_id_by_content(message)
+
+    def _has_exact_match(self, content: str) -> bool:
+        """Check whether the exact memory already exists in storage.
 
         Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
         falling back to direct database lookup otherwise. Both paths are O(log n)
         avoiding the ~100-500ms embedding API call overhead.
 
-        Sprint 2.1 Optimization: Fallback now uses get_id_by_message() for direct
+        Sprint 2.1 Optimization: Fallback now uses get_id_by_content() for direct
         indexed database lookup instead of semantic search with embedding API call.
         """
         return has_exact_match(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
             project_id=self.project_id,
-            message=message,
+            content=content,
             logger=self.logger,
         )
 

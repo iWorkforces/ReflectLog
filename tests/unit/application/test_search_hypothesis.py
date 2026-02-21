@@ -49,11 +49,11 @@ def test_query_edge_cases(query: str):
 
 
 @given(st.integers(min_value=1, max_value=1000))
-def test_add_messages_varied_count(count: int):
-    """Test add with varying message counts.
+def test_add_memories_varied_count(count: int):
+    """Test add with varying memory counts.
 
     Args:
-        count: Number of messages to add.
+        count: Number of memories to add.
 
     Hypothesis will test: 1, 100, 999, etc.
     """
@@ -64,17 +64,17 @@ def test_add_messages_varied_count(count: int):
     logger = create_logger(__name__, config.project_id, "INFO")
 
     manager = MemoryManager(config, logger)
-    added = manager.add_messages([f"Memory {i}" for i in range(count)])
+    added = manager.add_memories([f"Memory {i}" for i in range(count)])
 
     assert added == count
 
 
 @given(st.integers(min_value=0, max_value=1))
-def test_add_empty_messages(count: int):
-    """Test add with empty message list.
+def test_add_empty_memories(count: int):
+    """Test add with empty memory list.
 
     Args:
-        count: Number of empty messages (0-1000).
+        count: Number of empty memories (0-1000).
 
     Boundary case: should handle gracefully.
     """
@@ -87,10 +87,10 @@ def test_add_empty_messages(count: int):
     manager = MemoryManager(config, logger)
 
     if count == 0:
-        added = manager.add_messages([])
+        added = manager.add_memories([])
     else:
-        messages = [""] * count
-        added = manager.add_messages(messages)
+        memories = [""] * count
+        added = manager.add_memories(memories)
 
     assert added == count
 
@@ -119,11 +119,11 @@ def test_add_injection_attempt(query: str):
 
 
 @given(st.integers(min_value=0, max_value=10000))
-def test_max_message_length(length: int):
-    """Test max message length validation.
+def test_max_memory_length(length: int):
+    """Test max memory length validation.
 
     Args:
-        length: Message length to test.
+        length: Memory length to test.
 
     Boundary case: Should reject or accept.
     """
@@ -135,9 +135,9 @@ def test_max_message_length(length: int):
 
     manager = MemoryManager(config, logger)
 
-    if length <= config.max_message_length:
-        result = manager.add_messages([f"{'x' * length}"])
+    if length <= config.max_memory_length:
+        result = manager.add_memories([f"{'x' * length}"])
         assert result >= 0
     else:
         with pytest.raises(Exception):
-            manager.add_messages([f"{'x' * length}"])
+            manager.add_memories([f"{'x' * length}"])

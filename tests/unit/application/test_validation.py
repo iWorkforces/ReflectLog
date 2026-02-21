@@ -1,113 +1,114 @@
-"""Tests for message validation logic."""
+"""Tests for memory validation logic."""
 
 import pytest
+from typing import Any
 
-from reflectlog.application.utils.validation import validate_messages
+from reflectlog.application.utils.validation import validate_memories
 
 
 @pytest.mark.unit
-class TestValidateMessages:
-    """Test suite for validate_messages() function."""
+class TestValidateMemories:
+    """Test suite for validate_memories() function."""
 
     def test_empty_list_is_valid(self):
         """Test that empty list is valid (no-op case)."""
-        is_valid, error_msg = validate_messages([], 1, 30720)
+        is_valid, error_msg = validate_memories([], 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
-    def test_single_valid_message(self):
-        """Test validation of single valid message."""
-        is_valid, error_msg = validate_messages(["Hello, World!"], 1, 30720)
+    def test_single_valid_memory(self):
+        """Test validation of single valid memory."""
+        is_valid, error_msg = validate_memories(["Hello, World!"], 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
-    def test_multiple_valid_messages(self, sample_messages):
-        """Test validation of multiple valid messages."""
-        is_valid, error_msg = validate_messages(sample_messages["multiple"], 1, 30720)
+    def test_multiple_valid_memories(self, sample_memories: dict[str, Any]):
+        """Test validation of multiple valid memories."""
+        is_valid, error_msg = validate_memories(sample_memories["multiple"], 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
-    def test_message_with_special_characters(self):
-        """Test validation of messages with special characters."""
-        messages = [
-            "Message with special chars: !@#$%^&*()",
+    def test_memory_with_special_characters(self):
+        """Test validation of memories with special characters."""
+        memories = [
+            "Memory with special chars: !@#$%^&*()",
             "Unicode: 你好世界 🌍",
         ]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
-    def test_message_with_newlines_and_tabs(self):
-        """Test validation of messages with newlines and tabs."""
-        messages = ["Message with\nnewlines", "Message with\ttabs"]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_memory_with_newlines_and_tabs(self):
+        """Test validation of memories with newlines and tabs."""
+        memories = ["Memory with\nnewlines", "Memory with\ttabs"]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
-    def test_message_at_min_length(self, sample_messages):
-        """Test validation of message at minimum length (1 character)."""
-        messages = [sample_messages["edge_cases"]["min_length"]]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_memory_at_min_length(self, sample_memories: dict[str, Any]):
+        """Test validation of memory at minimum length (1 character)."""
+        memories = [sample_memories["edge_cases"]["min_length"]]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
-    def test_message_at_max_length(self, sample_messages):
-        """Test validation of message at maximum length (30720 characters)."""
-        messages = [sample_messages["edge_cases"]["max_length"]]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_memory_at_max_length(self, sample_memories: dict[str, Any]):
+        """Test validation of memory at maximum length (30720 characters)."""
+        memories = [sample_memories["edge_cases"]["max_length"]]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
-    def test_message_with_leading_trailing_spaces(self):
-        """Test validation of message with valid content and spaces."""
-        messages = ["   valid content   "]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_memory_with_leading_trailing_spaces(self):
+        """Test validation of memory with valid content and spaces."""
+        memories = ["   valid content   "]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
-    def test_non_string_message_invalid(self):
-        """Test that non-string message is invalid."""
-        messages = [123]  # Integer instead of string
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_non_string_memory_invalid(self):
+        """Test that non-string memory is invalid."""
+        memories = [123]  # Integer instead of string
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "not a string" in error_msg
         assert "index 0" in error_msg
 
-    def test_empty_string_invalid(self, sample_messages):
+    def test_empty_string_invalid(self, sample_memories: dict[str, Any]):
         """Test that empty string is invalid."""
-        messages = [sample_messages["invalid"]["empty"]]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+        memories = [sample_memories["invalid"]["empty"]]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "contains only whitespace" in error_msg
 
-    def test_whitespace_only_message_invalid(self, sample_messages):
-        """Test that whitespace-only message is invalid."""
-        messages = [sample_messages["invalid"]["whitespace_only"]]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_whitespace_only_memory_invalid(self, sample_memories: dict[str, Any]):
+        """Test that whitespace-only memory is invalid."""
+        memories = [sample_memories["invalid"]["whitespace_only"]]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "only whitespace" in error_msg
 
-    def test_message_too_long_invalid(self, sample_messages):
-        """Test that message exceeding max length is invalid."""
-        messages = [sample_messages["invalid"]["too_long"]]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_memory_too_long_invalid(self, sample_memories: dict[str, Any]):
+        """Test that memory exceeding max length is invalid."""
+        memories = [sample_memories["invalid"]["too_long"]]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "too long" in error_msg
 
-    def test_mixed_valid_and_invalid_messages(self):
-        """Test that validation fails if any message is invalid."""
-        messages = ["Valid message", ""]  # Second message is invalid
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_mixed_valid_and_invalid_memories(self):
+        """Test that validation fails if any memory is invalid."""
+        memories = ["Valid memory", ""]  # Second memory is invalid
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "index 1" in error_msg
 
     @pytest.mark.parametrize(
-        "invalid_message,expected_error",
+        "invalid_memory,expected_error",
         [
             (123, "not a string"),
             (None, "is None"),
@@ -115,16 +116,18 @@ class TestValidateMessages:
             ({}, "not a string"),
         ],
     )
-    def test_various_non_string_types(self, invalid_message, expected_error):
+    def test_various_non_string_types(
+        self, invalid_memory: object, expected_error: str
+    ):
         """Test validation with various non-string types."""
-        messages = [invalid_message]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+        memories = [invalid_memory]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert expected_error in error_msg
 
     @pytest.mark.parametrize(
-        "invalid_message,expected_error",
+        "invalid_memory,expected_error",
         [
             ("", "contains only whitespace"),
             ("   ", "only whitespace"),
@@ -133,61 +136,61 @@ class TestValidateMessages:
             ("   \n\t   ", "only whitespace"),
         ],
     )
-    def test_various_empty_messages(self, invalid_message, expected_error):
-        """Test validation with various empty/whitespace messages."""
-        messages = [invalid_message]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_various_empty_memories(self, invalid_memory: str, expected_error: str):
+        """Test validation with various empty/whitespace memories."""
+        memories = [invalid_memory]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert expected_error in error_msg
 
-    def test_error_message_includes_index(self):
-        """Test that error messages include the index of invalid message."""
-        messages = ["Valid", "Also valid", 123, "Another valid"]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_error_memory_includes_index(self):
+        """Test that error memories include the index of invalid memory."""
+        memories = ["Valid", "Also valid", 123, "Another valid"]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "index 2" in error_msg
 
-    def test_multiple_messages_first_invalid(self):
-        """Test validation fails at first invalid message."""
-        messages = ["", "Valid message"]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_multiple_memories_first_invalid(self):
+        """Test validation fails at first invalid memory."""
+        memories = ["", "Valid memory"]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "index 0" in error_msg
 
-    def test_multiple_messages_last_invalid(self):
-        """Test validation fails at last invalid message."""
-        messages = ["Valid message", ""]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_multiple_memories_last_invalid(self):
+        """Test validation fails at last invalid memory."""
+        memories = ["Valid memory", ""]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "index 1" in error_msg
 
-    def test_message_exactly_one_over_max_length(self):
-        """Test message that is exactly one character over max length."""
-        messages = ["x" * 30721]  # One over the limit
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_memory_exactly_one_over_max_length(self):
+        """Test memory that is exactly one character over max length."""
+        memories = ["x" * 30721]  # One over the limit
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "too long" in error_msg
         assert "30720" in error_msg
 
-    def test_large_list_of_valid_messages(self):
-        """Test validation of large list of valid messages."""
-        messages = [f"Message {i}" for i in range(100)]
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+    def test_large_list_of_valid_memories(self):
+        """Test validation of large list of valid memories."""
+        memories = [f"Memory {i}" for i in range(100)]
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is True
         assert error_msg is None
 
     def test_large_list_with_one_invalid(self):
-        """Test validation of large list with one invalid message."""
-        messages = [f"Message {i}" for i in range(50)]
-        messages.append("")  # Invalid at index 50
-        messages.extend([f"Message {i}" for i in range(51, 100)])
+        """Test validation of large list with one invalid memory."""
+        memories = [f"Memory {i}" for i in range(50)]
+        memories.append("")  # Invalid at index 50
+        memories.extend([f"Memory {i}" for i in range(51, 100)])
 
-        is_valid, error_msg = validate_messages(messages, 1, 30720)
+        is_valid, error_msg = validate_memories(memories, 1, 30720)
         assert is_valid is False
         assert error_msg is not None
         assert "index 50" in error_msg

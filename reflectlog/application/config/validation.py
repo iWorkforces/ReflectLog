@@ -375,16 +375,16 @@ class ConfigurationValidator:
 
         return valid
 
-    def validate_message_lengths(
+    def validate_memory_lengths(
         self,
         min_length: int,
         max_length: int,
     ) -> bool:
-        """Validate message length settings.
+        """Validate memory length settings.
 
         Args:
-            min_length: Minimum message length
-            max_length: Maximum message length
+            min_length: Minimum memory length
+            max_length: Maximum memory length
 
         Returns:
             True if valid, False otherwise
@@ -491,51 +491,51 @@ class ConfigurationValidator:
 
         return sanitized
 
-    def validate_message(
+    def validate_memory(
         self: ConfigurationValidator,
-        message: str,
+        content: str,
         min_length: int = 1,
         max_length: int = 30720,
     ) -> bool:
-        """Validate message content for security and content.
+        """Validate memory content for security and content.
 
         Args:
             self: The validator instance
-            message: The message to validate
+            content: The memory content to validate
             min_length: Minimum allowed length (default: 1)
             max_length: Maximum allowed length (default: 30720)
 
         Returns:
             True if valid, False otherwise
         """
-        if not message:
-            self.add_error("message", message, "Message cannot be empty")
+        if not content:
+            self.add_error("memory", content, "Memory cannot be empty")
             return False
 
-        if len(message) < min_length:
+        if len(content) < min_length:
             self.add_error(
-                "message",
-                message,
-                f"Message length ({len(message)}) below minimum ({min_length})",
+                "memory",
+                content,
+                f"Memory length ({len(content)}) below minimum ({min_length})",
             )
             return False
 
-        if len(message) > max_length:
+        if len(content) > max_length:
             self.add_error(
-                "message",
-                message,
-                f"Message length ({len(message)}) exceeds maximum ({max_length})",
+                "memory",
+                content,
+                f"Memory length ({len(content)}) exceeds maximum ({max_length})",
             )
             return False
 
         # Check for null bytes and control characters (except newline, tab)
-        for char in message:
+        for char in content:
             char_code = ord(char)
             if char_code < 9 or (char_code >= 11 and char_code <= 12):
                 self.add_error(
-                    "message",
-                    message,
-                    "Message contains invalid control characters",
+                    "memory",
+                    content,
+                    "Memory contains invalid control characters",
                 )
                 return False
 
@@ -731,11 +731,11 @@ def validate_config(config: object) -> list[ValidationError]:
     if fusion_method:
         _ = validator.validate_fusion_method(fusion_method)
 
-    # Validate message lengths
+    # Validate memory lengths
     min_length = get_attr("min_message_length")
     max_length = get_attr("max_message_length")
     if min_length is not None and max_length is not None:
-        _ = validator.validate_message_lengths(min_length, max_length)
+        _ = validator.validate_memory_lengths(min_length, max_length)
 
     # Validate dependencies
     enable_hybrid_search = get_attr("enable_hybrid_search")

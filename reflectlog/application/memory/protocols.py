@@ -11,19 +11,19 @@ class SearchEngine(Protocol):
     (Tantivy) engines should conform to this interface.
     """
 
-    def add(self, project_id: str, message: str) -> None:
-        """Add a message to the index.
+    def add(self, project_id: str, content: str) -> None:
+        """Add a memory to the index.
 
         Args:
             project_id: Project identifier for filtering.
-            message: Message content to index.
+            content: Memory content to index.
         """
         ...
 
     def search(
         self, query: str, project_id: str, limit: int
     ) -> list[tuple[str, float]]:
-        """Search and return (message, score) tuples.
+        """Search and return (memory, score) tuples.
 
         Args:
             query: Search query string.
@@ -31,7 +31,7 @@ class SearchEngine(Protocol):
             limit: Maximum number of results to return.
 
         Returns:
-            List of (message, score) tuples sorted by relevance.
+            List of (memory, score) tuples sorted by relevance.
         """
         ...
 

@@ -24,7 +24,7 @@ class ReflectLogError(Exception):
 
     Example:
         try:
-            memory_manager.add_messages(messages)
+            memory_manager.add_memories(memories)
         except ReflectLogError as e:
             # Handle any ReflectLogMCP error
             logger.error(f"Operation failed: {e}")
@@ -50,12 +50,12 @@ class ConfigurationError(ReflectLogError):
 class ValidationError(ReflectLogError):
     """Raised when input validation fails.
 
-    This includes message length validation, format validation,
+    This includes memory length validation, format validation,
     and any other input-related validation failures.
 
     Example:
-        if len(message) > max_length:
-            raise ValidationError(f"Message exceeds maximum length of {max_length}")
+        if len(memory) > max_length:
+            raise ValidationError(f"Memory exceeds maximum length of {max_length}")
     """
 
     pass
@@ -83,9 +83,9 @@ class StorageError(ReflectLogError):
 
     Example:
         try:
-            self.message_store.insert(project_id, message)
+            self.message_store.insert(project_id, memory)
         except Exception as e:
-            raise StorageError(f"Failed to store message: {e}") from e
+            raise StorageError(f"Failed to store memory: {e}") from e
     """
 
     pass
@@ -94,12 +94,12 @@ class StorageError(ReflectLogError):
 class DuplicateError(StorageError):
     """Raised when a duplicate entry is detected.
 
-    This is raised when attempting to insert a message that already
+    This is raised when attempting to insert a memory that already
     exists in the storage (when deduplication is enabled).
 
     Example:
-        if self.message_store.exists(project_id, message):
-            raise DuplicateError(f"Message already exists: {message[:50]}...")
+        if self.message_store.exists(project_id, memory):
+            raise DuplicateError(f"Memory already exists: {memory[:50]}...")
     """
 
     pass

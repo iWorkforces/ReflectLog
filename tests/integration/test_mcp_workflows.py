@@ -9,19 +9,19 @@ class TestMCPWorkflows:
     """Integration tests for complete MCP tool workflows."""
 
     @pytest.mark.asyncio
-    async def test_add_then_get_all_workflow(self, mcp_server, sample_messages):
-        """Test adding messages and retrieving them with get_all."""
-        messages = sample_messages["multiple"]
+    async def test_add_then_get_all_workflow(self, mcp_server, sample_memories):
+        """Test adding memories and retrieving them with get_all."""
+        memories = sample_memories["multiple"]
 
         # Setup mocks
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            stored_messages.extend(messages or [])
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            stored_memories.extend(memories or [])
+            return memories or []
 
         def get_all_side_effect(**kwargs):
-            return stored_messages.copy()
+            return stored_memories.copy()
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
@@ -40,28 +40,28 @@ class TestMCPWorkflows:
         # Execute workflow: Add -> Get All
         assert add_func is not None
         assert get_all_func is not None
-        await add_func(messages)
+        await add_func(memories)
         result = await get_all_func()
 
         # Verify
         assert len(result) == 3
-        assert result == messages
+        assert result == memories
 
     @pytest.mark.asyncio
     async def test_add_then_search_workflow(self, mcp_server, create_search_results):
-        """Test adding messages and searching for them."""
-        messages = ["Python tutorial", "Java guide", "Python examples"]
+        """Test adding memories and searching for them."""
+        memories = ["Python tutorial", "Java guide", "Python examples"]
 
         # Setup mocks
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            stored_messages.extend(messages or [])
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            stored_memories.extend(memories or [])
+            return memories or []
 
         def search_side_effect(query, **kwargs):
-            # Simulate semantic search returning messages containing query
-            matching = [msg for msg in stored_messages if query.lower() in msg.lower()]
+            # Simulate semantic search returning memories containing query
+            matching = [mem for mem in stored_memories if query.lower() in mem.lower()]
             return create_search_results(matching)
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
@@ -79,7 +79,7 @@ class TestMCPWorkflows:
         # Execute workflow: Add -> Search
         assert add_func is not None
         assert search_func is not None
-        await add_func(messages)
+        await add_func(memories)
         mcp_server.memory_manager.config.enable_rrf_fusion = False
         mcp_server.memory_manager.config.reranker_engine = "none"
         result = await search_func("Python")
@@ -93,42 +93,42 @@ class TestMCPWorkflows:
     @pytest.mark.asyncio
     async def test_add_remove_get_all_workflow(self, mcp_server, create_search_results):
         """Test adding, removing, and verifying with get_all."""
-        initial_messages = ["Message 1", "Message 2", "Message 3"]
-        message_to_remove = "Message 2"
+        initial_memories = ["Memory 1", "Memory 2", "Memory 3"]
+        memory_to_remove = "Memory 2"
 
         # Setup mocks
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            stored_messages.extend(messages or [])
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            stored_memories.extend(memories or [])
+            return memories or []
 
         def search_side_effect(query, **kwargs):
             # Return exact matches for removal
-            matching = [msg for msg in stored_messages if msg == query]
+            matching = [mem for mem in stored_memories if mem == query]
             return create_search_results(matching)
 
         def delete_side_effect(memory_id=None, project_id=None):
-            # Remove by numeric ID (matches MessageStore auto-increment IDs)
+            # Remove by numeric ID (matches MemoryStore auto-increment IDs)
             if memory_id is None:
                 return
             try:
                 idx = int(memory_id)
             except (TypeError, ValueError):
                 return
-            if 0 <= idx < len(stored_messages):
-                stored_messages.pop(idx)
+            if 0 <= idx < len(stored_memories):
+                stored_memories.pop(idx)
 
         def get_all_side_effect(**kwargs):
-            return stored_messages.copy()
+            return stored_memories.copy()
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
-        mcp_server.memory_manager.memory.get_id_by_message.side_effect = (
-            lambda project_id, message: stored_messages.index(message)
-            if message in stored_messages
+        mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
+            lambda project_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
             else None
         )
 
@@ -148,28 +148,28 @@ class TestMCPWorkflows:
         assert add_func is not None
         assert remove_func is not None
         assert get_all_func is not None
-        await add_func(initial_messages)
+        await add_func(initial_memories)
 
         # Verify initial state
-        all_messages = await get_all_func()
-        assert len(all_messages) == 3
+        all_memories = await get_all_func()
+        assert len(all_memories) == 3
 
-        # Remove one message
-        await remove_func([message_to_remove])
+        # Remove one memory
+        await remove_func([memory_to_remove])
 
         # Verify final state
         remaining = await get_all_func()
         assert len(remaining) == 2
-        assert "Message 1" in remaining
-        assert "Message 3" in remaining
-        assert "Message 2" not in remaining
+        assert "Memory 1" in remaining
+        assert "Memory 3" in remaining
+        assert "Memory 2" not in remaining
 
     @pytest.mark.asyncio
     async def test_add_search_remove_search_workflow(
         self, mcp_server, create_search_results
     ):
         """Test complex workflow: add, search, remove subset, search again."""
-        messages = [
+        memories = [
             "Python tutorial for beginners",
             "Advanced Python techniques",
             "Java programming guide",
@@ -177,14 +177,14 @@ class TestMCPWorkflows:
         ]
 
         # Setup mocks
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            stored_messages.extend(messages or [])
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            stored_memories.extend(memories or [])
+            return memories or []
 
         def search_side_effect(query, **kwargs):
-            matching = [msg for msg in stored_messages if query.lower() in msg.lower()]
+            matching = [mem for mem in stored_memories if query.lower() in mem.lower()]
             return create_search_results(matching)
 
         def delete_side_effect(memory_id=None, project_id=None):
@@ -194,15 +194,15 @@ class TestMCPWorkflows:
                 idx = int(memory_id)
             except (TypeError, ValueError):
                 return
-            if 0 <= idx < len(stored_messages):
-                stored_messages.pop(idx)
+            if 0 <= idx < len(stored_memories):
+                stored_memories.pop(idx)
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
-        mcp_server.memory_manager.memory.get_id_by_message.side_effect = (
-            lambda project_id, message: stored_messages.index(message)
-            if message in stored_messages
+        mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
+            lambda project_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
             else None
         )
 
@@ -222,8 +222,8 @@ class TestMCPWorkflows:
         assert add_func is not None
         assert search_func is not None
         assert remove_func is not None
-        # 1. Add all messages
-        await add_func(messages)
+        # 1. Add all memories
+        await add_func(memories)
 
         # 2. Search for "Python" - should find 3
         mcp_server.memory_manager.config.enable_rrf_fusion = False
@@ -231,7 +231,7 @@ class TestMCPWorkflows:
         python_results_before = await search_func("Python")
         assert len(python_results_before) == 3
 
-        # 3. Remove one Python message
+        # 3. Remove one Python memory
         await remove_func(["Python tutorial for beginners"])
 
         # 4. Search again - should find 2
@@ -244,14 +244,14 @@ class TestMCPWorkflows:
     @pytest.mark.asyncio
     async def test_multiple_add_operations(self, mcp_server):
         """Test multiple add operations in sequence."""
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            stored_messages.extend(messages or [])
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            stored_memories.extend(memories or [])
+            return memories or []
 
         def get_all_side_effect(**kwargs):
-            return stored_messages.copy()
+            return stored_memories.copy()
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
@@ -265,12 +265,12 @@ class TestMCPWorkflows:
             elif tool.name == "get_all":
                 get_all_func = tool.fn
 
-        # Add messages in batches
+        # Add memories in batches
         assert add_func is not None
         assert get_all_func is not None
-        await add_func(["Message 1", "Message 2"])
-        await add_func(["Message 3"])
-        await add_func(["Message 4", "Message 5"])
+        await add_func(["Memory 1", "Memory 2"])
+        await add_func(["Memory 3"])
+        await add_func(["Memory 4", "Memory 5"])
 
         result = await get_all_func()
         assert len(result) == 5
@@ -297,8 +297,8 @@ class TestMCPWorkflows:
         assert get_all_func is not None
         assert search_func is not None
         assert remove_func is not None
-        all_messages = await get_all_func()
-        assert all_messages == []
+        all_memories = await get_all_func()
+        assert all_memories == []
 
         search_results = await search_func("anything")
         assert search_results == []
@@ -308,21 +308,21 @@ class TestMCPWorkflows:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_add_duplicate_messages(self, mcp_server, create_search_results):
-        """Test adding duplicate messages and removing them."""
-        duplicate_message = "Duplicate message"
-        messages = [duplicate_message, "Unique message", duplicate_message]
+    async def test_add_duplicate_memories(self, mcp_server, create_search_results):
+        """Test adding duplicate memories and removing them."""
+        duplicate_memory = "Duplicate memory"
+        memories = [duplicate_memory, "Unique memory", duplicate_memory]
 
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            for msg in messages or []:
-                if msg not in stored_messages:
-                    stored_messages.append(msg)
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            for mem in memories or []:
+                if mem not in stored_memories:
+                    stored_memories.append(mem)
+            return memories or []
 
         def search_side_effect(query, **kwargs):
-            matching = [msg for msg in stored_messages if msg == query]
+            matching = [mem for mem in stored_memories if mem == query]
             return create_search_results(matching)
 
         def delete_side_effect(memory_id=None, project_id=None):
@@ -332,19 +332,19 @@ class TestMCPWorkflows:
                 idx = int(memory_id)
             except (TypeError, ValueError):
                 return
-            if 0 <= idx < len(stored_messages):
-                stored_messages.pop(idx)
+            if 0 <= idx < len(stored_memories):
+                stored_memories.pop(idx)
 
         def get_all_side_effect(**kwargs):
-            return stored_messages.copy()
+            return stored_memories.copy()
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
-        mcp_server.memory_manager.memory.get_id_by_message.side_effect = (
-            lambda project_id, message: stored_messages.index(message)
-            if message in stored_messages
+        mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
+            lambda project_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
             else None
         )
 
@@ -360,21 +360,21 @@ class TestMCPWorkflows:
             elif tool.name == "get_all":
                 get_all_func = tool.fn
 
-        # Add messages with duplicates
+        # Add memories with duplicates
         assert add_func is not None
         assert remove_func is not None
         assert get_all_func is not None
-        await add_func(messages)
+        await add_func(memories)
 
-        all_msgs = await get_all_func()
-        assert len(all_msgs) == 2
+        all_mems = await get_all_func()
+        assert len(all_mems) == 2
 
         # Remove duplicates (should remove all occurrences)
-        await remove_func([duplicate_message])
+        await remove_func([duplicate_memory])
 
         remaining = await get_all_func()
         assert len(remaining) == 1
-        assert "Unique message" in remaining
+        assert "Unique memory" in remaining
 
     @pytest.mark.asyncio
     async def test_search_with_no_semantic_matches(self, mcp_server):
@@ -393,20 +393,20 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_large_dataset_workflow(self, mcp_server, create_search_results):
-        """Test workflow with large number of messages."""
-        large_dataset = [f"Message {i}" for i in range(100)]
+        """Test workflow with large number of memories."""
+        large_dataset = [f"Memory {i}" for i in range(100)]
 
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            stored_messages.extend(messages or [])
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            stored_memories.extend(memories or [])
+            return memories or []
 
         def get_all_side_effect(**kwargs):
-            return stored_messages.copy()
+            return stored_memories.copy()
 
         def search_side_effect(query, **kwargs):
-            matching = [msg for msg in stored_messages if query in msg]
+            matching = [mem for mem in stored_memories if query in mem]
             return create_search_results(matching[:5])  # Limit to 5 as per config
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
@@ -431,33 +431,33 @@ class TestMCPWorkflows:
         assert search_func is not None
         await add_func(large_dataset)
 
-        all_messages = await get_all_func()
-        assert len(all_messages) == 100
+        all_memories = await get_all_func()
+        assert len(all_memories) == 100
 
         # Search returns limited results
-        search_results = await search_func("Message")
+        search_results = await search_func("Memory")
         assert len(search_results) <= 5
 
     @pytest.mark.asyncio
     async def test_special_characters_workflow(self, mcp_server, create_search_results):
-        """Test workflow with messages containing special characters."""
+        """Test workflow with memories containing special characters."""
         from unittest.mock import AsyncMock, MagicMock
 
-        special_messages = [
+        special_memories = [
             "Email: user@example.com",
             "Price: $100.00",
             "Math: 2 + 2 = 4",
             "Code: function() { return true; }",
         ]
 
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            stored_messages.extend(messages or [])
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            stored_memories.extend(memories or [])
+            return memories or []
 
         def search_side_effect(query, **kwargs):
-            matching = [msg for msg in stored_messages if query in msg]
+            matching = [mem for mem in stored_memories if query in mem]
             return create_search_results(matching)
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
@@ -465,9 +465,9 @@ class TestMCPWorkflows:
 
         async def pipeline_search_side_effect(context, **kwargs):
             query_str = context.query if hasattr(context, "query") else str(context)
-            matching = [msg for msg in stored_messages if query_str in msg]
+            matching = [mem for mem in stored_memories if query_str in mem]
             mock_result = MagicMock()
-            mock_result.messages = matching
+            mock_result.memories = matching
             return mock_result
 
         mcp_server.memory_manager._search_pipeline.execute = AsyncMock(
@@ -484,7 +484,7 @@ class TestMCPWorkflows:
 
         assert add_func is not None
         assert search_func is not None
-        await add_func(special_messages)
+        await add_func(special_memories)
 
         email_results = await search_func("@")
         assert len(email_results) == 1
@@ -496,24 +496,24 @@ class TestMCPWorkflows:
 
     @pytest.mark.asyncio
     async def test_unicode_workflow(self, mcp_server, create_search_results):
-        """Test workflow with unicode messages."""
+        """Test workflow with unicode memories."""
         from unittest.mock import AsyncMock, MagicMock
 
-        unicode_messages = [
+        unicode_memories = [
             "Hello in Chinese: 你好",
             "Hello in Japanese: こんにちは",
             "Hello in Arabic: مرحبا",
             "Emoji: 😀 🌍 🚀",
         ]
 
-        stored_messages = []
+        stored_memories = []
 
-        def add_side_effect(*, project_id=None, messages=None, infer=True):
-            stored_messages.extend(messages or [])
-            return messages or []
+        def add_side_effect(*, project_id=None, memories=None, infer=True):
+            stored_memories.extend(memories or [])
+            return memories or []
 
         def search_side_effect(query, **kwargs):
-            matching = [msg for msg in stored_messages if query.lower() in msg.lower()]
+            matching = [mem for mem in stored_memories if query.lower() in mem.lower()]
             return create_search_results(matching)
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
@@ -522,10 +522,10 @@ class TestMCPWorkflows:
         async def pipeline_search_side_effect(context, **kwargs):
             query_str = context.query if hasattr(context, "query") else str(context)
             matching = [
-                msg for msg in stored_messages if query_str.lower() in msg.lower()
+                mem for mem in stored_memories if query_str.lower() in mem.lower()
             ]
             mock_result = MagicMock()
-            mock_result.messages = matching
+            mock_result.memories = matching
             return mock_result
 
         mcp_server.memory_manager._search_pipeline.execute = AsyncMock(
@@ -542,7 +542,7 @@ class TestMCPWorkflows:
 
         assert add_func is not None
         assert search_func is not None
-        await add_func(unicode_messages)
+        await add_func(unicode_memories)
 
         chinese_results = await search_func("你好")
         assert len(chinese_results) == 1

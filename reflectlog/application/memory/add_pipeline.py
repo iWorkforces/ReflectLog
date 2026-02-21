@@ -20,6 +20,10 @@ from reflectlog.core.reranking import IReranker
 logger = logging.getLogger(__name__)
 
 
+def _empty_replacements() -> list[ReplacementInfo]:
+    return []
+
+
 @dataclass
 class ReplacementInfo:
     """Information about a memory replacement."""
@@ -33,12 +37,12 @@ class ReplacementInfo:
 
 @dataclass
 class AddResult:
-    """Result of adding messages to memory storage."""
+    """Result of adding memories to memory storage."""
 
     stored_count: int = 0
     skipped_count: int = 0
     replaced_count: int = 0
-    replacements: list[ReplacementInfo] = field(default_factory=list)
+    replacements: list[ReplacementInfo] = field(default_factory=_empty_replacements)
 
 
 class IDuplicateDetectionPhase(Protocol):
@@ -46,17 +50,17 @@ class IDuplicateDetectionPhase(Protocol):
 
     async def detect(
         self,
-        messages: list[str],
+        memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[str], int]:
-        """Detect duplicates in messages.
+        """Detect duplicates in memories.
 
         Args:
-            messages: Messages to check.
+            memories: Memories to check.
             project_id: Project identifier.
 
         Returns:
-            Tuple of (unique_messages, duplicates, duplicate_count).
+            Tuple of (unique_memories, duplicates, duplicate_count).
         """
         ...
 
@@ -66,17 +70,17 @@ class IReplacementDetectionPhase(Protocol):
 
     async def detect(
         self,
-        messages: list[str],
+        memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[ReplacementInfo]]:
         """Detect potential replacements.
 
         Args:
-            messages: Messages to check.
+            memories: Memories to check.
             project_id: Project identifier.
 
         Returns:
-            Tuple of (messages_to_store, replacement_info).
+            Tuple of (memories_to_store, replacement_info).
         """
         ...
 
@@ -86,17 +90,17 @@ class IStoragePhase(Protocol):
 
     async def store(
         self,
-        messages: list[str],
+        memories: list[str],
         project_id: str,
     ) -> int:
-        """Store messages.
+        """Store memories.
 
         Args:
-            messages: Messages to store.
+            memories: Memories to store.
             project_id: Project identifier.
 
         Returns:
-            Number of messages stored.
+            Number of memories stored.
         """
         ...
 
@@ -110,24 +114,25 @@ class DefaultDuplicateDetectionPhase:
         fulltext_backend: IMemoryBackend | None,
         deduplicate_enabled: bool,
     ):
+        super().__init__()
         self._semantic = semantic_backend
         self._fulltext = fulltext_backend
         self._deduplicate = deduplicate_enabled
 
     async def detect(
         self,
-        messages: list[str],
+        memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[str], int]:
         """Detect duplicates using storage check and batch check."""
         if not self._deduplicate:
-            return messages, [], 0
+            return memories, [], 0
 
         # Check for batch duplicates
-        seen = set()
-        batch_dupes = set()
-        unique = []
-        for msg in messages:
+        seen: set[str] = set()
+        batch_dupes: set[str] = set()
+        unique: list[str] = []
+        for msg in memories:
             if msg in seen:
                 batch_dupes.add(msg)
             else:
@@ -135,8 +140,8 @@ class DefaultDuplicateDetectionPhase:
                 unique.append(msg)
 
         # Check for storage duplicates
-        storage_dupes = []
-        unique_without_dupes = []
+        storage_dupes: list[str] = []
+        unique_without_dupes: list[str] = []
         for msg in unique:
             exists = await self._semantic.exists(project_id, msg)
             if exists:
@@ -156,11 +161,11 @@ class NoopReplacementDetectionPhase:
 
     async def detect(
         self,
-        messages: list[str],
+        memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[ReplacementInfo]]:
-        """Return messages unchanged with no replacements."""
-        return messages, []
+        """Return memories unchanged with no replacements."""
+        return memories, []
 
 
 class DefaultStoragePhase:
@@ -172,25 +177,26 @@ class DefaultStoragePhase:
         fulltext_backend: IMemoryBackend | None,
         write_lock: threading.Lock,
     ):
+        super().__init__()
         self._semantic = semantic_backend
         self._fulltext = fulltext_backend
         self._write_lock = write_lock
 
     async def store(
         self,
-        messages: list[str],
+        memories: list[str],
         project_id: str,
     ) -> int:
-        """Store messages with write lock protection."""
+        """Store memories with write lock protection."""
         with self._write_lock:
-            if not messages:
+            if not memories:
                 return 0
 
-            stored = await self._semantic.add_batch(project_id, messages)
+            stored = await self._semantic.add_batch(project_id, memories)
 
             if self._fulltext is not None:
                 for msg in stored:
-                    await self._fulltext.add(project_id, msg)
+                    _ = await self._fulltext.add(project_id, msg)
 
             return len(stored)
 
@@ -199,7 +205,7 @@ class DefaultStoragePhase:
 class AddPipelineConfig:
     """Configuration for add pipeline phases."""
 
-    deduplicate_messages: bool
+    deduplicate_memories: bool
     enable_smart_replace: bool
     smart_replace_threshold: float
 
@@ -219,7 +225,7 @@ class AddPipeline:
             storage_phase=DefaultStoragePhase(semantic, fulltext),
             config=pipeline_config,
         )
-        result = await pipeline.execute(messages, project_id)
+        result = await pipeline.execute(memories, project_id)
     """
 
     def __init__(
@@ -230,12 +236,13 @@ class AddPipeline:
         config: AddPipelineConfig,
         logger: StructuredLogger,
     ):
+        super().__init__()
         """Initialize add pipeline.
 
         Args:
             dedup_phase: Phase for detecting duplicates.
             replace_phase: Phase for detecting replacements.
-            storage_phase: Phase for storing messages.
+            storage_phase: Phase for storing memories.
             config: Pipeline configuration.
             logger: Structured logger.
         """
@@ -247,41 +254,41 @@ class AddPipeline:
 
     async def execute(
         self,
-        messages: list[str],
+        memories: list[str],
         project_id: str,
         dry_run: bool = False,
     ) -> AddResult:
         """Execute the full add pipeline.
 
         Args:
-            messages: Messages to add.
+            memories: Memories to add.
             project_id: Project identifier.
             dry_run: If True, only check without making changes.
 
         Returns:
-            AddResult with details about stored/skipped/replaced messages.
+            AddResult with details about stored/skipped/replaced memories.
         """
         # Phase 1: Duplicate Detection
-        unique_messages, duplicates, _ = await self._dedup_phase.detect(
-            messages, project_id
+        unique_memories, duplicates, _ = await self._dedup_phase.detect(
+            memories, project_id
         )
 
         if dry_run:
             return AddResult(
-                stored_count=len(unique_messages),
+                stored_count=len(unique_memories),
                 skipped_count=len(duplicates),
             )
 
         # Phase 2: Smart Replacement Detection
         if self._config.enable_smart_replace:
-            messages_to_store, replacements = await self._replace_phase.detect(
-                unique_messages, project_id
+            memories_to_store, replacements = await self._replace_phase.detect(
+                unique_memories, project_id
             )
         else:
-            messages_to_store, replacements = unique_messages, []
+            memories_to_store, replacements = unique_memories, []
 
         # Phase 3: Sequential Storage
-        stored_count = await self._storage_phase.store(messages_to_store, project_id)
+        stored_count = await self._storage_phase.store(memories_to_store, project_id)
 
         return AddResult(
             stored_count=stored_count,
@@ -316,7 +323,7 @@ def create_default_pipeline(
     dedup_phase = DefaultDuplicateDetectionPhase(
         semantic_backend,
         fulltext_backend,
-        config.deduplicate_messages,
+        config.deduplicate_memories,
     )
 
     # Replacement detection phase
@@ -334,7 +341,7 @@ def create_default_pipeline(
 
     # Pipeline config
     pipeline_config = AddPipelineConfig(
-        deduplicate_messages=config.deduplicate_messages,
+        deduplicate_memories=config.deduplicate_memories,
         enable_smart_replace=config.enable_smart_replace,
         smart_replace_threshold=config.smart_replace_threshold,
     )
@@ -352,14 +359,15 @@ class DefaultReplacementDetectionPhase:
     """Default smart replacement detection phase using a reranker."""
 
     def __init__(self, replacer: IReranker):
+        super().__init__()
         self._replacer = replacer
 
     async def detect(
         self,
-        messages: list[str],
+        memories: list[str],
         project_id: str,
     ) -> tuple[list[str], list[ReplacementInfo]]:
         """Detect potential replacements using the replacer."""
         # TODO: Implement smart replacement detection
         # This would use the replacer to check for similar memories
-        return messages, []
+        return memories, []

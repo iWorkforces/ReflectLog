@@ -120,7 +120,7 @@ class TestToolInstructionSnippets:
         tool = AddTool(mock_config, mock_memory_manager, mock_logger)
         snippet = tool.get_instruction_snippet()
 
-        assert "add(messages: list[str])" in snippet
+        assert "add(memories: list[str])" in snippet
         assert (
             "semantic embeddings" in snippet.lower() or "embeddings" in snippet.lower()
         )
@@ -167,7 +167,7 @@ class TestToolInstructionSnippets:
         tool = RemoveTool(mock_config, mock_memory_manager, mock_logger)
         snippet = tool.get_instruction_snippet()
 
-        assert "remove(messages: list[str])" in snippet
+        assert "remove(memories: list[str])" in snippet
         assert "exact" in snippet.lower()
         assert snippet.startswith("    •")
 
@@ -221,10 +221,10 @@ class TestDynamicInstructionsIntegration:
             monkeypatch, None
         )
 
-        assert "add(messages: list[str])" in instructions
+        assert "add(memories: list[str])" in instructions
         assert "get_all()" in instructions
         assert "search(query: str)" in instructions
-        assert "remove(messages: list[str])" in instructions
+        assert "remove(memories: list[str])" in instructions
 
     def test_instructions_include_only_allowed_tools(self, monkeypatch):
         """Instructions should only document tools that are allowed."""
@@ -232,10 +232,10 @@ class TestDynamicInstructionsIntegration:
             monkeypatch, "add,search"
         )
 
-        assert "add(messages: list[str])" in instructions
+        assert "add(memories: list[str])" in instructions
         assert "search(query: str)" in instructions
         assert "get_all()" not in instructions
-        assert "remove(messages: list[str])" not in instructions
+        assert "remove(memories: list[str])" not in instructions
 
     def test_instructions_single_tool(self, monkeypatch):
         """Instructions should work correctly with single tool."""
@@ -244,9 +244,9 @@ class TestDynamicInstructionsIntegration:
         )
 
         assert "get_all()" in instructions
-        assert "add(messages: list[str])" not in instructions
+        assert "add(memories: list[str])" not in instructions
         assert "search(query: str)" not in instructions
-        assert "remove(messages: list[str])" not in instructions
+        assert "remove(memories: list[str])" not in instructions
 
     def test_instructions_show_no_tools_message_when_none_enabled(self, monkeypatch):
         """Instructions should indicate no tools when none are enabled."""
@@ -255,7 +255,7 @@ class TestDynamicInstructionsIntegration:
         )
 
         assert "(No tools available)" in instructions
-        assert "add(messages: list[str])" not in instructions
+        assert "add(memories: list[str])" not in instructions
 
     def test_instructions_header_always_present(self, monkeypatch):
         """Server description header should always be included."""
@@ -275,10 +275,10 @@ class TestBackwardCompatibility:
         """MCP_INSTRUCTIONS constant should include all tools (backward compatibility)."""
         from reflectlog.application.config.prompts import MCP_INSTRUCTIONS
 
-        assert "add(messages: list[str])" in MCP_INSTRUCTIONS
+        assert "add(memories: list[str])" in MCP_INSTRUCTIONS
         assert "get_all() -> list[str]" in MCP_INSTRUCTIONS
         assert "search(query: str) -> list[str]" in MCP_INSTRUCTIONS
-        assert "remove(messages: list[str])" in MCP_INSTRUCTIONS
+        assert "remove(memories: list[str])" in MCP_INSTRUCTIONS
 
     def test_mcp_instructions_has_header(self):
         """MCP_INSTRUCTIONS should have proper header."""

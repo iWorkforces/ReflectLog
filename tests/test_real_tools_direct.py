@@ -35,7 +35,7 @@ async def test_real_tools_workflow():
             print(f"   Found {len(tools)} tools: {[t.name for t in tools]}")
 
             # Prepare 10 test messages
-            messages = [
+            memories = [
                 "Python tutorial for beginners",
                 "Advanced Python programming",
                 "JavaScript fundamentals",
@@ -49,46 +49,46 @@ async def test_real_tools_workflow():
             ]
 
             print("\n" + "=" * 70)
-            print("📝 STEP 1: Adding 10 messages to REAL USearch index")
+            print("📝 STEP 1: Adding 10 memories to REAL USearch index")
             print("=" * 70)
-            for i, msg in enumerate(messages, 1):
-                print(f"  {i}. {msg}")
+            for i, mem in enumerate(memories, 1):
+                print(f"  {i}. {mem}")
 
             print("\n📤 Calling add() with REAL OpenAI embeddings...")
             print("   (This will call OpenAI API to generate embeddings)")
 
             try:
-                _ = await client.call_tool("add", arguments={"messages": messages})
-                print("✅ Successfully added 10 messages to USearch index!")
+                _ = await client.call_tool("add", arguments={"memories": memories})
+                print("✅ Successfully added 10 memories to USearch index!")
             except Exception as e:
-                print(f"❌ Error adding messages: {e}")
+                print(f"❌ Error adding memories: {e}")
                 return
 
             # Small delay for persistence
             await anyio.sleep(1)
 
             print("\n" + "=" * 70)
-            print("📥 STEP 2: Retrieving ALL messages from REAL USearch index")
+            print("📥 STEP 2: Retrieving ALL memories from REAL USearch index")
             print("=" * 70)
 
             print("\n📤 Calling get_all() to retrieve from USearch...")
 
             try:
                 get_all_result: CallToolResult = await client.call_tool("get_all")
-                all_messages = []
+                all_memories = []
                 for content in get_all_result.content:
                     if hasattr(content, "text"):
                         try:
-                            all_messages = json.loads(content.text)
+                            all_memories = json.loads(content.text)
                         except Exception:
                             if isinstance(content.text, list):
-                                all_messages = content.text
+                                all_memories = content.text
 
-                print(f"✅ Retrieved {len(all_messages)} message(s) from USearch:")
-                for i, msg in enumerate(all_messages, 1):
-                    print(f"  {i}. {msg}")
+                print(f"✅ Retrieved {len(all_memories)} memorie(s) from USearch:")
+                for i, mem in enumerate(all_memories, 1):
+                    print(f"  {i}. {mem}")
             except Exception as e:
-                print(f"❌ Error retrieving messages: {e}")
+                print(f"❌ Error retrieving memories: {e}")
                 return
 
             await anyio.sleep(1)
@@ -115,9 +115,9 @@ async def test_real_tools_workflow():
                             if isinstance(content.text, list):
                                 python_results = content.text
 
-                print(f"✅ Found {len(python_results)} Python-related message(s):")
-                for i, msg in enumerate(python_results, 1):
-                    print(f"  {i}. {msg}")
+                print(f"✅ Found {len(python_results)} Python-related memorie(s):")
+                for i, mem in enumerate(python_results, 1):
+                    print(f"  {i}. {mem}")
             except Exception as e:
                 print(f"❌ Error searching: {e}")
                 return
@@ -143,9 +143,9 @@ async def test_real_tools_workflow():
                             if isinstance(content.text, list):
                                 js_results = content.text
 
-                print(f"✅ Found {len(js_results)} JavaScript-related message(s):")
-                for i, msg in enumerate(js_results, 1):
-                    print(f"  {i}. {msg}")
+                print(f"✅ Found {len(js_results)} JavaScript-related memorie(s):")
+                for i, mem in enumerate(js_results, 1):
+                    print(f"  {i}. {mem}")
             except Exception as e:
                 print(f"❌ Error searching: {e}")
                 return
@@ -156,9 +156,9 @@ async def test_real_tools_workflow():
             print(f"""
 Summary:
   ✅ Connected to MCP server at {server_url}
-  ✅ Added 10 messages using REAL OpenAI text-embedding-3-large
-  ✅ Messages stored in REAL USearch vector index (cosine similarity)
-  ✅ Retrieved all messages from persistent USearch storage
+  ✅ Added 10 memories using REAL OpenAI text-embedding-3-large
+  ✅ Memories stored in REAL USearch vector index (cosine similarity)
+  ✅ Retrieved all memories from persistent USearch storage
   ✅ Searched with REAL semantic similarity (OpenAI embeddings)
   ✅ Applied hybrid search (semantic + substring filtering)
   ✅ Used REAL OpenAI gpt-5-mini for reranking

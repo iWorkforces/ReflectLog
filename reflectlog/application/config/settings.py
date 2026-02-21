@@ -111,9 +111,9 @@ class Config:
     fusion_ranking_threshold: float = 0.8  # Min normalized RRF score to keep (0-1)
     enable_rrf_fusion: bool = True  # Enable RRF fusion (false = concatenate results)
 
-    # Message validation settings
-    max_message_length: int = 30720
-    min_message_length: int = 1
+    # Memory validation settings
+    max_memory_length: int = 30720
+    min_memory_length: int = 1
 
     # Reranker engine selection
     reranker_engine: str = "llm"  # "llm", "cross_encoder", or "none"
@@ -145,7 +145,7 @@ class Config:
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     # Memory behavior
-    deduplicate_messages: bool = True
+    deduplicate_memories: bool = True
 
     # Smart memory replacement settings
     enable_smart_replace: bool = True  # Enable smart memory replacement detection
@@ -164,11 +164,11 @@ class Config:
     llm_provider: str = "anthropic"  # LLM provider: "openai" or "anthropic"
 
     # Concurrency settings
-    add_max_concurrency: int = 4  # Max concurrent message additions
+    add_max_concurrency: int = 4  # Max concurrent memory additions
 
     # Initialization settings
     eager_initialization: bool = True  # Pre-warm engines during MemoryManager init
-    enable_llm_infer: bool = False  # Enable LLM message inference
+    enable_llm_infer: bool = False  # Enable LLM memory inference
 
     # Granular eager initialization settings (for fine-grained control)
     # These override eager_initialization when set
@@ -382,13 +382,13 @@ class Config:
         }
 
     @staticmethod
-    def _parse_message_config() -> dict[str, Any]:
-        """Parse message-related configuration from environment variables."""
+    def _parse_memory_config() -> dict[str, Any]:
+        """Parse memory-related configuration from environment variables."""
         return {
-            "max_message_length": int(os.environ.get("MAX_MESSAGE_LENGTH", "30720")),
-            "min_message_length": int(os.environ.get("MIN_MESSAGE_LENGTH", "1")),
-            "deduplicate_messages": os.environ.get(
-                "DEDUPLICATE_MESSAGES", "true"
+            "max_memory_length": int(os.environ.get("MAX_MEMORY_LENGTH", "30720")),
+            "min_memory_length": int(os.environ.get("MIN_MEMORY_LENGTH", "1")),
+            "deduplicate_memories": os.environ.get(
+                "DEDUPLICATE_MEMORIES", "true"
             ).lower()
             == "true",
         }
@@ -521,7 +521,7 @@ class Config:
 
         This method centralizes environment parsing and performs strict validation
         for all critical settings. It fails fast with clear, non-secret-leaking
-        error messages when configuration is invalid.
+        errors when configuration is invalid.
 
         Raises:
             ConfigurationError: If required environment variables are missing or invalid.
@@ -564,7 +564,7 @@ class Config:
         search_config = cls._parse_search_config()
         tantivy_config = cls._parse_tantivy_config()
         reranker_config = cls._parse_reranker_config()
-        message_config = cls._parse_message_config()
+        memory_config = cls._parse_memory_config()
         smart_replace_config = cls._parse_smart_replace_config()
         init_config = cls._parse_init_config()
         logging_config = cls._parse_logging_config()
@@ -581,7 +581,7 @@ class Config:
             **search_config,
             **tantivy_config,
             **reranker_config,
-            **message_config,
+            **memory_config,
             **smart_replace_config,
             **init_config,
             **logging_config,
@@ -628,10 +628,10 @@ def get_config() -> Config:
         return new_config
 
 
-# Backward-compatible alias (for existing code using `from config import config`)
+# Lazy config proxy for deferred initialization
 # Note: This will trigger lazy init on attribute access, not import
 class _LazyConfig:
-    """Lazy proxy for backward compatibility with `from config import config`.
+    """Lazy proxy for deferred Config initialization.
 
     This proxy class forwards all attribute access to the lazily-initialized
     Config singleton, enabling imports like `from config import config` without
@@ -653,7 +653,7 @@ def setup_config_reload():
     from ..utils.config_reload import setup_signal_handler
 
     config = Config.from_environment()
-    setup_signal_handler(lambda: Config.from_environment())
+    _ = setup_signal_handler(lambda: Config.from_environment())
 
     return config
 

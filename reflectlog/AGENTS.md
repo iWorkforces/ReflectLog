@@ -112,8 +112,8 @@ if TYPE_CHECKING:
 ### Naming Conventions
 
 - **Classes**: PascalCase (e.g., `MemoryManager`, `SearchError`)
-- **Functions/Methods**: snake_case (e.g., `get_messages()`, `_init_engine()`)
-- **Constants**: UPPER_SNAKE_CASE (e.g., `LOG_ADD_MESSAGE_PREVIEW_LIMIT`)
+- **Functions/Methods**: snake_case (e.g., `get_memories()`, `_init_engine()`)
+ **Constants**: UPPER_SNAKE_CASE (e.g., `LOG_ADD_MEMORY_PREVIEW_LIMIT`)
 - **Private Members**: Leading underscore (e.g., `_lock`, `_client`)
 - **Type Variables**: PascalCase with T prefix (e.g., `TResult`, `TConfig`)
 
@@ -164,7 +164,7 @@ self.logger.info(
 )
 ```
 
-Never log sensitive information such as API keys or message content.
+Never log sensitive information such as API keys or memory content.
 
 ## Async Code Guidelines
 
@@ -215,12 +215,12 @@ with self._lock:
 USearch is not thread-safe. Serialize all write operations using `_write_lock`:
 
 ```python
-def add_messages(self, messages: list[str]) -> int:
-    '''Add messages to the memory store.'''
+def add_memories(self, memories: list[str]) -> int:
+    '''Add memories to the memory store.'''
     with self._write_lock:
         # All USearch operations must be under write lock
-        for message in messages:
-            self._engine.add(message)
+        for memory in memories:
+            self._engine.add(memory)
 ```
 
 Use `RLock` for methods that may call other protected methods.
@@ -301,10 +301,10 @@ Key configuration variables are documented in `application/config/settings.py`. 
 
 The core class that orchestrates memory operations. Located in `application/memory/manager.py`, it provides:
 
-- `add_messages_async()`: Store messages with semantic embeddings
-- `get_all()`: Retrieve all stored messages
+ `add_memories_async()`: Store memories with semantic embeddings
+ `get_all()`: Retrieve all stored memories
 - `search()`: Hybrid semantic + full-text search
-- `delete_by_message()`: Remove messages by exact match
+ `delete_by_memory()`: Remove memories by exact match
 
 ### Search Pipeline
 

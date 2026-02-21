@@ -70,7 +70,7 @@ def write_lock() -> threading.Lock:
 def pipeline_config() -> AddPipelineConfig:
     """Standard pipeline configuration."""
     return AddPipelineConfig(
-        deduplicate_messages=True,
+        deduplicate_memories=True,
         enable_smart_replace=False,
         smart_replace_threshold=0.7,
     )
@@ -80,7 +80,7 @@ def pipeline_config() -> AddPipelineConfig:
 def pipeline_config_with_replace() -> AddPipelineConfig:
     """Pipeline configuration with smart replacement enabled."""
     return AddPipelineConfig(
-        deduplicate_messages=True,
+        deduplicate_memories=True,
         enable_smart_replace=True,
         smart_replace_threshold=0.7,
     )
@@ -185,11 +185,11 @@ class TestAddPipelineConfig:
     def test_creation(self) -> None:
         """Create config with all fields."""
         cfg = AddPipelineConfig(
-            deduplicate_messages=True,
+            deduplicate_memories=True,
             enable_smart_replace=False,
             smart_replace_threshold=0.7,
         )
-        assert cfg.deduplicate_messages is True
+        assert cfg.deduplicate_memories is True
         assert cfg.enable_smart_replace is False
         assert cfg.smart_replace_threshold == 0.7
 
@@ -203,17 +203,17 @@ class TestAddPipelineConfig:
 class TestDefaultDuplicateDetectionPhase:
     """Tests for DefaultDuplicateDetectionPhase."""
 
-    async def test_dedup_disabled_returns_all_messages(
+    async def test_dedup_disabled_returns_all_memories(
         self, mock_semantic_backend: AsyncMock
     ) -> None:
-        """When dedup is disabled, all messages pass through unchanged."""
+        """When dedup is disabled, all memories pass through unchanged."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
             deduplicate_enabled=False,
         )
-        messages = ["msg1", "msg2", "msg1"]
-        unique, dupes, count = await phase.detect(messages, "proj")
+        memories = ["msg1", "msg2", "msg1"]
+        unique, dupes, count = await phase.detect(memories, "proj")
 
         assert unique == ["msg1", "msg2", "msg1"]
         assert dupes == []
@@ -223,14 +223,14 @@ class TestDefaultDuplicateDetectionPhase:
     async def test_batch_duplicate_removal(
         self, mock_semantic_backend: AsyncMock
     ) -> None:
-        """Duplicate messages within the same batch are detected."""
+        """Duplicate memories within the same batch are detected."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
             deduplicate_enabled=True,
         )
-        messages = ["alpha", "beta", "alpha", "gamma", "beta"]
-        unique, dupes, count = await phase.detect(messages, "proj")
+        memories = ["alpha", "beta", "alpha", "gamma", "beta"]
+        unique, dupes, count = await phase.detect(memories, "proj")
 
         assert unique == ["alpha", "beta", "gamma"]
         assert count == 2
@@ -241,7 +241,7 @@ class TestDefaultDuplicateDetectionPhase:
     async def test_storage_duplicate_removal(
         self, mock_semantic_backend: AsyncMock
     ) -> None:
-        """Messages already in storage are detected as duplicates."""
+        """Memories already in storage are detected as duplicates."""
         mock_semantic_backend.exists = AsyncMock(
             side_effect=lambda pid, msg: msg == "existing"
         )
@@ -250,8 +250,8 @@ class TestDefaultDuplicateDetectionPhase:
             fulltext_backend=None,
             deduplicate_enabled=True,
         )
-        messages = ["existing", "new_msg"]
-        unique, dupes, count = await phase.detect(messages, "proj")
+        memories = ["existing", "new_msg"]
+        unique, dupes, count = await phase.detect(memories, "proj")
 
         assert unique == ["new_msg"]
         assert "existing" in dupes
@@ -269,16 +269,16 @@ class TestDefaultDuplicateDetectionPhase:
             fulltext_backend=None,
             deduplicate_enabled=True,
         )
-        messages = ["in_storage", "new", "new"]
-        unique, dupes, count = await phase.detect(messages, "proj")
+        memories = ["in_storage", "new", "new"]
+        unique, dupes, count = await phase.detect(memories, "proj")
 
         assert unique == ["new"]
         assert count == 2
         assert "in_storage" in dupes
         assert "new" in dupes
 
-    async def test_empty_messages(self, mock_semantic_backend: AsyncMock) -> None:
-        """Empty message list returns empty results."""
+    async def test_empty_memories(self, mock_semantic_backend: AsyncMock) -> None:
+        """Empty memory list returns empty results."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
@@ -291,14 +291,14 @@ class TestDefaultDuplicateDetectionPhase:
         assert count == 0
 
     async def test_no_duplicates(self, mock_semantic_backend: AsyncMock) -> None:
-        """When all messages are unique, none are skipped."""
+        """When all memories are unique, none are skipped."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
             deduplicate_enabled=True,
         )
-        messages = ["a", "b", "c"]
-        unique, dupes, count = await phase.detect(messages, "proj")
+        memories = ["a", "b", "c"]
+        unique, dupes, count = await phase.detect(memories, "proj")
 
         assert unique == ["a", "b", "c"]
         assert dupes == []
@@ -315,8 +315,8 @@ class TestDefaultDuplicateDetectionPhase:
             fulltext_backend=mock_fulltext_backend,
             deduplicate_enabled=True,
         )
-        messages = ["msg"]
-        await phase.detect(messages, "proj")
+        memories = ["msg"]
+        await phase.detect(memories, "proj")
 
         mock_fulltext_backend.exists.assert_not_called()
 
@@ -330,17 +330,17 @@ class TestDefaultDuplicateDetectionPhase:
 class TestNoopReplacementDetectionPhase:
     """Tests for NoopReplacementDetectionPhase."""
 
-    async def test_returns_messages_unchanged(self) -> None:
-        """Noop phase returns messages as-is with no replacements."""
+    async def test_returns_memories_unchanged(self) -> None:
+        """Noop phase returns memories as-is with no replacements."""
         phase = NoopReplacementDetectionPhase()
-        messages = ["msg1", "msg2"]
-        result_msgs, replacements = await phase.detect(messages, "proj")
+        memories = ["msg1", "msg2"]
+        result_msgs, replacements = await phase.detect(memories, "proj")
 
         assert result_msgs == ["msg1", "msg2"]
         assert replacements == []
 
-    async def test_empty_messages(self) -> None:
-        """Noop phase handles empty message list."""
+    async def test_empty_memories(self) -> None:
+        """Noop phase handles empty memory list."""
         phase = NoopReplacementDetectionPhase()
         result_msgs, replacements = await phase.detect([], "proj")
 
@@ -357,19 +357,19 @@ class TestNoopReplacementDetectionPhase:
 class TestDefaultReplacementDetectionPhase:
     """Tests for DefaultReplacementDetectionPhase."""
 
-    async def test_returns_messages_unchanged(self) -> None:
-        """Current stub returns messages as-is with no replacements."""
+    async def test_returns_memories_unchanged(self) -> None:
+        """Current stub returns memories as-is with no replacements."""
         mock_reranker = AsyncMock()
         mock_reranker.name = "test_reranker"
         phase = DefaultReplacementDetectionPhase(mock_reranker)
-        messages = ["msg1", "msg2"]
-        result_msgs, replacements = await phase.detect(messages, "proj")
+        memories = ["msg1", "msg2"]
+        result_msgs, replacements = await phase.detect(memories, "proj")
 
         assert result_msgs == ["msg1", "msg2"]
         assert replacements == []
 
-    async def test_empty_messages(self) -> None:
-        """Handles empty message list."""
+    async def test_empty_memories(self) -> None:
+        """Handles empty memory list."""
         mock_reranker = AsyncMock()
         mock_reranker.name = "test_reranker"
         phase = DefaultReplacementDetectionPhase(mock_reranker)
@@ -388,12 +388,12 @@ class TestDefaultReplacementDetectionPhase:
 class TestDefaultStoragePhase:
     """Tests for DefaultStoragePhase."""
 
-    async def test_store_empty_messages_returns_zero(
+    async def test_store_empty_memories_returns_zero(
         self,
         mock_semantic_backend: AsyncMock,
         write_lock: threading.Lock,
     ) -> None:
-        """Storing empty message list returns 0 without calling backend."""
+        """Storing empty memory list returns 0 without calling backend."""
         phase = DefaultStoragePhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
@@ -409,17 +409,17 @@ class TestDefaultStoragePhase:
         mock_semantic_backend: AsyncMock,
         write_lock: threading.Lock,
     ) -> None:
-        """Store messages to semantic backend only (no fulltext)."""
+        """Store memories to semantic backend only (no fulltext)."""
         phase = DefaultStoragePhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
             write_lock=write_lock,
         )
-        messages = ["msg1", "msg2"]
-        count = await phase.store(messages, "proj")
+        memories = ["msg1", "msg2"]
+        count = await phase.store(memories, "proj")
 
         assert count == 2
-        mock_semantic_backend.add_batch.assert_called_once_with("proj", messages)
+        mock_semantic_backend.add_batch.assert_called_once_with("proj", memories)
 
     async def test_store_to_both_backends(
         self,
@@ -427,17 +427,17 @@ class TestDefaultStoragePhase:
         mock_fulltext_backend: AsyncMock,
         write_lock: threading.Lock,
     ) -> None:
-        """Store messages to both semantic and fulltext backends."""
+        """Store memories to both semantic and fulltext backends."""
         phase = DefaultStoragePhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=mock_fulltext_backend,
             write_lock=write_lock,
         )
-        messages = ["msg1", "msg2"]
-        count = await phase.store(messages, "proj")
+        memories = ["msg1", "msg2"]
+        count = await phase.store(memories, "proj")
 
         assert count == 2
-        mock_semantic_backend.add_batch.assert_called_once_with("proj", messages)
+        mock_semantic_backend.add_batch.assert_called_once_with("proj", memories)
         assert mock_fulltext_backend.add.call_count == 2
         mock_fulltext_backend.add.assert_any_call("proj", "msg1")
         mock_fulltext_backend.add.assert_any_call("proj", "msg2")
@@ -449,7 +449,7 @@ class TestDefaultStoragePhase:
     ) -> None:
         """Stored count comes from semantic backend result length."""
         semantic = AsyncMock()
-        # Backend returns fewer messages than input (e.g. dedup)
+        # Backend returns fewer memories than input (e.g. dedup)
         semantic.add_batch = AsyncMock(return_value=["msg1"])
 
         phase = DefaultStoragePhase(
@@ -460,7 +460,7 @@ class TestDefaultStoragePhase:
         count = await phase.store(["msg1", "msg2"], "proj")
 
         assert count == 1
-        # Only the stored message is synced to fulltext
+        # Only the stored memory is synced to fulltext
         mock_fulltext_backend.add.assert_called_once_with("proj", "msg1")
 
     async def test_store_acquires_write_lock(
@@ -519,7 +519,7 @@ class TestAddPipeline:
         storage.store = AsyncMock(return_value=store_result)
 
         cfg = config or AddPipelineConfig(
-            deduplicate_messages=True,
+            deduplicate_memories=True,
             enable_smart_replace=False,
             smart_replace_threshold=0.7,
         )
@@ -586,7 +586,7 @@ class TestAddPipeline:
             replace_result=(["msg1"], [replacement]),
             store_result=1,
             config=AddPipelineConfig(
-                deduplicate_messages=True,
+                deduplicate_memories=True,
                 enable_smart_replace=True,
                 smart_replace_threshold=0.7,
             ),
@@ -605,7 +605,7 @@ class TestAddPipeline:
             dedup_result=(["msg1"], [], 0),
             store_result=1,
             config=AddPipelineConfig(
-                deduplicate_messages=True,
+                deduplicate_memories=True,
                 enable_smart_replace=False,
                 smart_replace_threshold=0.7,
             ),
@@ -624,7 +624,7 @@ class TestAddPipeline:
             replace_result=(["msg"], []),
             store_result=1,
             config=AddPipelineConfig(
-                deduplicate_messages=True,
+                deduplicate_memories=True,
                 enable_smart_replace=True,
                 smart_replace_threshold=0.7,
             ),
@@ -636,7 +636,7 @@ class TestAddPipeline:
         storage.store.assert_called_once_with(["msg"], "test-project")
 
     async def test_pipeline_empty_after_dedup(self) -> None:
-        """When all messages are duplicates, storage receives empty list."""
+        """When all memories are duplicates, storage receives empty list."""
         pipeline, _, _, storage = self._make_pipeline(
             dedup_result=([], ["msg1", "msg2"], 2),
             store_result=0,
@@ -647,8 +647,8 @@ class TestAddPipeline:
         assert result.skipped_count == 2
         storage.store.assert_called_once_with([], "proj")
 
-    async def test_pipeline_replace_reduces_messages(self) -> None:
-        """Replacement phase can filter out messages."""
+    async def test_pipeline_replace_reduces_memories(self) -> None:
+        """Replacement phase can filter out memories."""
         pipeline, _, replace, storage = self._make_pipeline(
             dedup_result=(["msg1", "msg2"], [], 0),
             replace_result=(
@@ -664,7 +664,7 @@ class TestAddPipeline:
             ),
             store_result=1,
             config=AddPipelineConfig(
-                deduplicate_messages=True,
+                deduplicate_memories=True,
                 enable_smart_replace=True,
                 smart_replace_threshold=0.7,
             ),
@@ -673,7 +673,7 @@ class TestAddPipeline:
 
         assert result.stored_count == 1
         assert result.replaced_count == 1
-        # Storage receives filtered messages from replace phase
+        # Storage receives filtered memories from replace phase
         storage.store.assert_called_once_with(["msg2"], "proj")
 
 
@@ -695,7 +695,7 @@ class TestCreateDefaultPipeline:
     ) -> Mock:
         """Create a minimal mock Config with required fields."""
         config = Mock(spec=Config)
-        config.deduplicate_messages = deduplicate
+        config.deduplicate_memories = deduplicate
         config.enable_smart_replace = smart_replace
         config.smart_replace_threshold = smart_replace_threshold
         return config
@@ -813,7 +813,7 @@ class TestCreateDefaultPipeline:
             write_lock=write_lock,
         )
 
-        assert pipeline._config.deduplicate_messages is False
+        assert pipeline._config.deduplicate_memories is False
         assert pipeline._config.enable_smart_replace is True
         assert pipeline._config.smart_replace_threshold == 0.85
 

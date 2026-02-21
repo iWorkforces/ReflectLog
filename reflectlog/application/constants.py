@@ -26,9 +26,9 @@ TANTIVY_SCORE_DIVISOR: float = 10.0
 # Prevents log spam from very long queries while preserving context
 LOG_QUERY_TRUNCATE_LENGTH: int = 100
 
-# Maximum number of messages to log individually during add operations
-# Prevents log spam when adding many messages at once
-LOG_ADD_MESSAGE_PREVIEW_LIMIT: int = 20
+# Maximum number of memories to log individually during add operations
+# Prevents log spam when adding many memories at once
+LOG_ADD_MEMORY_PREVIEW_LIMIT: int = 20
 
 # Length of separator lines in log output
 LOG_SEPARATOR_LENGTH: int = 60
@@ -78,7 +78,7 @@ __all__ = [
     "ADAPTIVE_OVERFETCH_SMALL_INDEX_THRESHOLD",
     "DEFAULT_MAX_RETRIES",
     "DEFAULT_RETRY_BASE_DELAY",
-    "LOG_ADD_MESSAGE_PREVIEW_LIMIT",
+    "LOG_ADD_MEMORY_PREVIEW_LIMIT",
     "LOG_QUERY_TRUNCATE_LENGTH",
     "LOG_SEPARATOR_LENGTH",
     "MAX_PERCENTAGE_THRESHOLD",

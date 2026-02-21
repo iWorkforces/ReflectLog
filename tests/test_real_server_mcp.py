@@ -34,7 +34,7 @@ async def test_real_server_with_mcp_client():
             print(f"\n📋 Available tools: {[tool.name for tool in tools]}")
 
             # Prepare 10 test messages
-            messages = [
+            memories = [
                 "Python tutorial for beginners",
                 "Advanced Python programming",
                 "JavaScript fundamentals",
@@ -48,15 +48,15 @@ async def test_real_server_with_mcp_client():
             ]
 
             print("\n" + "=" * 70)
-            print("📝 STEP 1: Adding 10 messages to REAL server")
+            print("📝 STEP 1: Adding 10 memories to REAL server")
             print("=" * 70)
-            for i, msg in enumerate(messages, 1):
-                print(f"  {i}. {msg}")
+            for i, mem in enumerate(memories, 1):
+                print(f"  {i}. {mem}")
 
             # Call add tool
             print("\n📤 Calling 'add' tool...")
             add_result: CallToolResult = await client.call_tool(
-                "add", arguments={"messages": messages}
+                "add", arguments={"memories": memories}
             )
 
             print("✅ Add tool response:")
@@ -68,34 +68,34 @@ async def test_real_server_with_mcp_client():
             await anyio.sleep(1)
 
             print("\n" + "=" * 70)
-            print("📥 STEP 2: Retrieving ALL messages from REAL server")
+            print("📥 STEP 2: Retrieving ALL memories from REAL server")
             print("=" * 70)
 
             print("\n📤 Calling 'get_all' tool...")
             get_all_result: CallToolResult = await client.call_tool("get_all")
 
             print("✅ Retrieved messages:")
-            all_messages = []
+            all_memories = []
             for content in get_all_result.content:
                 if hasattr(content, "text"):
                     try:
-                        all_messages = json.loads(content.text)
-                        for i, msg in enumerate(all_messages, 1):
-                            print(f"  {i}. {msg}")
-                        print(f"\n📊 Total: {len(all_messages)} messages")
+                        all_memories = json.loads(content.text)
+                        for i, msg in enumerate(all_memories, 1):
+                            print(f"  {i}. {mem}")
+                        print(f"\n📊 Total: {len(all_memories)} messages")
                     except Exception:
                         if isinstance(content.text, list):
-                            all_messages = content.text
-                            for i, msg in enumerate(all_messages, 1):
-                                print(f"  {i}. {msg}")
-                            print(f"\n📊 Total: {len(all_messages)} messages")
+                            all_memories = content.text
+                            for i, msg in enumerate(all_memories, 1):
+                                print(f"  {i}. {mem}")
+                            print(f"\n📊 Total: {len(all_memories)} messages")
                         else:
                             print(f"   {content.text}")
 
             await anyio.sleep(1)
 
             print("\n" + "=" * 70)
-            print("🔍 STEP 3: Searching for 'Python' messages on REAL server")
+            print("🔍 STEP 3: Searching for 'Python' memories on REAL server")
             print("=" * 70)
 
             print("\n📤 Calling 'search' tool with query='Python'...")
@@ -109,16 +109,16 @@ async def test_real_server_with_mcp_client():
                 if hasattr(content, "text"):
                     try:
                         python_results = json.loads(content.text)
-                        for i, msg in enumerate(python_results, 1):
-                            print(f"  {i}. {msg}")
+                        for i, mem in enumerate(python_results, 1):
+                            print(f"  {i}. {mem}")
                         print(
                             f"\n📊 Found: {len(python_results)} Python-related messages"
                         )
                     except Exception:
                         if isinstance(content.text, list):
                             python_results = content.text
-                            for i, msg in enumerate(python_results, 1):
-                                print(f"  {i}. {msg}")
+                            for i, mem in enumerate(python_results, 1):
+                                print(f"  {i}. {mem}")
                             print(
                                 f"\n📊 Found: {len(python_results)} Python-related messages"
                             )
@@ -128,7 +128,7 @@ async def test_real_server_with_mcp_client():
             await anyio.sleep(1)
 
             print("\n" + "=" * 70)
-            print("🔍 BONUS: Searching for 'JavaScript' messages")
+            print("🔍 BONUS: Searching for 'JavaScript' memories")
             print("=" * 70)
 
             print("\n📤 Calling 'search' tool with query='JavaScript'...")
@@ -142,16 +142,16 @@ async def test_real_server_with_mcp_client():
                 if hasattr(content, "text"):
                     try:
                         js_results = json.loads(content.text)
-                        for i, msg in enumerate(js_results, 1):
-                            print(f"  {i}. {msg}")
+                        for i, mem in enumerate(js_results, 1):
+                            print(f"  {i}. {mem}")
                         print(
                             f"\n📊 Found: {len(js_results)} JavaScript-related messages"
                         )
                     except Exception:
                         if isinstance(content.text, list):
                             js_results = content.text
-                            for i, msg in enumerate(js_results, 1):
-                                print(f"  {i}. {msg}")
+                            for i, mem in enumerate(js_results, 1):
+                                print(f"  {i}. {mem}")
                             print(
                                 f"\n📊 Found: {len(js_results)} JavaScript-related messages"
                             )
@@ -164,9 +164,9 @@ async def test_real_server_with_mcp_client():
             print(f"""
 Summary:
   ✅ Connected to MCP server at {server_url}
-  ✅ Added 10 messages using REAL OpenAI embeddings
-  ✅ Messages stored in REAL USearch vector index
-  ✅ Retrieved all messages from persistent storage
+  ✅ Added 10 memories using REAL OpenAI embeddings
+  ✅ Memories stored in REAL USearch vector index
+  ✅ Retrieved all memories from persistent storage
   ✅ Searched with semantic similarity + substring filtering
   ✅ Used REAL OpenAI API for embeddings and reranking
 

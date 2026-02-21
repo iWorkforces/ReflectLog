@@ -17,7 +17,10 @@ import contextlib
 from dataclasses import dataclass
 import threading
 import time
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 @dataclass
@@ -47,7 +50,7 @@ class MetricsRegistry:
         metrics = MetricsRegistry()
 
         # Record a metric
-        metrics.increment("add_messages_count", labels={"status": "success"})
+        metrics.increment("add_memories_count", labels={"status": "success"})
 
         # Time an operation
         with metrics.timer("search_duration", labels={"engine": "hybrid"}):
@@ -60,6 +63,7 @@ class MetricsRegistry:
 
     def __init__(self) -> None:
         """Initialize the metrics registry."""
+        super().__init__()
         self._lock = threading.Lock()
         self._counters: dict[str, dict[str, float]] = defaultdict(
             lambda: defaultdict(float)
@@ -98,7 +102,7 @@ class MetricsRegistry:
         request counts, error counts, etc.
 
         Args:
-            name: Metric name (e.g., "add_messages_total")
+            name: Metric name (e.g., "add_memories_total")
             value: Amount to increment by (default: 1.0)
             labels: Optional labels for this metric (e.g., {"status": "success"})
         """
@@ -180,8 +184,8 @@ class MetricsRegistry:
 
         Example:
             ```python
-            with metrics.timer("add_messages_duration", labels={"batch_size": "10"}):
-                memory_manager.add_messages(messages)
+            with metrics.timer("add_memories_duration", labels={"batch_size": "10"}):
+                memory_manager.add_messages(memories)
             ```
         """
         start = time.perf_counter()
@@ -280,10 +284,10 @@ class MetricsRegistry:
 
         Example output:
             ```
-            # HELP add_messages_total Total number of add operations
-            # TYPE add_messages_total counter
-            add_messages_total{status="success"} 42.0
-            add_messages_total{status="error"} 1.0
+            # HELP add_memories_total Total number of add operations
+            # TYPE add_memories_total counter
+            add_memories_total{status="success"} 42.0
+            add_memories_total{status="error"} 1.0
 
             # HELP search_duration_seconds Search operation duration
             # TYPE search_duration_seconds histogram
@@ -413,7 +417,7 @@ def timed(
     metrics: MetricsRegistry,
     name: str,
     labels: dict[str, str] | None = None,
-) -> Callable:
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator for timing function execution.
 
     Args:
@@ -434,8 +438,8 @@ def timed(
         ```
     """
 
-    def decorator(func: Callable) -> Callable:
-        def wrapper(*args, **kwargs):
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             with metrics.timer(name, labels):
                 return func(*args, **kwargs)
 

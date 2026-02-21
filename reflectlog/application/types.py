@@ -8,7 +8,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from reflectlog.infrastructure.message_store import MessageStore
+    from reflectlog.infrastructure.memory_store import MemoryStore
 
 # Timestamp handling protocol
 # All timestamps in ReflectLogMCP use ISO 8601 format (UTC timezone)
@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 # Example: "2025-01-24T10:30:45.123456Z"
 #
 # Timestamp flow:
-# 1. MessageStore stores created_at as ISO string when adding messages
-# 2. USearchEngine.search() returns (message, score, created_at) tuples
+# 1. MemoryStore stores created_at as ISO string when adding memories
+# 2. USearchEngine.search() returns (memory, score, created_at) tuples
 # 3. MemoryManager builds timestamp_map: Dict[str, str] for rerankers
 # 4. Rerankers use timestamps for recency decay calculations
 #
@@ -27,10 +27,10 @@ if TYPE_CHECKING:
 # Memory operation types
 type MemoryRecord = dict[str, Any]
 type SearchResult = dict[str, list[MemoryRecord]]
-type MessageList = list[str]
+type MemoryList = list[str]
 
 # Tool result types
-type ToolResult = None | MessageList
+type ToolResult = None | MemoryList
 
 # Extra logging context
 type LogContext = dict[str, Any]
@@ -59,7 +59,7 @@ class ISemanticSearchConfig(Protocol):
         embedding_model: Embedding model identifier.
         embedding_dims: Embedding vector dimensions.
         embedder_provider: Embedding provider name.
-        enable_llm_infer: Whether to enable LLM-based message inference.
+        enable_llm_infer: Whether to enable LLM-based memory inference.
         openrouter_api_key: API key for embeddings.
         openrouter_base_url: API base URL.
         qwen_embedding_dims: Qwen embedding dimensions.
@@ -199,32 +199,32 @@ class ISemanticSearchEngine(Protocol):
         """Engine name for identification."""
         ...
 
-    def add(self, project_id: str, message: str, infer: bool) -> None:
-        """Add a message to the semantic index.
+    def add(self, project_id: str, content: str, infer: bool) -> None:
+        """Add a memory to the semantic index.
 
         Args:
             project_id: Project identifier for filtering.
-            message: Message content to index.
-            infer: Whether to enable LLM-based message inference.
+            content: Memory content to index.
+            infer: Whether to enable LLM-based memory inference.
 
         Returns:
-            None. The message is stored in the index if successful.
+            None. The memory is stored in the index if successful.
 
         Raises:
             RuntimeError: If add operation fails.
         """
         ...
 
-    def add_batch(self, project_id: str, messages: list[str], infer: bool) -> list[str]:
-        """Add multiple messages to the semantic index in a single batch.
+    def add_batch(self, project_id: str, contents: list[str], infer: bool) -> list[str]:
+        """Add multiple memories to the semantic index in a single batch.
 
         Args:
             project_id: Project identifier for filtering.
-            messages: List of message texts to index.
-            infer: Whether to enable LLM-based message inference.
+            contents: List of memory texts to index.
+            infer: Whether to enable LLM-based memory inference.
 
         Returns:
-            List of messages successfully added (duplicates skipped).
+            List of memories successfully added (duplicates skipped).
         """
         ...
 
@@ -242,11 +242,11 @@ class ISemanticSearchEngine(Protocol):
             limit: Maximum number of results.
 
         Returns:
-            List of (message, score, created_at) tuples sorted by relevance.
+            List of (memory, score, created_at) tuples sorted by relevance.
 
-            - message (str): The message text
+            - memory (str): The memory text
             - score (float): Similarity score (higher = more relevant)
-            - created_at (str): ISO 8601 timestamp in UTC when the message was stored.
+            - created_at (str): ISO 8601 timestamp in UTC when the memory was stored.
               May be empty string ("") for backward compatibility with older data
               that was stored before timestamp tracking was implemented.
 
@@ -264,13 +264,13 @@ class ISemanticSearchEngine(Protocol):
         ...
 
     def get_all(self, project_id: str) -> list[str]:
-        """Retrieve all stored messages for a project.
+        """Retrieve all stored memories for a project.
 
         Args:
             project_id: Project identifier for filtering.
 
         Returns:
-            List of all messages stored for the project.
+            List of all memories stored for the project.
 
         Raises:
             RuntimeError: If retrieval operation fails.
@@ -323,15 +323,15 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
-    def get_id_by_message(self, project_id: str, message: str) -> int | None:
-        """Get the ID of a message by its content.
+    def get_id_by_content(self, project_id: str, content: str) -> int | None:
+        """Get the ID of a memory by its content.
 
         Args:
             project_id: Project identifier.
-            message: Message text to look up.
+            content: Memory text to look up.
 
         Returns:
-            The message ID if found, None otherwise.
+            The memory ID if found, None otherwise.
         """
         ...
 
@@ -354,10 +354,10 @@ class ISemanticSearchEngine(Protocol):
         ...
 
     @property
-    def message_store(self) -> MessageStore:
-        """Get the underlying message store for archive operations.
+    def memory_store(self) -> MemoryStore:
+        """Get the underlying memory store for archive operations.
 
         Returns:
-            The MessageStore instance used for message text storage.
+            The MemoryStore instance used for memory text storage.
         """
         ...

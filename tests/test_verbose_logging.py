@@ -22,25 +22,25 @@ async def test_verbose_logging():
     server_url = "http://127.0.0.1:9103/mcp"
 
     async with Client(server_url) as client:
-        print("\n1️⃣  Testing ADD (will log each message being added)")
+        print("\n1️⃣  Testing ADD (will log each memory being added)")
         print("-" * 70)
 
-        messages = [
-            "Test message 1",
-            "Test message 2",
-            "Test message 3",
+        memories = [
+            "Test memory 1",
+            "Test memory 2",
+            "Test memory 3",
         ]
 
-        await client.call_tool("add", arguments={"messages": messages})
-        print("✓ Add completed - check server logs for detailed per-message logging")
+        await client.call_tool("add", arguments={"memories": memories})
+        print("✓ Add completed - check server logs for detailed per-memory logging")
 
         await anyio.sleep(1)
 
-        print("\n2️⃣  Testing GET_ALL (will log each message retrieved)")
+        print("\n2️⃣  Testing GET_ALL (will log each memory retrieved)")
         print("-" * 70)
 
         await client.call_tool("get_all")
-        print("✓ Get all completed - check server logs for each message retrieved")
+        print("✓ Get all completed - check server logs for each memory retrieved")
 
         await anyio.sleep(1)
 
@@ -58,7 +58,7 @@ async def test_verbose_logging():
         print("\n4️⃣  Testing REMOVE (will log search, matching, and deletion)")
         print("-" * 70)
 
-        await client.call_tool("remove", arguments={"messages": ["Test message 2"]})
+        await client.call_tool("remove", arguments={"memories": ["Test memory 2"]})
         print("✓ Remove completed - check server logs for:")
         print("  - Semantic search for candidates")
         print("  - Each candidate found")
@@ -72,8 +72,8 @@ async def test_verbose_logging():
             "\nCheck the server logs to see detailed verbose logging for each operation."
         )
         print("The server logs every:")
-        print("  • Message being added with progress [1/3], [2/3], etc.")
-        print("  • Message retrieved with full content preview")
+        print("  • Memory being added with progress [1/3], [2/3], etc.")
+        print("  • Memory retrieved with full content preview")
         print("  • Search candidate found and filtering result")
         print("  • Deletion operation with memory ID and status")
 

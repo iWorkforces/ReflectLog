@@ -55,10 +55,10 @@ uv run reflectlog --transport http --port 9103
 
 ReflectLogMCP provides five MCP tools:
 
-1. **add(messages: list[str])** - Store messages with semantic embeddings
-2. **get_all() -> list[str]** - Retrieve all stored messages
+1. **add(memories: list[str])** - Store memories with semantic embeddings
+2. **get_all() -> list[str]** - Retrieve all stored memories
 3. **search(query: str) -> list[str]** - Hybrid semantic + full-text search
-4. **remove(messages: list[str])** - Remove messages by exact match
+4. **remove(memories: list[str])** - Remove memories by exact match
 5. **health_check() -> dict** - Get server health status
 
 ### Example Usage
@@ -73,7 +73,7 @@ results = await search("web frameworks")
 
 # Get all memories
 all = await get_all()
-# Returns all stored messages
+# Returns all stored memories
 
 # Remove memories
 await remove(["I use FastAPI for APIs"])

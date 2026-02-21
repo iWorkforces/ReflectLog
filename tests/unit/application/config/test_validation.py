@@ -590,39 +590,39 @@ class TestValidateCircuitBreakerSettings:
 
 
 @pytest.mark.unit
-class TestValidateMessageLengths:
-    """Tests for ConfigurationValidator.validate_message_lengths."""
+class TestValidateMemoryLengths:
+    """Tests for ConfigurationValidator.validate_memory_lengths."""
 
     def test_valid_lengths(self):
         """Valid min < max is accepted."""
         v = ConfigurationValidator()
-        result = v.validate_message_lengths(1, 30720)
+        result = v.validate_memory_lengths(1, 30720)
         assert result is True
         assert not v.has_errors()
 
     def test_min_equals_max_invalid(self):
         """min == max is rejected."""
         v = ConfigurationValidator()
-        result = v.validate_message_lengths(100, 100)
+        result = v.validate_memory_lengths(100, 100)
         assert result is False
         assert any("must be less than" in e.message.lower() for e in v.errors)
 
     def test_min_greater_than_max_invalid(self):
         """min > max is rejected."""
         v = ConfigurationValidator()
-        result = v.validate_message_lengths(200, 100)
+        result = v.validate_memory_lengths(200, 100)
         assert result is False
 
     def test_zero_min_invalid(self):
         """Zero min length is rejected."""
         v = ConfigurationValidator()
-        result = v.validate_message_lengths(0, 100)
+        result = v.validate_memory_lengths(0, 100)
         assert result is False
 
     def test_zero_max_invalid(self):
         """Zero max length is rejected."""
         v = ConfigurationValidator()
-        result = v.validate_message_lengths(0, 0)
+        result = v.validate_memory_lengths(0, 0)
         assert result is False
 
 
@@ -788,84 +788,84 @@ class TestSanitizeQuery:
 
 
 @pytest.mark.unit
-class TestValidateMessage:
-    """Tests for ConfigurationValidator.validate_message."""
+class TestValidateMemory:
+    """Tests for ConfigurationValidator.validate_memory."""
 
-    def test_valid_message(self):
-        """Normal message is accepted."""
+    def test_valid_memory(self):
+        """Normal memory is accepted."""
         v = ConfigurationValidator()
-        assert v.validate_message("Hello, world!") is True
+        assert v.validate_memory("Hello, world!") is True
         assert not v.has_errors()
 
-    def test_empty_message_invalid(self):
-        """Empty message is rejected."""
+    def test_empty_memory_invalid(self):
+        """Empty memory is rejected."""
         v = ConfigurationValidator()
-        assert v.validate_message("") is False
+        assert v.validate_memory("") is False
         assert "cannot be empty" in v.errors[0].message.lower()
 
-    def test_message_below_min_length(self):
-        """Message shorter than min_length is rejected."""
+    def test_memory_below_min_length(self):
+        """Memory shorter than min_length is rejected."""
         v = ConfigurationValidator()
-        assert v.validate_message("a", min_length=5) is False
+        assert v.validate_memory("a", min_length=5) is False
         assert "below minimum" in v.errors[0].message.lower()
 
-    def test_message_above_max_length(self):
-        """Message exceeding max_length is rejected."""
+    def test_memory_above_max_length(self):
+        """Memory exceeding max_length is rejected."""
         v = ConfigurationValidator()
-        assert v.validate_message("x" * 31000, max_length=30720) is False
+        assert v.validate_memory("x" * 31000, max_length=30720) is False
         assert "exceeds maximum" in v.errors[0].message.lower()
 
-    def test_message_at_min_length_valid(self):
-        """Message at exactly min_length is accepted."""
+    def test_memory_at_min_length_valid(self):
+        """Memory at exactly min_length is accepted."""
         v = ConfigurationValidator()
-        assert v.validate_message("ab", min_length=2) is True
+        assert v.validate_memory("ab", min_length=2) is True
 
-    def test_message_at_max_length_valid(self):
-        """Message at exactly max_length is accepted."""
+    def test_memory_at_max_length_valid(self):
+        """Memory at exactly max_length is accepted."""
         v = ConfigurationValidator()
-        assert v.validate_message("x" * 100, max_length=100) is True
+        assert v.validate_memory("x" * 100, max_length=100) is True
 
-    def test_message_with_newlines_valid(self):
-        """Message with newlines (char code 10) is valid."""
+    def test_memory_with_newlines_valid(self):
+        """Memory with newlines (char code 10) is valid."""
         v = ConfigurationValidator()
-        assert v.validate_message("line1\nline2") is True
+        assert v.validate_memory("line1\nline2") is True
 
-    def test_message_with_tabs_valid(self):
-        """Message with tabs (char code 9) is valid."""
+    def test_memory_with_tabs_valid(self):
+        """Memory with tabs (char code 9) is valid."""
         v = ConfigurationValidator()
-        assert v.validate_message("col1\tcol2") is True
+        assert v.validate_memory("col1\tcol2") is True
 
-    def test_message_with_null_byte_invalid(self):
-        """Message with null byte (char code 0) is rejected."""
+    def test_memory_with_null_byte_invalid(self):
+        """Memory with null byte (char code 0) is rejected."""
         v = ConfigurationValidator()
-        assert v.validate_message("hello\x00world") is False
+        assert v.validate_memory("hello\x00world") is False
         assert "control characters" in v.errors[0].message.lower()
 
-    def test_message_with_low_control_char_invalid(self):
-        """Message with control char < 9 (e.g. 0x01) is rejected."""
+    def test_memory_with_low_control_char_invalid(self):
+        """Memory with control char < 9 (e.g. 0x01) is rejected."""
         v = ConfigurationValidator()
-        assert v.validate_message("hello\x01world") is False
+        assert v.validate_memory("hello\x01world") is False
         assert "control characters" in v.errors[0].message.lower()
 
-    def test_message_with_char_11_invalid(self):
-        """Message with vertical tab (char code 11) is rejected."""
+    def test_memory_with_char_11_invalid(self):
+        """Memory with vertical tab (char code 11) is rejected."""
         v = ConfigurationValidator()
-        assert v.validate_message("hello\x0bworld") is False
+        assert v.validate_memory("hello\x0bworld") is False
 
-    def test_message_with_char_12_invalid(self):
-        """Message with form feed (char code 12) is rejected."""
+    def test_memory_with_char_12_invalid(self):
+        """Memory with form feed (char code 12) is rejected."""
         v = ConfigurationValidator()
-        assert v.validate_message("hello\x0cworld") is False
+        assert v.validate_memory("hello\x0cworld") is False
 
-    def test_message_with_carriage_return_valid(self):
-        """Message with carriage return (char code 13) is valid."""
+    def test_memory_with_carriage_return_valid(self):
+        """Memory with carriage return (char code 13) is valid."""
         v = ConfigurationValidator()
-        assert v.validate_message("line1\rline2") is True
+        assert v.validate_memory("line1\rline2") is True
 
-    def test_message_with_unicode_valid(self):
-        """Message with unicode characters is valid."""
+    def test_memory_with_unicode_valid(self):
+        """Memory with unicode characters is valid."""
         v = ConfigurationValidator()
-        assert v.validate_message("Hello 世界 🌍") is True
+        assert v.validate_memory("Hello 世界 🌍") is True
 
 
 # ---------------------------------------------------------------------------
@@ -1075,7 +1075,7 @@ class TestValidateConfig:
         errors = validate_config(cfg)
         assert any(e.field == "FUSION_METHOD" for e in errors)
 
-    def test_invalid_message_lengths(self):
+    def test_invalid_memory_lengths(self):
         """min >= max message lengths produces error."""
         cfg = self._make_config(min_message_length=500, max_message_length=100)
         errors = validate_config(cfg)

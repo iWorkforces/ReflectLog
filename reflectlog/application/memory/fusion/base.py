@@ -27,10 +27,10 @@ class FusionEngine(Protocol):
         """Fuse multiple ranked lists into a single ranking.
 
         Args:
-            *result_sets: Variable number of (message, score) tuple lists.
+            *result_sets: Variable number of (memory, score) tuple lists.
                          Each list should be sorted by score descending.
 
         Returns:
-            List of (message, fused_score) tuples sorted by score descending.
+            List of (memory, fused_score) tuples sorted by score descending.
         """
         ...

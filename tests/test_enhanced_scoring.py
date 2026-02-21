@@ -161,7 +161,7 @@ def test_scoring_examples():
     print("Your Specific Case - Before vs After:")
     print("=" * 80)
     print("Query: 'What is the project name?'")
-    print("Document: 'Project name is iotc-device-management'")
+    print("Memory: 'Project name is iotc-device-management'")
     print()
     print("❌ OLD scoring: 0.4781 (FILTERED OUT)")
     print("✅ NEW scoring: ~1.0 (KEPT - Direct answer!)")
