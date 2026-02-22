@@ -92,7 +92,7 @@ class SearchPipeline:
         fusion_engine: FusionEngine,
         config: Config,
         logger: StructuredLogger,
-        memory_manager: MemoryManager,
+        memory_manager: MemoryManager | None,
     ):
         """Initialize search pipeline.
 
@@ -102,7 +102,7 @@ class SearchPipeline:
             fusion_engine: RanxFusionEngine for result fusion.
             config: Application configuration.
             logger: Structured logger instance.
-            memory_manager: MemoryManager instance for lazy reranker fetching.
+            memory_manager: MemoryManager instance for lazy reranker fetching (optional).
         """
         super().__init__()
         self._semantic_engine = semantic_engine

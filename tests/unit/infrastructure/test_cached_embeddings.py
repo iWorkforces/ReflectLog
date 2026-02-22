@@ -1,6 +1,7 @@
 '''Unit tests for CachedEmbeddings LRU caching wrapper.'''
 
 import hashlib
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -188,16 +189,18 @@ class TestEmbedQuery:
     def test_cache_miss_with_logger(self, cached_with_logger: CachedEmbeddings) -> None:
         '''Test that cache miss logs debug message with logger.'''
         cached_with_logger.embed_query("logged query")
-        cached_with_logger.logger.debug.assert_called_once()
-        args = cached_with_logger.logger.debug.call_args
+        mock_logger = cast(MagicMock, cached_with_logger.logger)
+        mock_logger.debug.assert_called_once()
+        args = mock_logger.debug.call_args
         assert "MISS" in args[0][0]
 
     def test_cache_hit_with_logger(self, cached_with_logger: CachedEmbeddings) -> None:
         '''Test that cache hit logs debug message with logger.'''
         cached_with_logger.embed_query("logged hit")
-        cached_with_logger.logger.debug.reset_mock()
+        mock_logger = cast(MagicMock, cached_with_logger.logger)
+        mock_logger.debug.reset_mock()
         cached_with_logger.embed_query("logged hit")
-        args = cached_with_logger.logger.debug.call_args
+        args = mock_logger.debug.call_args
         assert "HIT" in args[0][0]
 
     def test_cache_miss_log_includes_extra(
@@ -205,7 +208,8 @@ class TestEmbedQuery:
     ) -> None:
         '''Test cache miss log includes cache_key, hits, misses, cache_size.'''
         cached_with_logger.embed_query("extra check")
-        call_kwargs = cached_with_logger.logger.debug.call_args
+        mock_logger = cast(MagicMock, cached_with_logger.logger)
+        call_kwargs = mock_logger.debug.call_args
         extra = call_kwargs[1]["extra"]
         assert "cache_key" in extra
         assert "hits" in extra
@@ -217,9 +221,10 @@ class TestEmbedQuery:
     ) -> None:
         '''Test cache hit log includes cache_key, hits, misses.'''
         cached_with_logger.embed_query("extra hit")
-        cached_with_logger.logger.debug.reset_mock()
+        mock_logger = cast(MagicMock, cached_with_logger.logger)
+        mock_logger.debug.reset_mock()
         cached_with_logger.embed_query("extra hit")
-        call_kwargs = cached_with_logger.logger.debug.call_args
+        call_kwargs = mock_logger.debug.call_args
         extra = call_kwargs[1]["extra"]
         assert "cache_key" in extra
         assert "hits" in extra
@@ -291,7 +296,8 @@ class TestAembedQuery:
     ) -> None:
         '''Test async cache miss logs debug with logger.'''
         await cached_with_logger.aembed_query("async logged")
-        args = cached_with_logger.logger.debug.call_args
+        mock_logger = cast(MagicMock, cached_with_logger.logger)
+        args = mock_logger.debug.call_args
         assert "MISS" in args[0][0]
         assert "async" in args[0][0]
 
@@ -300,9 +306,10 @@ class TestAembedQuery:
     ) -> None:
         '''Test async cache hit logs debug with logger.'''
         await cached_with_logger.aembed_query("async hit log")
-        cached_with_logger.logger.debug.reset_mock()
+        mock_logger = cast(MagicMock, cached_with_logger.logger)
+        mock_logger.debug.reset_mock()
         await cached_with_logger.aembed_query("async hit log")
-        args = cached_with_logger.logger.debug.call_args
+        args = mock_logger.debug.call_args
         assert "HIT" in args[0][0]
         assert "async" in args[0][0]
 
@@ -311,7 +318,8 @@ class TestAembedQuery:
     ) -> None:
         '''Test async cache miss log includes expected extra fields.'''
         await cached_with_logger.aembed_query("async extra")
-        call_kwargs = cached_with_logger.logger.debug.call_args
+        mock_logger = cast(MagicMock, cached_with_logger.logger)
+        call_kwargs = mock_logger.debug.call_args
         extra = call_kwargs[1]["extra"]
         assert "cache_key" in extra
         assert "cache_size" in extra
@@ -321,9 +329,10 @@ class TestAembedQuery:
     ) -> None:
         '''Test async cache hit log includes expected extra fields.'''
         await cached_with_logger.aembed_query("async extra hit")
-        cached_with_logger.logger.debug.reset_mock()
+        mock_logger = cast(MagicMock, cached_with_logger.logger)
+        mock_logger.debug.reset_mock()
         await cached_with_logger.aembed_query("async extra hit")
-        call_kwargs = cached_with_logger.logger.debug.call_args
+        call_kwargs = mock_logger.debug.call_args
         extra = call_kwargs[1]["extra"]
         assert "cache_key" in extra
         assert "hits" in extra

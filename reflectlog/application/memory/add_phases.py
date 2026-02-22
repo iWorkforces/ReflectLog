@@ -271,7 +271,7 @@ class SmartReplacementPhase:
         semantic_engine: ISemanticSearchEngine,
         config: Config,
         logger: StructuredLogger,
-        memory_manager: MemoryManager,
+        memory_manager: MemoryManager | None,
     ):
         """Initialize smart replacement phase.
 
@@ -279,7 +279,7 @@ class SmartReplacementPhase:
             semantic_engine: USearchEngine for semantic search.
             config: Application configuration.
             logger: Structured logger instance.
-            memory_manager: MemoryManager instance for lazy SmartReplacer fetching.
+            memory_manager: MemoryManager instance for lazy SmartReplacer fetching (optional).
         """
         self._semantic_engine = semantic_engine
         self.config = config
