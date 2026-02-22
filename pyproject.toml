@@ -231,7 +231,7 @@ reportUnknownArgumentType = "warning"
 reportUnknownMemberType = "warning"
 reportUnknownParameterType = "warning"
 reportUnknownVariableType = "warning"
-reportAny = "none"
+reportAny = "warning"
 
 [tool.ruff]
 # Target Python 3.14

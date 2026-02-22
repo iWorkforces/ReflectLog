@@ -2,7 +2,10 @@
 
 import logging
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from reflectlog.core import IStructuredLogger
 
 import numpy as np
 from ranx import Run
@@ -60,7 +63,7 @@ class RanxFusionEngine:
         method: str = "rrf",
         normalization: str | None = None,
         rrf_k: int = 60,
-        logger: Any | None = None,
+        logger: IStructuredLogger | None = None,
     ):
         """Initialize the ranx fusion engine.
 

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from typing import TypeGuard
 
+    from reflectlog.core import IStructuredLogger
     from reflectlog.infrastructure.memory_store import MemoryRecord
 
 import numpy as np
@@ -167,7 +168,7 @@ class USearchEngine(BaseModel):
 
     config: USearchConfig
     embedder: Embeddings
-    logger: Any = None
+    logger: IStructuredLogger | None = None
 
     _index: Index | None = PrivateAttr(default=None)
     _memory_store: Any | None = PrivateAttr(default=None)
@@ -178,7 +179,7 @@ class USearchEngine(BaseModel):
         self,
         config: USearchConfig | dict[str, Any],
         embedder: Embeddings,
-        logger: Any | None = None,
+        logger: IStructuredLogger | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize USearchEngine.

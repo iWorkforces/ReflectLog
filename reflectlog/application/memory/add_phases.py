@@ -13,7 +13,13 @@ produces outputs for the next phase.
 from dataclasses import dataclass, field
 import threading
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from reflectlog.infrastructure import TantivyEngine
+    from reflectlog.infrastructure.smart_replacer import SmartReplacer
+
+    from .manager import MemoryManager
 
 import anyio
 from asyncer import asyncify, create_task_group
@@ -125,7 +131,7 @@ class DuplicateDetectionPhase:
     def __init__(
         self,
         semantic_engine: ISemanticSearchEngine,
-        tantivy_engine: Any,  # TantivyEngine | None
+        tantivy_engine: TantivyEngine | None,
         config: Config,
         logger: StructuredLogger,
     ):
@@ -265,7 +271,7 @@ class SmartReplacementPhase:
         semantic_engine: ISemanticSearchEngine,
         config: Config,
         logger: StructuredLogger,
-        memory_manager: Any,  # MemoryManager for lazy SmartReplacer fetching
+        memory_manager: MemoryManager,
     ):
         """Initialize smart replacement phase.
 
@@ -366,7 +372,7 @@ class SmartReplacementPhase:
         )
 
     async def _check_for_replacement(
-        self, new_memory: str, smart_replacer: Any
+        self, new_memory: str, smart_replacer: SmartReplacer
     ) -> list[ReplacementInfo]:
         """Check if new memory should replace existing memories.
 
@@ -541,7 +547,7 @@ class StoragePhase:
     def __init__(
         self,
         semantic_engine: ISemanticSearchEngine,
-        tantivy_engine: Any,  # TantivyEngine | None
+        tantivy_engine: TantivyEngine | None,
         config: Config,
         logger: StructuredLogger,
         write_lock: threading.Lock | None = None,

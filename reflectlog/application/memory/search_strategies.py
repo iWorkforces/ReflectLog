@@ -11,7 +11,12 @@ concern-focused module. It implements the 4-step search pipeline:
 from dataclasses import dataclass
 import math
 import time
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from reflectlog.infrastructure import TantivyEngine
+
+    from .manager import MemoryManager
 
 from asyncer import asyncify, create_task_group
 
@@ -83,11 +88,11 @@ class SearchPipeline:
     def __init__(
         self,
         semantic_engine: ISemanticSearchEngine,
-        tantivy_engine: Any,  # TantivyEngine | None
+        tantivy_engine: TantivyEngine | None,
         fusion_engine: FusionEngine,
         config: Config,
         logger: StructuredLogger,
-        memory_manager: Any,  # MemoryManager for lazy reranker fetching
+        memory_manager: MemoryManager,
     ):
         """Initialize search pipeline.
 

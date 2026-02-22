@@ -1,6 +1,7 @@
 """Type definitions for ReflectLogMCP Server."""
 
 from typing import (
+    TypedDict,
     TYPE_CHECKING,
     Any,
     Protocol,

@@ -1,6 +1,9 @@
 """Fusion strategies for hybrid search."""
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reflectlog.core import IStructuredLogger
 
 from .base import FusionEngine
 from .ranx_fusion import (
@@ -15,7 +18,7 @@ def create_fusion_engine(
     method: str = "rrf",
     normalization: str | None = None,
     rrf_k: int = 60,
-    logger: Any | None = None,
+    logger: IStructuredLogger | None = None,
 ) -> FusionEngine:
     """Factory function to create a fusion engine.
 

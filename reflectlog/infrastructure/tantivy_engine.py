@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from typing import TypeGuard
 
+    from reflectlog.core import IStructuredLogger
+
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
@@ -98,7 +100,7 @@ class TantivyEngine(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     config: TantivyConfig
-    logger: Any = None  # StructuredLogger - using Any to avoid circular imports
+    logger: IStructuredLogger | None = None
 
     _index: tantivy.Index | None = PrivateAttr(default=None)
     _writer: tantivy.IndexWriter | None = PrivateAttr(default=None)
@@ -120,7 +122,7 @@ class TantivyEngine(BaseModel):
     def __init__(
         self,
         config: TantivyConfig | dict[str, Any],
-        logger: Any | None = None,
+        logger: IStructuredLogger | None = None,
         **kwargs: Any,
     ):
         """Initialize TantivyEngine.

@@ -11,7 +11,10 @@ from dataclasses import dataclass
 import os
 import sqlite3
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from reflectlog.core import IStructuredLogger
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -82,14 +85,14 @@ class MemoryStore(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     db_path: str
-    logger: Any = None
+    logger: IStructuredLogger | None = None
     timeout: float = 30.0  # Database busy timeout in seconds
 
     _conn: sqlite3.Connection | None = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _conn_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
 
-    def __init__(self, db_path: str, logger: Any = None, **kwargs: Any) -> None:
+    def __init__(self, db_path: str, logger: IStructuredLogger | None = None, **kwargs: Any) -> None:
         """Initialize MemoryStore.
 
         Args:

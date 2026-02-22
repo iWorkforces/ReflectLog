@@ -1,6 +1,9 @@
 """Shared utilities for exact-match checks and Tantivy query escaping."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from reflectlog.infrastructure import TantivyEngine
 
 from reflectlog.application.types import ISemanticSearchEngine
 from reflectlog.application.utils import StructuredLogger
@@ -25,7 +28,7 @@ def escape_tantivy_query(query: str) -> str:
 def has_exact_match(
     *,
     semantic_engine: ISemanticSearchEngine,
-    tantivy_engine: Any,
+    tantivy_engine: TantivyEngine | None,
     project_id: str,
     content: str,
     logger: StructuredLogger | None,

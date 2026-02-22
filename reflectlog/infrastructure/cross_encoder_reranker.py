@@ -19,6 +19,9 @@ from dataclasses import dataclass
 import importlib
 import threading
 from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from reflectlog.core import IStructuredLogger
 import warnings
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -114,7 +117,7 @@ class CrossEncoderReranker(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     config: CrossEncoderConfig
-    logger: Any = None
+    logger: IStructuredLogger | None = None
 
     _model: Any = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
