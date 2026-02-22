@@ -18,18 +18,17 @@ from typing import TYPE_CHECKING, Any, Self, final
 if TYPE_CHECKING:
     from typing import TypeGuard
 
-
     from reflectlog.infrastructure.memory_store import MemoryRecord, MemoryStore
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index
 
-from reflectlog.core.logging import IStructuredLogger
 from reflectlog.application.exceptions import StorageError
 from reflectlog.application.types import Embeddings
 from reflectlog.application.utils.numba_utils import distance_to_similarity_cosine
 from reflectlog.application.utils.security import validate_project_id
+from reflectlog.core.logging import IStructuredLogger
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:

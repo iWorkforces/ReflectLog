@@ -15,13 +15,12 @@ if TYPE_CHECKING:
     from typing import TypeGuard
 
 
-
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
-from reflectlog.core.logging import IStructuredLogger
 import tantivy
 
 from reflectlog.application.exceptions import SearchError
+from reflectlog.core.logging import IStructuredLogger
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:

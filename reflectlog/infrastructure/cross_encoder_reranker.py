@@ -19,14 +19,12 @@ from dataclasses import dataclass
 import importlib
 import threading
 from typing import Any, Protocol, final
-
-from reflectlog.core.logging import IStructuredLogger
 import warnings
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.config import Config
-
+from reflectlog.core.logging import IStructuredLogger
 
 
 @dataclass(frozen=True)

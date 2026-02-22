@@ -13,11 +13,10 @@ import sqlite3
 import threading
 from typing import Any, final
 
-from reflectlog.core.logging import IStructuredLogger
-
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.exceptions import StorageError
+from reflectlog.core.logging import IStructuredLogger
 
 
 @dataclass(frozen=True)
