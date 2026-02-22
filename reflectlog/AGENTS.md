@@ -109,6 +109,63 @@ if TYPE_CHECKING:
     from reflectlog.application.memory import MemoryManager
 ```
 
+### Type Checking Conventions
+
+The project uses `ty` for static type checking with strict rules enabled. Follow these conventions to avoid type errors:
+
+#### Circular Import Prevention
+
+Use `TYPE_CHECKING` guards for forward references and to prevent circular imports:
+
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reflectlog.core import IStructuredLogger
+    from reflectlog.infrastructure import TantivyEngine
+
+    from .manager import MemoryManager
+```
+
+#### Logger Type Annotations
+
+Always use `IStructuredLogger | None` for logger parameters in class constructors:
+
+```python
+class MyClass:
+    def __init__(
+        self,
+        config: Config,
+        logger: IStructuredLogger | None = None,
+    ):
+        self._logger = logger
+```
+
+#### Engine Type References
+
+Use forward references for engine types to avoid circular imports:
+
+```python
+def __init__(
+    self,
+    tantivy_engine: TantivyEngine | None,
+    memory_manager: MemoryManager,
+):
+    self._tantivy_engine = tantivy_engine
+    self._memory_manager = memory_manager
+```
+
+#### Running Type Checks
+
+```bash
+# Run type checking on production code
+./start-type-check.sh
+
+# The configuration is in pyproject.toml under [tool.pyright]
+# reportAny is set to "warning" to catch untyped code
+```
+
+
 ### Naming Conventions
 
 - **Classes**: PascalCase (e.g., `MemoryManager`, `SearchError`)
