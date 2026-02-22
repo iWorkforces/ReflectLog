@@ -1,7 +1,8 @@
-'''Unit tests for reflectlog.application.utils.circuit_breaker module.'''
+"""Unit tests for reflectlog.application.utils.circuit_breaker module."""
 
 import asyncio
 import time
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,34 +15,35 @@ from reflectlog.application.utils.circuit_breaker import (
     circuit_breaker_decorator,
 )
 from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 
 
 class TestCircuitState:
-    '''Tests for CircuitState enum.'''
+    """Tests for CircuitState enum."""
 
     def test_closed_value(self) -> None:
-        '''Test CLOSED state has correct value.'''
+        """Test CLOSED state has correct value."""
         assert CircuitState.CLOSED.value == "closed"
 
     def test_open_value(self) -> None:
-        '''Test OPEN state has correct value.'''
+        """Test OPEN state has correct value."""
         assert CircuitState.OPEN.value == "open"
 
     def test_half_open_value(self) -> None:
-        '''Test HALF_OPEN state has correct value.'''
+        """Test HALF_OPEN state has correct value."""
         assert CircuitState.HALF_OPEN.value == "half_open"
 
     def test_all_states_exist(self) -> None:
-        '''Test all three states are defined.'''
+        """Test all three states are defined."""
         states = list(CircuitState)
         assert len(states) == 3
 
 
 class TestCircuitBreakerConfig:
-    '''Tests for CircuitBreakerConfig dataclass.'''
+    """Tests for CircuitBreakerConfig dataclass."""
 
     def test_default_values(self) -> None:
-        '''Test default configuration values.'''
+        """Test default configuration values."""
         config = CircuitBreakerConfig()
         assert config.failure_threshold == 5
         assert config.timeout == 60.0
@@ -49,7 +51,7 @@ class TestCircuitBreakerConfig:
         assert config.exception_types == (Exception,)
 
     def test_custom_values(self) -> None:
-        '''Test custom configuration values.'''
+        """Test custom configuration values."""
         config = CircuitBreakerConfig(
             failure_threshold=3,
             timeout=30.0,
@@ -63,17 +65,17 @@ class TestCircuitBreakerConfig:
 
 
 class TestCircuitBreakerOpenError:
-    '''Tests for CircuitBreakerOpenError exception.'''
+    """Tests for CircuitBreakerOpenError exception."""
 
     def test_initialization(self) -> None:
-        '''Test error stores last_failure_time and timeout.'''
+        """Test error stores last_failure_time and timeout."""
         now = time.time()
         error = CircuitBreakerOpenError(last_failure_time=now, timeout=60.0)
         assert error.last_failure_time == now
         assert error.timeout == 60.0
 
     def test_message_contains_remaining_time(self) -> None:
-        '''Test error message includes remaining seconds.'''
+        """Test error message includes remaining seconds."""
         now = time.time()
         error = CircuitBreakerOpenError(last_failure_time=now, timeout=60.0)
         assert "Circuit is open after failure" in str(error)
@@ -81,21 +83,21 @@ class TestCircuitBreakerOpenError:
         assert "seconds" in str(error)
 
     def test_is_exception(self) -> None:
-        '''Test CircuitBreakerOpenError is an Exception subclass.'''
+        """Test CircuitBreakerOpenError is an Exception subclass."""
         error = CircuitBreakerOpenError(last_failure_time=time.time(), timeout=30.0)
         assert isinstance(error, Exception)
 
 
 class TestCircuitBreakerInit:
-    '''Tests for CircuitBreaker initialization.'''
+    """Tests for CircuitBreaker initialization."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     def test_initial_state_is_closed(self, mock_logger: MagicMock) -> None:
-        '''Test circuit breaker starts in CLOSED state.'''
+        """Test circuit breaker starts in CLOSED state."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test_api",
@@ -104,7 +106,7 @@ class TestCircuitBreakerInit:
         assert cb._state == CircuitState.CLOSED
 
     def test_initial_counters_are_zero(self, mock_logger: MagicMock) -> None:
-        '''Test failure and success counters start at zero.'''
+        """Test failure and success counters start at zero."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test_api",
@@ -114,7 +116,7 @@ class TestCircuitBreakerInit:
         assert cb._success_count == 0
 
     def test_initial_timestamps_are_none(self, mock_logger: MagicMock) -> None:
-        '''Test timestamp fields start as None.'''
+        """Test timestamp fields start as None."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test_api",
@@ -125,7 +127,7 @@ class TestCircuitBreakerInit:
         assert cb._opened_at is None
 
     def test_stores_config_and_name(self, mock_logger: MagicMock) -> None:
-        '''Test config and name are stored correctly.'''
+        """Test config and name are stored correctly."""
         config = CircuitBreakerConfig(failure_threshold=3)
         cb = CircuitBreaker(config=config, name="my_service", logger=mock_logger)
         assert cb._config is config
@@ -133,15 +135,15 @@ class TestCircuitBreakerInit:
 
 
 class TestShouldAttemptReset:
-    '''Tests for CircuitBreaker._should_attempt_reset.'''
+    """Tests for CircuitBreaker._should_attempt_reset."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     def test_returns_false_when_opened_at_is_none(self, mock_logger: MagicMock) -> None:
-        '''Test returns False when circuit was never opened.'''
+        """Test returns False when circuit was never opened."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(timeout=10.0),
             name="test",
@@ -150,7 +152,7 @@ class TestShouldAttemptReset:
         assert cb._should_attempt_reset() is False
 
     def test_returns_false_before_timeout(self, mock_logger: MagicMock) -> None:
-        '''Test returns False when timeout has not elapsed.'''
+        """Test returns False when timeout has not elapsed."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(timeout=60.0),
             name="test",
@@ -160,7 +162,7 @@ class TestShouldAttemptReset:
         assert cb._should_attempt_reset() is False
 
     def test_returns_true_after_timeout(self, mock_logger: MagicMock) -> None:
-        '''Test returns True when timeout has elapsed.'''
+        """Test returns True when timeout has elapsed."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(timeout=1.0),
             name="test",
@@ -171,15 +173,15 @@ class TestShouldAttemptReset:
 
 
 class TestRecordSuccess:
-    '''Tests for CircuitBreaker._record_success.'''
+    """Tests for CircuitBreaker._record_success."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     def test_increments_success_count(self, mock_logger: MagicMock) -> None:
-        '''Test success count increments.'''
+        """Test success count increments."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -189,7 +191,7 @@ class TestRecordSuccess:
         assert cb._success_count == 1
 
     def test_resets_failure_count(self, mock_logger: MagicMock) -> None:
-        '''Test failure count resets to zero on success.'''
+        """Test failure count resets to zero on success."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -200,7 +202,7 @@ class TestRecordSuccess:
         assert cb._failure_count == 0
 
     def test_sets_last_success_time(self, mock_logger: MagicMock) -> None:
-        '''Test last success time is set.'''
+        """Test last success time is set."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -210,7 +212,7 @@ class TestRecordSuccess:
         assert cb._last_success_time is not None
 
     def test_transitions_half_open_to_closed(self, mock_logger: MagicMock) -> None:
-        '''Test transition from HALF_OPEN to CLOSED after success threshold.'''
+        """Test transition from HALF_OPEN to CLOSED after success threshold."""
         config = CircuitBreakerConfig(success_threshold=2)
         cb = CircuitBreaker(config=config, name="test", logger=mock_logger)
         cb._state = CircuitState.HALF_OPEN
@@ -222,7 +224,7 @@ class TestRecordSuccess:
         assert cb._state == CircuitState.CLOSED
 
     def test_logs_on_transition_to_closed(self, mock_logger: MagicMock) -> None:
-        '''Test info log emitted when transitioning to CLOSED.'''
+        """Test info log emitted when transitioning to CLOSED."""
         config = CircuitBreakerConfig(success_threshold=1)
         cb = CircuitBreaker(config=config, name="test", logger=mock_logger)
         cb._state = CircuitState.HALF_OPEN
@@ -233,7 +235,7 @@ class TestRecordSuccess:
         assert "closed" in log_msg.lower()
 
     def test_resets_success_count_on_transition(self, mock_logger: MagicMock) -> None:
-        '''Test success count resets when transitioning to CLOSED.'''
+        """Test success count resets when transitioning to CLOSED."""
         config = CircuitBreakerConfig(success_threshold=1)
         cb = CircuitBreaker(config=config, name="test", logger=mock_logger)
         cb._state = CircuitState.HALF_OPEN
@@ -242,7 +244,7 @@ class TestRecordSuccess:
         assert cb._success_count == 0
 
     def test_no_transition_in_closed_state(self, mock_logger: MagicMock) -> None:
-        '''Test no state transition when already CLOSED.'''
+        """Test no state transition when already CLOSED."""
         config = CircuitBreakerConfig(success_threshold=1)
         cb = CircuitBreaker(config=config, name="test", logger=mock_logger)
         cb._state = CircuitState.CLOSED
@@ -253,15 +255,15 @@ class TestRecordSuccess:
 
 
 class TestRecordFailure:
-    '''Tests for CircuitBreaker._record_failure.'''
+    """Tests for CircuitBreaker._record_failure."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     def test_increments_failure_count(self, mock_logger: MagicMock) -> None:
-        '''Test failure count increments.'''
+        """Test failure count increments."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -271,7 +273,7 @@ class TestRecordFailure:
         assert cb._failure_count == 1
 
     def test_resets_success_count(self, mock_logger: MagicMock) -> None:
-        '''Test success count resets on failure.'''
+        """Test success count resets on failure."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -282,7 +284,7 @@ class TestRecordFailure:
         assert cb._success_count == 0
 
     def test_sets_last_failure_time(self, mock_logger: MagicMock) -> None:
-        '''Test last failure time is set.'''
+        """Test last failure time is set."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -294,7 +296,7 @@ class TestRecordFailure:
     def test_transitions_closed_to_open_at_threshold(
         self, mock_logger: MagicMock
     ) -> None:
-        '''Test circuit opens when failure threshold is reached.'''
+        """Test circuit opens when failure threshold is reached."""
         config = CircuitBreakerConfig(failure_threshold=3)
         cb = CircuitBreaker(config=config, name="test", logger=mock_logger)
 
@@ -306,7 +308,7 @@ class TestRecordFailure:
         assert cb._state == CircuitState.OPEN
 
     def test_sets_opened_at_on_transition(self, mock_logger: MagicMock) -> None:
-        '''Test opened_at timestamp is set when circuit opens.'''
+        """Test opened_at timestamp is set when circuit opens."""
         config = CircuitBreakerConfig(failure_threshold=1)
         cb = CircuitBreaker(config=config, name="test", logger=mock_logger)
 
@@ -314,7 +316,7 @@ class TestRecordFailure:
         assert cb._opened_at is not None
 
     def test_logs_warning_on_transition_to_open(self, mock_logger: MagicMock) -> None:
-        '''Test warning log on CLOSED -> OPEN transition.'''
+        """Test warning log on CLOSED -> OPEN transition."""
         config = CircuitBreakerConfig(failure_threshold=1)
         cb = CircuitBreaker(config=config, name="test", logger=mock_logger)
 
@@ -324,7 +326,7 @@ class TestRecordFailure:
         assert "opened" in log_msg.lower()
 
     def test_half_open_to_open_on_failure(self, mock_logger: MagicMock) -> None:
-        '''Test failure in HALF_OPEN returns to OPEN.'''
+        """Test failure in HALF_OPEN returns to OPEN."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -337,7 +339,7 @@ class TestRecordFailure:
         assert cb._opened_at is not None
 
     def test_half_open_failure_logs_warning(self, mock_logger: MagicMock) -> None:
-        '''Test warning log when HALF_OPEN fails back to OPEN.'''
+        """Test warning log when HALF_OPEN fails back to OPEN."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -351,7 +353,7 @@ class TestRecordFailure:
         assert "HALF_OPEN" in log_msg
 
     def test_below_threshold_stays_closed(self, mock_logger: MagicMock) -> None:
-        '''Test circuit stays CLOSED when below failure threshold.'''
+        """Test circuit stays CLOSED when below failure threshold."""
         config = CircuitBreakerConfig(failure_threshold=5)
         cb = CircuitBreaker(config=config, name="test", logger=mock_logger)
 
@@ -362,16 +364,16 @@ class TestRecordFailure:
 
 
 class TestCall:
-    '''Tests for CircuitBreaker.call async method.'''
+    """Tests for CircuitBreaker.call async method."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     @pytest.fixture
     def circuit_breaker(self, mock_logger: MagicMock) -> CircuitBreaker:
-        '''Create a circuit breaker with low thresholds for testing.'''
+        """Create a circuit breaker with low thresholds for testing."""
         return CircuitBreaker(
             config=CircuitBreakerConfig(
                 failure_threshold=2,
@@ -385,7 +387,7 @@ class TestCall:
     async def test_passes_through_in_closed_state(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test async function calls pass through in CLOSED state.'''
+        """Test async function calls pass through in CLOSED state."""
 
         async def my_func(x: int) -> int:
             return x * 2
@@ -396,7 +398,7 @@ class TestCall:
     async def test_passes_through_sync_function(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test sync function calls pass through in CLOSED state.'''
+        """Test sync function calls pass through in CLOSED state."""
 
         def my_sync_func(x: int) -> int:
             return x + 1
@@ -407,7 +409,7 @@ class TestCall:
     async def test_raises_on_open_circuit(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test CircuitBreakerOpenError raised when circuit is OPEN.'''
+        """Test CircuitBreakerOpenError raised when circuit is OPEN."""
         circuit_breaker._state = CircuitState.OPEN
         circuit_breaker._opened_at = time.time()  # Just opened
         circuit_breaker._last_failure_time = time.time()
@@ -421,7 +423,7 @@ class TestCall:
     async def test_open_circuit_without_last_failure_time(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test open circuit uses current time when last_failure_time is None.'''
+        """Test open circuit uses current time when last_failure_time is None."""
         circuit_breaker._state = CircuitState.OPEN
         circuit_breaker._opened_at = time.time()
         circuit_breaker._last_failure_time = None  # Edge case
@@ -435,7 +437,7 @@ class TestCall:
     async def test_transitions_to_half_open_after_timeout(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test circuit transitions from OPEN to HALF_OPEN after timeout.'''
+        """Test circuit transitions from OPEN to HALF_OPEN after timeout."""
         circuit_breaker._state = CircuitState.OPEN
         circuit_breaker._opened_at = time.time() - 1.0  # Well past 0.1s timeout
 
@@ -451,7 +453,7 @@ class TestCall:
     async def test_half_open_logs_transition(
         self, circuit_breaker: CircuitBreaker, mock_logger: MagicMock
     ) -> None:
-        '''Test info log when transitioning to HALF_OPEN.'''
+        """Test info log when transitioning to HALF_OPEN."""
         circuit_breaker._state = CircuitState.OPEN
         circuit_breaker._opened_at = time.time() - 1.0
 
@@ -467,7 +469,7 @@ class TestCall:
     async def test_records_failure_on_exception(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test failure is recorded when function raises.'''
+        """Test failure is recorded when function raises."""
 
         async def failing_func() -> None:
             raise ValueError("service error")
@@ -480,7 +482,7 @@ class TestCall:
     async def test_circuit_opens_after_threshold_failures(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test circuit opens after failure_threshold consecutive failures.'''
+        """Test circuit opens after failure_threshold consecutive failures."""
 
         async def failing_func() -> None:
             raise ValueError("error")
@@ -494,7 +496,7 @@ class TestCall:
     async def test_only_catches_configured_exceptions(
         self, mock_logger: MagicMock
     ) -> None:
-        '''Test only configured exception types trigger circuit breaker.'''
+        """Test only configured exception types trigger circuit breaker."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(
                 failure_threshold=1,
@@ -518,7 +520,7 @@ class TestCall:
     async def test_configured_exception_opens_circuit(
         self, mock_logger: MagicMock
     ) -> None:
-        '''Test configured exception type does trigger circuit breaker.'''
+        """Test configured exception type does trigger circuit breaker."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(
                 failure_threshold=1,
@@ -540,7 +542,7 @@ class TestCall:
     async def test_passes_args_and_kwargs(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test positional and keyword arguments are forwarded.'''
+        """Test positional and keyword arguments are forwarded."""
 
         async def func(a: int, b: int, c: int = 0) -> int:
             return a + b + c
@@ -551,7 +553,7 @@ class TestCall:
     async def test_full_lifecycle_closed_open_half_open_closed(
         self, mock_logger: MagicMock
     ) -> None:
-        '''Test full state transition lifecycle.'''
+        """Test full state transition lifecycle."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(
                 failure_threshold=2,
@@ -588,7 +590,7 @@ class TestCall:
     async def test_half_open_failure_returns_to_open(
         self, mock_logger: MagicMock
     ) -> None:
-        '''Test failure in HALF_OPEN transitions back to OPEN.'''
+        """Test failure in HALF_OPEN transitions back to OPEN."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(
                 failure_threshold=1,
@@ -617,15 +619,15 @@ class TestCall:
 
 
 class TestGetState:
-    '''Tests for CircuitBreaker.get_state.'''
+    """Tests for CircuitBreaker.get_state."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     def test_returns_closed_initially(self, mock_logger: MagicMock) -> None:
-        '''Test returns CLOSED when just created.'''
+        """Test returns CLOSED when just created."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -634,7 +636,7 @@ class TestGetState:
         assert cb.get_state() == CircuitState.CLOSED
 
     def test_returns_open_state(self, mock_logger: MagicMock) -> None:
-        '''Test returns OPEN when circuit is open and timeout not elapsed.'''
+        """Test returns OPEN when circuit is open and timeout not elapsed."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(timeout=60.0),
             name="test",
@@ -645,7 +647,7 @@ class TestGetState:
         assert cb.get_state() == CircuitState.OPEN
 
     def test_auto_transitions_to_half_open(self, mock_logger: MagicMock) -> None:
-        '''Test auto-transition from OPEN to HALF_OPEN after timeout.'''
+        """Test auto-transition from OPEN to HALF_OPEN after timeout."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(timeout=0.01),
             name="test",
@@ -656,7 +658,7 @@ class TestGetState:
         assert cb.get_state() == CircuitState.HALF_OPEN
 
     def test_returns_half_open_state(self, mock_logger: MagicMock) -> None:
-        '''Test returns HALF_OPEN when already in that state.'''
+        """Test returns HALF_OPEN when already in that state."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -667,15 +669,15 @@ class TestGetState:
 
 
 class TestGetStats:
-    '''Tests for CircuitBreaker.get_stats.'''
+    """Tests for CircuitBreaker.get_stats."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     def test_returns_complete_stats(self, mock_logger: MagicMock) -> None:
-        '''Test stats dictionary contains all expected keys.'''
+        """Test stats dictionary contains all expected keys."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(
                 failure_threshold=5,
@@ -699,7 +701,7 @@ class TestGetStats:
         assert stats["success_threshold"] == 2
 
     def test_stats_reflect_current_state(self, mock_logger: MagicMock) -> None:
-        '''Test stats reflect mutations to the circuit breaker.'''
+        """Test stats reflect mutations to the circuit breaker."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(failure_threshold=2),
             name="test",
@@ -716,15 +718,15 @@ class TestGetStats:
 
 
 class TestReset:
-    '''Tests for CircuitBreaker.reset.'''
+    """Tests for CircuitBreaker.reset."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     def test_resets_state_to_closed(self, mock_logger: MagicMock) -> None:
-        '''Test reset sets state to CLOSED.'''
+        """Test reset sets state to CLOSED."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -735,7 +737,7 @@ class TestReset:
         assert cb._state == CircuitState.CLOSED
 
     def test_resets_all_counters(self, mock_logger: MagicMock) -> None:
-        '''Test reset clears all counters.'''
+        """Test reset clears all counters."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -748,7 +750,7 @@ class TestReset:
         assert cb._success_count == 0
 
     def test_resets_all_timestamps(self, mock_logger: MagicMock) -> None:
-        '''Test reset clears all timestamps.'''
+        """Test reset clears all timestamps."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -763,7 +765,7 @@ class TestReset:
         assert cb._opened_at is None
 
     def test_logs_reset(self, mock_logger: MagicMock) -> None:
-        '''Test reset logs info message.'''
+        """Test reset logs info message."""
         cb = CircuitBreaker(
             config=CircuitBreakerConfig(),
             name="test",
@@ -777,16 +779,16 @@ class TestReset:
 
 
 class TestCircuitBreakerDecorator:
-    '''Tests for circuit_breaker_decorator function.'''
+    """Tests for circuit_breaker_decorator function."""
 
     @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Create a mock StructuredLogger.'''
-        return MagicMock(spec=StructuredLogger)
+    def mock_logger(self) -> IStructuredLogger:
+        """Create a mock StructuredLogger."""
+        return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
     @pytest.fixture
     def circuit_breaker(self, mock_logger: MagicMock) -> CircuitBreaker:
-        '''Create a circuit breaker for decorator tests.'''
+        """Create a circuit breaker for decorator tests."""
         return CircuitBreaker(
             config=CircuitBreakerConfig(
                 failure_threshold=2,
@@ -800,7 +802,7 @@ class TestCircuitBreakerDecorator:
     async def test_decorates_async_function(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test decorator wraps async function correctly.'''
+        """Test decorator wraps async function correctly."""
 
         @circuit_breaker_decorator(circuit_breaker)
         async def my_async_func(x: int) -> int:
@@ -812,7 +814,7 @@ class TestCircuitBreakerDecorator:
     async def test_decorated_async_records_failure(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test decorated async function failures are tracked.'''
+        """Test decorated async function failures are tracked."""
 
         @circuit_breaker_decorator(circuit_breaker)
         async def failing_async() -> None:
@@ -826,7 +828,7 @@ class TestCircuitBreakerDecorator:
     async def test_decorated_async_opens_circuit(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test decorated async function opens circuit after threshold.'''
+        """Test decorated async function opens circuit after threshold."""
 
         @circuit_breaker_decorator(circuit_breaker)
         async def failing_async() -> None:
@@ -843,7 +845,7 @@ class TestCircuitBreakerDecorator:
             await failing_async()
 
     def test_decorates_sync_function(self, circuit_breaker: CircuitBreaker) -> None:
-        '''Test decorator wraps sync function correctly.'''
+        """Test decorator wraps sync function correctly."""
 
         @circuit_breaker_decorator(circuit_breaker)
         def my_sync_func(x: int) -> int:
@@ -855,7 +857,7 @@ class TestCircuitBreakerDecorator:
     def test_decorated_sync_records_failure(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test decorated sync function failures are tracked.'''
+        """Test decorated sync function failures are tracked."""
 
         @circuit_breaker_decorator(circuit_breaker)
         def failing_sync() -> None:
@@ -869,7 +871,7 @@ class TestCircuitBreakerDecorator:
     def test_decorated_sync_opens_circuit(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test decorated sync function opens circuit after threshold.'''
+        """Test decorated sync function opens circuit after threshold."""
 
         @circuit_breaker_decorator(circuit_breaker)
         def failing_sync() -> None:
@@ -887,7 +889,7 @@ class TestCircuitBreakerDecorator:
     def test_sync_decorator_creates_event_loop_if_needed(
         self, circuit_breaker: CircuitBreaker
     ) -> None:
-        '''Test sync decorator handles missing event loop.'''
+        """Test sync decorator handles missing event loop."""
 
         # We patch to simulate RuntimeError on get_event_loop
         @circuit_breaker_decorator(circuit_breaker)

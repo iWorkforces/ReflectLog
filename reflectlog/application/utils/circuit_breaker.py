@@ -14,10 +14,11 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+import inspect
 import time
-from typing import Any, TypeVar
+from typing import Any, TypedDict, TypeVar
 
-from .logging import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 
 
 class CircuitState(Enum):
@@ -41,6 +42,19 @@ class CircuitBreakerConfig:
 
 
 T = TypeVar("T")
+
+
+class CircuitBreakerStats(TypedDict):
+    name: str
+    state: str
+    failure_count: int
+    success_count: int
+    last_failure_time: float | None
+    last_success_time: float | None
+    opened_at: float | None
+    failure_threshold: int
+    timeout: float
+    success_threshold: int
 
 
 class CircuitBreakerOpenError(Exception):
@@ -90,7 +104,7 @@ class CircuitBreaker:
         self,
         config: CircuitBreakerConfig,
         name: str,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ) -> None:
         """Initialize circuit breaker.
 
@@ -99,9 +113,12 @@ class CircuitBreaker:
             name: Name for logging (e.g., "llm_reranker_api")
             logger: Structured logger instance
         """
+        if logger is None:
+            raise ValueError("logger is required")
+
         self._config = config
         self._name = name
-        self._logger = logger
+        self._logger: IStructuredLogger = logger
 
         # State tracking
         self._state = CircuitState.CLOSED
@@ -223,7 +240,7 @@ class CircuitBreaker:
 
         # Execute the function
         try:
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(func):
                 result = await func(*args, **kwargs)
             else:
                 result = func(*args, **kwargs)
@@ -250,7 +267,7 @@ class CircuitBreaker:
 
         return self._state
 
-    def get_stats(self) -> dict[str, Any]:
+    def get_stats(self) -> CircuitBreakerStats:
         """Get circuit breaker statistics.
 
         Returns:
@@ -289,7 +306,7 @@ class CircuitBreaker:
 
 def circuit_breaker_decorator(
     circuit_breaker: CircuitBreaker,
-) -> Callable:
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Create a decorator that wraps a function with circuit breaker protection.
 
     Args:
@@ -312,11 +329,11 @@ def circuit_breaker_decorator(
         ```
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        async def async_wrapper(*args: Any, **kwargs: Any) -> T:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        async def async_wrapper(*args: Any, **kwargs: Any) -> object:
             return await circuit_breaker.call(func, *args, **kwargs)
 
-        def sync_wrapper(*args: Any, **kwargs: Any) -> T:
+        def sync_wrapper(*args: Any, **kwargs: Any) -> object:
             # For sync functions, we need to run the async call method
             # Create a simple event loop if none exists
             try:
@@ -327,8 +344,8 @@ def circuit_breaker_decorator(
 
             return loop.run_until_complete(circuit_breaker.call(func, *args, **kwargs))
 
-        if asyncio.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore[return-value]
+        if inspect.iscoroutinefunction(func):
+            return async_wrapper
         else:
             return sync_wrapper
 

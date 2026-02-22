@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import os
 import random
 import time
-from typing import Any
+from typing import Any, Self, TypeGuard
 import warnings
 
 import anyio
@@ -10,6 +10,10 @@ from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.utils.http_client import HttpClientFactory
+
+
+def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
+    return isinstance(config, dict)
 
 
 @dataclass
@@ -35,11 +39,15 @@ class LangchainQwenEmbeddings(BaseModel):
     _client: OpenAI | None = PrivateAttr(default=None)
     _async_client: AsyncOpenAI | None = PrivateAttr(default=None)
 
-    def __init__(self, config: EmbedderConfig | dict[str, Any] | None = None):
+    def __init__(self, config: EmbedderConfig | dict[str, Any] | None = None) -> None:
         super().__init__(config=config or {})
 
-        if isinstance(self.config, dict):
-            self.config = EmbedderConfig(**self.config)
+        if _is_dict_config(config):
+            self.config = EmbedderConfig(**config)
+        elif isinstance(config, EmbedderConfig):
+            self.config = config
+        else:
+            self.config = EmbedderConfig()
 
         self.config.embedding_dims = self.config.embedding_dims or 1536
 
@@ -307,10 +315,15 @@ class LangchainQwenEmbeddings(BaseModel):
             await self._async_client.close()
             self._async_client = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
         """Async context manager exit."""
         await self.aclose()

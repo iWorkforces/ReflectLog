@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import os
 import re
 import threading
-from typing import Any, Literal
+from typing import Literal, TypedDict
 
 from ..exceptions import ConfigurationError
 from ..utils.security import SecretString
@@ -15,6 +15,101 @@ from .presets import apply_preset_to_env, get_active_preset
 
 # Type definitions
 type TransportMode = Literal["stdio", "http", "sse", "streamable-http"]
+
+
+class TransportConfigDict(TypedDict):
+    transport: TransportMode
+    port: int
+    host: str
+    path: str
+    openrouter_base_url: str
+
+
+class EmbeddingConfigDict(TypedDict):
+    embedder_provider: str
+    embedding_model: str
+    embedding_dims: int
+    qwen_embedding_dims: int
+    embedding_batch_size: int
+    embedding_max_concurrent_batches: int
+    embedding_cache_enabled: bool
+    embedding_cache_size: int
+
+
+class SearchConfigDict(TypedDict):
+    search_limit: int
+    remove_search_limit: int
+    enable_hybrid_search: bool
+    tantivy_index_path_template: str
+    overfetch_multiplier: int
+    overfetch_adaptive: bool
+    overfetch_min_multiplier: float
+    overfetch_max_multiplier: float
+    usearch_exact_search: bool
+    usearch_exact_search_threshold: int
+    fusion_method: str
+    fusion_normalization: str | None
+    fusion_rrf_k: int
+    fusion_ranking_threshold: float
+    enable_rrf_fusion: bool
+
+
+class RerankerConfigDict(TypedDict):
+    reranker_engine: str
+    llm_provider: str
+    llm_model: str
+    search_score_threshold: float
+    rerank_max_concurrency: int
+    cross_encoder_model: str
+    cross_encoder_top_k: int
+    cross_encoder_device: str
+    cross_encoder_batch_size: int
+    cross_encoder_score_threshold: float
+    cross_encoder_use_fp16: bool
+    cross_encoder_normalize: bool
+    cross_encoder_max_length: int
+    reranker_min_results: int
+    reranker_batch_normalize: bool
+    enable_recency_boost: bool
+    recency_decay_rate: float
+
+
+class StorageConfigDict(TypedDict):
+    tantivy_soft_delete_enabled: bool
+    tantivy_compaction_threshold_ratio: float
+    tantivy_compaction_max_tombstones: int
+    tantivy_tombstone_ttl_days: int
+    tantivy_normalize_scores: bool
+
+
+class SecurityConfigDict(TypedDict):
+    max_memory_length: int
+    min_memory_length: int
+    deduplicate_memories: bool
+
+
+class LoggingConfigDict(TypedDict):
+    log_level: str
+    log_search_results_verbose: bool
+    log_search_result_limit: int
+
+
+class MetricsConfigDict(TypedDict):
+    enable_smart_replace: bool
+    smart_replace_threshold: float
+    smart_replace_min_similarity: float
+    smart_replace_candidate_limit: int
+    smart_replace_archive_ttl_days: int
+    smart_replace_max_retries: int
+    smart_replace_retry_delay: float
+
+
+class ServerConfigDict(TypedDict):
+    add_max_concurrency: int
+    eager_initialization: bool
+    eager_initialize_search_engines: bool | None
+    eager_initialize_reranker: bool | None
+    eager_initialize_smart_replacer: bool | None
 
 
 def _parse_optional_bool(value: str | None) -> bool | None:
@@ -195,19 +290,17 @@ class Config:
     # the large from_environment method into focused, single-responsibility functions.
 
     @staticmethod
-    def _parse_transport_config() -> dict[str, Any]:
+    def _parse_transport_config() -> TransportConfigDict:
         """Parse transport-related configuration from environment variables."""
         transport_raw = os.environ.get("MCP_TRANSPORT", "stdio")
-        valid_transports: tuple[TransportMode, ...] = (
-            "stdio",
-            "http",
-            "sse",
-            "streamable-http",
-        )
-        if transport_raw not in valid_transports:
-            transport: TransportMode = "stdio"
+        if transport_raw == "http":
+            transport: TransportMode = "http"
+        elif transport_raw == "sse":
+            transport = "sse"
+        elif transport_raw == "streamable-http":
+            transport = "streamable-http"
         else:
-            transport = transport_raw
+            transport = "stdio"
 
         return {
             "transport": transport,
@@ -220,7 +313,7 @@ class Config:
         }
 
     @staticmethod
-    def _parse_embedding_config() -> dict[str, Any]:
+    def _parse_embedding_config() -> EmbeddingConfigDict:
         """Parse embedding-related configuration from environment variables."""
         return {
             "embedder_provider": os.environ.get("EMBEDDER_PROVIDER", "openai"),
@@ -245,7 +338,7 @@ class Config:
         }
 
     @staticmethod
-    def _parse_search_config() -> dict[str, Any]:
+    def _parse_search_config() -> SearchConfigDict:
         """Parse search-related configuration from environment variables."""
         return {
             "search_limit": int(os.environ.get("SEARCH_LIMIT", "5")),
@@ -284,7 +377,7 @@ class Config:
         }
 
     @staticmethod
-    def _parse_tantivy_config() -> dict[str, Any]:
+    def _parse_tantivy_config() -> StorageConfigDict:
         """Parse Tantivy-specific configuration from environment variables."""
         return {
             "tantivy_soft_delete_enabled": os.environ.get(
@@ -311,7 +404,7 @@ class Config:
         }
 
     @staticmethod
-    def _parse_reranker_config() -> dict[str, Any]:
+    def _parse_reranker_config() -> RerankerConfigDict:
         """Parse reranker-related configuration from environment variables."""
         # Determine reranker engine
         reranker_engine_raw = os.environ.get("RERANKER_ENGINE", "llm")
@@ -382,7 +475,7 @@ class Config:
         }
 
     @staticmethod
-    def _parse_memory_config() -> dict[str, Any]:
+    def _parse_memory_config() -> SecurityConfigDict:
         """Parse memory-related configuration from environment variables."""
         return {
             "max_memory_length": int(os.environ.get("MAX_MEMORY_LENGTH", "30720")),
@@ -394,7 +487,7 @@ class Config:
         }
 
     @staticmethod
-    def _parse_smart_replace_config() -> dict[str, Any]:
+    def _parse_smart_replace_config() -> MetricsConfigDict:
         """Parse smart replacement configuration from environment variables."""
         return {
             "enable_smart_replace": os.environ.get(
@@ -422,7 +515,7 @@ class Config:
         }
 
     @staticmethod
-    def _parse_init_config() -> dict[str, Any]:
+    def _parse_init_config() -> ServerConfigDict:
         """Parse initialization-related configuration from environment variables."""
         return {
             "add_max_concurrency": max(
@@ -444,7 +537,7 @@ class Config:
         }
 
     @staticmethod
-    def _parse_logging_config() -> dict[str, Any]:
+    def _parse_logging_config() -> LoggingConfigDict:
         """Parse logging-related configuration from environment variables."""
         return {
             "log_level": os.environ.get("LOG_LEVEL", "INFO"),
@@ -638,14 +731,14 @@ class _LazyConfig:
     triggering immediate environment variable parsing.
     """
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> object:
         return getattr(get_config(), name)
 
     def __repr__(self) -> str:
         return f"_LazyConfig(initialized={_config is not None})"
 
 
-def setup_config_reload():
+def setup_config_reload() -> Config:
     """Setup runtime configuration reload via SIGHUP.
 
     Must be called after Config singleton is initialized.
@@ -661,4 +754,4 @@ def setup_config_reload():
 # Note: This is typed as Any to allow type checkers to accept it
 # where Config is expected
 # The actual Config object is accessed lazily through __getattr__
-config: Config = _LazyConfig()  # type: ignore[assignment]
+config: Config | _LazyConfig = _LazyConfig()

@@ -6,8 +6,7 @@ specifically the CrossEncoder class used for reranking.
 Reference: https://www.sbert.net/docs/cross_encoder/
 """
 
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Callable, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -40,12 +39,12 @@ class CrossEncoder:
         num_labels: int | None = None,
         max_length: int | None = None,
         device: str | None = None,
-        tokenizer_args: dict[str, Any] | None = None,
-        automodel_args: dict[str, Any] | None = None,
+        tokenizer_args: dict[str, object] | None = None,
+        automodel_args: dict[str, object] | None = None,
         trust_remote_code: bool = False,
         revision: str | None = None,
         local_files_only: bool = False,
-        default_activation_function: Any | None = None,
+        default_activation_function: Callable[[object], object] | None = None,
         classifier_dropout: float | None = None,
     ) -> None:
         """Initialize a CrossEncoder model.
@@ -73,7 +72,7 @@ class CrossEncoder:
         batch_size: int = 32,
         show_progress_bar: bool | None = None,
         num_workers: int = 0,
-        activation_fct: Any | None = None,
+        activation_fct: Callable[[object], object] | None = None,
         apply_softmax: bool = False,
         convert_to_numpy: bool = True,
         convert_to_tensor: bool = False,
@@ -106,11 +105,11 @@ class CrossEncoder:
         batch_size: int = 32,
         show_progress_bar: bool | None = None,
         num_workers: int = 0,
-        activation_fct: Any | None = None,
+        activation_fct: Callable[[object], object] | None = None,
         apply_softmax: bool = False,
         convert_to_numpy: bool = True,
         convert_to_tensor: bool = False,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Rank documents by relevance to a query.
 
         Args:

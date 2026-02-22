@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import re
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict, final, override
 
 import anyio
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -84,6 +84,10 @@ class RelevanceScore(BaseModel):
         le=1.0,
         description="Relevance score from 0.0 (no match) to 1.0 (perfect match)",
     )
+
+
+class AnthropicRelevanceResponse(TypedDict, total=False):
+    score: float
 
 
 @dataclass(frozen=True)
@@ -167,7 +171,8 @@ class IRerankerProvider(Protocol):
         ...
 
 
-class OpenAIRerankerProvider(BaseOpenAIProvider):
+@final
+class OpenAIRerankerProvider(BaseOpenAIProvider, IRerankerProvider):
     """OpenAI/OpenRouter-based reranking provider.
 
     Uses AsyncOpenAI client with structured JSON output for reliable parsing.
@@ -179,6 +184,7 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
     - Safe JSON parsing with clamping
     """
 
+    @override
     async def score_document(
         self,
         query: str,
@@ -248,7 +254,8 @@ class OpenAIRerankerProvider(BaseOpenAIProvider):
             return (document, fallback_score)
 
 
-class AnthropicRerankerProvider:
+@final
+class AnthropicRerankerProvider(IRerankerProvider):
     """Anthropic Claude-based reranking provider.
 
     Uses Claude Agent SDK via utility module for LLM calls.
@@ -277,7 +284,9 @@ class AnthropicRerankerProvider:
         self._model = model
         self._logger = logger
 
-    def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
+    def _extract_json_from_response(
+        self, response_text: str
+    ) -> AnthropicRelevanceResponse:
         """Extract JSON from plain text response.
 
         Handles multiple response formats:
@@ -322,6 +331,7 @@ class AnthropicRerankerProvider:
 
         raise ValueError(f"Could not extract JSON from response: {text[:200]}")
 
+    @override
     async def score_document(
         self,
         query: str,
@@ -433,6 +443,7 @@ def create_reranker_provider(
         )
 
 
+@final
 class LLMReranker(BaseModel):
     """LLM-based document reranker using configurable LLM providers.
 

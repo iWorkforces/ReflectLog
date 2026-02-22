@@ -2,10 +2,13 @@
 
 from contextlib import contextmanager
 import logging
-from typing import Any
+from typing import Any, final, override
+
+from reflectlog.core.logging import IStructuredLogger
 
 
-class StructuredLogger:
+@final
+class StructuredLogger(IStructuredLogger):
     """Wrapper for structured logging with consistent formatting."""
 
     def __init__(
@@ -50,6 +53,7 @@ class StructuredLogger:
 
         return redact_dict_secrets(data)
 
+    @override
     def is_enabled_for(self, level: int) -> bool:
         """Check if logger is enabled for the given level.
 
@@ -61,6 +65,7 @@ class StructuredLogger:
         """
         return self.logger.isEnabledFor(level)
 
+    @override
     def info(
         self,
         message: str,
@@ -70,6 +75,7 @@ class StructuredLogger:
         """Log info message with structured data."""
         self.logger.info(message, extra=self._merge_extra(extra), exc_info=exc_info)
 
+    @override
     def error(
         self,
         message: str,
@@ -79,6 +85,7 @@ class StructuredLogger:
         """Log error message with structured data."""
         self.logger.error(message, extra=self._merge_extra(extra), exc_info=exc_info)
 
+    @override
     def warning(
         self,
         message: str,
@@ -88,6 +95,7 @@ class StructuredLogger:
         """Log warning message with structured data."""
         self.logger.warning(message, extra=self._merge_extra(extra), exc_info=exc_info)
 
+    @override
     def debug(
         self,
         message: str,

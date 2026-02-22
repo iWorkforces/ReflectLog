@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 import json
 import re
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
@@ -41,6 +41,12 @@ class ReplacementDecision(BaseModel):
         ...,
         description="Brief explanation of the decision",
     )
+
+
+class AnthropicReplacementResponse(TypedDict, total=False):
+    should_replace: bool
+    confidence: float
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -229,7 +235,9 @@ class AnthropicReplacementProvider:
         self._model = model
         self._logger = logger
 
-    def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
+    def _extract_json_from_response(
+        self, response_text: str
+    ) -> AnthropicReplacementResponse:
         """Extract JSON from plain text response.
 
         Handles multiple response formats:

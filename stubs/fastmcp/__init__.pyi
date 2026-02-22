@@ -1,19 +1,44 @@
 """Type stubs for fastmcp library."""
 
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import ParamSpec, TypeAlias, TypeVar, overload
+
+from fastmcp.client.client import CallToolResult
+
+JSONScalar: TypeAlias = str | int | float | bool | None
+JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 class Tool:
     """FastMCP Tool with registered function."""
 
     name: str
-    fn: Callable[..., Any]
+    description: str
+    fn: Callable[..., Awaitable[object]]
 
 class FastMCP:
     """FastMCP server instance."""
     def __init__(self, name: str, instructions: str | None = None) -> None: ...
-    def tool(self, func: Callable[..., Any] | None = None, **kwargs: Any) -> Any: ...
-    def run(self, **kwargs: Any) -> None: ...
+    @overload
+    def tool(
+        self,
+        func: Callable[_P, _R],
+        **kwargs: object,
+    ) -> Callable[_P, _R]: ...
+    @overload
+    def tool(
+        self,
+        func: None = None,
+        **kwargs: object,
+    ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]: ...
+    def tool(
+        self,
+        func: Callable[_P, _R] | None = None,
+        **kwargs: object,
+    ) -> Callable[_P, _R] | Callable[[Callable[_P, _R]], Callable[_P, _R]]: ...
+    def run(self, **kwargs: object) -> None: ...
     @property
     def _tool_manager(self) -> ToolManager: ...
 
@@ -26,10 +51,12 @@ class Client:
     """FastMCP Client for connecting to MCP servers."""
     def __init__(self, server_url: str) -> None: ...
     async def __aenter__(self) -> Client: ...
-    async def __aexit__(self, *args: Any) -> None: ...
-    async def list_tools(self) -> list[Any]: ...
+    async def __aexit__(self, *args: object) -> None: ...
+    async def list_tools(self) -> list[Tool]: ...
     async def call_tool(
-        self, tool_name: str, arguments: dict[str, Any] | None = None
-    ) -> Any: ...
+        self,
+        tool_name: str,
+        arguments: dict[str, JSONValue] | None = None,
+    ) -> CallToolResult: ...
 
 __all__ = ["Client", "FastMCP", "Tool", "ToolManager"]

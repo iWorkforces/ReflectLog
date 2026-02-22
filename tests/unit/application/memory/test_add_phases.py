@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-'''Unit tests for add_phases.py - 3-phase parallel add pipeline.
+"""Unit tests for add_phases.py - 3-phase parallel add pipeline.
 
 Covers uncovered lines: 291, 417-524, 588-663, 670, 676, 719,
 723-731, 759-768, 782-815, 824, 850-900.
-'''
+"""
 
 import threading
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -24,6 +25,7 @@ from reflectlog.application.memory.add_phases import (
     StoragePhase,
 )
 from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +35,7 @@ from reflectlog.application.utils import StructuredLogger
 
 @pytest.fixture
 def mock_config() -> Config:
-    '''Minimal mock Config for add_phases tests.'''
+    """Minimal mock Config for add_phases tests."""
     config = Mock(spec=Config)
     config.project_id = "test_project"
     config.add_max_concurrency = 4
@@ -47,13 +49,13 @@ def mock_config() -> Config:
 
 @pytest.fixture
 def mock_logger():
-    '''Mock structured logger.'''
-    return Mock(spec=StructuredLogger)
+    """Mock structured logger."""
+    return cast(IStructuredLogger, Mock(spec=StructuredLogger))
 
 
 @pytest.fixture
 def mock_semantic_engine():
-    '''Mock ISemanticSearchEngine.'''
+    """Mock ISemanticSearchEngine."""
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.add_batch = MagicMock(
@@ -69,7 +71,7 @@ def mock_semantic_engine():
 
 @pytest.fixture
 def mock_tantivy_engine():
-    '''Mock TantivyEngine.'''
+    """Mock TantivyEngine."""
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.delete = MagicMock(return_value=None)
@@ -85,10 +87,10 @@ def mock_tantivy_engine():
 
 @pytest.mark.unit
 class TestDataclasses:
-    '''Tests for dataclass constructors and defaults.'''
+    """Tests for dataclass constructors and defaults."""
 
     def test_replacement_info_defaults(self):
-        '''ReplacementInfo should have default similarity_score of 0.0.'''
+        """ReplacementInfo should have default similarity_score of 0.0."""
         info = ReplacementInfo(
             old_memory="old",
             new_memory="new",
@@ -100,7 +102,7 @@ class TestDataclasses:
         assert info.confidence == 0.9
 
     def test_add_result_defaults(self):
-        '''AddResult defaults should be zero counts and empty list.'''
+        """AddResult defaults should be zero counts and empty list."""
         result = AddResult()
         assert result.stored_count == 0
         assert result.skipped_count == 0
@@ -108,7 +110,7 @@ class TestDataclasses:
         assert result.replacements == []
 
     def test_phase1_result_fields(self):
-        '''Phase1Result should store all fields.'''
+        """Phase1Result should store all fields."""
         result = Phase1Result(
             unique_memories=["a", "b"],
             storage_duplicates=["c"],
@@ -119,7 +121,7 @@ class TestDataclasses:
         assert result.batch_duplicates_count == 1
 
     def test_phase2_result_fields(self):
-        '''Phase2Result should store all fields.'''
+        """Phase2Result should store all fields."""
         result = Phase2Result(
             replacement_map={},
             total_replacements=0,
@@ -128,7 +130,7 @@ class TestDataclasses:
         assert result.total_replacements == 0
 
     def test_phase3_result_fields(self):
-        '''Phase3Result should store all fields.'''
+        """Phase3Result should store all fields."""
         result = Phase3Result(
             stored_count=2,
             replaced_count=1,
@@ -146,12 +148,12 @@ class TestDataclasses:
 
 @pytest.mark.unit
 class TestDuplicateDetectionPhase:
-    '''Tests for Phase 1: Duplicate Detection.'''
+    """Tests for Phase 1: Duplicate Detection."""
 
     async def test_execute_no_duplicates(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''All unique memories should pass through.'''
+        """All unique memories should pass through."""
         phase = DuplicateDetectionPhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -172,7 +174,7 @@ class TestDuplicateDetectionPhase:
     async def test_execute_with_batch_duplicates(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Duplicate memories within batch should be deduplicated.'''
+        """Duplicate memories within batch should be deduplicated."""
         phase = DuplicateDetectionPhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -190,7 +192,7 @@ class TestDuplicateDetectionPhase:
     async def test_execute_with_storage_duplicates(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Memories already in storage should be marked as duplicates.'''
+        """Memories already in storage should be marked as duplicates."""
         phase = DuplicateDetectionPhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -219,12 +221,12 @@ class TestDuplicateDetectionPhase:
 
 @pytest.mark.unit
 class TestSmartReplacementPhase:
-    '''Tests for Phase 2: Smart Replacement Detection.'''
+    """Tests for Phase 2: Smart Replacement Detection."""
 
     def test_get_smart_replacer_when_memory_manager_is_none(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''_get_smart_replacer returns None when memory_manager is None (line 291).'''
+        """_get_smart_replacer returns None when memory_manager is None (line 291)."""
         phase = SmartReplacementPhase(
             semantic_engine=mock_semantic_engine,
             config=mock_config,
@@ -236,7 +238,7 @@ class TestSmartReplacementPhase:
     def test_get_smart_replacer_returns_replacer(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''_get_smart_replacer should delegate to memory_manager.smart_replacer.'''
+        """_get_smart_replacer should delegate to memory_manager.smart_replacer."""
         mock_mm = MagicMock()
         mock_mm.smart_replacer = MagicMock()
         phase = SmartReplacementPhase(
@@ -250,7 +252,7 @@ class TestSmartReplacementPhase:
     async def test_execute_no_smart_replacer(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Phase 2 should return empty results when no smart replacer (line 311-316).'''
+        """Phase 2 should return empty results when no smart replacer (line 311-316)."""
         phase = SmartReplacementPhase(
             semantic_engine=mock_semantic_engine,
             config=mock_config,
@@ -265,7 +267,7 @@ class TestSmartReplacementPhase:
     async def test_execute_empty_memories(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Phase 2 should return early on empty memories list.'''
+        """Phase 2 should return early on empty memories list."""
         mock_mm = MagicMock()
         mock_mm.smart_replacer = MagicMock()
         phase = SmartReplacementPhase(
@@ -281,7 +283,7 @@ class TestSmartReplacementPhase:
     async def test_check_for_replacement_no_similar_results(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''No similar results from semantic search returns empty list.'''
+        """No similar results from semantic search returns empty list."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -300,7 +302,7 @@ class TestSmartReplacementPhase:
     async def test_check_for_replacement_below_threshold(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Candidates below similarity threshold should be filtered out.'''
+        """Candidates below similarity threshold should be filtered out."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -322,7 +324,7 @@ class TestSmartReplacementPhase:
     async def test_check_for_replacement_same_message_filtered(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Candidates that are identical to new_memory should be filtered out.'''
+        """Candidates that are identical to new_memory should be filtered out."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -344,7 +346,7 @@ class TestSmartReplacementPhase:
     async def test_check_for_replacement_should_replace(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''LLM confirms replacement - should return ReplacementInfo (lines 417-471).'''
+        """LLM confirms replacement - should return ReplacementInfo (lines 417-471)."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -376,7 +378,7 @@ class TestSmartReplacementPhase:
     async def test_check_for_replacement_should_not_replace(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''LLM says no replacement - returns empty list (lines 472-482).'''
+        """LLM says no replacement - returns empty list (lines 472-482)."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -400,7 +402,7 @@ class TestSmartReplacementPhase:
     async def test_check_for_replacement_llm_error_graceful(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''LLM call failure should be handled gracefully (lines 483-493).'''
+        """LLM call failure should be handled gracefully (lines 483-493)."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -425,7 +427,7 @@ class TestSmartReplacementPhase:
     async def test_check_for_replacement_outer_exception(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Outer exception in _check_for_replacement is caught (lines 514-524).'''
+        """Outer exception in _check_for_replacement is caught (lines 514-524)."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -446,7 +448,7 @@ class TestSmartReplacementPhase:
     async def test_execute_with_replacements(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Full execute with replacement detection (lines 417-510).'''
+        """Full execute with replacement detection (lines 417-510)."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -472,7 +474,7 @@ class TestSmartReplacementPhase:
     async def test_execute_multiple_candidates(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Multiple candidates above threshold are all checked (lines 505-510).'''
+        """Multiple candidates above threshold are all checked (lines 505-510)."""
         mock_mm = MagicMock()
         mock_replacer = MagicMock()
         mock_mm.smart_replacer = mock_replacer
@@ -510,12 +512,12 @@ class TestSmartReplacementPhase:
 
 @pytest.mark.unit
 class TestStoragePhase:
-    '''Tests for Phase 3: Sequential Storage.'''
+    """Tests for Phase 3: Sequential Storage."""
 
     async def test_execute_no_replacements(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Simple storage without replacements.'''
+        """Simple storage without replacements."""
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -533,7 +535,7 @@ class TestStoragePhase:
     async def test_execute_dry_run_no_storage(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Dry run should not write to storage (line 670).'''
+        """Dry run should not write to storage (line 670)."""
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -550,7 +552,7 @@ class TestStoragePhase:
     async def test_execute_dry_run_with_replacements(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Dry run should record replacements without deleting (lines 660-663).'''
+        """Dry run should record replacements without deleting (lines 660-663)."""
         replacement_info = ReplacementInfo(
             old_memory="old msg",
             new_memory="new msg",
@@ -579,7 +581,7 @@ class TestStoragePhase:
     async def test_execute_with_replacement_success(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Replacement flow: archive + delete + add (lines 588-649).'''
+        """Replacement flow: archive + delete + add (lines 588-649)."""
         replacement_info = ReplacementInfo(
             old_memory="old msg",
             new_memory="new msg",
@@ -609,7 +611,7 @@ class TestStoragePhase:
     async def test_execute_replacement_old_memory_not_found(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''When old memory ID not found, skip replacement (lines 625-633).'''
+        """When old memory ID not found, skip replacement (lines 625-633)."""
         replacement_info = ReplacementInfo(
             old_memory="old msg",
             new_memory="new msg",
@@ -638,7 +640,7 @@ class TestStoragePhase:
     async def test_execute_replacement_delete_error(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Delete error during replacement is caught gracefully (lines 650-659).'''
+        """Delete error during replacement is caught gracefully (lines 650-659)."""
         replacement_info = ReplacementInfo(
             old_memory="old msg",
             new_memory="new msg",
@@ -667,7 +669,7 @@ class TestStoragePhase:
     async def test_execute_batch_stored_fewer_than_expected(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Warning when batch add returns fewer memories (line 676).'''
+        """Warning when batch add returns fewer memories (line 676)."""
         # Clear side_effect from fixture so return_value is used
         mock_semantic_engine.add_batch.side_effect = None
         mock_semantic_engine.add_batch.return_value = ["msg1"]
@@ -686,7 +688,7 @@ class TestStoragePhase:
     async def test_execute_no_tantivy(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Storage without tantivy engine should still work.'''
+        """Storage without tantivy engine should still work."""
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=None,
@@ -705,7 +707,7 @@ class TestStoragePhase:
     def test_add_memories_batch_empty(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Empty memories list returns empty (line 719).'''
+        """Empty memories list returns empty (line 719)."""
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -718,7 +720,7 @@ class TestStoragePhase:
     def test_add_memories_batch_no_write_lock(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Batch add without write_lock (lines 723-731).'''
+        """Batch add without write_lock (lines 723-731)."""
         mock_semantic_engine.add_batch.return_value = ["msg1", "msg2"]
 
         phase = StoragePhase(
@@ -741,7 +743,7 @@ class TestStoragePhase:
     def test_add_memories_batch_no_write_lock_no_tantivy(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Batch add without write_lock and no tantivy (line 729-731 skip).'''
+        """Batch add without write_lock and no tantivy (line 729-731 skip)."""
         mock_semantic_engine.add_batch.return_value = ["msg1"]
 
         phase = StoragePhase(
@@ -758,7 +760,7 @@ class TestStoragePhase:
     def test_add_memories_batch_with_write_lock(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Batch add with write_lock (lines 733-742).'''
+        """Batch add with write_lock (lines 733-742)."""
         mock_semantic_engine.add_batch.return_value = ["msg1"]
         lock = threading.Lock()
 
@@ -777,7 +779,7 @@ class TestStoragePhase:
     def test_add_memories_batch_with_write_lock_no_tantivy(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Batch add with write_lock but no tantivy (line 740-742 skip).'''
+        """Batch add with write_lock but no tantivy (line 740-742 skip)."""
         mock_semantic_engine.add_batch.return_value = ["msg1"]
         lock = threading.Lock()
 
@@ -795,7 +797,7 @@ class TestStoragePhase:
     def test_add_memories_batch_exception_raises_storage_error(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Exception in batch add raises StorageError (line 754-755).'''
+        """Exception in batch add raises StorageError (line 754-755)."""
         mock_semantic_engine.add_batch.side_effect = RuntimeError("DB error")
 
         phase = StoragePhase(
@@ -814,7 +816,7 @@ class TestStoragePhase:
     def test_delete_memory_no_write_lock(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Delete without write_lock (lines 759-763).'''
+        """Delete without write_lock (lines 759-763)."""
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -830,7 +832,7 @@ class TestStoragePhase:
     def test_delete_memory_no_write_lock_no_tantivy(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Delete without write_lock and no tantivy (line 761-762 skip).'''
+        """Delete without write_lock and no tantivy (line 761-762 skip)."""
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=None,
@@ -845,7 +847,7 @@ class TestStoragePhase:
     def test_delete_memory_with_write_lock(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Delete with write_lock (lines 765-768).'''
+        """Delete with write_lock (lines 765-768)."""
         lock = threading.Lock()
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -862,7 +864,7 @@ class TestStoragePhase:
     def test_delete_memory_with_write_lock_no_tantivy(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Delete with write_lock but no tantivy (line 767-768 skip).'''
+        """Delete with write_lock but no tantivy (line 767-768 skip)."""
         lock = threading.Lock()
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -882,7 +884,7 @@ class TestStoragePhase:
     def test_add_memory_success(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Single memory add succeeds (lines 792-812).'''
+        """Single memory add succeeds (lines 792-812)."""
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -902,7 +904,7 @@ class TestStoragePhase:
     def test_add_memory_success_no_tantivy(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Single memory add without tantivy (line 801 skip).'''
+        """Single memory add without tantivy (line 801 skip)."""
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=None,
@@ -917,7 +919,7 @@ class TestStoragePhase:
     def test_add_memory_duplicate_skipped(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Duplicate memory returns False (lines 782-790).'''
+        """Duplicate memory returns False (lines 782-790)."""
         mock_config.deduplicate_memories = True
         # Tantivy finds exact match
         mock_tantivy_engine.search.return_value = [("dup msg", 1.0)]
@@ -936,7 +938,7 @@ class TestStoragePhase:
     def test_add_memory_dedup_disabled(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''When dedup is disabled, memory is always added.'''
+        """When dedup is disabled, memory is always added."""
         mock_config.deduplicate_memories = False
 
         phase = StoragePhase(
@@ -952,7 +954,7 @@ class TestStoragePhase:
     def test_add_memory_exception_raises_storage_error(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''Exception in _add_memory raises StorageError (lines 814-815).'''
+        """Exception in _add_memory raises StorageError (lines 814-815)."""
         mock_semantic_engine.add.side_effect = RuntimeError("Insert failed")
 
         phase = StoragePhase(
@@ -973,7 +975,7 @@ class TestStoragePhase:
     def test_has_exact_match_delegates(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''_has_exact_match delegates to match_utils.has_exact_match (line 824).'''
+        """_has_exact_match delegates to match_utils.has_exact_match (line 824)."""
         mock_tantivy_engine.search.return_value = [("some msg", 1.0)]
 
         phase = StoragePhase(
@@ -989,7 +991,7 @@ class TestStoragePhase:
     def test_has_exact_match_no_match(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        '''_has_exact_match returns False when no match found.'''
+        """_has_exact_match returns False when no match found."""
         mock_tantivy_engine.search.return_value = []
         mock_semantic_engine.get_id_by_memory.return_value = None
 
@@ -1010,7 +1012,7 @@ class TestStoragePhase:
     def test_archive_for_replacement_success(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Successful archive returns True (lines 850-887).'''
+        """Successful archive returns True (lines 850-887)."""
         mock_semantic_engine.get_id_by_memory.return_value = 42
         mock_semantic_engine.memory_store.archive.return_value = 100
 
@@ -1041,7 +1043,7 @@ class TestStoragePhase:
     def test_archive_for_replacement_mem_not_found(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Archive returns False when memory not found (lines 856-864).'''
+        """Archive returns False when memory not found (lines 856-864)."""
         mock_semantic_engine.get_id_by_memory.return_value = None
 
         phase = StoragePhase(
@@ -1063,7 +1065,7 @@ class TestStoragePhase:
     def test_archive_for_replacement_archive_returns_none(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Archive returns False when archive() returns None (line 889).'''
+        """Archive returns False when archive() returns None (line 889)."""
         mock_semantic_engine.get_id_by_memory.return_value = 42
         mock_semantic_engine.memory_store.archive.return_value = None
 
@@ -1085,7 +1087,7 @@ class TestStoragePhase:
     def test_archive_for_replacement_exception(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        '''Exception during archive returns False (lines 891-900).'''
+        """Exception during archive returns False (lines 891-900)."""
         mock_semantic_engine.get_id_by_memory.side_effect = RuntimeError("DB error")
 
         phase = StoragePhase(
@@ -1112,10 +1114,10 @@ class TestStoragePhase:
 
 @pytest.mark.unit
 class TestAddPipeline:
-    '''Tests for the AddPipeline orchestrator.'''
+    """Tests for the AddPipeline orchestrator."""
 
     async def test_execute_empty_memories(self, mock_config, mock_logger):
-        '''Empty memories list returns default AddResult.'''
+        """Empty memories list returns default AddResult."""
         phase1 = MagicMock()
         phase2 = MagicMock()
         phase2._get_smart_replacer.return_value = None
@@ -1135,7 +1137,7 @@ class TestAddPipeline:
         phase1.execute.assert_not_called()
 
     async def test_execute_full_pipeline(self, mock_config, mock_logger):
-        '''Full pipeline: Phase 1 → Phase 2 → Phase 3.'''
+        """Full pipeline: Phase 1 → Phase 2 → Phase 3."""
         phase1 = MagicMock()
         phase1.execute = AsyncMock(
             return_value=Phase1Result(
@@ -1180,7 +1182,7 @@ class TestAddPipeline:
         assert result.skipped_count == 2
 
     async def test_execute_pipeline_error_live_mode(self, mock_config, mock_logger):
-        '''Pipeline error in live mode raises StorageError (lines 988-1003).'''
+        """Pipeline error in live mode raises StorageError (lines 988-1003)."""
         phase1 = MagicMock()
         phase1.execute = MagicMock(side_effect=RuntimeError("Phase 1 failed"))
 
@@ -1202,7 +1204,7 @@ class TestAddPipeline:
         mock_logger.error.assert_called()
 
     async def test_execute_pipeline_error_dry_run_mode(self, mock_config, mock_logger):
-        '''Pipeline error in dry_run mode does not raise (lines 1002-1003).'''
+        """Pipeline error in dry_run mode does not raise (lines 1002-1003)."""
         phase1 = MagicMock()
         phase1.execute = MagicMock(side_effect=RuntimeError("Phase 1 failed"))
 
@@ -1224,7 +1226,7 @@ class TestAddPipeline:
         mock_logger.error.assert_called()
 
     async def test_execute_dry_run_full_pipeline(self, mock_config, mock_logger):
-        '''Full pipeline in dry_run mode.'''
+        """Full pipeline in dry_run mode."""
         phase1 = MagicMock()
         phase1.execute = AsyncMock(
             return_value=Phase1Result(
@@ -1268,7 +1270,7 @@ class TestAddPipeline:
         phase3.execute.assert_called_once()
 
     async def test_execute_with_replacements(self, mock_config, mock_logger):
-        '''Pipeline with replacements propagates results.'''
+        """Pipeline with replacements propagates results."""
         replacement = ReplacementInfo(
             old_memory="old",
             new_memory="new",

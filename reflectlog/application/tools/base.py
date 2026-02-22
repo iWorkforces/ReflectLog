@@ -1,19 +1,23 @@
 """Base class for MCP tools."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
+
+from reflectlog.core.logging import IStructuredLogger
 
 from ..config import Config
 from ..memory import MemoryManager
-from ..utils import StructuredLogger
 
 
 class BaseTool(ABC):
     """Abstract base class for MCP tools."""
 
     def __init__(
-        self, config: Config, memory_manager: MemoryManager, logger: StructuredLogger
+        self,
+        config: Config,
+        memory_manager: MemoryManager,
+        logger: IStructuredLogger | None,
     ):
         """Initialize tool with dependencies.
 
@@ -22,6 +26,9 @@ class BaseTool(ABC):
             memory_manager: Memory management instance.
             logger: Structured logger instance.
         """
+        if logger is None:
+            raise ValueError("logger is required")
+
         self.config = config
         self.memory = memory_manager
         self.logger = logger
@@ -36,7 +43,7 @@ class BaseTool(ABC):
         pass
 
     @abstractmethod
-    def get_handler(self) -> Callable:
+    def get_handler(self) -> Callable[..., Awaitable[object]]:
         """Get the tool handler function.
 
         Returns:

@@ -1,11 +1,12 @@
-'''Thread safety tests.
+"""Thread safety tests.
 
 These tests verify that the storage layer handles concurrent access
 from multiple threads correctly without data races or corruption.
-'''
+"""
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import cast
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -16,53 +17,56 @@ from reflectlog.application.memory import MemoryManager
 from reflectlog.application.types import Embeddings
 from reflectlog.application.utils import StructuredLogger
 from reflectlog.application.utils.security import SecretString
+from reflectlog.core.logging import IStructuredLogger
 
 
 class MockEmbedder(Embeddings):
-    '''Mock embedder for testing that produces deterministic vectors.'''
+    """Mock embedder for testing that produces deterministic vectors."""
 
     def __init__(self, dims: int = 128) -> None:
         self.dims = dims
         self.call_count = 0
 
     def embed_query(self, text: str) -> list[float]:
-        '''Return deterministic embeddings based on text hash.'''
+        """Return deterministic embeddings based on text hash."""
         self.call_count += 1
         np.random.seed(hash(text) % (2**32))
         embedding: list[float] = np.random.randn(self.dims).astype(np.float32).tolist()
         return embedding
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        '''Embed a list of documents.'''
+        """Embed a list of documents."""
         return [self.embed_query(text) for text in texts]
 
 
-def create_test_config(project_id: str = 'test-thread-safety') -> Config:
-    '''Create a Config instance for testing.'''
+def create_test_config(project_id: str = "test-thread-safety") -> Config:
+    """Create a Config instance for testing."""
     return Config(
         project_id=project_id,
-        openrouter_api_key=SecretString('test-key'),
-        embedder_provider='langchain',
-        embedding_model='mock-model',
+        openrouter_api_key=SecretString("test-key"),
+        embedder_provider="langchain",
+        embedding_model="mock-model",
         embedding_dims=128,
         qwen_embedding_dims=128,
         enable_hybrid_search=False,  # Disable for simpler tests
         search_limit=5,
         deduplicate_memories=True,
         enable_llm_infer=False,
-        log_level='DEBUG',
+        log_level="DEBUG",
     )
 
 
 def create_memory_manager(config: Config) -> MemoryManager:
-    '''Create a MemoryManager with mock embedder.'''
+    """Create a MemoryManager with mock embedder."""
     mock_embedder = MockEmbedder(dims=128)
-    mock_logger = MagicMock(spec=StructuredLogger)
+    mock_logger: IStructuredLogger = cast(
+        IStructuredLogger, MagicMock(spec=StructuredLogger)
+    )
 
     from unittest.mock import patch
 
     with patch(
-        'reflectlog.application.memory.manager.LangchainQwenEmbeddings',
+        "reflectlog.application.memory.manager.LangchainQwenEmbeddings",
         return_value=mock_embedder,
     ):
         manager = MemoryManager(config, mock_logger)
@@ -71,11 +75,11 @@ def create_memory_manager(config: Config) -> MemoryManager:
 
 @pytest.mark.integration
 class TestMemoryManagerThreadSafety:
-    '''Tests for MemoryManager thread safety.'''
+    """Tests for MemoryManager thread safety."""
 
     def test_concurrent_sync_adds(self):
-        '''Test that concurrent sync add operations don't cause data corruption.'''
-        config = create_test_config('test-sync-adds')
+        """Test that concurrent sync add operations don't cause data corruption."""
+        config = create_test_config("test-sync-adds")
         memory_manager = create_memory_manager(config)
 
         num_threads = 10
@@ -83,9 +87,9 @@ class TestMemoryManagerThreadSafety:
         results = [0] * num_threads
 
         def add_memories(thread_id: int):
-            '''Add memories from a thread.'''
+            """Add memories from a thread."""
             memories = [
-                f'Thread {thread_id} - Memory {i}' for i in range(adds_per_thread)
+                f"Thread {thread_id} - Memory {i}" for i in range(adds_per_thread)
             ]
             # add_memories is thread-safe (uses RLock)
             count = memory_manager.add_memories(memories)
@@ -107,19 +111,19 @@ class TestMemoryManagerThreadSafety:
         memory_manager.close()
 
     def test_concurrent_sync_get_all(self):
-        '''Test that concurrent get_all calls are thread-safe.'''
-        config = create_test_config('test-sync-getall')
+        """Test that concurrent get_all calls are thread-safe."""
+        config = create_test_config("test-sync-getall")
         memory_manager = create_memory_manager(config)
 
         # Add initial memories
-        memories = [f'Memory {i}' for i in range(100)]
+        memories = [f"Memory {i}" for i in range(100)]
         memory_manager.add_memories(memories)
 
         num_threads = 10
         results = [None] * num_threads
 
         def get_all_memories(thread_id: int):
-            '''Get all memories from a thread.'''
+            """Get all memories from a thread."""
             # get_all is thread-safe (uses RLock)
             all_memories = memory_manager.get_all()
             results[thread_id] = len(all_memories)
@@ -139,25 +143,25 @@ class TestMemoryManagerThreadSafety:
         memory_manager.close()
 
     def test_concurrent_mixed_operations(self):
-        '''Test that mixed concurrent operations work correctly.'''
-        config = create_test_config('test-mixed-ops')
+        """Test that mixed concurrent operations work correctly."""
+        config = create_test_config("test-mixed-ops")
         memory_manager = create_memory_manager(config)
 
         # Add initial memories
         for i in range(50):
-            memory_manager.add_memories([f'Initial {i}'])
+            memory_manager.add_memories([f"Initial {i}"])
 
         add_count = [0]
         get_count = [0]
 
         def add_operation():
-            '''Add memories from thread.'''
+            """Add memories from thread."""
             for i in range(10):
-                memory_manager.add_memories([f'Concurrent {i}'])
+                memory_manager.add_memories([f"Concurrent {i}"])
                 add_count[0] += 1
 
         def get_operation():
-            '''Get all memories from thread.'''
+            """Get all memories from thread."""
             for _ in range(10):
                 all_memories = memory_manager.get_all()
                 get_count[0] += 1
@@ -184,22 +188,22 @@ class TestMemoryManagerThreadSafety:
         memory_manager.close()
 
     def test_concurrent_deletes(self):
-        '''Test that concurrent delete operations are thread-safe.'''
-        config = create_test_config('test-concurrent-deletes')
+        """Test that concurrent delete operations are thread-safe."""
+        config = create_test_config("test-concurrent-deletes")
         memory_manager = create_memory_manager(config)
 
         # Add memories
         for i in range(20):
-            memory_manager.add_memories([f'Memory {i}'])
+            memory_manager.add_memories([f"Memory {i}"])
 
         deleted_count = [0]
 
         def delete_memories():
-            '''Delete memories from thread.'''
+            """Delete memories from thread."""
             # Try to delete various memories
             for i in range(10):
                 # Try to delete (some will succeed, some won't)
-                result = memory_manager.delete_by_memory(f'Memory {i}')
+                result = memory_manager.delete_by_memory(f"Memory {i}")
                 if result:
                     deleted_count[0] += 1
 
@@ -222,21 +226,21 @@ class TestMemoryManagerThreadSafety:
 
 @pytest.mark.integration
 class TestAsyncConcurrencySafety:
-    '''Tests for async operation safety.'''
+    """Tests for async operation safety."""
 
     @pytest.mark.asyncio
     async def test_async_add_concurrency(self):
-        '''Test that async add operations handle concurrency correctly.'''
-        config = create_test_config('test-async-add')
+        """Test that async add operations handle concurrency correctly."""
+        config = create_test_config("test-async-add")
         memory_manager = create_memory_manager(config)
 
         num_tasks = 20
         memories_per_task = 10
 
         async def add_memories(task_id: int):
-            '''Add memories from an async task.'''
+            """Add memories from an async task."""
             memories = [
-                f'Task {task_id} - Memory {i}' for i in range(memories_per_task)
+                f"Task {task_id} - Memory {i}" for i in range(memories_per_task)
             ]
             await memory_manager.add_memories_async(memories)
 
@@ -255,19 +259,19 @@ class TestAsyncConcurrencySafety:
 
     @pytest.mark.asyncio
     async def test_async_search_concurrency(self):
-        '''Test that async search operations handle concurrency correctly.'''
-        config = create_test_config('test-async-search')
+        """Test that async search operations handle concurrency correctly."""
+        config = create_test_config("test-async-search")
         memory_manager = create_memory_manager(config)
 
         # Add initial memories
-        memories = [f'Memory {i} for testing' for i in range(100)]
+        memories = [f"Memory {i} for testing" for i in range(100)]
         await memory_manager.add_memories_async(memories)
 
         num_tasks = 50
 
         async def search_memories(task_id: int):
-            '''Search from an async task.'''
-            results = await memory_manager.search(f'Memory {task_id % 10}')
+            """Search from an async task."""
+            results = await memory_manager.search(f"Memory {task_id % 10}")
             # Results should always be a list
             assert isinstance(results, list)
 
@@ -279,12 +283,12 @@ class TestAsyncConcurrencySafety:
 
     @pytest.mark.asyncio
     async def test_async_mixed_operations(self):
-        '''Test mixed async operations (add, search, get_all) running concurrently.'''
-        config = create_test_config('test-async-mixed')
+        """Test mixed async operations (add, search, get_all) running concurrently."""
+        config = create_test_config("test-async-mixed")
         memory_manager = create_memory_manager(config)
 
         # Add initial memories
-        initial_memories = [f'Initial memory {i}' for i in range(50)]
+        initial_memories = [f"Initial memory {i}" for i in range(50)]
         await memory_manager.add_memories_async(initial_memories)
 
         add_count = [0]
@@ -292,19 +296,19 @@ class TestAsyncConcurrencySafety:
         get_all_count = [0]
 
         async def add_operation():
-            '''Continuously add memories.'''
+            """Continuously add memories."""
             for i in range(10):
-                await memory_manager.add_memories_async([f'Concurrent add {i}'])
+                await memory_manager.add_memories_async([f"Concurrent add {i}"])
                 add_count[0] += 1
 
         async def search_operation():
-            '''Continuously search.'''
+            """Continuously search."""
             for _ in range(10):
-                await memory_manager.search('memory')
+                await memory_manager.search("memory")
                 search_count[0] += 1
 
         async def get_all_operation():
-            '''Continuously get all memories.'''
+            """Continuously get all memories."""
             import asyncio
 
             for _ in range(10):
@@ -334,30 +338,30 @@ class TestAsyncConcurrencySafety:
 
     @pytest.mark.asyncio
     async def test_concurrent_sync_and_async(self):
-        '''Test that sync and async operations can run concurrently.'''
-        config = create_test_config('test-sync-async')
+        """Test that sync and async operations can run concurrently."""
+        config = create_test_config("test-sync-async")
         memory_manager = create_memory_manager(config)
 
         # Add initial memories
-        initial_memories = [f'Memory {i}' for i in range(50)]
+        initial_memories = [f"Memory {i}" for i in range(50)]
         await memory_manager.add_memories_async(initial_memories)
 
         async_add_count = [0]
         sync_add_count = [0]
 
         async def async_add():
-            '''Async adds.'''
+            """Async adds."""
             for i in range(10):
-                await memory_manager.add_memories_async([f'Async {i}'])
+                await memory_manager.add_memories_async([f"Async {i}"])
                 async_add_count[0] += 1
 
         def sync_add():
-            '''Sync adds in thread pool.'''
+            """Sync adds in thread pool."""
             import asyncio
 
             async def sync_add_wrapper():
                 for i in range(10, 20):
-                    memory_manager.add_memories([f'Sync {i}'])
+                    memory_manager.add_memories([f"Sync {i}"])
                     sync_add_count[0] += 1
 
             loop = asyncio.get_event_loop()

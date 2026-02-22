@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import os
 import sqlite3
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, final
 
 if TYPE_CHECKING:
     from reflectlog.core import IStructuredLogger
@@ -63,6 +63,7 @@ class ArchivedMemoryRecord:
     archived_at: str
 
 
+@final
 class MemoryStore(BaseModel):
     """SQLite-backed memory storage for USearch engine.
 

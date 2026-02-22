@@ -1,7 +1,7 @@
 """Add tool implementation for ReflectLogMCP Server."""
 
 import time
-from typing import Any, cast
+from typing import override
 
 from ..constants import (
     LOG_ADD_MEMORY_PREVIEW_LIMIT,
@@ -15,10 +15,12 @@ from .base import BaseTool
 class AddTool(BaseTool):
     """Tool for adding memories to memory storage."""
 
+    @override
     def get_name(self) -> str:
         """Get the tool name."""
         return "add"
 
+    @override
     def get_instruction_snippet(self) -> str:
         """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
@@ -27,6 +29,7 @@ class AddTool(BaseTool):
             "      Memories must be 1-30720 characters, non-whitespace."
         )
 
+    @override
     def get_handler(self):
         """Get the async tool handler function."""
 
@@ -127,10 +130,7 @@ class AddTool(BaseTool):
 
             # Store memories using async method for better concurrency
             try:
-                memory_manager = cast(Any, self.memory)
-                result = await memory_manager.add_memories_async(
-                    memories, dry_run=dry_run
-                )
+                result = await self.memory.add_memories_async(memories, dry_run=dry_run)
 
                 # Log completion summary with timing
                 duration = (time.time() - start_time) * 1000  # ms

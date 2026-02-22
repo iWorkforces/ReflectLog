@@ -5,7 +5,7 @@ The tool abstraction enables discoverable, configurable tools that can
 be added without modifying core application logic.
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -30,7 +30,7 @@ class ToolDefinition:
     name: str
     description: str
     parameters: list[ToolParameter]
-    handler: Callable[..., Any]
+    handler: Callable[..., Awaitable[object]]
 
 
 @dataclass

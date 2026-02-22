@@ -2,7 +2,7 @@
 
 import logging
 import math
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, final, override
 
 if TYPE_CHECKING:
     from reflectlog.core import IStructuredLogger
@@ -12,6 +12,8 @@ from ranx import Run
 from ranx import fuse as ranx_fuse
 
 from reflectlog.application.utils.numba_utils import normalize_scores_minmax
+
+from .base import FusionEngine
 
 # Supported fusion methods (unsupervised, no training data required)
 # Note: ranx uses 'sum', 'mnz', 'max' instead of 'combsum', 'combmnz', 'combmax'
@@ -32,7 +34,8 @@ DEFAULT_NORMALIZATIONS: dict[str, str | None] = {
 }
 
 
-class RanxFusionEngine:
+@final
+class RanxFusionEngine(FusionEngine):
     """Fusion engine using the ranx library.
 
     This engine supports multiple fusion algorithms and normalization
@@ -210,6 +213,7 @@ class RanxFusionEngine:
             for msg, score in zip(memories, normalized_scores, strict=True)
         ]
 
+    @override
     def fuse(
         self,
         *result_sets: list[tuple[str, float]],

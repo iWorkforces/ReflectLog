@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from reflectlog.infrastructure import TantivyEngine
 
 from reflectlog.application.types import ISemanticSearchEngine
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 
 
 def escape_tantivy_query(query: str) -> str:
@@ -31,7 +31,7 @@ def has_exact_match(
     tantivy_engine: TantivyEngine | None,
     project_id: str,
     content: str,
-    logger: StructuredLogger | None,
+    logger: IStructuredLogger | None,
 ) -> bool:
     """Check whether the exact content already exists in storage.
 

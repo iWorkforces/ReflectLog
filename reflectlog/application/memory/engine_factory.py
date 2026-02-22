@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from reflectlog.application.config import Config
 from reflectlog.application.memory.fusion import FusionEngine, create_fusion_engine
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure import (
     CachedEmbeddings,
     CrossEncoderConfig,
@@ -58,7 +58,7 @@ class EngineFactory:
     def create_engines(
         self,
         config: Config,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ) -> EngineFactoryResult:
         """Create and configure all search engines based on configuration.
 
@@ -89,7 +89,7 @@ class EngineFactory:
     def _create_semantic_engine(
         self,
         config: Config,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ) -> USearchEngine:
         """Create and configure USearch semantic engine.
 
@@ -107,7 +107,7 @@ class EngineFactory:
     def _create_embedder(
         self,
         config: Config,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ) -> LangchainQwenEmbeddings | CachedEmbeddings:
         """Create embedder with optional caching.
 
@@ -143,7 +143,7 @@ class EngineFactory:
     def _create_tantivy_engine(
         self,
         config: Config,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ) -> TantivyEngine | None:
         """Create Tantivy full-text engine if hybrid search is enabled.
 
@@ -169,7 +169,7 @@ class EngineFactory:
     def _create_fusion_engine(
         self,
         config: Config,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ) -> FusionEngine:
         """Create fusion engine for hybrid ranking.
 
@@ -190,7 +190,7 @@ class EngineFactory:
 
 def create_llm_reranker(
     config: Config,
-    logger: StructuredLogger,
+    logger: IStructuredLogger | None,
 ) -> LLMReranker | None:
     """Create LLM reranker if configured.
 
@@ -210,7 +210,7 @@ def create_llm_reranker(
 
 def create_cross_encoder_reranker(
     config: Config,
-    logger: StructuredLogger,
+    logger: IStructuredLogger | None,
 ) -> CrossEncoderReranker | None:
     """Create CrossEncoder reranker if configured.
 
@@ -230,7 +230,7 @@ def create_cross_encoder_reranker(
 
 def create_smart_replacer(
     config: Config,
-    logger: StructuredLogger,
+    logger: IStructuredLogger | None,
 ) -> SmartReplacer | None:
     """Create SmartReplacer if enabled.
 

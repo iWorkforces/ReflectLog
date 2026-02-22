@@ -18,7 +18,7 @@ Example:
 from dataclasses import dataclass
 import importlib
 import threading
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, final
 
 if TYPE_CHECKING:
     from reflectlog.core import IStructuredLogger
@@ -90,6 +90,18 @@ class CrossEncoderConfig:
         )
 
 
+class FlagRerankerProtocol(Protocol):
+    def compute_score(
+        self,
+        sentence_pairs: list[tuple[str, str]],
+        *,
+        batch_size: int,
+        max_length: int,
+        normalize: bool,
+    ) -> float | list[float]: ...
+
+
+@final
 class CrossEncoderReranker(BaseModel):
     """Cross-encoder reranker using FlagEmbedding's FlagReranker.
 
@@ -123,7 +135,7 @@ class CrossEncoderReranker(BaseModel):
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     @property
-    def model(self) -> Any:
+    def model(self) -> FlagRerankerProtocol:
         """Get FlagReranker model (thread-safe lazy initialization).
 
         Returns:
@@ -150,10 +162,7 @@ class CrossEncoderReranker(BaseModel):
                     )
 
                 flag_embedding_module = importlib.import_module("FlagEmbedding")
-                flag_reranker_class = cast(
-                    Any,
-                    flag_embedding_module,
-                ).FlagReranker
+                flag_reranker_class = flag_embedding_module.FlagReranker
 
                 # Suppress tokenizer optimization warning from transformers
                 # ("You're using a XLMRobertaTokenizerFast tokenizer...")

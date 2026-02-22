@@ -1,7 +1,5 @@
 """Type stubs for tantivy-py library."""
 
-from typing import Any
-
 class FieldEntry:
     """A field entry in the schema."""
 
@@ -80,14 +78,14 @@ class Document:
         """Add a signed integer value to the document."""
         ...
 
-    def get_first(self, field: str) -> Any | None:
+    def get_first(self, field: str) -> str | None:
         """Get the first value for a field."""
         ...
 
 class TopDocs:
     """Search results from a Tantivy query."""
 
-    hits: list[tuple[float, Any]]
+    hits: list[tuple[float, object]]
 
 class Searcher:
     """A Tantivy searcher for executing queries."""
@@ -96,7 +94,7 @@ class Searcher:
         """Execute a search query."""
         ...
 
-    def doc(self, doc_address: Any) -> Document:
+    def doc(self, doc_address: object) -> Document:
         """Retrieve a document by address."""
         ...
 

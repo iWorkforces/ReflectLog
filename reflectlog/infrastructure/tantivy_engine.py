@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import os
 import threading
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, final
 
 if TYPE_CHECKING:
     from typing import TypeGuard
@@ -84,6 +84,7 @@ TANTIVY_SCHEMA_VERSION = 2
 DEFAULT_TANTIVY_DOC_LIMIT = 100000  # Fallback if searcher doc count unavailable
 
 
+@final
 class TantivyEngine(BaseModel):
     """Tantivy full-text search engine wrapper.
 
@@ -311,7 +312,7 @@ class TantivyEngine(BaseModel):
                 doc = self.searcher.doc(doc_addr)
                 memory = doc.get_first("content")
                 if memory is not None:
-                    msg_str = cast(str, memory)
+                    msg_str = memory
                     # Skip tombstoned memories and duplicates
                     if msg_str not in tombstoned_memories and msg_str not in seen:
                         results.append(msg_str)
@@ -384,7 +385,7 @@ class TantivyEngine(BaseModel):
                 project_id = doc.get_first("project_id")
                 memory = doc.get_first("content")
                 if project_id is not None and memory is not None:
-                    results.append((cast(str, project_id), cast(str, memory)))
+                    results.append((project_id, memory))
 
             return results
 
@@ -560,7 +561,7 @@ class TantivyEngine(BaseModel):
                                 },
                             )
                         break
-                    tombstoned.add(cast(str, memory))
+                    tombstoned.add(memory)
 
             # Store in cache with LRU eviction (thread-safe write)
             with self._tombstone_cache_lock:
@@ -690,7 +691,9 @@ class TantivyEngine(BaseModel):
 
             for score, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
-                memory = cast(str, doc.get_first("content"))
+                memory = doc.get_first("content")
+                if not isinstance(memory, str):
+                    continue
 
                 # Skip tombstoned memories (post-filtering with cached set)
                 if memory in tombstoned_memories:
@@ -1122,11 +1125,11 @@ class TantivyEngine(BaseModel):
                 if is_deleted == 1:
                     tombstones += 1
                     if memory is not None:
-                        tombstoned_memories.add(cast(str, memory))
+                        tombstoned_memories.add(memory)
                 else:
                     active_docs += 1
                     if memory is not None:
-                        active_memories.add(cast(str, memory))
+                        active_memories.add(memory)
 
             # Unique active memories = active memories NOT in tombstoned set
             unique_active = active_memories - tombstoned_memories
@@ -1229,8 +1232,18 @@ class TantivyEngine(BaseModel):
             # Get stats before compaction
             stats_before = self.get_tombstone_stats()
 
+            index = self._index
+            if index is None:
+                return {
+                    "compacted": False,
+                    "removed_tombstones": 0,
+                    "removed_originals": 0,
+                    "remaining_docs": 0,
+                    "elapsed_ms": 0,
+                }
+
             # Get all documents with their deletion status
-            query = self._index.parse_query(  # type: ignore[union-attr]
+            query = index.parse_query(
                 query="*",
                 default_field_names=["content"],
             )
@@ -1250,11 +1263,9 @@ class TantivyEngine(BaseModel):
                 is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
 
                 if project_id is not None and memory is not None:
-                    all_docs.append(
-                        (cast(str, project_id), cast(str, memory), is_deleted)
-                    )
+                    all_docs.append((project_id, memory, is_deleted))
                     if is_deleted == 1:
-                        tombstoned_memories.add(cast(str, memory))
+                        tombstoned_memories.add(memory)
 
             # Filter to keep only active memories that don't have tombstones
             docs_to_keep: list[tuple[str, str]] = []

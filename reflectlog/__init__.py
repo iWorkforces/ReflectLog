@@ -3,6 +3,8 @@
 This module provides the public API for ReflectLogMCP.
 """
 
+from typing import Any
+
 # Export exception hierarchy for error handling
 from reflectlog.application.exceptions import (
     ConfigurationError,
@@ -22,7 +24,7 @@ from reflectlog.version import __version__
 # Lazy import for main to avoid circular imports
 # main is only needed when the module is used as a server entry point
 # Using __getattr__ for lazy loading
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy import for server.main to avoid circular imports."""
     if name == "main":
         from reflectlog.server import main
