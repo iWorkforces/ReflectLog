@@ -11,10 +11,9 @@ from dataclasses import dataclass
 import os
 import sqlite3
 import threading
-from typing import TYPE_CHECKING, Any, final
+from typing import Any, final
 
-if TYPE_CHECKING:
-    from reflectlog.core import IStructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 

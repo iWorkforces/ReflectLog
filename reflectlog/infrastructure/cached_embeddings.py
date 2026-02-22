@@ -1,11 +1,7 @@
 """Cached embeddings wrapper for query embedding LRU caching."""
 
 import hashlib
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from reflectlog.core import IStructuredLogger
-
+from reflectlog.core.logging import IStructuredLogger
 from cachetools import LRUCache
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 

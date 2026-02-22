@@ -18,18 +18,15 @@ Example:
 from dataclasses import dataclass
 import importlib
 import threading
-from typing import TYPE_CHECKING, Any, Protocol, final
+from typing import Any, Protocol, final
 
-if TYPE_CHECKING:
-    from reflectlog.core import IStructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 import warnings
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.config import Config
 
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass(frozen=True)

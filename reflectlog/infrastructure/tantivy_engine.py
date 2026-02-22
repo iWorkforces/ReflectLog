@@ -14,10 +14,11 @@ from typing import TYPE_CHECKING, Any, final
 if TYPE_CHECKING:
     from typing import TypeGuard
 
-    from reflectlog.core import IStructuredLogger
+
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+from reflectlog.core.logging import IStructuredLogger
 import tantivy
 
 from reflectlog.application.exceptions import SearchError
