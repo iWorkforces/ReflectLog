@@ -63,6 +63,14 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 **RRF Fusion** - `score(doc) = sum(1/(k+rank))` with `k=60` default. Normalized to 0-1 range.
 
+**Concurrency Model** - Hybrid threading + async:
+- `asyncify` wraps sync methods for async callers (preferred over `run_in_executor`)
+- `asyncer.create_task_group` ONLY when `soonify` is needed (return value capture)
+- `anyio.create_task_group` for fire-and-forget parallel tasks
+- `anyio.Semaphore` for concurrency limiting
+- `threading.Lock/RLock` for cross-thread state protection (C libraries)
+- NEVER use `asyncio.Lock` — it cannot protect across `asyncify` thread boundaries
+
 **No CI/CD** - No `.github/workflows`. Manual testing with custom shell wrappers (`start-*.sh`).
 
 **90% Coverage Minimum** - Enforced by test runner (unusually high).

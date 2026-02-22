@@ -21,6 +21,7 @@ import threading
 from typing import Any, Protocol, final
 import warnings
 
+from asyncer import asyncify
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.config import Config
@@ -475,6 +476,4 @@ class CrossEncoderReranker(BaseModel):
             List of (document, cross_encoder_score) tuples, sorted by score
             descending, filtered by score_threshold, and limited to top_k results.
         """
-        from asyncer import asyncify
-
         return await asyncify(self.rerank)(query, candidates, timestamp_map)

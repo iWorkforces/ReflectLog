@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from asyncer import asyncify
 from reflectlog.application.config import Config
 from reflectlog.application.memory import MemoryManager
 from reflectlog.application.types import Embeddings
@@ -308,13 +309,9 @@ class TestAsyncConcurrencySafety:
                 search_count[0] += 1
 
         async def get_all_operation():
-            """Continuously get all memories."""
-            import asyncio
-
+            """Continuously get all memories using asyncify."""
             for _ in range(10):
-                # Run in executor since get_all is sync
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, memory_manager.get_all)
+                await asyncify(memory_manager.get_all)()
                 get_all_count[0] += 1
 
         # Run all operations concurrently

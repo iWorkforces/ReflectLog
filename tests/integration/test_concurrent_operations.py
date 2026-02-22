@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from asyncer import asyncify
 
 from reflectlog.application.config import Config
 from reflectlog.application.memory import MemoryManager
@@ -191,20 +192,10 @@ class TestConcurrentDeletes:
         await memory_manager.add_memories_async([memory])
 
         # Try to delete the same memory multiple times in parallel
-        # Note: delete_by_memory is synchronous, so we use it directly
+        # Note: delete_by_memory is synchronous, so we use asyncify
         tasks = []
         for _ in range(5):
-            # Run in thread pool since delete is sync
-            import asyncio
-
-            async def delete_wrapper():
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None, memory_manager.delete_by_memory, memory
-                )
-                return None
-
-            tasks.append(delete_wrapper())
+            tasks.append(asyncify(memory_manager.delete_by_memory)(memory))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -241,17 +232,12 @@ class TestConcurrentDeletes:
 
         async def delete_existing_memories():
             """Delete existing memories using search_for_removal."""
-            import asyncio
-
             for i in range(5):
                 # Search for the memory
                 candidates = memory_manager.search_for_removal(f"Memory {i}", limit=1)
                 if candidates:
-                    # Delete in thread pool since delete is sync
-                    loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(
-                        None, memory_manager.delete_by_memory, candidates[0]["memory"]
-                    )
+                    # Use asyncify since delete is sync
+                    await asyncify(memory_manager.delete_by_memory)(candidates[0]["memory"])
                     deleted_count[0] += 1
                 await asyncio.sleep(0.01)
 
@@ -340,14 +326,8 @@ class TestConcurrentGetAll:
         memories = [f"Memory {i}" for i in range(10)]
         await memory_manager.add_memories_async(memories)
 
-        # Call get_all multiple times concurrently using thread pool
-        import asyncio
-
-        async def get_all_async():
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, memory_manager.get_all)
-
-        tasks = [get_all_async() for _ in range(10)]
+        # Call get_all multiple times concurrently using asyncify
+        tasks = [asyncify(memory_manager.get_all)() for _ in range(10)]
         results = await asyncio.gather(*tasks)
 
         # All calls should return the same results
@@ -472,29 +452,21 @@ class TestAsyncConcurrencySafety:
 
         async def delete_operation():
             """Continuously remove memories."""
-            import asyncio
-
             for i in range(5):
                 # Search for the memory
                 candidates = memory_manager.search_for_removal(
                     f"Concurrent add {i}", limit=1
                 )
                 if candidates:
-                    # Delete in thread pool since delete is sync
-                    loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(
-                        None, memory_manager.delete_by_memory, candidates[0]["memory"]
-                    )
+                    # Use asyncify since delete is sync
+                    await asyncify(memory_manager.delete_by_memory)(candidates[0]["memory"])
                     deleted_count[0] += 1
                 await asyncio.sleep(0.001)
 
         async def get_all_operation():
-            """Continuously get all memories using thread pool."""
-            import asyncio
-
+            """Continuously get all memories using asyncify."""
             for _ in range(10):
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, memory_manager.get_all)
+                await asyncify(memory_manager.get_all)()
                 await asyncio.sleep(0.001)
 
         # Run all operations concurrently

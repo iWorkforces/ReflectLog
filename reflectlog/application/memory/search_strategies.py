@@ -20,7 +20,10 @@ if TYPE_CHECKING:
         TantivyEngine,
     )
 
-from asyncer import asyncify, create_task_group
+from asyncer import (
+    asyncify,
+    create_task_group,
+)
 
 from ...core.logging import IStructuredLogger
 from ..config import Config
@@ -257,7 +260,7 @@ class SearchPipeline:
         if self._tantivy_engine is not None:
             self._tantivy_engine.ensure_initialized()
 
-        # Run both searches in parallel
+        # asyncer task group required: soonify captures SoonValue results from parallel USearch + Tantivy searches
         soon_semantic = None
         soon_tantivy = None
         async with create_task_group() as tg:

@@ -199,7 +199,7 @@ class DuplicateDetectionPhase:
                 is_dup = await asyncify(self._has_exact_match)(memory)
                 return (memory, is_dup)
 
-        # Run all duplicate checks in parallel
+        # asyncer task group required: soonify captures SoonValue results from parallel checks
         results: list[tuple[str, bool]] = []
         async with create_task_group() as tg:
 
@@ -346,6 +346,7 @@ class SmartReplacementPhase:
         # Limit concurrent replacement checks to avoid overload
         semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
+        # asyncer task group required: soonify captures SoonValue results from parallel replacement checks
         replacement_results: list[tuple[str, list[ReplacementInfo]]] = []
         async with create_task_group() as tg:
 
@@ -525,6 +526,7 @@ class SmartReplacementPhase:
                 result = await check_single_candidate(existing_memory, similarity_score)
                 results.append(result)
 
+            # anyio task group sufficient: fire-and-forget pattern for candidate checks
             async with anyio.create_task_group() as tg:
                 for existing_memory, similarity_score in filtered_candidates:
                     tg.start_soon(collect_result, existing_memory, similarity_score)
