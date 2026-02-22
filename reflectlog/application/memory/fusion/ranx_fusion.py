@@ -2,7 +2,10 @@
 
 import logging
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from reflectlog.core import IStructuredLogger
 
 import numpy as np
 from ranx import Run
@@ -34,7 +37,7 @@ class RanxFusionEngine:
 
     This engine supports multiple fusion algorithms and normalization
     strategies provided by the ranx library. It converts between the
-    internal (message, score) tuple format and ranx's Run objects.
+    internal (memory, score) tuple format and ranx's Run objects.
 
     Supported methods:
         - rrf: Reciprocal Rank Fusion (default)
@@ -60,7 +63,7 @@ class RanxFusionEngine:
         method: str = "rrf",
         normalization: str | None = None,
         rrf_k: int = 60,
-        logger: Any | None = None,
+        logger: IStructuredLogger | None = None,
     ):
         """Initialize the ranx fusion engine.
 
@@ -77,6 +80,8 @@ class RanxFusionEngine:
         Raises:
             ValueError: If method or normalization is not supported.
         """
+        super().__init__()
+
         if method not in SUPPORTED_METHODS:
             raise ValueError(
                 f"Unsupported fusion method: '{method}'. "
@@ -110,7 +115,7 @@ class RanxFusionEngine:
         return self._rrf_k
 
     def _convert_to_run(self, result_set: list[tuple[str, float]], name: str) -> Run:
-        """Convert (message, score) tuples to a ranx Run object.
+        """Convert (memory, score) tuples to a ranx Run object.
 
         Handles duplicate documents within the same result set by averaging their
         scores. This provides better fusion quality than keeping only the first
@@ -123,18 +128,18 @@ class RanxFusionEngine:
             # doc1 score: (0.9 + 0.7) / 2 = 0.8
 
         Args:
-            result_set: List of (message, score) tuples. May contain duplicate
-                       messages with different scores.
+            result_set: List of (memory, score) tuples. May contain duplicate
+                       memories with different scores.
             name: Name for the Run object.
 
         Returns:
-            ranx Run object with messages as document IDs. Duplicate messages
+            ranx Run object with memories as document IDs. Duplicate memories
             are represented once with their averaged score.
         """
         if not result_set:
             return Run({self._QUERY_ID: {}}, name=name)
 
-        # Use message content as doc_id, original score as value
+        # Use memory content as doc_id, original score as value
         # Handle duplicates within a list by averaging their scores
         # This provides better fusion quality than keeping first occurrence
         doc_score_sums: dict[str, float] = {}
@@ -155,13 +160,13 @@ class RanxFusionEngine:
         return Run({self._QUERY_ID: doc_scores}, name=name)
 
     def _convert_from_run(self, run: Run) -> list[tuple[str, float]]:
-        """Convert a ranx Run object back to (message, score) tuples.
+        """Convert a ranx Run object back to (memory, score) tuples.
 
         Args:
             run: ranx Run object after fusion.
 
         Returns:
-            List of (message, fused_score) tuples sorted by score descending.
+            List of (memory, fused_score) tuples sorted by score descending.
         """
         if self._QUERY_ID not in run.run:
             return []
@@ -184,7 +189,7 @@ class RanxFusionEngine:
         Performance: Uses numba-accelerated normalization for vectorized operations.
 
         Args:
-            results: List of (message, score) tuples.
+            results: List of (memory, score) tuples.
 
         Returns:
             List with scores normalized to 0-1 range.
@@ -192,8 +197,8 @@ class RanxFusionEngine:
         if not results:
             return results
 
-        # Extract messages and scores separately for vectorized processing
-        messages = [msg for msg, _ in results]
+        # Extract memories and scores separately for vectorized processing
+        memories = [msg for msg, _ in results]
         scores = np.array([score for _, score in results], dtype=np.float64)
 
         # Use numba-accelerated normalization (single-pass min/max + vectorized normalize)
@@ -202,7 +207,7 @@ class RanxFusionEngine:
         # Reconstruct result tuples with normalized scores
         return [
             (msg, float(score))
-            for msg, score in zip(messages, normalized_scores, strict=True)
+            for msg, score in zip(memories, normalized_scores, strict=True)
         ]
 
     def fuse(
@@ -212,11 +217,11 @@ class RanxFusionEngine:
         """Fuse multiple ranked lists using the configured algorithm.
 
         Args:
-            *result_sets: Variable number of (message, score) tuple lists.
+            *result_sets: Variable number of (memory, score) tuple lists.
                          Each list should be sorted by score descending.
 
         Returns:
-            List of (message, fused_score) tuples sorted by score descending.
+            List of (memory, fused_score) tuples sorted by score descending.
         """
         # Filter out empty result sets
         non_empty = [rs for rs in result_sets if rs]

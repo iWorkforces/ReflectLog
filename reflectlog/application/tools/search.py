@@ -7,7 +7,7 @@ from pydantic import Field
 
 from ..constants import LOG_SEPARATOR_LENGTH
 from ..exceptions import SearchError
-from ..utils import truncate_message
+from ..utils.validation import truncate_memory
 from .base import BaseTool
 
 
@@ -23,7 +23,7 @@ class SearchTool(BaseTool):
         return (
             "    • search(query: str) -> list[str]\n"
             "      Hybrid semantic + full-text search. Finds semantically similar\n"
-            "      messages using vector embeddings (limit: configurable, default 5)."
+            "      memories using vector embeddings (limit: configurable, default 5)."
         )
 
     def get_handler(self):
@@ -38,9 +38,9 @@ class SearchTool(BaseTool):
                 ),
             ],
         ) -> list[str]:
-            """Search for messages using semantic matching (async).
+            """Search for memories using semantic matching (async).
 
-            This tool performs hybrid semantic + full-text search to find messages
+            This tool performs hybrid semantic + full-text search to find memories
             conceptually similar to the query:
             1. Hybrid search: Combines semantic vector search (USearch) with
                full-text search (Tantivy) using RRF fusion.
@@ -58,7 +58,7 @@ class SearchTool(BaseTool):
                 query: Non-empty search query string (min_length=1 enforced by Pydantic).
 
             Returns:
-                List of semantically similar messages ordered by relevance.
+                List of semantically similar memories ordered by relevance.
                 Returns empty list [] if no matches found.
 
             Raises:
@@ -101,37 +101,37 @@ class SearchTool(BaseTool):
 
                 # Perform async hybrid search directly (search is now async)
                 search_start = time.time()
-                similar_messages = await self.memory.search(
+                similar_memories = await self.memory.search(
                     query,
                     limit=self.config.search_limit,
                 )
                 search_duration = (time.time() - search_start) * 1000  # ms
 
                 # Log final results
-                if similar_messages:
+                if similar_memories:
                     self.logger.info(
                         "=" * LOG_SEPARATOR_LENGTH,
                         extra={"tool": "search", "section": "results"},
                     )
                     self.logger.info(
-                        f"FINAL RESULTS ({len(similar_messages)} message(s)):",
+                        f"FINAL RESULTS ({len(similar_memories)} memory(ies)):",
                         extra={
                             "tool": "search",
                             "query": query,
-                            "result_count": len(similar_messages),
+                            "result_count": len(similar_memories),
                         },
                     )
 
                     # Log each result with preview
-                    for idx, message in enumerate(similar_messages, 1):
-                        preview = truncate_message(message, max_length=70)
+                    for idx, memory in enumerate(similar_memories, 1):
+                        preview = truncate_memory(memory, max_length=70)
                         self.logger.info(
                             f"   [{idx}] {preview}",
                             extra={
                                 "tool": "search",
                                 "query": query,
                                 "result_index": idx,
-                                "total_results": len(similar_messages),
+                                "total_results": len(similar_memories),
                             },
                         )
                 else:
@@ -140,7 +140,7 @@ class SearchTool(BaseTool):
                         extra={"tool": "search", "section": "results"},
                     )
                     self.logger.info(
-                        "FINAL RESULTS: No matching messages found",
+                        "FINAL RESULTS: No matching memories found",
                         extra={
                             "tool": "search",
                             "query": query,
@@ -164,10 +164,10 @@ class SearchTool(BaseTool):
                 )
 
                 self.log_completion(
-                    "search", query=query, result_count=len(similar_messages)
+                    "search", query=query, result_count=len(similar_memories)
                 )
 
-                return similar_messages
+                return similar_memories
 
             except Exception as e:
                 self.log_error("search", e, query=query)

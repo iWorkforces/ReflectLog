@@ -1,14 +1,14 @@
 """Memory storage implementations for ReflectLogMCP.
 
 This subpackage contains implementations of memory storage backends.
-These components handle message persistence and smart replacement detection.
+These components handle memory persistence and smart replacement detection.
 
 Note: The actual implementations are in the parent infrastructure/
-directory. This module re-exports them for backward compatibility.
+directory. This module re-exports them for convenience.
 """
 
-# Re-export from parent module for backward compatibility
-from reflectlog.infrastructure.message_store import MessageRecord, MessageStore
+# Re-export from parent module
+from reflectlog.infrastructure.memory_store import MemoryRecord, MemoryStore
 from reflectlog.infrastructure.smart_replacer import (
     AnthropicReplacementProvider,
     IReplacementProvider,
@@ -22,8 +22,8 @@ from reflectlog.infrastructure.smart_replacer import (
 __all__ = [
     "AnthropicReplacementProvider",
     "IReplacementProvider",
-    "MessageRecord",
-    "MessageStore",
+    "MemoryRecord",
+    "MemoryStore",
     "OpenAIReplacementProvider",
     "ReplacementDecision",
     "SmartReplacer",

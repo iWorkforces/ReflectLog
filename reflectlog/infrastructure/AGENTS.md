@@ -9,7 +9,7 @@ infrastructure/
 ├── search/           # Search engines (USearch, Tantivy)
 ├── embeddings/       # Embedding providers (Qwen3)
 ├── reranking/        # Rerankers (LLM, cross-encoder)
-├── memory/           # Storage (MessageStore, SmartReplacer)
+├── memory/           # Storage (MemoryStore, SmartReplacer)
 └── llm/              # LLM provider protocols
 ```
 
@@ -21,7 +21,7 @@ infrastructure/
 | Tantivy full-text | search/tantivy_engine.py | Soft-delete, tombstone LRU cache |
 | LLM reranking | reranking/llm_reranker.py | Provider abstraction, temporal scoring |
 | Cross-encoder | reranking/cross_encoder.py | Local BAAI/bge-reranker-v2-m3 |
-| Message storage | memory/message_store.py | SQLite CRUD, archival/recovery |
+| Memory storage | memory/memory_store.py | SQLite CRUD, archival/recovery |
 | Smart replacement | memory/smart_replacer.py | LLM update detection, 0.7 threshold |
 | Embedding cache | embeddings/cached.py | LRU cache, 100 entry default |
 | Qwen3 embeddings | embeddings/langchain_qwen.py | Langchain integration |
@@ -34,7 +34,7 @@ infrastructure/
 | TantivyEngine | Class | search/tantivy_engine.py | High | Full-text search, soft-delete |
 | LLMReranker | Class | reranking/llm_reranker.py | Medium | LLM-based scoring, temporal |
 | CrossEncoderReranker | Class | reranking/cross_encoder.py | Low | Local reranking |
-| MessageStore | Class | memory/message_store.py | Medium | SQLite persistence |
+| MemoryStore | Class | memory/memory_store.py | Medium | SQLite persistence |
 | SmartReplacer | Class | memory/smart_replacer.py | Medium | LLM memory update detection |
 | CachedEmbeddings | Class | embeddings/cached.py | Medium | LRU query cache |
 
@@ -63,6 +63,6 @@ infrastructure/
 - Never use bare `except:` - catch specific third-party exceptions (usearch.SearchError, tantivy.TantivyError)
 - Never mix LLM providers in same reranker instance (provider set once in __init__)
 - Never skip tombstone compaction check in Tantivy (memory leak risk)
-- Never create new MessageStore per request - reuse instance
+- Never create new MemoryStore per request - reuse instance
 - Never call LLM provider sync - all methods async
 - Never use hard-coded model names - pull from config

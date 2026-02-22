@@ -1,7 +1,7 @@
 # ReflectLogMCP Knowledge Base
 
-**Generated:** 2026-01-29
-**Commit:** 35326f6
+**Generated:** 2026-02-22
+**Commit:** 6c2d6fa
 **Branch:** develop
 
 ## OVERVIEW
@@ -12,13 +12,13 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 ```
 ./
-├── reflectlog/              # Main package (77 .py files)
+├── reflectlog/              # Main package (80 .py files)
 │   ├── core/              # Protocol definitions (8 files)
 │   ├── application/         # Business logic (41 files)
 │   ├── infrastructure/      # External integrations (16 files)
 │   ├── plugins/           # Plugin system (4 files)
 │   └── utility/           # Platform utilities (8 files)
-├── tests/                # Unit + integration tests (49 files)
+├── tests/                # Unit + integration tests (54 files)
 ├── stubs/               # Type stubs for third-party libs
 ├── indexes/              # Persistent index data
 ├── scripts/              # Build/CI scripts (3 scripts)
@@ -151,7 +151,7 @@ uv run reflectlog --transport http --port 9103
 | tantivy_engine.py | 1,312 | Full-text search wrapper, soft-delete, tombstone caching (LRU), compaction |
 | add_phases.py | 1,027 | 3-phase parallel pipeline, smart replacement LLM checks, sequential storage |
 | manager.py | 1,016 | Memory manager facade, complex initialization, lock hierarchy |
-| message_store.py | 865 | SQLite CRUD, archival/recovery, batch operations |
+| memory_store.py | 865 | SQLite CRUD, archival/recovery, batch operations |
 | usearch_engine.py | 839 | Vector search wrapper, batch operations, dual search modes |
 | validation.py | 773 | 60+ env var validation, type/range checking, SQL injection prevention |
 | search_strategies.py | 687 | 4-step pipeline, RRF fusion, threshold filtering, reranking |
@@ -162,13 +162,20 @@ uv run reflectlog --transport http --port 9103
 
 | Path | Score | Reason |
 |-------|--------|--------|
-| `reflectlog/` | 140 | Highest complexity (77 files, 5 packages) |
+| `reflectlog/` | 140 | Highest complexity (80 files, 5 packages) |
 | `reflectlog/application/` | 140 | Business logic (41 files, 4 subdirs) |
-| `reflectlog/infrastructure/` | 65 | External integrations (16 files, 4 subdirs) |
+| `reflectlog/infrastructure/` | 65 | External integrations (16 files, 5 subdirs) |
 | `reflectlog/application/memory/` | 52 | Memory management (14 files, 2 subdirs) |
 | `reflectlog/application/utils/` | 34 | Utilities (10 files, logging/metrics/retry/security) |
 | `reflectlog/core/` | 28 | Protocol definitions (8 files) |
 | `reflectlog/utility/` | 30 | Platform utilities (8 files, 1 subdir) |
 | `reflectlog/plugins/` | 16 | Plugin system (4 files, 1140 lines) |
 | `reflectlog/application/config/` | 19 | Configuration (5 files) |
-| `tests/` | 49 | Test suite (49 files, 90% coverage) |
+| `tests/` | 54 | Test suite (71 files, 90% coverage) |
+| `tests/integration/` | 15 | Integration tests with real engines (7 files) |
+| `tests/unit/application/` | 18 | Application layer unit tests (11 files) |
+| `tests/unit/application/memory/` | 12 | Memory pipeline tests (8 files) |
+| `tests/unit/application/utils/` | 12 | Utility tests (9 files) |
+| `tests/unit/infrastructure/` | 12 | Infrastructure tests (9 files) |
+| `scripts/` | 10 | Build/dev scripts, git hooks (3 files) |
+| `stubs/` | 12 | Type stubs for third-party libs (14 .pyi files) |

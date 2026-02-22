@@ -323,7 +323,7 @@ class SearchPipeline:
             limit: Maximum results (uses config default if None).
 
         Returns:
-            List of matching message strings.
+            List of matching memory strings.
         """
         if limit is None:
             limit = self._config.search_limit
@@ -359,9 +359,9 @@ class SearchPipeline:
 
         # Step 4: Rerank if configured
         if self._reranker is not None:
-            messages = [r.content for r in filtered_results]
-            if messages:
-                reranked = await self._reranker.rerank(query, messages)
+            memories = [r.content for r in filtered_results]
+            if memories:
+                reranked = await self._reranker.rerank(query, memories)
                 final_results = [
                     ISearchResult(
                         content=r.content,

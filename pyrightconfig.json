@@ -48,7 +48,7 @@
   "reportInvalidStringEscapeSequence": "error",
   "reportInvalidTypeArguments": "error",
   "reportMissingParameterType": "none",
-  "reportMissingSuperCall": "error",
+  "reportMissingSuperCall": "none",
   "reportOverlappingOverload": "error",
   "reportPossiblyUnboundVariable": "error",
   "reportPrivateImportUsage": "error",

@@ -17,7 +17,7 @@ SECURITY INSTRUCTIONS:
 # Note: Uses OpenAI Structured Outputs with json_schema for guaranteed JSON format
 # Security: Uses Template.safe_substitute() to prevent prompt injection via braces
 SCORING_PROMPT_TEMPLATE = """You are a relevance scoring system. Score how relevant a document is to a query.
-{_JAILBREAK_PROTECTION}
+$_JAILBREAK_PROTECTION
 OUTPUT FORMAT:
 Return a JSON object with a "score" field containing a float between 0.0 and 1.0.
 Example: {{"score": 0.85}}
@@ -58,7 +58,7 @@ def format_scoring_prompt(query: str, document: str) -> str:
     )
 
 
-# Backward compatibility: static prompt using the new safe formatting
+# Fallback: static prompt using the new safe formatting
 SCORING_PROMPT = format_scoring_prompt(
     query="example query", document="example document"
 )
@@ -68,7 +68,7 @@ SCORING_PROMPT = format_scoring_prompt(
 # More recent memories may reflect updated preferences/information
 # Security: Uses Template.safe_substitute() to prevent prompt injection via braces
 SCORING_PROMPT_WITH_AGE_TEMPLATE = """You are a relevance scoring system. Score how relevant a document is to a query.
-{_JAILBREAK_PROTECTION}
+$_JAILBREAK_PROTECTION
 OUTPUT FORMAT:
 Return a JSON object with a "score" field containing a float between 0.0 and 1.0.
 Example: {{"score": 0.85}}
@@ -118,7 +118,7 @@ def format_scoring_prompt_with_age(query: str, document: str, memory_age: str) -
     )
 
 
-# Backward compatibility: static prompt using the new safe formatting
+# Fallback: static prompt using the new safe formatting
 SCORING_PROMPT_WITH_AGE = format_scoring_prompt_with_age(
     query="example query", document="example document", memory_age="2 hours ago"
 )
@@ -128,7 +128,7 @@ SCORING_PROMPT_WITH_AGE = format_scoring_prompt_with_age(
 # Note: Uses OpenAI Structured Outputs with json_schema for guaranteed JSON format
 # Security: Uses Template.safe_substitute() to prevent prompt injection via braces
 REPLACEMENT_DETECTION_PROMPT_TEMPLATE = """You are a memory replacement detection system. Determine if a new memory should replace an existing one.
-{_JAILBREAK_PROTECTION}
+$_JAILBREAK_PROTECTION
 OUTPUT FORMAT:
 Return a JSON object with the following fields:
 - "should_replace": boolean (true if new memory replaces old, false otherwise)
@@ -186,7 +186,7 @@ def format_replacement_detection_prompt(old_memory: str, new_memory: str) -> str
     )
 
 
-# Backward compatibility: static prompt using the new safe formatting
+# Fallback: static prompt using the new safe formatting
 REPLACEMENT_DETECTION_PROMPT = format_replacement_detection_prompt(
     old_memory="I like cats", new_memory="I don't like cats anymore"
 )
@@ -218,7 +218,7 @@ def build_instructions(tool_snippets: list[tuple[str, str]]) -> str:
         If no tools are provided, returns instructions with "(No tools available)".
 
     Example:
-        >>> snippets = [("add", "    • add(messages: list[str])\\n      ...")]
+        >>> snippets = [("add", "    • add(memories: list[str])\\n      ...")]
         >>> instructions = build_instructions(snippets)
     """
     if not tool_snippets:
@@ -239,33 +239,33 @@ def build_instructions(tool_snippets: list[tuple[str, str]]) -> str:
     return f"{INSTRUCTIONS_HEADER}\n{tool_section}"
 
 
-# Backward compatibility: static fallback with all tools (for direct imports)
+# Fallback: static fallback with all tools (for direct imports)
 # This generates the same output as the previous static MCP_INSTRUCTIONS
 MCP_INSTRUCTIONS = build_instructions(
     [
         (
             "add",
-            "    • add(messages: list[str])\n"
-            "      Add messages with semantic embeddings. Empty lists are no-op.\n"
-            "      Messages must be 1-30720 characters, non-whitespace.",
+            "    • add(memories: list[str])\n"
+            "      Add memories with semantic embeddings. Empty lists are no-op.\n"
+            "      Memories must be 1-30720 characters, non-whitespace.",
         ),
         (
             "get_all",
             "    • get_all() -> list[str]\n"
-            "      Retrieve all stored messages. Returns empty list if none stored.",
+            "      Retrieve all stored memories. Returns empty list if none stored.",
         ),
         (
             "search",
             "    • search(query: str) -> list[str]\n"
             "      Hybrid semantic + full-text search. Finds semantically similar\n"
-            "      messages using vector embeddings (limit: configurable, default 5).",
+            "      memories using vector embeddings (limit: configurable, default 5).",
         ),
         (
             "remove",
-            "    • remove(messages: list[str])\n"
-            "      Remove messages using exact string matching (case-sensitive).\n"
+            "    • remove(memories: list[str])\n"
+            "      Remove memories using exact string matching (case-sensitive).\n"
             "      Uses semantic search to find candidates, then exact match filter.\n"
-            "      Removes all occurrences of each message. Silently ignores non-existent messages.",
+            "      Removes all occurrences of each memory. Silently ignores non-existent memories.",
         ),
         (
             "health_check",

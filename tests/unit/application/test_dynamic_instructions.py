@@ -1,4 +1,4 @@
-"""Tests for dynamic MCP instructions generation."""
+'''Tests for dynamic MCP instructions generation.'''
 # mypy: disable-error-code="misc,var-annotated"
 
 from unittest.mock import MagicMock, patch
@@ -14,10 +14,10 @@ from reflectlog.application.config.prompts import (
 
 @pytest.mark.unit
 class TestBuildInstructions:
-    """Test suite for build_instructions() function."""
+    '''Test suite for build_instructions() function.'''
 
     def test_build_with_all_tools(self):
-        """Test building instructions with all four tools."""
+        '''Test building instructions with all four tools.'''
         snippets = [
             ("add", "    • add snippet"),
             ("get_all", "    • get_all snippet"),
@@ -31,7 +31,7 @@ class TestBuildInstructions:
             assert snippet in result
 
     def test_build_with_subset_of_tools(self):
-        """Test building with only some tools enabled."""
+        '''Test building with only some tools enabled.'''
         snippets = [
             ("add", "    • add snippet"),
             ("search", "    • search snippet"),
@@ -44,7 +44,7 @@ class TestBuildInstructions:
         assert "remove snippet" not in result
 
     def test_build_with_single_tool(self):
-        """Test building with a single tool."""
+        '''Test building with a single tool.'''
         snippets = [("get_all", "    • get_all() -> list[str]")]
         result = build_instructions(snippets)
 
@@ -52,14 +52,14 @@ class TestBuildInstructions:
         assert "add" not in result
 
     def test_build_with_empty_tools(self):
-        """Test building with no tools."""
+        '''Test building with no tools.'''
         result = build_instructions([])
 
         assert INSTRUCTIONS_HEADER in result
         assert "(No tools available)" in result
 
     def test_tool_ordering_preserved(self):
-        """Test tools appear in predefined order regardless of input order."""
+        '''Test tools appear in predefined order regardless of input order.'''
         # Input in reverse order
         snippets = [
             ("remove", "    • remove snippet"),
@@ -78,7 +78,7 @@ class TestBuildInstructions:
         assert add_pos < get_all_pos < search_pos < remove_pos
 
     def test_unknown_tools_appear_at_end_alphabetically(self):
-        """Test unknown tools are sorted to end in alphabetical order."""
+        '''Test unknown tools are sorted to end in alphabetical order.'''
         snippets = [
             ("zebra_tool", "    • zebra snippet"),
             ("add", "    • add snippet"),
@@ -94,23 +94,23 @@ class TestBuildInstructions:
         assert add_pos < alpha_pos < zebra_pos
 
     def test_header_always_present(self):
-        """Header should always be included."""
+        '''Header should always be included.'''
         result = build_instructions([("add", "    • add snippet")])
 
         assert "ReflectLogMCP Server" in result
         assert "Available Tools:" in result
 
     def test_tool_order_constant(self):
-        """Verify TOOL_ORDER contains expected tools in correct order."""
+        '''Verify TOOL_ORDER contains expected tools in correct order.'''
         assert TOOL_ORDER == ["add", "get_all", "search", "remove", "health_check"]
 
 
 @pytest.mark.unit
 class TestToolInstructionSnippets:
-    """Tests for tool get_instruction_snippet() implementations."""
+    '''Tests for tool get_instruction_snippet() implementations.'''
 
     def test_add_tool_snippet_format(self, mock_memory_class, set_env_vars):
-        """Test AddTool provides properly formatted snippet."""
+        '''Test AddTool provides properly formatted snippet.'''
         from reflectlog.application.tools import AddTool
 
         mock_memory_manager = MagicMock()
@@ -120,14 +120,14 @@ class TestToolInstructionSnippets:
         tool = AddTool(mock_config, mock_memory_manager, mock_logger)
         snippet = tool.get_instruction_snippet()
 
-        assert "add(messages: list[str])" in snippet
+        assert "add(memories: list[str])" in snippet
         assert (
             "semantic embeddings" in snippet.lower() or "embeddings" in snippet.lower()
         )
         assert snippet.startswith("    •")
 
     def test_get_all_tool_snippet_format(self, mock_memory_class, set_env_vars):
-        """Test GetAllTool provides properly formatted snippet."""
+        '''Test GetAllTool provides properly formatted snippet.'''
         from reflectlog.application.tools import GetAllTool
 
         mock_memory_manager = MagicMock()
@@ -142,7 +142,7 @@ class TestToolInstructionSnippets:
         assert snippet.startswith("    •")
 
     def test_search_tool_snippet_format(self, mock_memory_class, set_env_vars):
-        """Test SearchTool provides properly formatted snippet."""
+        '''Test SearchTool provides properly formatted snippet.'''
         from reflectlog.application.tools import SearchTool
 
         mock_memory_manager = MagicMock()
@@ -157,7 +157,7 @@ class TestToolInstructionSnippets:
         assert snippet.startswith("    •")
 
     def test_remove_tool_snippet_format(self, mock_memory_class, set_env_vars):
-        """Test RemoveTool provides properly formatted snippet."""
+        '''Test RemoveTool provides properly formatted snippet.'''
         from reflectlog.application.tools import RemoveTool
 
         mock_memory_manager = MagicMock()
@@ -167,19 +167,19 @@ class TestToolInstructionSnippets:
         tool = RemoveTool(mock_config, mock_memory_manager, mock_logger)
         snippet = tool.get_instruction_snippet()
 
-        assert "remove(messages: list[str])" in snippet
+        assert "remove(memories: list[str])" in snippet
         assert "exact" in snippet.lower()
         assert snippet.startswith("    •")
 
 
 @pytest.mark.unit
 class TestDynamicInstructionsIntegration:
-    """Test suite for dynamic MCP instructions with FastMCPServer."""
+    '''Test suite for dynamic MCP instructions with FastMCPServer.'''
 
     def _build_server_and_capture_instructions(
         self, monkeypatch, allowed_value: str | None
     ):
-        """Helper to create a FastMCPServer and capture the instructions."""
+        '''Helper to create a FastMCPServer and capture the instructions.'''
         monkeypatch.setenv("PROJECT_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
@@ -216,49 +216,49 @@ class TestDynamicInstructionsIntegration:
         return server, captured_instructions
 
     def test_instructions_include_all_tools_when_no_restriction(self, monkeypatch):
-        """Instructions should include all tools when ALLOWED_TOOLS is not set."""
+        '''Instructions should include all tools when ALLOWED_TOOLS is not set.'''
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, None
         )
 
-        assert "add(messages: list[str])" in instructions
+        assert "add(memories: list[str])" in instructions
         assert "get_all()" in instructions
         assert "search(query: str)" in instructions
-        assert "remove(messages: list[str])" in instructions
+        assert "remove(memories: list[str])" in instructions
 
     def test_instructions_include_only_allowed_tools(self, monkeypatch):
-        """Instructions should only document tools that are allowed."""
+        '''Instructions should only document tools that are allowed.'''
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "add,search"
         )
 
-        assert "add(messages: list[str])" in instructions
+        assert "add(memories: list[str])" in instructions
         assert "search(query: str)" in instructions
         assert "get_all()" not in instructions
-        assert "remove(messages: list[str])" not in instructions
+        assert "remove(memories: list[str])" not in instructions
 
     def test_instructions_single_tool(self, monkeypatch):
-        """Instructions should work correctly with single tool."""
+        '''Instructions should work correctly with single tool.'''
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "get_all"
         )
 
         assert "get_all()" in instructions
-        assert "add(messages: list[str])" not in instructions
+        assert "add(memories: list[str])" not in instructions
         assert "search(query: str)" not in instructions
-        assert "remove(messages: list[str])" not in instructions
+        assert "remove(memories: list[str])" not in instructions
 
     def test_instructions_show_no_tools_message_when_none_enabled(self, monkeypatch):
-        """Instructions should indicate no tools when none are enabled."""
+        '''Instructions should indicate no tools when none are enabled.'''
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "none"
         )
 
         assert "(No tools available)" in instructions
-        assert "add(messages: list[str])" not in instructions
+        assert "add(memories: list[str])" not in instructions
 
     def test_instructions_header_always_present(self, monkeypatch):
-        """Server description header should always be included."""
+        '''Server description header should always be included.'''
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "add"
         )
@@ -269,19 +269,19 @@ class TestDynamicInstructionsIntegration:
 
 @pytest.mark.unit
 class TestBackwardCompatibility:
-    """Test backward compatibility of MCP_INSTRUCTIONS constant."""
+    '''Test backward compatibility of MCP_INSTRUCTIONS constant.'''
 
     def test_mcp_instructions_constant_includes_all_tools(self):
-        """MCP_INSTRUCTIONS constant should include all tools (backward compatibility)."""
+        '''MCP_INSTRUCTIONS constant should include all tools (backward compatibility).'''
         from reflectlog.application.config.prompts import MCP_INSTRUCTIONS
 
-        assert "add(messages: list[str])" in MCP_INSTRUCTIONS
+        assert "add(memories: list[str])" in MCP_INSTRUCTIONS
         assert "get_all() -> list[str]" in MCP_INSTRUCTIONS
         assert "search(query: str) -> list[str]" in MCP_INSTRUCTIONS
-        assert "remove(messages: list[str])" in MCP_INSTRUCTIONS
+        assert "remove(memories: list[str])" in MCP_INSTRUCTIONS
 
     def test_mcp_instructions_has_header(self):
-        """MCP_INSTRUCTIONS should have proper header."""
+        '''MCP_INSTRUCTIONS should have proper header.'''
         from reflectlog.application.config.prompts import MCP_INSTRUCTIONS
 
         assert "ReflectLogMCP Server" in MCP_INSTRUCTIONS

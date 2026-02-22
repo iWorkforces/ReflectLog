@@ -1,4 +1,4 @@
-"""Load testing for ReflectLogMCP using Locust.
+'''Load testing for ReflectLogMCP using Locust.
 
 Simulates high-traffic scenarios to identify performance bottlenecks
 under concurrent user load and system stress conditions.
@@ -12,7 +12,7 @@ Usage:
 
     # View real-time stats in browser
     locust -f locustfile.py --headless --host http://127.0.0.1:8089 --users 100
-"""
+'''
 
 import asyncio
 from locust import HttpUser, task, between, events  # type: ignore[import]
@@ -21,36 +21,36 @@ from random import randint
 
 
 class ReflectLogMCPUser(HttpUser):
-    """Simulates ReflectLogMCP server user behavior.
+    '''Simulates ReflectLogMCP server user behavior.
 
     Simulates realistic usage patterns:
     - Search queries (varied complexity)
     - Add operations (batching behavior)
     - Mixed operations (simulating real workload)
-    """
+    '''
 
     wait_time = between(randint(1, 5), randint(1, 3))
 
     @task
     def add_memory(self) -> None:
-        """Add a memory to the store.
+        '''Add a memory to the store.
 
         Simulates typical AI assistant usage of storing context.
-        """
+        '''
         self.client.post(
             "/mcp/add",
             json={
-                "messages": [f"Memory {randint(1000, 9999)}"],
+                "memories": [f"Memory {randint(1000, 9999)}"],
             },
         )
         self.wait()
 
     @task
     def search_memory(self) -> None:
-        """Search for stored memories.
+        '''Search for stored memories.
 
         Simulates semantic search queries with varying complexity.
-        """
+        '''
         query_type = randint(1, 3)
         query_lengths = {
             1: randint(10, 50),
@@ -67,50 +67,50 @@ class ReflectLogMCPUser(HttpUser):
 
     @task
     def get_all_memories(self) -> None:
-        """Retrieve all stored memories.
+        '''Retrieve all stored memories.
 
         Simulates full data retrieval operations.
-        """
+        '''
         self.client.get("/mcp/get_all")
         asyncio.sleep(randint(100, 500) / 1000.0)
 
     @task
     def health_check(self) -> None:
-        """Check server health status.
+        '''Check server health status.
 
         Simulates periodic health monitoring.
-        """
+        '''
         self.client.get("/mcp/health_check")
         self.wait()
 
     def on_start(self, *args: object, **kwargs: object) -> None:
-        """Called when user starts a task."""
+        '''Called when user starts a task.'''
         pass
 
     def on_stop(self, *args: object, **kwargs: object) -> None:
-        """Called when user stops a task."""
+        '''Called when user stops a task.'''
         pass
 
 
 @events.init.add_listener
 def on_request(request_type: str, name: str | None, **kwargs: object) -> None:
-    """Track request metrics for analysis.
+    '''Track request metrics for analysis.
 
     Args:
         request_type: Type of request (add, search, get_all, health_check)
         name: Name of the request handler
-    """
+    '''
     # Log request type for analysis
     events.request.fire(request_type=request_type, name=name)
 
 
 @events.test.add
 def test_search_throughput(user: ReflectLogMCPUser):
-    """Test search performance with various query sizes.
+    '''Test search performance with various query sizes.
 
     Ensures search operations maintain acceptable response times
     under increasing query complexity.
-    """
+    '''
     # Test with 50 character queries (simple)
     for i in range(10):
         user.search_memory()
@@ -126,10 +126,10 @@ def test_search_throughput(user: ReflectLogMCPUser):
 
 @events.test.add
 def test_add_performance(user: ReflectLogMCPUser):
-    """Test add performance under load.
+    '''Test add performance under load.
 
     Measures throughput and latency for add operations.
-    """
+    '''
     start_time = events.request_time.get()
     total_memories = 0
     for i in range(100):
@@ -149,10 +149,10 @@ def test_add_performance(user: ReflectLogMCPUser):
 
 @events.test.add
 def test_mixed_workload(user: ReflectLogMCPUser):
-    """Test realistic mixed workload.
+    '''Test realistic mixed workload.
 
     Simulates concurrent users performing various operations.
-    """
+    '''
     # Run operations synchronously for testing
     for i in range(50):
         if randint(1, 100) <= 60:
@@ -174,10 +174,10 @@ def test_mixed_workload(user: ReflectLogMCPUser):
 
 @events.test.add
 def test_concurrent_users(user_factory):
-    """Test system behavior under concurrent user load.
+    '''Test system behavior under concurrent user load.
 
     Identifies bottlenecks and resource contention.
-    """
+    '''
     users = [user_factory() for _ in range(50)]
 
     start_time = events.request_time.get()
@@ -191,18 +191,18 @@ def test_concurrent_users(user_factory):
 
 
 def run_locust_users(users, spawn_rate: float, run_time: int = 60):
-    """Run Locust with specified parameters.
+    '''Run Locust with specified parameters.
 
     Args:
         users: List of user instances to spawn.
         spawn_rate: Users per second to spawn.
         run_time: Seconds to run test.
-    """
+    '''
     # Create temporary config file
     import tempfile
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as f:
-        f.write(f"""
+        f.write(f'''
 [locust]
 locustfile = locustfile.py
 headless = true
@@ -220,7 +220,7 @@ timeout = 120
 users = {len(users)}
 spawn_rate = {spawn_rate}
 run_time = {run_time}
-        """)
+        ''')
         config_path = f.name
 
     import subprocess

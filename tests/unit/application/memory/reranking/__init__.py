@@ -1,1 +1,1 @@
-"""Unit tests for reranking utilities."""
+'''Unit tests for reranking utilities.'''

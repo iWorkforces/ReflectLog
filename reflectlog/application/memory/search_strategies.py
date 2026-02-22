@@ -11,20 +11,26 @@ concern-focused module. It implements the 4-step search pipeline:
 from dataclasses import dataclass
 import math
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from reflectlog.infrastructure import TantivyEngine
+
+    from .manager import MemoryManager
 
 from asyncer import asyncify, create_task_group
 
 from ..config import Config
 from ..exceptions import SearchError
 from ..types import ISemanticSearchEngine
-from ..utils import StructuredLogger, format_fusion_score_status, truncate_message
+from ..utils import StructuredLogger, format_fusion_score_status
+from ..utils.validation import truncate_memory
 from .fusion import FusionEngine
 
 # Constants for magic numbers (documented for maintainability)
 MIN_OVERFETCH_LIMIT = 20  # Minimum docs to fetch for better fusion quality
 TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize to 0-1
-LOG_QUERY_TRUNCATE_LENGTH = 100  # Max query length in log messages
+LOG_QUERY_TRUNCATE_LENGTH = 100
 
 
 @dataclass
@@ -55,13 +61,13 @@ class SearchResult:
     """Result of search pipeline execution.
 
     Attributes:
-        messages: List of message strings.
-        timestamp_map: Mapping from message to created_at timestamp.
+        memories: List of memory strings.
+        timestamp_map: Mapping from memory to created_at timestamp.
         semantic_results: Original semantic search results.
         tantivy_results: Original Tantivy search results.
     """
 
-    messages: list[str]
+    memories: list[str]
     timestamp_map: dict[str, str]
     semantic_results: list[tuple[str, float, str]]
     tantivy_results: list[tuple[str, float]]
@@ -82,11 +88,11 @@ class SearchPipeline:
     def __init__(
         self,
         semantic_engine: ISemanticSearchEngine,
-        tantivy_engine: Any,  # TantivyEngine | None
+        tantivy_engine: TantivyEngine | None,
         fusion_engine: FusionEngine,
         config: Config,
         logger: StructuredLogger,
-        memory_manager: Any,  # MemoryManager for lazy reranker fetching
+        memory_manager: MemoryManager | None,
     ):
         """Initialize search pipeline.
 
@@ -96,8 +102,9 @@ class SearchPipeline:
             fusion_engine: RanxFusionEngine for result fusion.
             config: Application configuration.
             logger: Structured logger instance.
-            memory_manager: MemoryManager instance for lazy reranker fetching.
+            memory_manager: MemoryManager instance for lazy reranker fetching (optional).
         """
+        super().__init__()
         self._semantic_engine = semantic_engine
         self._tantivy_engine = tantivy_engine
         self._fusion_engine = fusion_engine
@@ -112,7 +119,7 @@ class SearchPipeline:
             context: Search context with query, limit, and configuration.
 
         Returns:
-            SearchResult with messages and metadata.
+            SearchResult with memories and metadata.
 
         Raises:
             SearchError: If search operation fails.
@@ -149,12 +156,12 @@ class SearchPipeline:
             limit=context.limit,
         )
 
-        # Build timestamp map and message list
+        # Build timestamp map and memory list
         timestamp_map = {msg: created_at for msg, _, created_at in results}
-        messages = [msg for msg, _, _ in results]
+        memories = [msg for msg, _, _ in results]
 
         return SearchResult(
-            messages=messages,
+            memories=memories,
             timestamp_map=timestamp_map,
             semantic_results=results,
             tantivy_results=[],
@@ -184,7 +191,7 @@ class SearchPipeline:
             # Handle case where all results were filtered out
             if not hybrid_results:
                 return SearchResult(
-                    messages=[],
+                    memories=[],
                     timestamp_map={},
                     semantic_results=semantic_results,
                     tantivy_results=tantivy_results,
@@ -199,22 +206,22 @@ class SearchPipeline:
                 context, hybrid_results, timestamp_map, rerank_step_num
             )
 
-        # Extract final messages
-        messages = [msg for msg, _ in hybrid_results[: context.limit]]
+        # Extract final memories
+        memories = [msg for msg, _ in hybrid_results[: context.limit]]
 
         # Final summary
         self.logger.info(
-            f"SEARCH COMPLETE: {len(messages)} result(s) returned",
+            f"SEARCH COMPLETE: {len(memories)} result(s) returned",
             extra={
                 "project_id": context.project_id,
                 "query": context.query,
-                "result_count": len(messages),
+                "result_count": len(memories),
                 "top_score": hybrid_results[0][1] if hybrid_results else 0.0,
             },
         )
 
         return SearchResult(
-            messages=messages,
+            memories=memories,
             timestamp_map=timestamp_map,
             semantic_results=semantic_results,
             tantivy_results=tantivy_results,
@@ -235,6 +242,8 @@ class SearchPipeline:
             self._tantivy_engine.ensure_initialized()
 
         # Run both searches in parallel
+        soon_semantic = None
+        soon_tantivy = None
         async with create_task_group() as tg:
             soon_semantic = tg.soonify(asyncify(self._search_semantic))(
                 context.query, context.overfetch_limit, context.project_id
@@ -242,6 +251,9 @@ class SearchPipeline:
             soon_tantivy = tg.soonify(asyncify(self._search_tantivy))(
                 context.query, context.overfetch_limit, context.project_id
             )
+
+        assert soon_semantic is not None
+        assert soon_tantivy is not None
 
         semantic_results = soon_semantic.value or []
         tantivy_results = soon_tantivy.value or []
@@ -356,15 +368,15 @@ class SearchPipeline:
             extra={"step": "concatenate", "mode": "concatenate"},
         )
 
-        seen_messages: set[str] = set()
+        seen_memories: set[str] = set()
         combined: list[tuple[str, float]] = []
 
         # Add semantic results first (higher priority)
         for msg, score in semantic_results:
             if len(combined) >= limit:
                 break
-            if msg not in seen_messages:
-                seen_messages.add(msg)
+            if msg not in seen_memories:
+                seen_memories.add(msg)
                 combined.append((msg, score))
 
         semantic_count = len(combined)
@@ -373,8 +385,8 @@ class SearchPipeline:
         for msg, score in tantivy_results:
             if len(combined) >= limit:
                 break
-            if msg not in seen_messages:
-                seen_messages.add(msg)
+            if msg not in seen_memories:
+                seen_memories.add(msg)
                 combined.append((msg, score))
 
         tantivy_added = len(combined) - semantic_count
@@ -430,9 +442,9 @@ class SearchPipeline:
         )
 
         # Show filtered results with status
-        for idx, (message, score) in enumerate(results[: min(5, len(results))], 1):
+        for idx, (memory, score) in enumerate(results[: min(5, len(results))], 1):
             status, interpretation = format_fusion_score_status(score, threshold)
-            preview = truncate_message(message, max_length=50)
+            preview = truncate_memory(memory, max_length=50)
             status_indicator = "[KEEP]" if score >= threshold else "[FILTER]"
             self.logger.info(
                 f"[{idx}] {status_indicator} score={score:.4f} ({interpretation}) -> {preview}",
@@ -485,7 +497,7 @@ class SearchPipeline:
         results: list[tuple[str, float]],
         timestamp_map: dict[str, str],
         step_num: int,
-        llm_reranker=None,  # Optional parameter to use provided reranker
+        llm_reranker: Any | None = None,  # Optional parameter to use provided reranker
     ) -> list[tuple[str, float]]:
         """Rerank using LLM."""
         # Use provided reranker or fetch via _get_reranker
@@ -507,7 +519,10 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        results = await llm_reranker.rerank(context.query, results, timestamp_map)
+        reranked_results = await llm_reranker.rerank(
+            context.query, results, timestamp_map
+        )
+        results = cast(list[tuple[str, float]], reranked_results)
 
         rerank_duration = (time.time() - rerank_start) * 1000
 
@@ -531,7 +546,8 @@ class SearchPipeline:
         context: SearchContext,
         results: list[tuple[str, float]],
         step_num: int,
-        cross_encoder_reranker=None,  # Optional parameter to use provided reranker
+        cross_encoder_reranker: Any
+        | None = None,  # Optional parameter to use provided reranker
     ) -> list[tuple[str, float]]:
         """Rerank using CrossEncoder."""
         # Use provided reranker or fetch via _get_reranker
@@ -553,7 +569,10 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        results = await cross_encoder_reranker.rerank_async(context.query, results)
+        reranked_results = await cross_encoder_reranker.rerank_async(
+            context.query, results
+        )
+        results = cast(list[tuple[str, float]], reranked_results)
 
         rerank_duration = (time.time() - rerank_start) * 1000
 
@@ -602,10 +621,10 @@ class SearchPipeline:
                 f"Found {len(semantic_results)} result(s), best score: {top_score:.4f}",
                 extra={"result_count": len(semantic_results), "top_score": top_score},
             )
-            for idx, (message, score, _) in enumerate(
+            for idx, (memory, score, _) in enumerate(
                 semantic_results[: min(3, len(semantic_results))], 1
             ):
-                preview = truncate_message(message, max_length=60)
+                preview = truncate_memory(memory, max_length=60)
                 self.logger.info(
                     f"[{idx}] score={score:.4f} → {preview}",
                     extra={"result_index": idx, "score": score},
@@ -621,10 +640,10 @@ class SearchPipeline:
                 f"Found {len(tantivy_results)} result(s), best BM25 score: {top_score:.4f}",
                 extra={"result_count": len(tantivy_results), "top_score": top_score},
             )
-            for idx, (message, score) in enumerate(
+            for idx, (memory, score) in enumerate(
                 tantivy_results[: min(3, len(tantivy_results))], 1
             ):
-                preview = truncate_message(message, max_length=60)
+                preview = truncate_memory(memory, max_length=60)
                 self.logger.info(
                     f"[{idx}] score={score:.4f} → {preview}",
                     extra={"result_index": idx, "score": score},

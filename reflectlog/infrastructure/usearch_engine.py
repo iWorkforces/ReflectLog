@@ -1,7 +1,7 @@
 """USearch-based semantic search engine.
 
 This module provides a semantic search engine using USearch for vector
-similarity search, with SQLite for message text storage. It implements
+similarity search, with SQLite for memory content storage. It implements
 the ISemanticSearchEngine protocol for compatibility with MemoryManager.
 
 Clean Architecture Compliance:
@@ -18,15 +18,17 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from typing import TypeGuard
 
+    from reflectlog.core import IStructuredLogger
+    from reflectlog.infrastructure.memory_store import MemoryRecord
+
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index
 
 from reflectlog.application.exceptions import StorageError
-from reflectlog.application.types import Embeddings, ISemanticSearchEngine
+from reflectlog.application.types import Embeddings
 from reflectlog.application.utils.numba_utils import distance_to_similarity_cosine
 from reflectlog.application.utils.security import validate_project_id
-from reflectlog.infrastructure.message_store import MessageStore
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
@@ -39,12 +41,12 @@ class USearchConfig:
     """Configuration for USearchEngine.
 
     This dataclass defines the settings needed for USearch vector search
-    with SQLite message storage.
+    with SQLite memory storage.
 
     Attributes:
         project_id: Project identifier for filtering.
         index_path: Path to the USearch index file.
-        db_path: Path to the SQLite message database.
+        db_path: Path to the SQLite memory database.
         embedding_dims: Vector embedding dimensions.
         metric: Distance metric (cos, l2, ip).
         connectivity: HNSW M parameter.
@@ -127,7 +129,7 @@ class USearchConfig:
         return cls(
             project_id=project_id,
             index_path=os.path.join(base_path, "vectors.usearch"),
-            db_path=os.path.join(base_path, "messages.db"),
+            db_path=os.path.join(base_path, "memories.db"),
             embedding_dims=embedding_dims,
             exact_search=exact_search,
             exact_search_threshold=exact_search_threshold,
@@ -138,7 +140,7 @@ class USearchEngine(BaseModel):
     """USearch-based semantic search engine.
 
     Implements ISemanticSearchEngine protocol via structural subtyping.
-    Uses USearch for vector similarity search and SQLite for message text storage.
+    Uses USearch for vector similarity search and SQLite for memory content storage.
 
     Uses lazy initialization for both USearch index and SQLite connection
     with thread-safe double-checked locking.
@@ -151,7 +153,7 @@ class USearchEngine(BaseModel):
         config = USearchConfig(
             project_id="my-project",
             index_path="indexes/my-project/usearch/vectors.usearch",
-            db_path="indexes/my-project/usearch/messages.db",
+            db_path="indexes/my-project/usearch/memories.db",
             embedding_dims=3072,
         )
         embedder = OpenAIEmbeddings(model="text-embedding-3-large")
@@ -166,10 +168,10 @@ class USearchEngine(BaseModel):
 
     config: USearchConfig
     embedder: Embeddings
-    logger: Any = None
+    logger: IStructuredLogger | None = None
 
     _index: Index | None = PrivateAttr(default=None)
-    _message_store: MessageStore | None = PrivateAttr(default=None)
+    _memory_store: Any | None = PrivateAttr(default=None)
     # Instance-level lock for thread-safe lazy initialization (prevents cross-instance contention)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
@@ -177,7 +179,7 @@ class USearchEngine(BaseModel):
         self,
         config: USearchConfig | dict[str, Any],
         embedder: Embeddings,
-        logger: Any | None = None,
+        logger: IStructuredLogger | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize USearchEngine.
@@ -285,36 +287,43 @@ class USearchEngine(BaseModel):
         return self._index
 
     @property
-    def message_store(self) -> MessageStore:
-        """Get MessageStore (thread-safe lazy initialization).
+    def memory_store(self) -> Any:
+        """Get MemoryStore (thread-safe lazy initialization).
 
         Returns:
-            MessageStore instance.
+            MemoryStore instance.
         """
-        if self._message_store is not None:
-            return self._message_store
+        if self._memory_store is not None:
+            return self._memory_store
 
         with self._init_lock:
-            if self._message_store is None:
-                self._message_store = MessageStore(
+            if self._memory_store is None:
+                from reflectlog.infrastructure.memory_store import MemoryStore
+
+                self._memory_store = MemoryStore(
                     db_path=self.config.db_path,
                     logger=self.logger,
                 )
 
-        return self._message_store
+        return self._memory_store
 
-    def add(self, project_id: str, message: str, infer: bool) -> None:
-        """Add a message to the USearch index.
+    def add(
+        self,
+        project_id: str,
+        content: str,
+        infer: bool,
+    ) -> None:
+        """Add a memory to the USearch index.
 
         Args:
             project_id: Project identifier for filtering.
-            message: Message content to index.
-            infer: Whether to enable LLM-based message inference (not supported).
+            content: Memory content to index.
+            infer: Whether to enable LLM-based memory inference (not supported).
 
         Raises:
             RuntimeError: If add operation fails.
         """
-        msg_id = None  # Track msg_id for rollback on embedding failure
+        mem_id = None  # Track mem_id for rollback on embedding failure
         try:
             if infer and self.logger:
                 self.logger.warning(
@@ -323,15 +332,15 @@ class USearchEngine(BaseModel):
                 )
 
             # Insert into SQLite (relies on UNIQUE INDEX for dedup - no pre-check needed)
-            msg_id = self.message_store.insert(project_id, message)
+            mem_id = self.memory_store.insert(project_id, content)
 
             # Generate embedding with rollback on failure
             try:
-                vector = self.embedder.embed_query(message)
+                vector = self.embedder.embed_query(content)
                 vector_np = np.array(vector, dtype=np.float32)
             except Exception as embed_error:
                 # Rollback SQLite insert if embedding fails to prevent desynchronization
-                _ = self.message_store.delete(msg_id)
+                _ = self.memory_store.delete(mem_id)
                 if self.logger:
                     self.logger.error(
                         "Embedding generation failed, rolled back SQLite insert",
@@ -345,32 +354,31 @@ class USearchEngine(BaseModel):
                 ) from embed_error
 
             # Add to USearch index
-            self.index.add(msg_id, vector_np)
+            self.index.add(mem_id, vector_np)
 
             if self.logger:
                 self.logger.debug(
-                    "Message added to USearch index",
+                    "Memory added to USearch index",
                     extra={
                         "project_id": self.config.project_id,
-                        "message_id": msg_id,
-                        "message_length": len(message),
+                        "memory_id": mem_id,
+                        "memory_length": len(content),
                     },
                 )
 
         except (RuntimeError, StorageError) as e:
-            # Handle duplicate message (detected by database UNIQUE constraint)
-            # Note: StorageError is raised by MessageStore for duplicates
-            if "Duplicate message" in str(e):
+            # Handle duplicate memory (detected by database UNIQUE constraint)
+            if "Duplicate memory" in str(e):
                 if self.logger:
                     self.logger.debug(
-                        "Skipping duplicate message (detected by DB constraint)",
+                        "Skipping duplicate memory (detected by DB constraint)",
                         extra={"project_id": self.config.project_id},
                     )
                 return
             # Re-raise other errors
             if self.logger:
                 self.logger.error(
-                    "Failed to add message to USearch index",
+                    "Failed to add memory to USearch index",
                     extra={
                         "project_id": self.config.project_id,
                         "error": str(e),
@@ -380,26 +388,31 @@ class USearchEngine(BaseModel):
         except Exception as e:
             if self.logger:
                 self.logger.error(
-                    "Failed to add message to USearch index",
+                    "Failed to add memory to USearch index",
                     extra={
                         "project_id": self.config.project_id,
                         "error": str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to add message: {e}") from e
+            raise RuntimeError(f"Failed to add memory: {e}") from e
 
-    def add_batch(self, project_id: str, messages: list[str], infer: bool) -> list[str]:
-        """Add multiple messages to the USearch index in a single batch.
+    def add_batch(
+        self,
+        project_id: str,
+        contents: list[str],
+        infer: bool,
+    ) -> list[str]:
+        """Add multiple memories to the USearch index in a single batch.
 
         Args:
             project_id: Project identifier for filtering.
-            messages: List of message texts to index.
-            infer: Whether to enable LLM-based message inference (not supported).
+            contents: List of memory texts to index.
+            infer: Whether to enable LLM-based memory inference (not supported).
 
         Returns:
-            List of messages successfully added (duplicates skipped).
+            List of memory contents successfully added (duplicates skipped).
         """
-        if not messages:
+        if not contents:
             return []
 
         if infer and self.logger:
@@ -408,22 +421,22 @@ class USearchEngine(BaseModel):
                 extra={"project_id": self.config.project_id},
             )
 
-        inserted = []  # Track successfully inserted (message, msg_id) pairs
+        inserted = []  # Track successfully inserted (content, mem_id) pairs
         inserted_ids = []  # Track IDs for rollback on embedding failure
 
         try:
-            # First, insert all messages into SQLite
-            inserted = self.message_store.insert_many(project_id, messages)
+            # First, insert all memories into SQLite
+            inserted = self.memory_store.insert_many(project_id, contents)
             if not inserted:
                 return []
 
-            inserted_messages = [message for message, _ in inserted]
-            inserted_ids = [msg_id for _, msg_id in inserted]
+            inserted_contents = [content for content, _ in inserted]
+            inserted_ids = [mem_id for _, mem_id in inserted]
 
             # Generate embeddings with rollback on failure
             try:
-                vectors = self.embedder.embed_documents(inserted_messages)
-                if len(vectors) != len(inserted_messages):
+                vectors = self.embedder.embed_documents(inserted_contents)
+                if len(vectors) != len(inserted_contents):
                     raise RuntimeError(
                         "Embedding batch size mismatch for USearch add_batch"
                     )
@@ -438,39 +451,39 @@ class USearchEngine(BaseModel):
                             "error": str(embed_error),
                         },
                     )
-                for msg_id in inserted_ids:
-                    _ = self.message_store.delete(msg_id)
+                for mem_id in inserted_ids:
+                    _ = self.memory_store.delete(mem_id)
                 raise RuntimeError(
                     f"Failed to generate embeddings for batch: {embed_error}"
                 ) from embed_error
 
             # Add vectors to USearch index
-            for (_, msg_id), vector in zip(inserted, vectors, strict=True):
+            for (_, mem_id), vector in zip(inserted, vectors, strict=True):
                 vector_np = np.array(vector, dtype=np.float32)
-                self.index.add(msg_id, vector_np)
+                self.index.add(mem_id, vector_np)
 
             if self.logger:
                 self.logger.debug(
-                    "Batch added messages to USearch index",
+                    "Batch added memories to USearch index",
                     extra={
                         "project_id": self.config.project_id,
-                        "message_count": len(inserted_messages),
+                        "memory_count": len(inserted_contents),
                     },
                 )
 
-            return inserted_messages
+            return inserted_contents
 
         except Exception as e:
             # Clean up on any other error (shouldn't happen if above is correct)
             if self.logger:
                 self.logger.error(
-                    "Failed to add message batch to USearch index",
+                    "Failed to add memory batch to USearch index",
                     extra={
                         "project_id": self.config.project_id,
                         "error": str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to add message batch: {e}") from e
+            raise RuntimeError(f"Failed to add memory batch: {e}") from e
 
     def _should_use_exact_search(self) -> bool:
         """Determine if exact search should be used based on config and index size.
@@ -549,7 +562,7 @@ class USearchEngine(BaseModel):
             limit: Maximum number of results.
 
         Returns:
-            List of (message, score, created_at) tuples sorted by relevance.
+            List of (content, score, created_at) tuples sorted by relevance.
             created_at is an ISO format timestamp string (may be empty for
             backward compatibility with older data).
         """
@@ -592,12 +605,12 @@ class USearchEngine(BaseModel):
                 query_np, overfetch_limit, exact=use_exact
             )
 
-            # Batch fetch all message records in single query (eliminates N+1 pattern)
+            # Batch fetch all memory records in single query (eliminates N+1 pattern)
             keys = [int(match.key) for match in matches]
-            records = self.message_store.get_batch(keys)
+            records = self.memory_store.get_batch(keys)
 
             # Collect distances for batch conversion (numba-accelerated)
-            filtered_matches: list[tuple[Any, Any]] = []  # (record, match)
+            filtered_matches: list[tuple[MemoryRecord, Any]] = []  # (record, match)
             for match in matches:
                 key = int(match.key)
                 record = records.get(key)
@@ -616,7 +629,7 @@ class USearchEngine(BaseModel):
 
                 # Build results with converted scores and created_at timestamps
                 results: list[tuple[str, float, str]] = [
-                    (record.message, float(similarities[i]), record.created_at)
+                    (record.content, float(similarities[i]), record.created_at)
                     for i, (record, _) in enumerate(filtered_matches)
                 ]
             else:
@@ -650,38 +663,38 @@ class USearchEngine(BaseModel):
             raise RuntimeError(f"USearch search failed: {e}") from e
 
     def get_all(self, project_id: str) -> list[str]:
-        """Retrieve all stored messages for a project.
+        """Retrieve all stored memories for a project.
 
         Args:
             project_id: Project identifier for filtering.
 
         Returns:
-            List of all messages stored for the project.
+            List of all memories stored for the project.
         """
         try:
-            messages = self.message_store.get_all(project_id)
+            memories = self.memory_store.get_all(project_id)
 
             if self.logger:
                 self.logger.debug(
-                    "Retrieved all messages",
+                    "Retrieved all memories",
                     extra={
                         "project_id": self.config.project_id,
-                        "count": len(messages),
+                        "count": len(memories),
                     },
                 )
 
-            return messages
+            return memories
 
         except Exception as e:
             if self.logger:
                 self.logger.error(
-                    "Failed to retrieve messages",
+                    "Failed to retrieve memories",
                     extra={
                         "project_id": self.config.project_id,
                         "error": str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to retrieve messages: {e}") from e
+            raise RuntimeError(f"Failed to retrieve memories: {e}") from e
 
     def delete(self, memory_id: str) -> None:
         """Delete a memory entry by its ID.
@@ -693,19 +706,19 @@ class USearchEngine(BaseModel):
             RuntimeError: If deletion fails.
         """
         try:
-            msg_id = int(memory_id)
+            mem_id = int(memory_id)
 
             # Check if key exists in index
-            if msg_id in self.index:
-                self.index.remove(msg_id)
+            if mem_id in self.index:
+                self.index.remove(mem_id)
 
             # Delete from SQLite
-            deleted = self.message_store.delete(msg_id)
+            deleted = self.memory_store.delete(mem_id)
 
             if self.logger:
                 if deleted:
                     self.logger.debug(
-                        "Message deleted from USearch index",
+                        "Memory deleted from USearch index",
                         extra={
                             "project_id": self.config.project_id,
                             "memory_id": memory_id,
@@ -713,7 +726,7 @@ class USearchEngine(BaseModel):
                     )
                 else:
                     self.logger.warning(
-                        "Message not found for deletion",
+                        "Memory not found for deletion",
                         extra={
                             "project_id": self.config.project_id,
                             "memory_id": memory_id,
@@ -734,14 +747,14 @@ class USearchEngine(BaseModel):
         except Exception as e:
             if self.logger:
                 self.logger.error(
-                    "Failed to delete message",
+                    "Failed to delete memory",
                     extra={
                         "project_id": self.config.project_id,
                         "memory_id": memory_id,
                         "error": str(e),
                     },
                 )
-            raise RuntimeError(f"Failed to delete message: {e}") from e
+            raise RuntimeError(f"Failed to delete memory: {e}") from e
 
     def commit(self) -> None:
         """Commit pending changes to the index.
@@ -774,31 +787,31 @@ class USearchEngine(BaseModel):
     def ensure_initialized(self) -> None:
         """Ensure the engine is fully initialized (thread-safe).
 
-        Forces the lazy initialization of USearch index and MessageStore
+        Forces the lazy initialization of USearch index and MemoryStore
         to complete. Call this before parallel operations.
         """
         _ = self.index
-        self.message_store.ensure_initialized()
+        self.memory_store.ensure_initialized()
 
-    def get_id_by_message(self, project_id: str, message: str) -> int | None:
-        """Get the ID of a message by its content.
+    def get_id_by_content(self, project_id: str, content: str) -> int | None:
+        """Get the ID of a memory by its content.
 
         Args:
             project_id: Project identifier.
-            message: Message text to look up.
+            content: Memory text to look up.
 
         Returns:
-            The message ID if found, None otherwise.
+            The memory ID if found, None otherwise.
         """
-        return self.message_store.get_id_by_message(project_id, message)
+        return self.memory_store.get_id_by_content(project_id, content)
 
     def close(self) -> None:
         """Close resources and cleanup.
 
-        Closes the MessageStore SQLite connection.
+        Closes the MemoryStore SQLite connection.
         """
-        if self._message_store is not None:
-            self._message_store.close()
+        if self._memory_store is not None:
+            self._memory_store.close()
 
     def __enter__(self):
         """Enter context manager.
@@ -831,8 +844,3 @@ class USearchEngine(BaseModel):
         """
         self.close()
         return False  # Don't suppress exceptions
-
-
-# Static type assertion: verify USearchEngine implements ISemanticSearchEngine protocol
-# This line has no runtime effect but causes mypy to verify structural compatibility
-_: type[ISemanticSearchEngine] = USearchEngine

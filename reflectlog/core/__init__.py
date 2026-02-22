@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from .logging import (
         ILoggingService,
         ILogSink,
+        IStructuredLogger,
         LogLevel,
     )
     from .memory import (
@@ -95,6 +96,7 @@ __all__ = [
     "ISearchResult",
     "IServerConfig",
     "IStorageConfig",
+    "IStructuredLogger",
     "ITool",
     "IToolRegistry",
     "IToolResult",

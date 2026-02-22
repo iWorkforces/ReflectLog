@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test to demonstrate score filtering with 5 relevant documents where only 2 pass threshold."""
+'''Test to demonstrate score filtering with 5 relevant documents where only 2 pass threshold.'''
 
 import json
 import os
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_score_filtering_demo():
-    """Test that demonstrates score filtering behavior."""
+    '''Test that demonstrates score filtering behavior.'''
 
     print("\n" + "=" * 70)
     print("🎯 SCORE FILTERING DEMONSTRATION TEST")
@@ -32,9 +32,9 @@ async def test_score_filtering_demo():
         async with Client(server_url) as client:
             print("\n✅ Successfully connected to MCP server!")
 
-            # Create messages with varying levels of relevance to "Python machine learning"
+            # Create memories with varying levels of relevance to "Python machine learning"
             # These are designed to have different semantic similarity scores
-            messages = [
+            memories = [
                 "Python tutorial for beginners covers the essential syntax and core concepts. Learn about variables, data types, loops, and functions through practical examples. This comprehensive guide helps newcomers build a solid foundation in Python programming.",
                 "Advanced Python programming explores decorators, metaclasses, and context managers for professional development. Master asynchronous programming with asyncio and concurrent.futures for high-performance applications. Deep dive into design patterns and best practices used in production systems.",
                 "JavaScript fundamentals teach you the core concepts of web development and DOM manipulation. Understand event handling, callbacks, promises, and async/await for modern web applications. Learn ES6+ features including arrow functions, destructuring, and modules.",
@@ -48,16 +48,16 @@ async def test_score_filtering_demo():
             ]
 
             print("\n" + "=" * 70)
-            print("📝 STEP 1: Adding test messages to server")
+            print("📝 STEP 1: Adding test memories to server")
             print("=" * 70)
-            for i, msg in enumerate(messages, 1):
-                print(f"  {i}. {msg[:80]}{'...' if len(msg) > 80 else ''}")
+            for i, mem in enumerate(memories, 1):
+                print(f"  {i}. {mem[:80]}{'...' if len(mem) > 80 else ''}")
 
             print("\n📤 Calling 'add' tool...")
             _: CallToolResult = await client.call_tool(
-                "add", arguments={"messages": messages}
+                "add", arguments={"memories": memories}
             )
-            print("✅ Messages added successfully!")
+            print("✅ Memories added successfully!")
 
             # Small delay for persistence
             await anyio.sleep(2)
@@ -87,8 +87,8 @@ async def test_score_filtering_demo():
 
             print("\n📊 Results after score filtering:")
             if search_results:
-                for i, msg in enumerate(search_results, 1):
-                    print(f"  {i}. {msg[:80]}{'...' if len(msg) > 80 else ''}")
+                for i, mem in enumerate(search_results, 1):
+                    print(f"  {i}. {mem[:80]}{'...' if len(mem) > 80 else ''}")
                 print(
                     f"\n✅ {len(search_results)} document(s) passed the score threshold"
                 )
@@ -117,8 +117,8 @@ async def test_score_filtering_demo():
 
             print("\n📊 Results after score filtering:")
             if search_results2:
-                for i, msg in enumerate(search_results2, 1):
-                    print(f"  {i}. {msg[:80]}{'...' if len(msg) > 80 else ''}")
+                for i, mem in enumerate(search_results2, 1):
+                    print(f"  {i}. {mem[:80]}{'...' if len(mem) > 80 else ''}")
                 print(
                     f"\n✅ {len(search_results2)} document(s) passed the score threshold"
                 )
@@ -128,9 +128,9 @@ async def test_score_filtering_demo():
             print("\n" + "=" * 70)
             print("🎉 SCORE FILTERING DEMONSTRATION COMPLETE!")
             print("=" * 70)
-            print(f"""
+            print(f'''
 Summary:
-  ✅ Added {len(messages)} test messages with varying relevance
+  ✅ Added {len(memories)} test messages with varying relevance
   ✅ Search for 'Python machine learning': {len(search_results)} results passed threshold
   ✅ Search for 'Python programming': {len(search_results2)} results passed threshold
 
@@ -139,13 +139,13 @@ Key Insights:
   • Only high-scoring documents (> 0.8) are returned
   • This prevents false positives and ensures high precision
   • Check server logs to see the actual scores and filtering decisions
-            """)
+            ''')
 
-            # Clean up - remove test messages
+            # Clean up - remove test memories
             print("\n🧹 Cleaning up test data...")
-            for msg in messages:
+            for mem in memories:
                 try:
-                    await client.call_tool("remove", arguments={"messages": [msg]})
+                    await client.call_tool("remove", arguments={"memories": [mem]})
                 except Exception:
                     pass  # Ignore errors during cleanup
             print("✅ Cleanup complete")

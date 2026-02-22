@@ -4,10 +4,10 @@ This subpackage contains implementations of relevance scoring rerankers.
 Each reranker implements the IReranker protocol from core.reranking.
 
 Note: The actual implementations are in the parent infrastructure/
-directory. This module re-exports them for backward compatibility.
+directory. This module re-exports them for convenience.
 """
 
-# Re-export from parent module for backward compatibility
+# Re-export from parent module for convenience
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,

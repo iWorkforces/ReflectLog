@@ -1,7 +1,10 @@
 """Cached embeddings wrapper for query embedding LRU caching."""
 
 import hashlib
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reflectlog.core import IStructuredLogger
 
 from cachetools import LRUCache
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -50,7 +53,7 @@ class CachedEmbeddings(BaseModel):
     enabled: bool = True  # Enable/disable caching
 
     # Optional logger for cache hit/miss stats
-    logger: Any = None
+    logger: IStructuredLogger | None = None
 
     # Private cache state (LRUCache from cachetools - thread-safe by default)
     _cache: LRUCache[str, list[float]] = PrivateAttr(
@@ -210,7 +213,7 @@ class CachedEmbeddings(BaseModel):
         """
         return await self.embedder.aembed_documents(texts)
 
-    def get_cache_stats(self) -> dict[str, int]:
+    def get_cache_stats(self) -> dict[str, int | float]:
         """Get cache statistics.
 
         Returns:

@@ -268,7 +268,7 @@ def main() -> None:
                 print(f"  {phase}: {duration * 1000:.1f}ms", file=output_stream)
 
         # Store startup metrics on memory manager for health check
-        server._memory_manager._startup_metrics = startup_phases
+        server.set_startup_metrics(startup_phases)
 
         server.run()
     except KeyboardInterrupt:

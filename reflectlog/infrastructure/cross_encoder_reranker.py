@@ -16,8 +16,12 @@ Example:
 """
 
 from dataclasses import dataclass
+import importlib
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from reflectlog.core import IStructuredLogger
 import warnings
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -113,7 +117,7 @@ class CrossEncoderReranker(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     config: CrossEncoderConfig
-    logger: Any = None
+    logger: IStructuredLogger | None = None
 
     _model: Any = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
@@ -145,7 +149,11 @@ class CrossEncoderReranker(BaseModel):
                         },
                     )
 
-                from FlagEmbedding import FlagReranker
+                flag_embedding_module = importlib.import_module("FlagEmbedding")
+                flag_reranker_class = cast(
+                    Any,
+                    flag_embedding_module,
+                ).FlagReranker
 
                 # Suppress tokenizer optimization warning from transformers
                 # ("You're using a XLMRobertaTokenizerFast tokenizer...")
@@ -156,7 +164,7 @@ class CrossEncoderReranker(BaseModel):
                 hf_logging.set_verbosity_error()
 
                 try:
-                    self._model = FlagReranker(
+                    self._model = flag_reranker_class(
                         self.config.model_name,
                         use_fp16=self.config.use_fp16,
                         devices=[self.config.device],
@@ -202,7 +210,7 @@ class CrossEncoderReranker(BaseModel):
                 hf_logging.set_verbosity_error()
 
                 try:
-                    self._model = FlagReranker(
+                    self._model = flag_reranker_class(
                         self.config.model_name,
                         use_fp16=self.config.use_fp16,
                         devices=[self.config.device],
@@ -394,7 +402,6 @@ class CrossEncoderReranker(BaseModel):
             # Log each candidate with [KEEP]/[FILTER] status
             for idx, (doc, score) in enumerate(scored, 1):
                 status = "[KEEP]" if score >= threshold else "[FILTER]"
-                # Truncate long messages for display
                 preview = doc[:60] + "..." if len(doc) > 60 else doc
                 self.logger.info(
                     f"      [{idx}] {status} score={score:.4f} -> {preview}",

@@ -94,11 +94,11 @@ class HealthCheckTool(BaseTool):
                 }
 
                 # Add startup metrics if available
-                if self.memory._startup_metrics is not None:
+                if self.memory.startup_metrics is not None:
                     # Convert seconds to milliseconds for better readability
                     startup_metrics_ms = {
                         phase: duration * 1000
-                        for phase, duration in self.memory._startup_metrics.items()
+                        for phase, duration in self.memory.startup_metrics.items()
                     }
                     health_status["startup_metrics"] = startup_metrics_ms
 

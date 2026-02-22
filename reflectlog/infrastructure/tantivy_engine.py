@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from typing import TypeGuard
 
+    from reflectlog.core import IStructuredLogger
+
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
@@ -98,7 +100,7 @@ class TantivyEngine(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     config: TantivyConfig
-    logger: Any = None  # StructuredLogger - using Any to avoid circular imports
+    logger: IStructuredLogger | None = None
 
     _index: tantivy.Index | None = PrivateAttr(default=None)
     _writer: tantivy.IndexWriter | None = PrivateAttr(default=None)
@@ -110,9 +112,9 @@ class TantivyEngine(BaseModel):
     # Bounded in-memory tombstone cache for O(1) lookup
     # after first search
     # Uses OrderedDict for LRU eviction when size exceeds tombstone_cache_max_size
-    # Key: project_id, Value: set of tombstoned message contents
+    # Key: project_id, Value: set of tombstoned memory contents
     _tombstone_cache: OrderedDict[str, set[str]] = PrivateAttr(
-        default_factory=OrderedDict
+        default_factory=lambda: OrderedDict[str, set[str]]()
     )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
@@ -120,7 +122,7 @@ class TantivyEngine(BaseModel):
     def __init__(
         self,
         config: TantivyConfig | dict[str, Any],
-        logger: Any | None = None,
+        logger: IStructuredLogger | None = None,
         **kwargs: Any,
     ):
         """Initialize TantivyEngine.
@@ -145,28 +147,32 @@ class TantivyEngine(BaseModel):
         return "tantivy"
 
     def _build_schema(self) -> tantivy.Schema:
-        """Build Tantivy schema with project_id, message, and soft-delete fields.
+        """Build Tantivy schema with project_id, content, and soft-delete fields.
 
         Returns:
             Tantivy schema with:
             - project_id: Stored text field with raw tokenizer (exact match)
-            - message: Stored text field with en_stem tokenizer (full-text search)
+            - content: Stored text field with en_stem tokenizer (full-text search)
             - is_deleted: Stored unsigned field for soft-delete (0=active, 1=deleted)
             - deleted_at: Stored integer field for deletion timestamp in ms
         """
         schema_builder = tantivy.SchemaBuilder()
-        schema_builder.add_text_field("project_id", stored=True, tokenizer_name="raw")
-        schema_builder.add_text_field("message", stored=True, tokenizer_name="en_stem")
+        _ = schema_builder.add_text_field(
+            "project_id", stored=True, tokenizer_name="raw"
+        )
+        _ = schema_builder.add_text_field(
+            "content", stored=True, tokenizer_name="en_stem"
+        )
 
         # Soft-delete fields
         # is_deleted: 0 = active, 1 = deleted
         # indexed=True for filtering, fast=True for fast columnar access
-        schema_builder.add_unsigned_field(
+        _ = schema_builder.add_unsigned_field(
             "is_deleted", stored=True, indexed=True, fast=True
         )
         # deleted_at: Unix timestamp in milliseconds (0 if not deleted)
         # indexed=True for range queries during compaction
-        schema_builder.add_integer_field(
+        _ = schema_builder.add_integer_field(
             "deleted_at", stored=True, indexed=True, fast=True
         )
 
@@ -278,14 +284,14 @@ class TantivyEngine(BaseModel):
             project_id: Project identifier to filter by.
 
         Returns:
-            List of message strings for the given project (excluding tombstoned).
+            List of memory strings for the given project (excluding tombstoned).
         """
         if self._index is None:
             return []
 
         try:
-            # Get cached tombstoned messages (O(1) after first call)
-            tombstoned_messages = self._get_tombstoned_messages(project_id)
+            # Get cached tombstoned memories (O(1) after first call)
+            tombstoned_memories = self._get_tombstoned_memories(project_id)
             doc_limit = self._get_doc_limit()
 
             # Query all docs for this project
@@ -299,15 +305,15 @@ class TantivyEngine(BaseModel):
             top_docs = self.searcher.search(query=query, limit=doc_limit)
 
             results: list[str] = []
-            seen: set[str] = set()  # Track seen messages to avoid duplicates
+            seen: set[str] = set()  # Track seen memories to avoid duplicates
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
-                message = doc.get_first("message")
-                if message is not None:
-                    msg_str = cast(str, message)
-                    # Skip tombstoned messages and duplicates
-                    if msg_str not in tombstoned_messages and msg_str not in seen:
+                memory = doc.get_first("content")
+                if memory is not None:
+                    msg_str = cast(str, memory)
+                    # Skip tombstoned memories and duplicates
+                    if msg_str not in tombstoned_memories and msg_str not in seen:
                         results.append(msg_str)
                         seen.add(msg_str)
 
@@ -324,8 +330,8 @@ class TantivyEngine(BaseModel):
                 )
             return []
 
-    def find_by_exact_match(self, project_id: str, message: str) -> list[str]:
-        """Find all messages that exactly match the given message text.
+    def find_by_exact_match(self, project_id: str, content: str) -> list[str]:
+        """Find all memories that exactly match the given memory text.
 
         Uses Python-level string comparison after fetching all docs for the project.
         This works around the en_stem tokenizer's stemming behavior which prevents
@@ -333,19 +339,19 @@ class TantivyEngine(BaseModel):
 
         Args:
             project_id: Project identifier to filter by.
-            message: Exact message text to find.
+            content: Exact memory text to find.
 
         Returns:
-            List of matching message strings (may contain duplicates if stored multiple times).
+            List of matching memory strings (may contain duplicates if stored multiple times).
         """
         all_docs = self._get_all_docs(project_id)
-        return [doc for doc in all_docs if doc == message]
+        return [doc for doc in all_docs if doc == content]
 
     def _get_all_docs_all_projects(self) -> list[tuple[str, str]]:
         """Get all documents from all projects.
 
         Returns:
-            List of (project_id, message) tuples for all documents in the index.
+            List of (project_id, content) tuples for all documents in the index.
         """
         if self._index is None:
             return []
@@ -368,7 +374,7 @@ class TantivyEngine(BaseModel):
             # We'll use a very broad search since all docs have project_id
             query = self._index.parse_query(
                 query="*",
-                default_field_names=["message"],
+                default_field_names=["content"],
             )
 
             top_docs = searcher.search(query=query, limit=doc_limit)
@@ -376,9 +382,9 @@ class TantivyEngine(BaseModel):
             for _, doc_addr in top_docs.hits:
                 doc = searcher.doc(doc_addr)
                 project_id = doc.get_first("project_id")
-                message = doc.get_first("message")
-                if project_id is not None and message is not None:
-                    results.append((cast(str, project_id), cast(str, message)))
+                memory = doc.get_first("content")
+                if project_id is not None and memory is not None:
+                    results.append((cast(str, project_id), cast(str, memory)))
 
             return results
 
@@ -390,25 +396,25 @@ class TantivyEngine(BaseModel):
                 )
             return []
 
-    def add(self, project_id: str, message: str) -> None:
+    def add(self, project_id: str, content: str) -> None:
         """Add a document to the Tantivy index (thread-safe).
 
         Thread-safe: Uses writer lock since Tantivy IndexWriter is NOT thread-safe.
 
         Args:
             project_id: Project identifier for filtering.
-            message: Message content to index.
+            content: Memory content to index.
         """
         with self._writer_lock:
             doc = tantivy.Document()
             doc.add_text("project_id", project_id)
-            doc.add_text("message", message)
+            doc.add_text("content", content)
 
             # Add soft-delete fields with default values
             doc.add_unsigned("is_deleted", 0)  # 0 = active
             doc.add_integer("deleted_at", 0)  # 0 = not deleted
 
-            self.writer.add_document(doc)
+            _ = self.writer.add_document(doc)
 
     def commit(self) -> None:
         """Commit pending changes and refresh searcher (thread-safe).
@@ -495,8 +501,8 @@ class TantivyEngine(BaseModel):
             elif project_id in self._tombstone_cache:
                 del self._tombstone_cache[project_id]
 
-    def _get_tombstoned_messages(self, project_id: str) -> set[str]:
-        """Get set of messages that have tombstones for a project.
+    def _get_tombstoned_memories(self, project_id: str) -> set[str]:
+        """Get set of memories that have tombstones for a project.
 
         Uses bounded in-memory caching with LRU eviction for O(1) lookup.
         Cache is populated by querying is_deleted=1 documents directly.
@@ -509,7 +515,7 @@ class TantivyEngine(BaseModel):
             project_id: Project identifier to filter by.
 
         Returns:
-            Set of message strings that have tombstones.
+            Set of memory strings that have tombstones.
         """
         # Fast path: check cache first (thread-safe read)
         with self._tombstone_cache_lock:
@@ -540,8 +546,8 @@ class TantivyEngine(BaseModel):
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
-                message = doc.get_first("message")
-                if message is not None:
+                memory = doc.get_first("content")
+                if memory is not None:
                     # Enforce per-project tombstone limit
                     if len(tombstoned) >= max_tombstones_per_project:
                         if self.logger:
@@ -554,13 +560,13 @@ class TantivyEngine(BaseModel):
                                 },
                             )
                         break
-                    tombstoned.add(cast(str, message))
+                    tombstoned.add(cast(str, memory))
 
             # Store in cache with LRU eviction (thread-safe write)
             with self._tombstone_cache_lock:
                 # Remove oldest entry if cache is at max capacity
                 if len(self._tombstone_cache) >= self.config.tombstone_cache_max_size:
-                    self._tombstone_cache.popitem(last=False)
+                    _ = self._tombstone_cache.popitem(last=False)
                 # Add new entry and move to end (most recently used)
                 self._tombstone_cache[project_id] = tombstoned
                 # Ensure this entry is at the end (most recent)
@@ -572,7 +578,7 @@ class TantivyEngine(BaseModel):
             # Query parsing errors - expected failure, log as warning
             if self.logger:
                 self.logger.warning(
-                    "Failed to get tombstoned messages (query parse error)",
+                    "Failed to get tombstoned memories (query parse error)",
                     extra={"project_id": project_id, "error": str(e)},
                 )
             return set()
@@ -580,7 +586,7 @@ class TantivyEngine(BaseModel):
             # Unexpected errors - log as warning with more context
             if self.logger:
                 self.logger.warning(
-                    "Failed to get tombstoned messages",
+                    "Failed to get tombstoned memories",
                     extra={"project_id": project_id, "error": str(e)},
                 )
             return set()
@@ -593,10 +599,10 @@ class TantivyEngine(BaseModel):
         Uses the existing JIT-optimized normalize_scores_minmax function.
 
         Args:
-            results: List of (message, score) tuples with raw BM25 scores.
+            results: List of (memory, score) tuples with raw BM25 scores.
 
         Returns:
-            List of (message, normalized_score) tuples with scores in 0-1 range.
+            List of (memory, normalized_score) tuples with scores in 0-1 range.
             Single result returns score 1.0 (best by definition).
             All equal scores return 1.0 (equally good).
         """
@@ -607,13 +613,13 @@ class TantivyEngine(BaseModel):
         # Import here to avoid circular dependency
         from reflectlog.application.utils.numba_utils import normalize_scores_minmax
 
-        messages = [msg for msg, _ in results]
+        memories = [msg for msg, _ in results]
         scores = np.array([score for _, score in results], dtype=np.float64)
 
         # Use existing JIT-optimized normalization
         normalized = normalize_scores_minmax(scores)
 
-        return list(zip(messages, normalized.tolist(), strict=True))
+        return list(zip(memories, normalized.tolist(), strict=True))
 
     def search(
         self, query: str, project_id: str, limit: int
@@ -629,7 +635,7 @@ class TantivyEngine(BaseModel):
             limit: Maximum number of results to return.
 
         Returns:
-            List of (message, score) tuples sorted by relevance.
+            List of (memory, score) tuples sorted by relevance.
             Empty list if search fails or no results found.
         """
         try:
@@ -641,11 +647,11 @@ class TantivyEngine(BaseModel):
                     )
                 return []
 
-            # Get cached tombstoned messages (O(1) after first call)
-            tombstoned_messages = self._get_tombstoned_messages(project_id)
+            # Get cached tombstoned memories (O(1) after first call)
+            tombstoned_memories = self._get_tombstoned_memories(project_id)
 
             # Overfetch if there are tombstones to compensate for filtering
-            search_limit = limit * 3 if tombstoned_messages else limit
+            search_limit = limit * 3 if tombstoned_memories else limit
 
             # Build query with project_id filter
             escaped_project_id = self._escape_tantivy_query(project_id)
@@ -657,7 +663,7 @@ class TantivyEngine(BaseModel):
 
             try:
                 parsed_query = self._index.parse_query(
-                    query=combined_query, default_field_names=["message"]
+                    query=combined_query, default_field_names=["content"]
                 )
             except ValueError:
                 if not query_text:
@@ -667,7 +673,7 @@ class TantivyEngine(BaseModel):
                     f'({escaped_query_text}) AND project_id:"{escaped_project_id}"'
                 )
                 parsed_query = self._index.parse_query(
-                    query=combined_query, default_field_names=["message"]
+                    query=combined_query, default_field_names=["content"]
                 )
                 if self.logger:
                     self.logger.debug(
@@ -684,15 +690,15 @@ class TantivyEngine(BaseModel):
 
             for score, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
-                message = cast(str, doc.get_first("message"))
+                memory = cast(str, doc.get_first("content"))
 
-                # Skip tombstoned messages (post-filtering with cached set)
-                if message in tombstoned_messages:
+                # Skip tombstoned memories (post-filtering with cached set)
+                if memory in tombstoned_memories:
                     continue
 
                 if self.logger:
-                    self.logger.debug(f"Tantivy match: {message[:100]}...")
-                results.append((message, score))
+                    self.logger.debug(f"Tantivy match: {memory[:100]}...")
+                results.append((memory, score))
 
                 # Stop once we have enough results
                 if len(results) >= limit:
@@ -784,13 +790,7 @@ class TantivyEngine(BaseModel):
             # but we clear the reference for consistency
             self._index = None
 
-            if self.logger:
-                self.logger.info(
-                    "Tantivy engine closed",
-                    extra={"project_id": self.config.project_id},
-                )
-
-    def soft_delete(self, project_id: str, message: str) -> bool:
+    def soft_delete(self, project_id: str, content: str) -> bool:
         """Mark a document as deleted by adding a tombstone (O(1) operation).
 
         Thread-safe. This is much faster than rebuilding the entire index (O(n) for rebuild vs O(1)).
@@ -798,25 +798,25 @@ class TantivyEngine(BaseModel):
         The tombstone approach:
         - Original document remains in index (is_deleted=0, deleted_at=0)
         - Tombstone document added (is_deleted=1, deleted_at=<timestamp>)
-        - Search filters out messages that have tombstones
+        - Search filters out memories that have tombstones
         - Compaction removes both original and tombstone
 
         Args:
             project_id: Project identifier for filtering.
-            message: Exact message content to soft-delete.
+            content: Exact memory content to soft-delete.
 
         Returns:
-            True if tombstone was added, False if message wasn't found.
+            True if tombstone was added, False if memory wasn't found.
         """
-        # First, verify the message exists (only check non-deleted documents)
-        existing = self.find_by_exact_match(project_id, message)
+        # First, verify the memory exists (only check non-deleted documents)
+        existing = self.find_by_exact_match(project_id, content)
         if not existing:
             if self.logger:
                 self.logger.debug(
-                    "Soft-delete: message not found",
+                    "Soft-delete: memory not found",
                     extra={
                         "project_id": project_id,
-                        "message_preview": message[:50] if message else "",
+                        "memory_preview": content[:50] if content else "",
                     },
                 )
             return False
@@ -825,37 +825,37 @@ class TantivyEngine(BaseModel):
         with self._writer_lock:
             doc = tantivy.Document()
             doc.add_text("project_id", project_id)
-            doc.add_text("message", message)
+            doc.add_text("content", content)
             doc.add_unsigned("is_deleted", 1)  # 1 = deleted (tombstone)
             doc.add_integer("deleted_at", int(time.time() * 1000))  # Unix timestamp ms
 
-            self.writer.add_document(doc)
+            _ = self.writer.add_document(doc)
 
         if self.logger:
             self.logger.debug(
                 "Soft-delete: tombstone added",
                 extra={
                     "project_id": project_id,
-                    "message_preview": message[:50] if message else "",
+                    "memory_preview": content[:50] if content else "",
                 },
             )
 
         return True
 
-    def delete(self, project_id: str, message: str) -> bool:
-        """Delete a document from the Tantivy index by exact message match (thread-safe).
+    def delete(self, project_id: str, content: str) -> bool:
+        """Delete a document from the Tantivy index by exact memory match (thread-safe).
 
         When soft-delete is enabled (default), uses O(1) tombstone marking.
         Otherwise, falls back to O(n) rebuild approach.
 
         Soft-delete approach:
         - Adds a tombstone document with is_deleted=1
-        - Search automatically filters out tombstoned messages
+        - Search automatically filters out tombstoned memories
         - Compaction removes tombstones and originals periodically
 
         Rebuild approach (when soft-delete disabled):
         - Gets all documents from all projects
-        - Filters out the target message
+        - Filters out the target memory
         - Destroys and recreates the index
         - Re-adds all remaining documents
 
@@ -863,14 +863,14 @@ class TantivyEngine(BaseModel):
 
         Args:
             project_id: Project identifier for filtering.
-            message: Exact message content to delete.
+            content: Exact memory content to delete.
 
         Returns:
             True if document was found and deleted, False otherwise.
         """
         # Use soft-delete if enabled (O(1) vs O(n))
         if self.config.soft_delete_enabled:
-            result = self.soft_delete(project_id, message)
+            result = self.soft_delete(project_id, content)
             if result:
                 self.commit()
             return result
@@ -883,9 +883,9 @@ class TantivyEngine(BaseModel):
             # Step 1: Get ALL documents from ALL projects (we'll rebuild the entire index)
             all_docs = self._get_all_docs_all_projects()
 
-            # Step 2: Check if the target message exists for the target project
+            # Step 2: Check if the target memory exists for the target project
             target_exists = any(
-                pid == project_id and msg == message for pid, msg in all_docs
+                pid == project_id and msg == content for pid, msg in all_docs
             )
 
             if not target_exists:
@@ -894,17 +894,17 @@ class TantivyEngine(BaseModel):
                         "Tantivy delete: document not found",
                         extra={
                             "project_id": project_id,
-                            "message_preview": message[:50] if message else "",
+                            "memory_preview": content[:50] if content else "",
                         },
                     )
                 return False
 
-            # Remove ALL occurrences of the message for the target project
+            # Remove ALL occurrences of the memory for the target project
             # (in case of duplicates), but preserve all other projects' data
             docs_to_keep = [
                 (pid, msg)
                 for pid, msg in all_docs
-                if not (pid == project_id and msg == message)
+                if not (pid == project_id and msg == content)
             ]
             deleted_count = len(all_docs) - len(docs_to_keep)
 
@@ -913,7 +913,7 @@ class TantivyEngine(BaseModel):
                     "Tantivy delete: found document(s) to delete",
                     extra={
                         "project_id": project_id,
-                        "message_preview": message[:50] if message else "",
+                        "memory_preview": content[:50] if content else "",
                         "deleted_count": deleted_count,
                         "remaining_count": len(docs_to_keep),
                     },
@@ -929,7 +929,7 @@ class TantivyEngine(BaseModel):
                     "Tantivy delete: completed successfully",
                     extra={
                         "project_id": project_id,
-                        "message_preview": message[:50] if message else "",
+                        "memory_preview": content[:50] if content else "",
                         "deleted_count": deleted_count,
                     },
                 )
@@ -943,7 +943,7 @@ class TantivyEngine(BaseModel):
                     "Tantivy delete query parsing failed",
                     extra={
                         "project_id": project_id,
-                        "message_preview": message[:50] if message else "",
+                        "memory_preview": content[:50] if content else "",
                         "error": str(e),
                         "error_type": "QueryParseError",
                     },
@@ -971,7 +971,7 @@ class TantivyEngine(BaseModel):
                     "Tantivy delete failed unexpectedly",
                     extra={
                         "project_id": project_id,
-                        "message_preview": message[:50] if message else "",
+                        "memory_preview": content[:50] if content else "",
                         "error": str(e),
                         "error_type": type(e).__name__,
                     },
@@ -986,7 +986,7 @@ class TantivyEngine(BaseModel):
         delete_documents() consumes the IndexWriter.
 
         Args:
-            docs_to_keep: List of (project_id, message) tuples to preserve.
+            docs_to_keep: List of (project_id, content) tuples to preserve.
         """
         import shutil
 
@@ -1017,8 +1017,8 @@ class TantivyEngine(BaseModel):
         self._initialize_index()
 
         # Step 4: Re-add the kept documents (all projects)
-        for project_id, message in docs_to_keep:
-            self.add(project_id, message)
+        for project_id, content in docs_to_keep:
+            self.add(project_id, content)
 
         # Step 5: Commit the changes
         self.commit()
@@ -1034,7 +1034,7 @@ class TantivyEngine(BaseModel):
             Escaped query string safe for use in Tantivy queries.
         """
         special_chars = r'+-&|!(){}[]^"~*?:\/'
-        escaped = []
+        escaped: list[str] = []
         for char in query:
             if char in special_chars:
                 escaped.append(f"\\{char}")
@@ -1057,7 +1057,9 @@ class TantivyEngine(BaseModel):
         try:
             num_docs_attr = getattr(searcher, "num_docs", None)
             if callable(num_docs_attr):
-                num_docs = int(num_docs_attr())
+                num_docs_result = num_docs_attr()
+                if isinstance(num_docs_result, (int, float)):
+                    num_docs = int(num_docs_result)
             elif isinstance(num_docs_attr, (int, float)):
                 num_docs = int(num_docs_attr)
         except Exception as e:
@@ -1084,14 +1086,14 @@ class TantivyEngine(BaseModel):
         - total_docs: Total documents in index (including tombstones)
         - active_docs: Documents with is_deleted=0
         - tombstones: Documents with is_deleted=1
-        - unique_active_messages: Unique messages after filtering tombstones
+        - unique_active_memories: Unique memories after filtering tombstones
         """
         if self._index is None:
             return {
                 "total_docs": 0,
                 "active_docs": 0,
                 "tombstones": 0,
-                "unique_active_messages": 0,
+                "unique_active_memories": 0,
             }
 
         try:
@@ -1100,40 +1102,40 @@ class TantivyEngine(BaseModel):
             # Get all documents across all projects
             query = self._index.parse_query(
                 query="*",
-                default_field_names=["message"],
+                default_field_names=["content"],
             )
             top_docs = self.searcher.search(query=query, limit=doc_limit)
 
             total_docs = 0
             active_docs = 0
             tombstones = 0
-            active_messages: set[str] = set()
-            tombstoned_messages: set[str] = set()
+            active_memories: set[str] = set()
+            tombstoned_memories: set[str] = set()
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
                 total_docs += 1
-                message = doc.get_first("message")
+                memory = doc.get_first("content")
 
                 is_deleted_val = doc.get_first("is_deleted")
                 is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
                 if is_deleted == 1:
                     tombstones += 1
-                    if message is not None:
-                        tombstoned_messages.add(cast(str, message))
+                    if memory is not None:
+                        tombstoned_memories.add(cast(str, memory))
                 else:
                     active_docs += 1
-                    if message is not None:
-                        active_messages.add(cast(str, message))
+                    if memory is not None:
+                        active_memories.add(cast(str, memory))
 
-            # Unique active messages = active messages NOT in tombstoned set
-            unique_active = active_messages - tombstoned_messages
+            # Unique active memories = active memories NOT in tombstoned set
+            unique_active = active_memories - tombstoned_memories
 
             return {
                 "total_docs": total_docs,
                 "active_docs": active_docs,
                 "tombstones": tombstones,
-                "unique_active_messages": len(unique_active),
+                "unique_active_memories": len(unique_active),
             }
 
         except Exception as e:
@@ -1146,7 +1148,7 @@ class TantivyEngine(BaseModel):
                 "total_docs": 0,
                 "active_docs": 0,
                 "tombstones": 0,
-                "unique_active_messages": 0,
+                "unique_active_memories": 0,
             }
 
     def needs_compaction(self) -> bool:
@@ -1191,11 +1193,11 @@ class TantivyEngine(BaseModel):
         return False
 
     def compact(self, force: bool = False) -> dict[str, int]:
-        """Compact the index by removing tombstoned messages.
+        """Compact the index by removing tombstoned memories.
 
         This physically removes both tombstone documents (is_deleted=1) and their
         corresponding original documents (is_deleted=0) from the index. After
-        compaction, only truly active messages remain.
+        compaction, only truly active memories remain.
 
         Args:
             force: If True, compact even if thresholds aren't exceeded.
@@ -1230,45 +1232,45 @@ class TantivyEngine(BaseModel):
             # Get all documents with their deletion status
             query = self._index.parse_query(  # type: ignore[union-attr]
                 query="*",
-                default_field_names=["message"],
+                default_field_names=["content"],
             )
             top_docs = self.searcher.search(query=query, limit=100000)
 
             # Collect all documents with metadata
             all_docs: list[
                 tuple[str, str, int]
-            ] = []  # (project_id, message, is_deleted)
-            tombstoned_messages: set[str] = set()
+            ] = []  # (project_id, memory, is_deleted)
+            tombstoned_memories: set[str] = set()
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
                 project_id = doc.get_first("project_id")
-                message = doc.get_first("message")
+                memory = doc.get_first("content")
                 is_deleted_val = doc.get_first("is_deleted")
                 is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
 
-                if project_id is not None and message is not None:
+                if project_id is not None and memory is not None:
                     all_docs.append(
-                        (cast(str, project_id), cast(str, message), is_deleted)
+                        (cast(str, project_id), cast(str, memory), is_deleted)
                     )
                     if is_deleted == 1:
-                        tombstoned_messages.add(cast(str, message))
+                        tombstoned_memories.add(cast(str, memory))
 
-            # Filter to keep only active messages that don't have tombstones
+            # Filter to keep only active memories that don't have tombstones
             docs_to_keep: list[tuple[str, str]] = []
             removed_originals = 0
             removed_tombstones = 0
 
-            for project_id, message, is_deleted in all_docs:
-                if message in tombstoned_messages:
-                    # This message has a tombstone, skip it
+            for project_id, memory, is_deleted in all_docs:
+                if memory in tombstoned_memories:
+                    # This memory has a tombstone, skip it
                     if is_deleted == 1:
                         removed_tombstones += 1
                     else:
                         removed_originals += 1
                 else:
-                    # Active message without tombstone, keep it
-                    docs_to_keep.append((project_id, message))
+                    # Active memory without tombstone, keep it
+                    docs_to_keep.append((project_id, memory))
 
             # Rebuild the index with only active documents
             self._rebuild_index_with_docs(docs_to_keep)

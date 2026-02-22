@@ -1,4 +1,4 @@
-"""Real server integration test using fastmcp.Client - SIMPLIFIED APPROACH."""
+'''Real server integration test using fastmcp.Client - SIMPLIFIED APPROACH.'''
 
 import os
 
@@ -14,11 +14,11 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_real_server_with_fastmcp_client():
-    """Test real MCP server using fastmcp.Client.
+    '''Test real MCP server using fastmcp.Client.
 
     This is the RECOMMENDED approach for testing the HTTP server.
     It's simpler and more reliable than raw HTTP or MCP SDK approaches.
-    """
+    '''
 
     print("\n" + "=" * 70)
     print("🌐 REAL SERVER TEST - Using fastmcp.Client")
@@ -40,8 +40,8 @@ async def test_real_server_with_fastmcp_client():
             for tool in tools:
                 print(f"   • {tool.name}: {tool.description.split('.')[0]}...")
 
-            # Prepare 10 test messages
-            messages = [
+            # Prepare 10 test memories
+            memories = [
                 "Python tutorial for beginners covers the essential syntax and core concepts. Learn about variables, data types, loops, and functions through practical examples. This comprehensive guide helps newcomers build a solid foundation in Python programming.",
                 "Advanced Python programming explores decorators, metaclasses, and context managers for professional development. Master asynchronous programming with asyncio and concurrent.futures for high-performance applications. Deep dive into design patterns and best practices used in production systems.",
                 "JavaScript fundamentals teach you the core concepts of web development and DOM manipulation. Understand event handling, callbacks, promises, and async/await for modern web applications. Learn ES6+ features including arrow functions, destructuring, and modules.",
@@ -55,14 +55,14 @@ async def test_real_server_with_fastmcp_client():
             ]
 
             print("\n" + "=" * 70)
-            print("📝 STEP 1: Adding 10 messages to REAL server")
+            print("📝 STEP 1: Adding 10 memories to REAL server")
             print("=" * 70)
-            for i, msg in enumerate(messages, 1):
-                print(f"  {i}. {msg}")
+            for i, mem in enumerate(memories, 1):
+                print(f"  {i}. {mem}")
 
             print("\n📤 Calling 'add' tool...")
             add_result: CallToolResult = await client.call_tool(
-                "add", arguments={"messages": messages}
+                "add", arguments={"memories": memories}
             )
             print("✅ Add completed!")
             if add_result.content:
@@ -74,38 +74,38 @@ async def test_real_server_with_fastmcp_client():
             await anyio.sleep(1)
 
             print("\n" + "=" * 70)
-            print("📥 STEP 2: Retrieving ALL messages from REAL server")
+            print("📥 STEP 2: Retrieving ALL memories from REAL server")
             print("=" * 70)
 
             print("\n📤 Calling 'get_all' tool...")
             get_all_result: CallToolResult = await client.call_tool("get_all")
 
-            print("✅ Retrieved messages:")
-            all_messages = []
+            print("✅ Retrieved memories:")
+            all_memories = []
             for content in get_all_result.content:
                 if hasattr(content, "text"):
                     # Parse the text content
                     import json
 
                     try:
-                        all_messages = json.loads(content.text)
-                        for i, msg in enumerate(all_messages, 1):
-                            print(f"  {i}. {msg}")
-                        print(f"\n📊 Total: {len(all_messages)} messages")
+                        all_memories = json.loads(content.text)
+                        for i, mem in enumerate(all_memories, 1):
+                            print(f"  {i}. {mem}")
+                        print(f"\n📊 Total: {len(all_memories)} memories")
                     except Exception:
                         # Might already be a list
                         if isinstance(content.text, list):
-                            all_messages = content.text
-                            for i, msg in enumerate(all_messages, 1):
-                                print(f"  {i}. {msg}")
-                            print(f"\n📊 Total: {len(all_messages)} messages")
+                            all_memories = content.text
+                            for i, mem in enumerate(all_memories, 1):
+                                print(f"  {i}. {mem}")
+                            print(f"\n📊 Total: {len(all_memories)} memories")
                         else:
                             print(f"   {content.text}")
 
             await anyio.sleep(1)
 
             print("\n" + "=" * 70)
-            print("🔍 STEP 3: Searching for 'Python' messages on REAL server")
+            print("🔍 STEP 3: Searching for 'Python' memories on REAL server")
             print("=" * 70)
 
             print("\n📤 Calling 'search' tool with query='Python'...")
@@ -119,18 +119,18 @@ async def test_real_server_with_fastmcp_client():
                 if hasattr(content, "text"):
                     try:
                         python_results = json.loads(content.text)
-                        for i, msg in enumerate(python_results, 1):
-                            print(f"  {i}. {msg}")
+                        for i, mem in enumerate(python_results, 1):
+                            print(f"  {i}. {mem}")
                         print(
-                            f"\n📊 Found: {len(python_results)} Python-related messages"
+                            f"\n📊 Found: {len(python_results)} Python-related memories"
                         )
                     except Exception:
                         if isinstance(content.text, list):
                             python_results = content.text
-                            for i, msg in enumerate(python_results, 1):
-                                print(f"  {i}. {msg}")
+                            for i, mem in enumerate(python_results, 1):
+                                print(f"  {i}. {mem}")
                             print(
-                                f"\n📊 Found: {len(python_results)} Python-related messages"
+                                f"\n📊 Found: {len(python_results)} Python-related memories"
                             )
                         else:
                             print(f"   {content.text}")
@@ -138,7 +138,7 @@ async def test_real_server_with_fastmcp_client():
             await anyio.sleep(1)
 
             print("\n" + "=" * 70)
-            print("🔍 STEP 4: Searching for 'JavaScript' messages")
+            print("🔍 STEP 4: Searching for 'JavaScript' memories")
             print("=" * 70)
 
             print("\n📤 Calling 'search' tool with query='JavaScript'...")
@@ -152,18 +152,18 @@ async def test_real_server_with_fastmcp_client():
                 if hasattr(content, "text"):
                     try:
                         js_results = json.loads(content.text)
-                        for i, msg in enumerate(js_results, 1):
-                            print(f"  {i}. {msg}")
+                        for i, mem in enumerate(js_results, 1):
+                            print(f"  {i}. {mem}")
                         print(
-                            f"\n📊 Found: {len(js_results)} JavaScript-related messages"
+                            f"\n📊 Found: {len(js_results)} JavaScript-related memories"
                         )
                     except Exception:
                         if isinstance(content.text, list):
                             js_results = content.text
-                            for i, msg in enumerate(js_results, 1):
-                                print(f"  {i}. {msg}")
+                            for i, mem in enumerate(js_results, 1):
+                                print(f"  {i}. {mem}")
                             print(
-                                f"\n📊 Found: {len(js_results)} JavaScript-related messages"
+                                f"\n📊 Found: {len(js_results)} JavaScript-related memories"
                             )
                         else:
                             print(f"   {content.text}")
@@ -174,44 +174,44 @@ async def test_real_server_with_fastmcp_client():
             print("🗑️  STEP 5: Testing remove functionality")
             print("=" * 70)
 
-            java_message = "Java enterprise patterns demonstrate architectural best practices for scalable business applications. Learn dependency injection, factory patterns, and service-oriented architecture principles. Implement robust solutions using Spring Framework and enterprise design patterns."
-            print("\n📤 Removing Java enterprise patterns message...")
-            _ = await client.call_tool("remove", arguments={"messages": [java_message]})
+            java_memory = "Java enterprise patterns demonstrate architectural best practices for scalable business applications. Learn dependency injection, factory patterns, and service-oriented architecture principles. Implement robust solutions using Spring Framework and enterprise design patterns."
+            print("\n📤 Removing Java enterprise patterns memory...")
+            _ = await client.call_tool("remove", arguments={"memories": [java_memory]})
             print("✅ Remove completed!")
 
             # Verify removal
             await anyio.sleep(1)
             verify_result: CallToolResult = await client.call_tool("get_all")
-            remaining_messages = []
+            remaining_memories = []
             for content in verify_result.content:
                 if hasattr(content, "text"):
                     try:
-                        remaining_messages = json.loads(content.text)
+                        remaining_memories = json.loads(content.text)
                     except Exception:
                         if isinstance(content.text, list):
-                            remaining_messages = content.text
+                            remaining_memories = content.text
 
-            print(f"\n📊 After removal: {len(remaining_messages)} messages remain")
-            assert java_message not in remaining_messages, (
-                "Java message should be removed"
+            print(f"\n📊 After removal: {len(remaining_memories)} memories remain")
+            assert java_memory not in remaining_memories, (
+                "Java memory should be removed"
             )
             print(
-                "✅ Verified: Java enterprise patterns message was successfully removed"
+                "✅ Verified: Java enterprise patterns memory was successfully removed"
             )
 
             print("\n" + "=" * 70)
             print("🎉 REAL SERVER TEST COMPLETE!")
             print("=" * 70)
-            print(f"""
+            print(f'''
 Summary:
   ✅ Connected to MCP server at {server_url}
   ✅ Listed {len(tools)} available tools
-  ✅ Added {len(messages)} messages using REAL OpenAI embeddings
-  ✅ Messages stored in REAL USearch vector index
-  ✅ Retrieved all messages from persistent storage
-  ✅ Searched and found {len(python_results)} Python-related messages
-  ✅ Searched and found {len(js_results)} JavaScript-related messages
-  ✅ Removed 1 message successfully
+  ✅ Added {len(memories)} memories using REAL OpenAI embeddings
+  ✅ Memories stored in REAL USearch vector index
+  ✅ Retrieved all memories from persistent storage
+  ✅ Searched and found {len(python_results)} Python-related memories
+  ✅ Searched and found {len(js_results)} JavaScript-related memories
+  ✅ Removed 1 memory successfully
   ✅ Verified removal
 
 This was a complete END-TO-END test with:
@@ -220,7 +220,7 @@ This was a complete END-TO-END test with:
   • Real USearch vector database
   • Real OpenAI API calls
   • All 4 MCP tools tested (add, get_all, search, remove)
-            """)
+            ''')
 
     except Exception as e:
         import traceback

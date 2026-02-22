@@ -1,5 +1,7 @@
-"""Unit tests for CrossEncoderReranker (using FlagReranker)."""
+'''Unit tests for CrossEncoderReranker (using FlagReranker).'''
 
+import sys
+from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,11 +12,22 @@ from reflectlog.infrastructure.cross_encoder_reranker import (
 )
 
 
+@pytest.fixture(autouse=True)
+def mock_flag_embedding_module() -> Generator[None, Any, None]:
+    '''Mock FlagEmbedding module in sys.modules to avoid heavy imports.'''
+    mock_flag_embedding = MagicMock()
+    mock_flag_reranker_class = MagicMock()
+    mock_flag_embedding.FlagReranker = mock_flag_reranker_class
+    sys.modules["FlagEmbedding"] = mock_flag_embedding
+    yield
+    sys.modules.pop("FlagEmbedding", None)
+
+
 class TestCrossEncoderConfig:
-    """Test CrossEncoderConfig dataclass."""
+    '''Test CrossEncoderConfig dataclass.'''
 
     def test_default_values(self) -> None:
-        """Test default configuration values."""
+        '''Test default configuration values.'''
         config = CrossEncoderConfig()
 
         assert config.model_name == "BAAI/bge-reranker-v2-m3"
@@ -29,7 +42,7 @@ class TestCrossEncoderConfig:
         assert config.max_length == 512
 
     def test_custom_values(self) -> None:
-        """Test configuration with custom values."""
+        '''Test configuration with custom values.'''
         config = CrossEncoderConfig(
             model_name="BAAI/bge-reranker-large",
             enabled=True,
@@ -53,14 +66,14 @@ class TestCrossEncoderConfig:
         assert config.max_length == 256
 
     def test_default_batch_normalize_and_min_results(self) -> None:
-        """Test default values for batch_normalize and min_results."""
+        '''Test default values for batch_normalize and min_results.'''
         config = CrossEncoderConfig()
 
         assert config.batch_normalize is True
         assert config.min_results == 0
 
     def test_from_app_config_enabled(self) -> None:
-        """Test factory method from application config when enabled."""
+        '''Test factory method from application config when enabled.'''
         mock_app_config = MagicMock()
         mock_app_config.reranker_engine = "cross_encoder"
         mock_app_config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
@@ -89,7 +102,7 @@ class TestCrossEncoderConfig:
         assert config.batch_normalize is True
 
     def test_from_app_config_disabled(self) -> None:
-        """Test factory method from application config when disabled."""
+        '''Test factory method from application config when disabled.'''
         mock_app_config = MagicMock()
         mock_app_config.reranker_engine = "llm"  # Not cross_encoder
         mock_app_config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
@@ -109,15 +122,13 @@ class TestCrossEncoderConfig:
 
 
 class TestCrossEncoderRerankerInitialization:
-    """Test CrossEncoderReranker initialization."""
+    '''Test CrossEncoderReranker initialization.'''
 
     def test_initialization_does_not_load_model(self) -> None:
-        """Test that initialization does not load the model (lazy loading)."""
+        '''Test that initialization does not load the model (lazy loading).'''
         config = CrossEncoderConfig()
 
-        with patch(
-            "reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"
-        ) as mock_flag_reranker:
+        with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
             reranker = CrossEncoderReranker(config=config)
 
             # Model should not be loaded during initialization
@@ -125,14 +136,12 @@ class TestCrossEncoderRerankerInitialization:
             assert reranker._model is None
 
     def test_model_property_lazy_loads(self) -> None:
-        """Test that accessing model property triggers lazy loading."""
+        '''Test that accessing model property triggers lazy loading.'''
         config = CrossEncoderConfig(
             model_name="test-model", device="cpu", use_fp16=True
         )
 
-        with patch(
-            "reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"
-        ) as mock_flag_reranker:
+        with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
             mock_model = MagicMock()
             mock_flag_reranker.return_value = mock_model
 
@@ -148,12 +157,10 @@ class TestCrossEncoderRerankerInitialization:
             assert model is mock_model
 
     def test_model_property_caches_instance(self) -> None:
-        """Test that model property returns cached instance on subsequent calls."""
+        '''Test that model property returns cached instance on subsequent calls.'''
         config = CrossEncoderConfig()
 
-        with patch(
-            "reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"
-        ) as mock_flag_reranker:
+        with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
             mock_model = MagicMock()
             mock_flag_reranker.return_value = mock_model
 
@@ -170,11 +177,11 @@ class TestCrossEncoderRerankerInitialization:
 
 
 class TestRerank:
-    """Test rerank method."""
+    '''Test rerank method.'''
 
     @pytest.fixture
     def mock_reranker(self) -> CrossEncoderReranker:
-        """Create a CrossEncoderReranker with mocked FlagReranker model."""
+        '''Create a CrossEncoderReranker with mocked FlagReranker model.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -185,7 +192,7 @@ class TestRerank:
             batch_normalize=False,  # Disable batch normalization for raw score tests
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             # Pre-set the model to avoid lazy loading
             reranker._model = MagicMock()
@@ -198,15 +205,15 @@ class TestRerank:
             return reranker
 
     def test_rerank_empty_candidates(self, mock_reranker: CrossEncoderReranker) -> None:
-        """Test reranking empty candidate list."""
+        '''Test reranking empty candidate list.'''
         result = mock_reranker.rerank("test query", [])
         assert result == []
 
     def test_rerank_disabled_returns_candidates_unchanged(self) -> None:
-        """Test that disabled reranker returns candidates unchanged."""
+        '''Test that disabled reranker returns candidates unchanged.'''
         config = CrossEncoderConfig(enabled=False)
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
 
             candidates = [("doc1", 0.8), ("doc2", 0.6)]
@@ -216,7 +223,7 @@ class TestRerank:
             assert result == candidates
 
     def test_rerank_scores_and_sorts(self, mock_reranker: CrossEncoderReranker) -> None:
-        """Test that rerank scores candidates and sorts by score descending."""
+        '''Test that rerank scores candidates and sorts by score descending.'''
         # Mock model.compute_score to return scores (FlagReranker API)
         mock_reranker._model.compute_score.return_value = [0.3, 0.9, 0.6]
 
@@ -235,10 +242,10 @@ class TestRerank:
         assert result[2] == ("doc1", 0.3)
 
     def test_rerank_respects_top_k(self) -> None:
-        """Test that rerank limits results to top_k."""
+        '''Test that rerank limits results to top_k.'''
         config = CrossEncoderConfig(enabled=True, top_k=2, batch_normalize=False)
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -254,12 +261,12 @@ class TestRerank:
             assert len(result) == 2
 
     def test_rerank_filters_by_score_threshold(self) -> None:
-        """Test that results below score threshold are filtered out."""
+        '''Test that results below score threshold are filtered out.'''
         config = CrossEncoderConfig(
             enabled=True, top_k=10, score_threshold=0.5, batch_normalize=False
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -280,7 +287,7 @@ class TestRerank:
     def test_rerank_builds_correct_pairs(
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
-        """Test that query-document pairs are built correctly for scoring."""
+        '''Test that query-document pairs are built correctly for scoring.'''
         mock_reranker._model.compute_score.return_value = [0.8, 0.7]
 
         candidates = [("Python guide", 0.5), ("JavaScript guide", 0.5)]
@@ -295,7 +302,7 @@ class TestRerank:
         ]
 
     def test_rerank_uses_batch_size_and_max_length(self) -> None:
-        """Test that compute_score is called with configured batch_size and max_length."""
+        '''Test that compute_score is called with configured batch_size and max_length.'''
         config = CrossEncoderConfig(
             enabled=True,
             batch_size=16,
@@ -304,7 +311,7 @@ class TestRerank:
             batch_normalize=False,
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -323,10 +330,10 @@ class TestRerank:
             assert call_kwargs["normalize"] is True
 
     def test_rerank_with_logger_logs_debug(self) -> None:
-        """Test that reranking logs debug information when logger is provided."""
+        '''Test that reranking logs debug information when logger is provided.'''
         config = CrossEncoderConfig(enabled=True, batch_normalize=False)
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             mock_logger = MagicMock()
             reranker = CrossEncoderReranker(config=config, logger=mock_logger)
             reranker._model = MagicMock()
@@ -343,12 +350,12 @@ class TestRerank:
             mock_logger.info.assert_called()
 
     def test_rerank_handles_single_pair_float_return(self) -> None:
-        """Test that rerank handles single-pair case where compute_score returns float."""
+        '''Test that rerank handles single-pair case where compute_score returns float.'''
         config = CrossEncoderConfig(
             enabled=True, top_k=10, score_threshold=0.0, batch_normalize=False
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -367,14 +374,14 @@ class TestRerank:
 
 
 class TestRerankAsync:
-    """Test rerank_async method."""
+    '''Test rerank_async method.'''
 
     @pytest.fixture
     def mock_reranker(self) -> CrossEncoderReranker:
-        """Create a CrossEncoderReranker with mocked FlagReranker model."""
+        '''Create a CrossEncoderReranker with mocked FlagReranker model.'''
         config = CrossEncoderConfig(enabled=True, batch_normalize=False)
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -387,7 +394,7 @@ class TestRerankAsync:
     async def test_rerank_async_calls_sync_rerank(
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
-        """Test that rerank_async wraps the sync rerank method."""
+        '''Test that rerank_async wraps the sync rerank method.'''
         mock_reranker._model.compute_score.return_value = [0.9, 0.7]
 
         candidates = [("doc1", 0.8), ("doc2", 0.6)]
@@ -402,16 +409,16 @@ class TestRerankAsync:
     async def test_rerank_async_empty_candidates(
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
-        """Test rerank_async with empty candidate list."""
+        '''Test rerank_async with empty candidate list.'''
         result = await mock_reranker.rerank_async("test query", [])
         assert result == []
 
 
 class TestCrossEncoderRerankerIntegration:
-    """Integration-style tests for full reranking flow."""
+    '''Integration-style tests for full reranking flow.'''
 
     def test_full_reranking_flow(self) -> None:
-        """Test complete reranking flow with mocked FlagReranker model."""
+        '''Test complete reranking flow with mocked FlagReranker model.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=5,
@@ -419,7 +426,7 @@ class TestCrossEncoderRerankerIntegration:
             batch_normalize=False,  # Test raw score behavior
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config, logger=MagicMock())
             reranker._model = MagicMock()
 
@@ -455,12 +462,10 @@ class TestCrossEncoderRerankerIntegration:
             assert result[2] == ("Machine learning tutorial", 0.65)
 
     def test_disabled_reranker_passthrough(self) -> None:
-        """Test that disabled reranker passes through candidates unchanged."""
+        '''Test that disabled reranker passes through candidates unchanged.'''
         config = CrossEncoderConfig(enabled=False)
 
-        with patch(
-            "reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"
-        ) as mock_flag_reranker:
+        with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
             reranker = CrossEncoderReranker(config=config)
 
             candidates = [
@@ -479,15 +484,13 @@ class TestCrossEncoderRerankerIntegration:
 
 
 class TestThreadSafety:
-    """Test thread-safety of FlagReranker model initialization."""
+    '''Test thread-safety of FlagReranker model initialization.'''
 
     def test_double_checked_locking_pattern(self) -> None:
-        """Test that model initialization uses double-checked locking."""
+        '''Test that model initialization uses double-checked locking.'''
         config = CrossEncoderConfig()
 
-        with patch(
-            "reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"
-        ) as mock_flag_reranker:
+        with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
             mock_model = MagicMock()
             mock_flag_reranker.return_value = mock_model
 
@@ -517,10 +520,10 @@ class TestThreadSafety:
 
 
 class TestBatchNormalization:
-    """Test batch normalization feature."""
+    '''Test batch normalization feature.'''
 
     def test_batch_normalize_enabled_normalizes_scores(self) -> None:
-        """Test that batch_normalize=True normalizes scores to 0-1 range."""
+        '''Test that batch_normalize=True normalizes scores to 0-1 range.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -528,7 +531,7 @@ class TestBatchNormalization:
             batch_normalize=True,
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -551,7 +554,7 @@ class TestBatchNormalization:
             assert result[2][1] == pytest.approx(0.0)
 
     def test_batch_normalize_disabled_uses_raw_scores(self) -> None:
-        """Test that batch_normalize=False uses raw scores."""
+        '''Test that batch_normalize=False uses raw scores.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -559,7 +562,7 @@ class TestBatchNormalization:
             batch_normalize=False,
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -579,7 +582,7 @@ class TestBatchNormalization:
             assert result[1][1] == 0.05
 
     def test_batch_normalize_with_threshold_filters_correctly(self) -> None:
-        """Test batch normalization with threshold filtering."""
+        '''Test batch normalization with threshold filtering.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -588,7 +591,7 @@ class TestBatchNormalization:
             min_results=0,
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -606,11 +609,319 @@ class TestBatchNormalization:
             assert result[0][0] == "doc1"
 
 
+class TestModelPropertyWithLogger:
+    '''Test model property logging behavior during initialization.'''
+
+    def test_model_property_logs_loading_and_success(self) -> None:
+        '''Test that model property logs loading start and success when logger is provided.'''
+        config = CrossEncoderConfig(
+            model_name="test-model", device="cpu", use_fp16=True
+        )
+
+        with patch("FlagEmbedding.FlagReranker") as mock_flag_reranker:
+            mock_model = MagicMock()
+            mock_flag_reranker.return_value = mock_model
+
+            mock_logger = MagicMock()
+            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
+
+            # Access model property to trigger lazy loading
+            _ = reranker.model
+
+            # Should log loading start (line 140)
+            loading_call = mock_logger.info.call_args_list[0]
+            assert "Loading FlagReranker model" in loading_call[0][0]
+            assert loading_call[1]["extra"]["device"] == "cpu"
+            assert loading_call[1]["extra"]["use_fp16"] is True
+
+            # Should log success (line 174)
+            success_call = mock_logger.info.call_args_list[1]
+            assert "loaded successfully" in success_call[0][0]
+            assert success_call[1]["extra"]["model"] == "test-model"
+
+
+class TestSuppressFastTokenizerWarning:
+    '''Test _suppress_fast_tokenizer_warning method.'''
+
+    def test_tokenizer_found_on_model_directly(self) -> None:
+        '''Test suppression when tokenizer is accessible directly on model.'''
+        config = CrossEncoderConfig()
+
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+
+            mock_model = MagicMock()
+            mock_tokenizer = MagicMock()
+            mock_tokenizer.deprecation_warnings = {}
+            mock_model.tokenizer = mock_tokenizer
+            reranker._model = mock_model
+
+            reranker._suppress_fast_tokenizer_warning()
+
+            # Should set the deprecation flag directly
+            assert (
+                mock_tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"]
+                is True
+            )
+
+    def test_tokenizer_found_via_model_model(self) -> None:
+        '''Test suppression when tokenizer found via model.model (lines 247-249).'''
+        config = CrossEncoderConfig()
+
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+
+            mock_inner_model = MagicMock()
+            mock_tokenizer = MagicMock()
+            mock_tokenizer.deprecation_warnings = {}
+            mock_inner_model.tokenizer = mock_tokenizer
+
+            mock_model = MagicMock(spec=[])
+            # No direct tokenizer attribute, but model.model.tokenizer exists
+            mock_model.model = mock_inner_model
+            reranker._model = mock_model
+
+            reranker._suppress_fast_tokenizer_warning()
+
+            # Should find tokenizer via model.model and set the flag
+            assert (
+                mock_tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"]
+                is True
+            )
+
+    def test_no_tokenizer_falls_back_to_warnings_filter(self) -> None:
+        '''Test warnings.filterwarnings fallback when no tokenizer found (line 257).'''
+        config = CrossEncoderConfig()
+
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+
+            # Model with no tokenizer attribute at all
+            mock_model = MagicMock(spec=[])
+            mock_model.model = MagicMock(spec=[])
+            reranker._model = mock_model
+
+            with patch(
+                "reflectlog.infrastructure.cross_encoder_reranker.warnings"
+            ) as mock_warnings:
+                reranker._suppress_fast_tokenizer_warning()
+
+                # Should fall back to warnings.filterwarnings
+                mock_warnings.filterwarnings.assert_called_once_with(
+                    "ignore",
+                    message=r"You're using a \w+TokenizerFast tokenizer.*using the `__call__` method is faster",
+                    category=UserWarning,
+                    module=r"transformers\.tokenization_utils_base",
+                )
+
+    def test_tokenizer_without_deprecation_warnings_attr(self) -> None:
+        '''Test fallback when tokenizer exists but lacks deprecation_warnings.'''
+        config = CrossEncoderConfig()
+
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+
+            mock_model = MagicMock()
+            mock_tokenizer = MagicMock(spec=[])  # No deprecation_warnings
+            mock_model.tokenizer = mock_tokenizer
+            reranker._model = mock_model
+
+            with patch(
+                "reflectlog.infrastructure.cross_encoder_reranker.warnings"
+            ) as mock_warnings:
+                reranker._suppress_fast_tokenizer_warning()
+
+                # Should fall back to warnings.filterwarnings
+                mock_warnings.filterwarnings.assert_called_once()
+
+
+class TestRerankDisabledWithLogger:
+    '''Test disabled reranker with logger present.'''
+
+    def test_disabled_reranker_logs_debug_with_logger(self) -> None:
+        '''Test that disabled reranker logs debug message when logger is provided (line 302).'''
+        config = CrossEncoderConfig(enabled=False)
+
+        with patch("FlagEmbedding.FlagReranker"):
+            mock_logger = MagicMock()
+            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
+
+            candidates = [("doc1", 0.8), ("doc2", 0.6)]
+            result = reranker.rerank("test query", candidates)
+
+            # Should return unchanged candidates
+            assert result == candidates
+
+            # Should log debug about being disabled
+            mock_logger.debug.assert_called_once()
+            call_args = mock_logger.debug.call_args
+            assert "disabled" in call_args[0][0].lower()
+            assert call_args[1]["extra"]["candidate_count"] == 2
+
+
+class TestBatchNormalizationWithLogger:
+    '''Test batch normalization logging.'''
+
+    def test_batch_normalize_logs_range_info(self) -> None:
+        '''Test that batch normalization logs raw and normalized ranges (line 338).'''
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.0,
+            batch_normalize=True,
+        )
+
+        with patch("FlagEmbedding.FlagReranker"):
+            mock_logger = MagicMock()
+            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+
+            reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]
+
+            candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
+            reranker.rerank("query", candidates)
+
+            # Find the batch normalization log call
+            info_calls = mock_logger.info.call_args_list
+            batch_norm_calls = [
+                c for c in info_calls if "Batch normalization" in c[0][0]
+            ]
+            assert len(batch_norm_calls) == 1
+            batch_call = batch_norm_calls[0]
+            assert batch_call[1]["extra"]["batch_normalize"] is True
+            assert batch_call[1]["extra"]["raw_min"] == pytest.approx(0.001)
+            assert batch_call[1]["extra"]["raw_max"] == pytest.approx(0.17)
+
+
+class TestRecencyDecay:
+    '''Test recency decay integration in rerank.'''
+
+    def test_recency_decay_applied_with_timestamp_map(self) -> None:
+        '''Test recency decay is applied when enabled and timestamp_map provided (lines 357-368).'''
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.0,
+            batch_normalize=False,
+            enable_recency_boost=True,
+            recency_decay_rate=0.01,
+        )
+
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8]
+
+            candidates = [("doc1", 0.5), ("doc2", 0.5)]
+            timestamp_map = {
+                "doc1": "2020-01-01T00:00:00+00:00",
+                "doc2": "2026-02-13T00:00:00+00:00",
+            }
+
+            result = reranker.rerank("query", candidates, timestamp_map=timestamp_map)
+
+            # Both should be present (no threshold filtering)
+            assert len(result) == 2
+            # doc2 is much newer so should have higher decayed score
+            doc_scores = {doc: score for doc, score in result}
+            assert doc_scores["doc2"] > doc_scores["doc1"]
+
+    def test_recency_decay_logs_when_logger_present(self) -> None:
+        '''Test recency decay logs pre/post decay scores when logger is present (lines 367-368).'''
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.0,
+            batch_normalize=False,
+            enable_recency_boost=True,
+            recency_decay_rate=0.01,
+        )
+
+        with patch("FlagEmbedding.FlagReranker"):
+            mock_logger = MagicMock()
+            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8]
+
+            candidates = [("doc1", 0.5), ("doc2", 0.5)]
+            timestamp_map = {
+                "doc1": "2020-01-01T00:00:00+00:00",
+                "doc2": "2026-02-13T00:00:00+00:00",
+            }
+
+            reranker.rerank("query", candidates, timestamp_map=timestamp_map)
+
+            # Should log recency decay debug info
+            debug_calls = mock_logger.debug.call_args_list
+            decay_calls = [c for c in debug_calls if "Recency decay" in c[0][0]]
+            assert len(decay_calls) == 1
+            decay_call = decay_calls[0]
+            assert decay_call[1]["extra"]["recency_decay"] is True
+            assert decay_call[1]["extra"]["decay_rate"] == 0.01
+
+    def test_recency_decay_skipped_when_disabled(self) -> None:
+        '''Test recency decay is skipped when enable_recency_boost=False.'''
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.0,
+            batch_normalize=False,
+            enable_recency_boost=False,
+            recency_decay_rate=0.01,
+        )
+
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8]
+
+            candidates = [("doc1", 0.5), ("doc2", 0.5)]
+            timestamp_map = {
+                "doc1": "2020-01-01T00:00:00+00:00",
+                "doc2": "2026-02-13T00:00:00+00:00",
+            }
+
+            result = reranker.rerank("query", candidates, timestamp_map=timestamp_map)
+
+            # Scores should remain raw (no decay applied)
+            assert result[0] == ("doc1", 0.9)
+            assert result[1] == ("doc2", 0.8)
+
+    def test_recency_decay_skipped_when_no_timestamp_map(self) -> None:
+        '''Test recency decay is skipped when timestamp_map is None.'''
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.0,
+            batch_normalize=False,
+            enable_recency_boost=True,
+            recency_decay_rate=0.01,
+        )
+
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8]
+
+            candidates = [("doc1", 0.5), ("doc2", 0.5)]
+
+            result = reranker.rerank("query", candidates, timestamp_map=None)
+
+            # Scores should remain raw (no decay applied)
+            assert result[0] == ("doc1", 0.9)
+            assert result[1] == ("doc2", 0.8)
+
+
 class TestMinResultsSafetyNet:
-    """Test min_results safety net feature."""
+    '''Test min_results safety net feature.'''
 
     def test_safety_net_returns_min_results_when_all_filtered(self) -> None:
-        """Test that safety net returns min_results when all below threshold."""
+        '''Test that safety net returns min_results when all below threshold.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -619,7 +930,7 @@ class TestMinResultsSafetyNet:
             min_results=2,  # Safety net: return at least 2
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -639,7 +950,7 @@ class TestMinResultsSafetyNet:
             assert result[1][0] == "doc2"  # Second best (0.5)
 
     def test_no_safety_net_when_min_results_zero(self) -> None:
-        """Test that min_results=0 allows empty results."""
+        '''Test that min_results=0 allows empty results.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -648,7 +959,7 @@ class TestMinResultsSafetyNet:
             min_results=0,  # No safety net
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 
@@ -667,7 +978,7 @@ class TestMinResultsSafetyNet:
             assert result[0][0] == "doc1"
 
     def test_safety_net_not_needed_when_enough_pass(self) -> None:
-        """Test that safety net doesn't interfere when enough results pass."""
+        '''Test that safety net doesn't interfere when enough results pass.'''
         config = CrossEncoderConfig(
             enabled=True,
             top_k=10,
@@ -676,7 +987,7 @@ class TestMinResultsSafetyNet:
             min_results=1,
         )
 
-        with patch("reflectlog.infrastructure.cross_encoder_reranker.FlagReranker"):
+        with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
             reranker._model = MagicMock()
 

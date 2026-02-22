@@ -1,6 +1,9 @@
 """Shared utilities for exact-match checks and Tantivy query escaping."""
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reflectlog.infrastructure import TantivyEngine
 
 from reflectlog.application.types import ISemanticSearchEngine
 from reflectlog.application.utils import StructuredLogger
@@ -13,7 +16,7 @@ def escape_tantivy_query(query: str) -> str:
     special meaning. This function escapes them to prevent query injection.
     """
     special_chars = r'+-&|!(){}[]^"~*?:\/'
-    escaped = []
+    escaped: list[str] = []
     for char in query:
         if char in special_chars:
             escaped.append(f"\\{char}")
@@ -25,25 +28,25 @@ def escape_tantivy_query(query: str) -> str:
 def has_exact_match(
     *,
     semantic_engine: ISemanticSearchEngine,
-    tantivy_engine: Any,
+    tantivy_engine: TantivyEngine | None,
     project_id: str,
-    message: str,
+    content: str,
     logger: StructuredLogger | None,
 ) -> bool:
-    """Check whether the exact message already exists in storage.
+    """Check whether the exact content already exists in storage.
 
     Uses Tantivy for fast exact phrase matching when available,
     falling back to direct database lookup otherwise.
     """
     if tantivy_engine is not None:
         try:
-            escaped_query = escape_tantivy_query(message)
+            escaped_query = escape_tantivy_query(content)
             results = tantivy_engine.search(
                 f'"{escaped_query}"',
                 project_id,
                 limit=5,
             )
-            has_match = any(msg == message for msg, _ in results)
+            has_match = any(msg == content for msg, _ in results)
             if has_match and logger:
                 logger.debug(
                     "Tantivy found exact duplicate",
@@ -58,7 +61,7 @@ def has_exact_match(
                 )
 
     try:
-        msg_id = semantic_engine.get_id_by_message(project_id, message)
+        msg_id = semantic_engine.get_id_by_content(project_id, content)
         if msg_id is not None:
             if logger:
                 logger.debug(

@@ -159,3 +159,52 @@ class ILoggingService(Protocol):
     def close(self) -> None:
         """Release logging resources."""
         ...
+
+
+@runtime_checkable
+class IStructuredLogger(Protocol):
+    """Protocol for structured logging with extra context.
+
+    This protocol matches the StructuredLogger implementation,
+    which uses an `extra` dict parameter instead of **kwargs.
+    """
+
+    def debug(
+        self,
+        message: str,
+        extra: dict[str, Any] | None = None,
+        exc_info: bool = False,
+    ) -> None:
+        """Log at DEBUG level."""
+        ...
+
+    def info(
+        self,
+        message: str,
+        extra: dict[str, Any] | None = None,
+        exc_info: bool = False,
+    ) -> None:
+        """Log at INFO level."""
+        ...
+
+    def warning(
+        self,
+        message: str,
+        extra: dict[str, Any] | None = None,
+        exc_info: bool = False,
+    ) -> None:
+        """Log at WARNING level."""
+        ...
+
+    def error(
+        self,
+        message: str,
+        extra: dict[str, Any] | None = None,
+        exc_info: bool = False,
+    ) -> None:
+        """Log at ERROR level."""
+        ...
+
+    def is_enabled_for(self, level: int) -> bool:
+        """Check if logger is enabled for the given level."""
+        ...

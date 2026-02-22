@@ -271,6 +271,7 @@ run_format() {
     echo ""
 
     # Run ruff format (only reflectlog directory, tests excluded; ignore failures)
+    # Quote style is configured in pyproject.toml [tool.ruff.format]
     uv run ruff format reflectlog || true
 
     # Remove trailing whitespace in all Python files

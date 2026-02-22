@@ -13,7 +13,13 @@ produces outputs for the next phase.
 from dataclasses import dataclass, field
 import threading
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from reflectlog.infrastructure import TantivyEngine
+    from reflectlog.infrastructure.smart_replacer import SmartReplacer
+
+    from .manager import MemoryManager
 
 import anyio
 from asyncer import asyncify, create_task_group
@@ -21,7 +27,7 @@ from asyncer import asyncify, create_task_group
 from ..config import Config
 from ..exceptions import StorageError
 from ..types import ISemanticSearchEngine
-from ..utils import StructuredLogger, truncate_message
+from ..utils import StructuredLogger, truncate_memory
 from .match_utils import has_exact_match
 
 
@@ -46,14 +52,14 @@ class ReplacementInfo:
 
 @dataclass
 class AddResult:
-    """Result of adding messages to memory storage.
+    """Result of adding memories to memory storage.
 
     Provides detailed information about what happened during the add operation,
-    including which messages were stored, skipped (duplicates), and replaced.
+    including which memories were stored, skipped (duplicates), and replaced.
 
     Attributes:
-        stored_count: Number of messages successfully stored.
-        skipped_count: Number of messages skipped (duplicates).
+        stored_count: Number of memories successfully stored.
+        skipped_count: Number of memories skipped (duplicates).
         replaced_count: Number of existing memories that were replaced.
         replacements: Detailed info about each replacement that occurred.
     """
@@ -69,13 +75,13 @@ class Phase1Result:
     """Result of Phase 1: Duplicate Detection.
 
     Attributes:
-        unique_messages: Messages that are unique within the batch.
-        storage_duplicates: Messages that already exist in storage.
+        unique_memories: Memories that are unique within the batch.
+        storage_duplicates: Memories that already exist in storage.
         batch_duplicates_count: Count of duplicates within the batch.
         duration: Time taken for phase 1 execution.
     """
 
-    unique_messages: list[str]
+    unique_memories: list[str]
     storage_duplicates: list[str]
     batch_duplicates_count: int
     duration: float
@@ -86,7 +92,7 @@ class Phase2Result:
     """Result of Phase 2: Smart Replacement Detection.
 
     Attributes:
-        replacement_map: Mapping from message to list of ReplacementInfo objects.
+        replacement_map: Mapping from memory to list of ReplacementInfo objects.
         total_replacements: Total number of replacements detected.
         duration: Time taken for phase 2 execution.
     """
@@ -101,7 +107,7 @@ class Phase3Result:
     """Result of Phase 3: Sequential Storage.
 
     Attributes:
-        stored_count: Number of messages stored.
+        stored_count: Number of memories stored.
         replaced_count: Number of memories replaced.
         replacements: List of ReplacementInfo objects.
         duration: Time taken for phase 3 execution.
@@ -119,13 +125,13 @@ class DuplicateDetectionPhase:
     This phase:
     1. Deduplicates within the batch itself
     2. Checks against existing storage in parallel
-    3. Returns unique messages and storage duplicates
+    3. Returns unique memories and storage duplicates
     """
 
     def __init__(
         self,
         semantic_engine: ISemanticSearchEngine,
-        tantivy_engine: Any,  # TantivyEngine | None
+        tantivy_engine: TantivyEngine | None,
         config: Config,
         logger: StructuredLogger,
     ):
@@ -143,28 +149,28 @@ class DuplicateDetectionPhase:
         self.logger = logger
         self._project_id = config.project_id
 
-    async def execute(self, messages: list[str]) -> Phase1Result:
+    async def execute(self, memories: list[str]) -> Phase1Result:
         """Execute Phase 1: Parallel duplicate detection.
 
         Args:
-            messages: List of messages to check for duplicates.
+            memories: List of memories to check for duplicates.
 
         Returns:
-            Phase1Result with unique messages and duplicate information.
+            Phase1Result with unique memories and duplicate information.
         """
         phase_start = time.perf_counter()
 
         # Step 1: Deduplicate within the batch itself (preserve order, keep first)
         seen: dict[str, int] = {}
-        unique_messages: list[str] = []
+        unique_memories: list[str] = []
         batch_duplicate_indices: list[int] = []
 
-        for idx, msg in enumerate(messages):
-            if msg in seen:
+        for idx, memory in enumerate(memories):
+            if memory in seen:
                 batch_duplicate_indices.append(idx)
             else:
-                seen[msg] = idx
-                unique_messages.append(msg)
+                seen[memory] = idx
+                unique_memories.append(memory)
 
         batch_duplicates_count = len(batch_duplicate_indices)
         if batch_duplicates_count > 0:
@@ -172,7 +178,7 @@ class DuplicateDetectionPhase:
                 f"Phase 1: Found {batch_duplicates_count} duplicates within batch",
                 extra={
                     "batch_duplicates": batch_duplicates_count,
-                    "unique_count": len(unique_messages),
+                    "unique_count": len(unique_memories),
                 },
             )
 
@@ -180,72 +186,72 @@ class DuplicateDetectionPhase:
         duplicate_flags: dict[str, bool] = {}
         semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
-        async def check_duplicate(msg: str) -> tuple[str, bool]:
-            """Check if message is duplicate (with semaphore for concurrency control)."""
+        async def check_duplicate(memory: str) -> tuple[str, bool]:
+            """Check if memory is duplicate (with semaphore for concurrency control)."""
             async with semaphore:
-                is_dup = await asyncify(self._has_exact_match)(msg)
-                return (msg, is_dup)
+                is_dup = await asyncify(self._has_exact_match)(memory)
+                return (memory, is_dup)
 
         # Run all duplicate checks in parallel
+        results: list[tuple[str, bool]] = []
         async with create_task_group() as tg:
-            results: list[tuple[str, bool]] = []
 
-            async def collect_result(msg: str) -> None:
-                res = await check_duplicate(msg)
+            async def collect_result(memory: str) -> None:
+                res = await check_duplicate(memory)
                 results.append(res)
 
-            for msg in unique_messages:
-                tg.soonify(collect_result)(msg)
+            for memory in unique_memories:
+                _ = tg.soonify(collect_result)(memory)
 
         # Process results
-        for msg, is_dup in results:
-            duplicate_flags[msg] = is_dup
+        for memory, is_dup in results:
+            duplicate_flags[memory] = is_dup
 
         # Separate duplicates from non-duplicates
         storage_duplicates: list[str] = []
-        non_duplicate_messages: list[str] = []
+        non_duplicate_memories: list[str] = []
 
-        for msg in unique_messages:
-            if duplicate_flags.get(msg, False):
-                storage_duplicates.append(msg)
+        for memory in unique_memories:
+            if duplicate_flags.get(memory, False):
+                storage_duplicates.append(memory)
             else:
-                non_duplicate_messages.append(msg)
+                non_duplicate_memories.append(memory)
 
         duration = time.perf_counter() - phase_start
         self.logger.info(
-            f"Phase 1 complete: {len(non_duplicate_messages)} unique, "
+            f"Phase 1 complete: {len(non_duplicate_memories)} unique, "
             f"{len(storage_duplicates)} storage duplicates ({duration:.3f}s)",
             extra={
                 "phase": 1,
                 "duration_ms": int(duration * 1000),
-                "unique_count": len(non_duplicate_messages),
+                "unique_count": len(non_duplicate_memories),
                 "storage_duplicates": len(storage_duplicates),
                 "batch_duplicates": batch_duplicates_count,
             },
         )
 
         return Phase1Result(
-            unique_messages=non_duplicate_messages,
+            unique_memories=non_duplicate_memories,
             storage_duplicates=storage_duplicates,
             batch_duplicates_count=batch_duplicates_count,
             duration=duration,
         )
 
-    def _has_exact_match(self, message: str) -> bool:
-        """Check whether the exact message already exists in storage.
+    def _has_exact_match(self, content: str) -> bool:
+        """Check whether the exact memory already exists in storage.
 
         Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
         falling back to direct database lookup otherwise. Both paths are O(log n)
         avoiding the ~100-500ms embedding API call overhead.
 
-        Sprint 2.1 Optimization: Fallback now uses get_id_by_message() for direct
+        Sprint 2.1 Optimization: Fallback now uses get_id_by_content() for direct
         indexed database lookup instead of semantic search with embedding API call.
         """
         return has_exact_match(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
             project_id=self._project_id,
-            message=message,
+            content=content,
             logger=self.logger,
         )
 
@@ -265,7 +271,7 @@ class SmartReplacementPhase:
         semantic_engine: ISemanticSearchEngine,
         config: Config,
         logger: StructuredLogger,
-        memory_manager: Any,  # MemoryManager for lazy SmartReplacer fetching
+        memory_manager: MemoryManager | None,
     ):
         """Initialize smart replacement phase.
 
@@ -273,7 +279,7 @@ class SmartReplacementPhase:
             semantic_engine: USearchEngine for semantic search.
             config: Application configuration.
             logger: Structured logger instance.
-            memory_manager: MemoryManager instance for lazy SmartReplacer fetching.
+            memory_manager: MemoryManager instance for lazy SmartReplacer fetching (optional).
         """
         self._semantic_engine = semantic_engine
         self.config = config
@@ -291,24 +297,33 @@ class SmartReplacementPhase:
             return None
         return self._memory_manager.smart_replacer
 
-    async def execute(self, messages: list[str]) -> Phase2Result:
+    @property
+    def smart_replace_enabled(self) -> bool:
+        """Check if smart replacement is configured and available.
+
+        Returns:
+            True if SmartReplacer is configured, False otherwise.
+        """
+        return self._get_smart_replacer() is not None
+
+    async def execute(self, memories: list[str]) -> Phase2Result:
         """Execute Phase 2: Parallel smart replacement detection.
 
         Args:
-            messages: List of non-duplicate messages to check for replacements.
+            memories: List of non-duplicate memories to check for replacements.
 
         Returns:
             Phase2Result with replacement information.
         """
         phase_start = time.perf_counter()
 
-        # Map: message -> list of replacement infos
+        # Map: memory -> list of replacement infos
         replacement_map: dict[str, list[ReplacementInfo]] = {}
 
         # Get SmartReplacer (lazy loaded via memory_manager if available)
         smart_replacer = self._get_smart_replacer()
 
-        if smart_replacer is None or not messages:
+        if smart_replacer is None or not memories:
             return Phase2Result(
                 replacement_map=replacement_map,
                 total_replacements=0,
@@ -321,21 +336,21 @@ class SmartReplacementPhase:
         # Limit concurrent replacement checks to avoid overload
         semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
+        replacement_results: list[tuple[str, list[ReplacementInfo]]] = []
         async with create_task_group() as tg:
-            replacement_results: list[tuple[str, list[ReplacementInfo]]] = []
 
-            async def check_replacement_for_msg(msg: str) -> None:
-                """Check replacement for a single message."""
+            async def check_replacement_for_memory(memory: str) -> None:
+                """Check replacement for a single memory."""
                 async with semaphore:
-                    infos = await self._check_for_replacement(msg, smart_replacer)
-                replacement_results.append((msg, infos))
+                    infos = await self._check_for_replacement(memory, smart_replacer)
+                replacement_results.append((memory, infos))
 
-            for msg in messages:
-                tg.soonify(check_replacement_for_msg)(msg)
+            for memory in memories:
+                _ = tg.soonify(check_replacement_for_memory)(memory)
 
         # Collect results
-        for msg, infos in replacement_results:
-            replacement_map[msg] = infos
+        for memory, infos in replacement_results:
+            replacement_map[memory] = infos
 
         duration = time.perf_counter() - phase_start
         total_replacements = sum(len(infos) for infos in replacement_map.values())
@@ -345,7 +360,7 @@ class SmartReplacementPhase:
             extra={
                 "phase": 2,
                 "duration_ms": int(duration * 1000),
-                "messages_checked": len(messages),
+                "memories_checked": len(memories),
                 "total_replacements": total_replacements,
             },
         )
@@ -357,7 +372,7 @@ class SmartReplacementPhase:
         )
 
     async def _check_for_replacement(
-        self, new_memory: str, smart_replacer: Any
+        self, new_memory: str, smart_replacer: SmartReplacer
     ) -> list[ReplacementInfo]:
         """Check if new memory should replace existing memories.
 
@@ -373,7 +388,6 @@ class SmartReplacementPhase:
             List of ReplacementInfo objects for memories that should be replaced.
             Empty list if no replacements needed.
         """
-        replacements: list[ReplacementInfo] = []
 
         try:
             # Step 1: Find top N most similar memories via semantic search
@@ -395,7 +409,6 @@ class SmartReplacementPhase:
                 return []
 
             # Step 2: Filter candidates by similarity threshold (pre-filter)
-            # Note: similar_results are 3-tuples (message, score, created_at)
             min_similarity = self.config.smart_replace_min_similarity
             filtered_candidates = [
                 (mem, score)
@@ -454,10 +467,10 @@ class SmartReplacementPhase:
                                     "confidence": confidence,
                                     "similarity_score": similarity_score,
                                     "reason": reason,
-                                    "old_memory_preview": truncate_message(
+                                    "old_memory_preview": truncate_memory(
                                         existing_memory, max_length=60
                                     ),
-                                    "new_memory_preview": truncate_message(
+                                    "new_memory_preview": truncate_memory(
                                         new_memory, max_length=60
                                     ),
                                 },
@@ -507,9 +520,7 @@ class SmartReplacementPhase:
                     tg.start_soon(collect_result, existing_memory, similarity_score)
 
             # Filter out None results (failed checks or no replacement needed)
-            replacements = [r for r in results if r is not None]
-
-            return replacements
+            return [r for r in results if r is not None]
 
         except Exception as e:
             # Graceful degradation: log warning and proceed without replacement
@@ -529,14 +540,14 @@ class StoragePhase:
 
     This phase:
     1. Processes replacements (archives and deletes old memories)
-    2. Adds new messages to storage
+    2. Adds new memories to storage
     3. Commits changes to both engines
     """
 
     def __init__(
         self,
         semantic_engine: ISemanticSearchEngine,
-        tantivy_engine: Any,  # TantivyEngine | None
+        tantivy_engine: TantivyEngine | None,
         config: Config,
         logger: StructuredLogger,
         write_lock: threading.Lock | None = None,
@@ -558,15 +569,15 @@ class StoragePhase:
 
     async def execute(
         self,
-        messages: list[str],
+        memories: list[str],
         replacement_map: dict[str, list[ReplacementInfo]],
         dry_run: bool = False,
     ) -> Phase3Result:
         """Execute Phase 3: Sequential storage.
 
         Args:
-            messages: List of non-duplicate messages to store.
-            replacement_map: Mapping from message to replacement info.
+            memories: List of non-duplicate memories to store.
+            replacement_map: Mapping from memory to replacement info.
             dry_run: If True, only check without making changes.
 
         Returns:
@@ -577,23 +588,23 @@ class StoragePhase:
         stored_count = 0
         replaced_count = 0
         replacements: list[ReplacementInfo] = []
-        messages_to_add: list[str] = []
+        memories_to_add: list[str] = []
 
-        # Process each message sequentially
-        for idx, message in enumerate(messages):
-            replacement_infos = replacement_map.get(message, [])
+        # Process each memory sequentially
+        for idx, memory in enumerate(memories):
+            replacement_infos = replacement_map.get(memory, [])
 
             # Process replacements (delete old memories)
             for replacement_info in replacement_infos:
                 self.logger.info(
                     "Replacing old memory with new one",
                     extra={
-                        "message_index": idx + 1,
+                        "memory_index": idx + 1,
                         "action": "replace",
-                        "old_preview": truncate_message(
+                        "old_preview": truncate_memory(
                             replacement_info.old_memory, max_length=60
                         ),
-                        "new_preview": truncate_message(message, max_length=60),
+                        "new_preview": truncate_memory(memory, max_length=60),
                         "confidence": replacement_info.confidence,
                         "similarity": replacement_info.similarity_score,
                         "dry_run": dry_run,
@@ -605,7 +616,7 @@ class StoragePhase:
                         # Archive the old memory before deletion (for recovery)
                         archived = await asyncify(self._archive_for_replacement)(
                             old_memory=replacement_info.old_memory,
-                            new_memory=message,
+                            new_memory=memory,
                             confidence=replacement_info.confidence,
                             reason=replacement_info.reason,
                         )
@@ -613,28 +624,28 @@ class StoragePhase:
                             self.logger.debug(
                                 "Old memory archived for recovery",
                                 extra={
-                                    "message_index": idx + 1,
+                                    "memory_index": idx + 1,
                                     "action": "archive_success",
                                 },
                             )
 
                         # Delete the old memory
-                        msg_id = self._semantic_engine.get_id_by_message(
+                        msg_id = self._semantic_engine.get_id_by_content(
                             self._project_id, replacement_info.old_memory
                         )
                         if msg_id is None:
                             self.logger.warning(
                                 "Old memory not found for replacement delete",
                                 extra={
-                                    "message_index": idx + 1,
+                                    "memory_index": idx + 1,
                                     "action": "delete_missing",
                                 },
                             )
                             continue
 
-                        self._delete_message(
+                        self._delete_memory(
                             memory_id=str(msg_id),
-                            message=replacement_info.old_memory,
+                            content=replacement_info.old_memory,
                         )
 
                         replaced_count += 1
@@ -642,7 +653,7 @@ class StoragePhase:
                         self.logger.debug(
                             "Old memory removed successfully",
                             extra={
-                                "message_index": idx + 1,
+                                "memory_index": idx + 1,
                                 "action": "delete_success",
                                 "archived": archived,
                             },
@@ -652,7 +663,7 @@ class StoragePhase:
                         self.logger.warning(
                             f"Failed to delete old memory: {delete_error}",
                             extra={
-                                "message_index": idx + 1,
+                                "memory_index": idx + 1,
                                 "action": "delete_failed",
                                 "error": str(delete_error),
                             },
@@ -662,21 +673,21 @@ class StoragePhase:
                     replaced_count += 1
                     replacements.append(replacement_info)
 
-            # Add the new message (unless dry_run)
+            # Add the new memory (unless dry_run)
             if not dry_run:
-                messages_to_add.append(message)
+                memories_to_add.append(memory)
             else:
                 # In dry_run, assume it would be stored
                 stored_count += 1
 
-        if not dry_run and messages_to_add:
-            stored_messages = self._add_messages_batch(messages_to_add)
-            stored_count = len(stored_messages)
-            if stored_count != len(messages_to_add):
+        if not dry_run and memories_to_add:
+            stored_memories = self._add_memories_batch(memories_to_add)
+            stored_count = len(stored_memories)
+            if stored_count != len(memories_to_add):
                 self.logger.warning(
-                    "Batch add stored fewer messages than expected",
+                    "Batch add stored fewer memories than expected",
                     extra={
-                        "expected_count": len(messages_to_add),
+                        "expected_count": len(memories_to_add),
                         "stored_count": stored_count,
                     },
                 )
@@ -706,116 +717,115 @@ class StoragePhase:
             duration=duration,
         )
 
-    def _add_messages_batch(self, messages: list[str]) -> list[str]:
-        """Add multiple messages to both semantic and full-text engines.
+    def _add_memories_batch(self, memories: list[str]) -> list[str]:
+        """Add multiple memories to both semantic and full-text engines.
 
         Args:
-            messages: List of messages to store.
+            memories: List of memories to store.
 
         Returns:
-            List of messages actually stored (duplicates skipped).
+            List of memories actually stored (duplicates skipped).
         """
-        if not messages:
+        if not memories:
             return []
 
         try:
             if self._write_lock is None:
-                inserted_messages = self._semantic_engine.add_batch(
+                inserted_memories = self._semantic_engine.add_batch(
                     project_id=self._project_id,
-                    messages=messages,
+                    contents=memories,
                     infer=self.config.enable_llm_infer,
                 )
 
                 if self._tantivy_engine is not None:
-                    for message in inserted_messages:
-                        self._tantivy_engine.add(self._project_id, message)
+                    for memory in inserted_memories:
+                        self._tantivy_engine.add(self._project_id, memory)
             else:
                 with self._write_lock:
-                    inserted_messages = self._semantic_engine.add_batch(
+                    inserted_memories = self._semantic_engine.add_batch(
                         project_id=self._project_id,
-                        messages=messages,
+                        contents=memories,
                         infer=self.config.enable_llm_infer,
                     )
 
                     if self._tantivy_engine is not None:
-                        for message in inserted_messages:
-                            self._tantivy_engine.add(self._project_id, message)
+                        for memory in inserted_memories:
+                            self._tantivy_engine.add(self._project_id, memory)
 
             self.logger.debug(
-                "Batch added messages to hybrid storage",
+                "Batch added memories to hybrid storage",
                 extra={
                     "project_id": self._project_id,
-                    "message_count": len(inserted_messages),
+                    "memory_count": len(inserted_memories),
                     "engines": ["semantic", "tantivy"],
                 },
             )
-            return inserted_messages
+            return inserted_memories
 
         except Exception as e:
-            raise StorageError(f"Failed to add message batch: {e}") from e
+            raise StorageError(f"Failed to add memory batch: {e}") from e
 
-    def _delete_message(self, memory_id: str, message: str) -> None:
-        """Delete a message from semantic and full-text engines with write locking."""
+    def _delete_memory(self, memory_id: str, content: str) -> None:
+        """Delete a memory from semantic and full-text engines with write locking."""
         if self._write_lock is None:
             self._semantic_engine.delete(memory_id=memory_id)
             if self._tantivy_engine is not None:
-                self._tantivy_engine.delete(self._project_id, message)
+                self._tantivy_engine.delete(self._project_id, content)
             return
 
         with self._write_lock:
             self._semantic_engine.delete(memory_id=memory_id)
             if self._tantivy_engine is not None:
-                self._tantivy_engine.delete(self._project_id, message)
+                self._tantivy_engine.delete(self._project_id, content)
 
-    def _add_message(self, message: str) -> bool:
-        """Add a single message to BOTH USearch semantic and Tantivy full-text engines.
+    def _add_memory(self, content: str) -> bool:
+        """Add a single memory to BOTH USearch semantic and Tantivy full-text engines.
 
         Args:
-            message: The message to store.
+            content: The memory to store.
 
         Returns:
-            True if the message was stored, False if it was skipped as a duplicate.
+            True if the memory was stored, False if it was skipped as a duplicate.
 
         Raises:
             RuntimeError: If storage operation fails.
         """
-        if self.config.deduplicate_messages and self._has_exact_match(message):
+        if self.config.deduplicate_memories and self._has_exact_match(content):
             self.logger.info(
-                "Duplicate message detected, skipping storage",
+                "Duplicate memory detected, skipping storage",
                 extra={
                     "project_id": self._project_id,
-                    "message_preview": message[:200],
+                    "memory_preview": content[:200],
                 },
             )
             return False
 
         try:
-            # 1. Add to USearch semantic engine
             self._semantic_engine.add(
                 project_id=self._project_id,
-                message=message,
+                content=content,
                 infer=self.config.enable_llm_infer,
             )
 
             # 2. Add to Tantivy full-text search engine
             if self._tantivy_engine is not None:
-                self._tantivy_engine.add(self._project_id, message)
+                self._tantivy_engine.add(self._project_id, content)
 
             self.logger.debug(
-                "Message added to hybrid storage",
+                "Memory added to hybrid storage",
                 extra={
                     "project_id": self._project_id,
-                    "message_length": len(message),
+                    "memory_length": len(content),
                     "engines": ["semantic", "tantivy"],
                 },
             )
             return True
 
         except Exception as e:
-            raise StorageError(f"Failed to add message to hybrid storage: {e}") from e
+            raise StorageError(f"Failed to add memory to hybrid storage: {e}") from e
 
-    def _has_exact_match(self, message: str) -> bool:
-        """Check whether the exact message already exists in storage.
+    def _has_exact_match(self, content: str) -> bool:
+        """Check whether the exact memory already exists in storage.
 
         Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
         falling back to direct database lookup otherwise. Both paths are O(log n)
@@ -825,22 +835,22 @@ class StoragePhase:
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
             project_id=self._project_id,
-            message=message,
+            content=content,
             logger=self.logger,
         )
 
     def _archive_for_replacement(
         self, old_memory: str, new_memory: str, confidence: float, reason: str
     ) -> bool:
-        """Archive a message before replacement (for recovery).
+        """Archive a memory before replacement (for recovery).
 
-        This method archives a message to the archived_messages table before
+        This method archives a memory to the archived_messages table before
         it gets deleted during smart replacement. This enables recovery if
         the LLM made a mistake in determining the replacement.
 
         Args:
-            old_memory: The message being replaced and archived.
-            new_memory: The new message that replaces it.
+            old_memory: The memory being replaced and archived.
+            new_memory: The new memory that replaces it.
             confidence: LLM confidence score for the replacement decision.
             reason: LLM's explanation for why replacement was appropriate.
 
@@ -848,14 +858,13 @@ class StoragePhase:
             True if archiving succeeded, False otherwise.
         """
         try:
-            # Get the message ID from semantic engine's message store
-            msg_id = self._semantic_engine.get_id_by_message(
+            msg_id = self._semantic_engine.get_id_by_content(
                 self._project_id, old_memory
             )
 
             if msg_id is None:
                 self.logger.warning(
-                    "Cannot archive - message not found",
+                    "Cannot archive - memory not found",
                     extra={
                         "project_id": self._project_id,
                         "old_memory_preview": old_memory[:50],
@@ -863,12 +872,11 @@ class StoragePhase:
                 )
                 return False
 
-            # Access the message store through the semantic engine
-            message_store = self._semantic_engine.message_store
-            archive_id = message_store.archive(
-                message_id=msg_id,
+            memory_store = self._semantic_engine.memory_store
+            archive_id = memory_store.archive(
+                memory_id=msg_id,
                 project_id=self._project_id,
-                message=old_memory,
+                content=old_memory,
                 replaced_by=new_memory,
                 reason=reason,
                 confidence=confidence,
@@ -876,7 +884,7 @@ class StoragePhase:
 
             if archive_id is not None:
                 self.logger.info(
-                    "Message archived before replacement",
+                    "Memory archived before replacement",
                     extra={
                         "project_id": self._project_id,
                         "archive_id": archive_id,
@@ -891,7 +899,7 @@ class StoragePhase:
         except Exception as e:
             # Graceful degradation - log warning but don't block the replacement
             self.logger.warning(
-                f"Failed to archive message for replacement: {e}",
+                f"Failed to archive memory for replacement: {e}",
                 extra={
                     "project_id": self._project_id,
                     "error": str(e),
@@ -934,11 +942,11 @@ class AddPipeline:
         self.config = config
         self.logger = logger
 
-    async def execute(self, messages: list[str], dry_run: bool = False) -> AddResult:
+    async def execute(self, memories: list[str], dry_run: bool = False) -> AddResult:
         """Execute the 3-phase add pipeline.
 
         Args:
-            messages: List of messages to add.
+            memories: List of memories to add.
             dry_run: If True, only check for replacements without making changes.
 
         Returns:
@@ -949,15 +957,15 @@ class AddPipeline:
         """
         result = AddResult()
 
-        if not messages:
+        if not memories:
             return result
 
         mode_str = "DRY RUN" if dry_run else "LIVE"
         self.logger.info(
-            f"Starting phased parallel message addition [{mode_str}]: {len(messages)} messages",
+            f"Starting phased parallel memory addition [{mode_str}]: {len(memories)} memories",
             extra={
-                "total_messages": len(messages),
-                "smart_replace_enabled": self._phase2._get_smart_replacer() is not None,
+                "total_memories": len(memories),
+                "smart_replace_enabled": self._phase2.smart_replace_enabled,
                 "dry_run": dry_run,
                 "optimization": "phased_parallel",
             },
@@ -965,18 +973,18 @@ class AddPipeline:
 
         try:
             # Phase 1: Parallel duplicate detection
-            phase1_result = await self._phase1.execute(messages)
+            phase1_result = await self._phase1.execute(memories)
             result.skipped_count = (
                 len(phase1_result.storage_duplicates)
                 + phase1_result.batch_duplicates_count
             )
 
             # Phase 2: Parallel smart replacement detection
-            phase2_result = await self._phase2.execute(phase1_result.unique_messages)
+            phase2_result = await self._phase2.execute(phase1_result.unique_memories)
 
             # Phase 3: Sequential database writes
             phase3_result = await self._phase3.execute(
-                phase1_result.unique_messages,
+                phase1_result.unique_memories,
                 phase2_result.replacement_map,
                 dry_run,
             )
@@ -988,11 +996,11 @@ class AddPipeline:
         except Exception as e:
             mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.logger.error(
-                f"Phased parallel message addition failed [{mode_str}]: {e}",
+                f"Phased parallel memory addition failed [{mode_str}]: {e}",
                 extra={
                     "mode": mode_str,
                     "dry_run": dry_run,
-                    "total_messages": len(messages),
+                    "total_memories": len(memories),
                     "stored_count": result.stored_count,
                     "replaced_count": result.replaced_count,
                     "error": str(e),
@@ -1000,20 +1008,20 @@ class AddPipeline:
                 },
             )
             if not dry_run:
-                raise StorageError(f"Failed to add messages: {e}") from e
+                raise StorageError(f"Failed to add memories: {e}") from e
 
         self.logger.info(
             f"Phased parallel addition completed [{mode_str}]: "
-            f"{result.stored_count}/{len(messages)} stored, "
+            f"{result.stored_count}/{len(memories)} stored, "
             f"{result.replaced_count} replaced, {result.skipped_count} skipped",
             extra={
-                "total_messages": len(messages),
+                "total_memories": len(memories),
                 "stored_count": result.stored_count,
                 "replaced_count": result.replaced_count,
                 "skipped_count": result.skipped_count,
                 "replacement_details": [
                     {
-                        "old": truncate_message(r.old_memory, 50),
+                        "old": truncate_memory(r.old_memory, 50),
                         "confidence": r.confidence,
                     }
                     for r in result.replacements

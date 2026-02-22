@@ -9,7 +9,7 @@ This module provides:
 - SmartReplacer: LLM-based smart memory replacement detector
 - TantivyEngine: Full-text search engine wrapper
 - USearchEngine: USearch-based semantic search engine
-- MessageStore: SQLite-backed message storage for USearch
+- MemoryStore: SQLite-backed memory storage for USearch
 
 This module also re-exports from subpackages:
 - infrastructure.search: Search engine implementations
@@ -19,8 +19,7 @@ This module also re-exports from subpackages:
 - infrastructure.llm: LLM provider implementations
 """
 
-# Re-export from original module locations (backward compatibility)
-# Re-export from subpackages for new imports
+# Re-export from subpackages for convenient imports
 from . import embeddings, llm, memory, reranking, search
 from .cached_embeddings import CachedEmbeddings
 from .cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
@@ -35,7 +34,7 @@ from .llm_reranker import (
     create_reranker_provider,
     format_memory_age,
 )
-from .message_store import MessageRecord, MessageStore
+from .memory_store import MemoryRecord, MemoryStore
 from .qwen3_embedding import LangchainQwenEmbeddings
 from .smart_replacer import (
     AnthropicReplacementProvider,
@@ -62,8 +61,8 @@ __all__ = [
     "LLMReranker",
     "LLMRerankerConfig",
     "LangchainQwenEmbeddings",
-    "MessageRecord",
-    "MessageStore",
+    "MemoryRecord",
+    "MemoryStore",
     "OpenAIReplacementProvider",
     "OpenAIRerankerProvider",
     "RelevanceScore",

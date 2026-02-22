@@ -1,4 +1,4 @@
-"""Unit tests for error handling in mcp_server.py."""
+'''Unit tests for error handling in mcp_server.py.'''
 # mypy: disable-error-code="misc,var-annotated,method-assign"
 
 import os
@@ -14,7 +14,7 @@ from reflectlog.application.exceptions import (
 
 @pytest.fixture
 def mock_usearch_engine():
-    """Create a mock USearchEngine instance."""
+    '''Create a mock USearchEngine instance.'''
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     # USearchEngine.get_all returns List[str] directly
@@ -28,7 +28,7 @@ def mock_usearch_engine():
 
 @pytest.fixture
 def mock_cached_embedder():
-    """Create a mock CachedEmbeddings instance."""
+    '''Create a mock CachedEmbeddings instance.'''
     embedder = MagicMock()
     embedder.embed_query = MagicMock(return_value=[0.1, 0.2, 0.3])
     embedder.aembed_query = MagicMock(return_value=[0.1, 0.2, 0.3])
@@ -39,10 +39,10 @@ def mock_cached_embedder():
 
 @pytest.mark.unit
 class TestServerInitializationErrors:
-    """Test error handling in server initialization."""
+    '''Test error handling in server initialization.'''
 
     def test_init_without_project_id_raises_error(self):
-        """Test server initialization fails without PROJECT_ID."""
+        '''Test server initialization fails without PROJECT_ID.'''
         # Clear both PROJECT_ID and OPENROUTER_API_KEY to trigger config error
         # Reset config singleton first
         import reflectlog.application.config.settings as settings_module
@@ -68,7 +68,7 @@ class TestServerInitializationErrors:
         mock_embeddings,
         set_env_vars,
     ):
-        """Test server initialization handles Memory.from_config errors."""
+        '''Test server initialization handles Memory.from_config errors.'''
         # Configure CachedEmbeddings mock to return embedder mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -89,7 +89,7 @@ class TestServerInitializationErrors:
 
 @pytest.mark.unit
 class TestAddToolErrorHandling:
-    """Test error handling in add tool."""
+    '''Test error handling in add tool.'''
 
     @pytest.mark.asyncio
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
@@ -103,7 +103,7 @@ class TestAddToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test add tool handles memory storage failures."""
+        '''Test add tool handles memory storage failures.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -121,7 +121,7 @@ class TestAddToolErrorHandling:
         with pytest.raises(StorageError) as exc_info:
             await add_tool(["Test message"])
 
-        assert "Failed to add messages" in str(exc_info.value)
+        assert "Failed to add memories" in str(exc_info.value)
         assert "Storage failure" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -136,7 +136,7 @@ class TestAddToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test add tool validation error with non-string message."""
+        '''Test add tool validation error with non-string message.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -166,7 +166,7 @@ class TestAddToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test add tool validation error with empty string."""
+        '''Test add tool validation error with empty string.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -182,12 +182,12 @@ class TestAddToolErrorHandling:
         with pytest.raises(ValueError) as exc_info:
             await add_tool([""])
 
-        assert "too short" in str(exc_info.value).lower()
+        assert "contains only whitespace" in str(exc_info.value).lower()
 
 
 @pytest.mark.unit
 class TestGetAllToolErrorHandling:
-    """Test error handling in get_all tool."""
+    '''Test error handling in get_all tool.'''
 
     @pytest.mark.asyncio
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
@@ -201,7 +201,7 @@ class TestGetAllToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test get_all tool handles retrieval failures."""
+        '''Test get_all tool handles retrieval failures.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -219,13 +219,13 @@ class TestGetAllToolErrorHandling:
         with pytest.raises(StorageError) as exc_info:
             await get_all_tool()
 
-        assert "Failed to retrieve messages" in str(exc_info.value)
+        assert "Failed to retrieve memories" in str(exc_info.value)
         assert "Retrieval failure" in str(exc_info.value)
 
 
 @pytest.mark.unit
 class TestSearchToolErrorHandling:
-    """Test error handling in search tool."""
+    '''Test error handling in search tool.'''
 
     @pytest.mark.asyncio
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
@@ -239,7 +239,7 @@ class TestSearchToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test search tool handles search failures."""
+        '''Test search tool handles search failures.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -261,7 +261,7 @@ class TestSearchToolErrorHandling:
 
 @pytest.mark.unit
 class TestRemoveToolErrorHandling:
-    """Test error handling in remove tool."""
+    '''Test error handling in remove tool.'''
 
     @pytest.mark.asyncio
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
@@ -275,7 +275,7 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test remove tool with empty list (no-op)."""
+        '''Test remove tool with empty list (no-op).'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -306,13 +306,13 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test remove tool handles delete failures."""
+        '''Test remove tool handles delete failures.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
         mock_cached_embedder_class.return_value = mock_cached_embedder
 
-        mock_usearch_engine.get_id_by_message.return_value = 1
+        mock_usearch_engine.get_id_by_memory.return_value = 1
         # Configure mock to raise exception on delete
         mock_usearch_engine.delete.side_effect = Exception("Delete failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
@@ -325,14 +325,14 @@ class TestRemoveToolErrorHandling:
         with pytest.raises(StorageError) as exc_info:
             await remove_tool(["Test message"])
 
-        assert "Failed to remove messages" in str(exc_info.value)
+        assert "Failed to remove memories" in str(exc_info.value)
         assert "Delete failure" in str(exc_info.value)
 
     @pytest.mark.asyncio
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
     @patch("reflectlog.application.memory.manager.USearchEngine")
     @patch("reflectlog.application.memory.manager.CachedEmbeddings")
-    async def test_remove_message_not_found(
+    async def test_remove_memory_not_found(
         self,
         mock_cached_embedder_class,
         mock_usearch_engine_class,
@@ -340,13 +340,13 @@ class TestRemoveToolErrorHandling:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test remove tool when message is not found."""
+        '''Test remove tool when memory is not found.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
         mock_cached_embedder_class.return_value = mock_cached_embedder
 
-        mock_usearch_engine.get_id_by_message.return_value = None
+        mock_usearch_engine.get_id_by_memory.return_value = None
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from reflectlog.application.mcp_server import FastMCPServer
@@ -355,7 +355,7 @@ class TestRemoveToolErrorHandling:
         remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
 
         # Should not raise any errors, just silently skip
-        await remove_tool(["Nonexistent message"])
+        await remove_tool(["Nonexistent memory"])
 
         # Verify delete was never called
         mock_usearch_engine.delete.assert_not_called()
@@ -363,7 +363,7 @@ class TestRemoveToolErrorHandling:
 
 @pytest.mark.unit
 class TestRunMethodCoverage:
-    """Test coverage for run() method."""
+    '''Test coverage for run() method.'''
 
     @patch.dict(os.environ, {"MCP_TRANSPORT": "http"}, clear=False)
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
@@ -377,7 +377,7 @@ class TestRunMethodCoverage:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test run() method with HTTP transport."""
+        '''Test run() method with HTTP transport.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -410,7 +410,7 @@ class TestRunMethodCoverage:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test run() method with stdio transport."""
+        '''Test run() method with stdio transport.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -440,7 +440,7 @@ class TestRunMethodCoverage:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test run() method with SSE transport."""
+        '''Test run() method with SSE transport.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
@@ -479,7 +479,7 @@ class TestRunMethodCoverage:
         mock_usearch_engine,
         set_env_vars,
     ):
-        """Test run() method with custom configuration."""
+        '''Test run() method with custom configuration.'''
         # Configure CachedEmbeddings mock
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = MagicMock()
