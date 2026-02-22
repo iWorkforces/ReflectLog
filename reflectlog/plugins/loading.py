@@ -7,7 +7,7 @@ loading, initialization, activation, deactivation, and unloading.
 from collections.abc import Callable
 from dataclasses import dataclass
 import logging
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import Protocol, TypeVar, cast, runtime_checkable
 
 from .discovery import DiscoveredPlugin, PluginDiscoverer, PluginDiscoveryStrategy
 from .registry import PluginRegistry, PluginState
@@ -121,10 +121,10 @@ class PluginLoader[T]:
             try:
                 from .discovery import load_plugin
 
-                instance = await load_plugin(discovered)
+                instance = cast(T, await load_plugin(discovered))
             except Exception as e:
                 logger.error(f"Failed to load plugin '{name}': {e}")
-                self._registry.set_error(name, str(e))
+                _ = self._registry.set_error(name, str(e))
                 return False
 
         # Register in registry
@@ -158,7 +158,7 @@ class PluginLoader[T]:
                 await plugin.initialize()
             except Exception as e:
                 logger.error(f"Failed to initialize plugin '{name}': {e}")
-                self._registry.set_error(name, str(e))
+                _ = self._registry.set_error(name, str(e))
                 return False
 
         # Call initialize hook
@@ -241,7 +241,7 @@ class PluginLoader[T]:
                 logger.warning(f"Error during cleanup of '{name}': {e}")
 
         # Unload from registry
-        self._registry.unregister(name)
+        _ = self._registry.unregister(name)
 
         # Call unload hook
         if self._hooks.on_unload:
@@ -315,8 +315,8 @@ class PluginLoader[T]:
 
         This method deactivates and unloads all plugins.
         """
-        await self.deactivate_all()
-        await self.unload_all()
+        _ = await self.deactivate_all()
+        _ = await self.unload_all()
         logger.info("Plugin loader shutdown complete")
 
     @property

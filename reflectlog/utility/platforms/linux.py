@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from typing import Any, cast
 
 from .base import CredentialRetriever
 
@@ -51,21 +52,32 @@ class LinuxCredentialRetriever(CredentialRetriever):
 
                     # Handle JSON formats
                     try:
-                        parsed = json.loads(content)
+                        raw_parsed: Any = json.loads(content)
+                        if isinstance(raw_parsed, dict):
+                            parsed: dict[str, Any] = cast(dict[str, Any], raw_parsed)
 
-                        # OAuth JSON format
-                        oauth_data = parsed.get("claudeAiOauth")
-                        if isinstance(oauth_data, dict):
-                            oauth_token = oauth_data.get("accessToken")
-                            if oauth_token and oauth_token.startswith(
-                                self.token_prefix
+                            # OAuth JSON format
+                            oauth_data = parsed.get("claudeAiOauth")
+                            if isinstance(oauth_data, dict):
+                                typed_oauth: dict[str, Any] = cast(
+                                    dict[str, Any], oauth_data
+                                )
+                                oauth_token = typed_oauth.get("accessToken")
+                                if (
+                                    oauth_token
+                                    and isinstance(oauth_token, str)
+                                    and oauth_token.startswith(self.token_prefix)
+                                ):
+                                    return oauth_token
+
+                            # Legacy apiKey format
+                            api_key = parsed.get("apiKey")
+                            if (
+                                api_key
+                                and isinstance(api_key, str)
+                                and api_key.startswith(self.token_prefix)
                             ):
-                                return oauth_token
-
-                        # Legacy apiKey format
-                        api_key = parsed.get("apiKey")
-                        if api_key and api_key.startswith(self.token_prefix):
-                            return api_key
+                                return api_key
 
                     except json.JSONDecodeError:
                         pass
@@ -78,7 +90,7 @@ class LinuxCredentialRetriever(CredentialRetriever):
     def _get_from_secret_tool(self) -> str | None:
         """Retrieve from GNOME Keyring via secret-tool."""
         try:
-            result: subprocess.CompletedProcess = subprocess.run(
+            result: subprocess.CompletedProcess[str] = subprocess.run(
                 ["secret-tool", "lookup", "service", self.service_name],
                 capture_output=True,
                 text=True,

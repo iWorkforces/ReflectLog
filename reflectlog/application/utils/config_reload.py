@@ -118,9 +118,9 @@ def setup_signal_handler(config_provider: Callable[[], Config]) -> ConfigReloadM
             )
             manager = _global_reload_manager
             if manager:
-                manager.reload_config()
+                _ = manager.reload_config()
 
-        signal.signal(signal.SIGHUP, handle_sighup)
+        _ = signal.signal(signal.SIGHUP, handle_sighup)
         _global_reload_manager = ConfigReloadManager(config_provider)
 
         logger.info("SIGHUP handler registered for configuration reload")

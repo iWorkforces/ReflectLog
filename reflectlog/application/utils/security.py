@@ -1,7 +1,7 @@
 """Security utilities for ReflectLogMCP Server."""
 
 import re
-from typing import Any
+from typing import Any, cast
 
 
 class SecretString:
@@ -309,22 +309,22 @@ def redact_dict_secrets(
         if key.lower() in secret_keys_lower:
             result[key] = "[REDACTED]"
         elif isinstance(value, dict):
-            result[key] = redact_dict_secrets(value, secret_keys)
+            result[key] = redact_dict_secrets(cast(dict[str, Any], value), secret_keys)
         elif isinstance(value, list):
             # Handle lists - recurse on dict elements
             result[key] = [
-                redact_dict_secrets(item, secret_keys)
+                redact_dict_secrets(cast(dict[str, Any], item), secret_keys)
                 if isinstance(item, dict)
                 else item
-                for item in value
+                for item in cast(list[Any], value)
             ]
         elif isinstance(value, tuple):
             # Handle tuples - recurse on dict elements, preserve tuple type
             result[key] = tuple(
-                redact_dict_secrets(item, secret_keys)
+                redact_dict_secrets(cast(dict[str, Any], item), secret_keys)
                 if isinstance(item, dict)
                 else item
-                for item in value
+                for item in cast(tuple[Any, ...], value)
             )
         elif isinstance(value, SecretString):
             result[key] = str(value)  # Returns "***REDACTED***"

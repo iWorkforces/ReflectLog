@@ -238,7 +238,7 @@ class CompositeDiscovery(PluginDiscoveryStrategy[T]):
         return list(all_discovered.values())
 
 
-async def load_plugin(plugin: DiscoveredPlugin) -> T:
+async def load_plugin(plugin: DiscoveredPlugin) -> object:
     """Load and instantiate a discovered plugin.
 
     Args:
@@ -255,7 +255,7 @@ async def load_plugin(plugin: DiscoveredPlugin) -> T:
     else:
         # Return the module itself if no class specified
         # Type cast needed because module can be returned when no class specified
-        return cast(T, module)
+        return module
 
 
 class PluginDiscoverer[T]:
@@ -314,7 +314,7 @@ class PluginDiscoverer[T]:
             return None
 
         # Load plugin
-        instance = await load_plugin(plugin)
+        instance: T = cast(T, await load_plugin(plugin))
         self._loaded[name] = instance
         return instance
 
@@ -324,7 +324,7 @@ class PluginDiscoverer[T]:
         Returns:
             List of loaded plugin instances.
         """
-        loaded = []
+        loaded: list[T] = []
         for plugin in self._discovered:
             instance = await self.load_plugin(plugin.name)
             if instance is not None:

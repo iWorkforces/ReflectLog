@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 
+def _empty_metadata() -> dict[str, Any]:
+    return {}
+
+
 @dataclass(frozen=True)
 class ISearchResult:
     """Result from a search operation.
@@ -21,7 +25,7 @@ class ISearchResult:
     score: float
     memory_id: str
     created_at: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=_empty_metadata)
 
 
 @dataclass

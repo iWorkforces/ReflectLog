@@ -232,6 +232,7 @@ reportUnknownMemberType = "warning"
 reportUnknownParameterType = "warning"
 reportUnknownVariableType = "warning"
 reportAny = "warning"
+reportImportCycles = "none"
 
 [tool.ruff]
 # Target Python 3.14

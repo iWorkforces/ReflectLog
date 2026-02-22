@@ -21,7 +21,9 @@ import json
 from typing import Any, Protocol
 
 from openai import AsyncOpenAI
-from openai.types.chat.completion_create_params import ResponseFormatJSONSchema
+from openai.types.shared_params.response_format_json_schema import (
+    ResponseFormatJSONSchema,
+)
 
 from reflectlog.application.utils.http_client import HttpClientFactory
 
@@ -29,7 +31,8 @@ from reflectlog.application.utils.http_client import HttpClientFactory
 class IStructuredOutputSchema(Protocol):
     """Protocol for Pydantic schemas used in structured output."""
 
-    def model_json_schema(self) -> dict[str, Any]:
+    @classmethod
+    def model_json_schema(cls) -> dict[str, Any]:
         """Generate JSON schema for structured output."""
         ...
 
