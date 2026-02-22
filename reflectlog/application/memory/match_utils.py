@@ -1,6 +1,6 @@
 """Shared utilities for exact-match checks and Tantivy query escaping."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from reflectlog.infrastructure import TantivyEngine

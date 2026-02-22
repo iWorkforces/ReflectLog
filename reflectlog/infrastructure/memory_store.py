@@ -92,7 +92,9 @@ class MemoryStore(BaseModel):
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _conn_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
 
-    def __init__(self, db_path: str, logger: IStructuredLogger | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self, db_path: str, logger: IStructuredLogger | None = None, **kwargs: Any
+    ) -> None:
         """Initialize MemoryStore.
 
         Args:
