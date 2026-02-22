@@ -1,5 +1,7 @@
 """Get all tool implementation for ReflectLogMCP Server."""
 
+from typing import override
+
 from asyncer import asyncify
 
 from ..exceptions import StorageError
@@ -10,10 +12,12 @@ from .base import BaseTool
 class GetAllTool(BaseTool):
     """Tool for retrieving all memories from memory storage."""
 
+    @override
     def get_name(self) -> str:
         """Get the tool name."""
         return "get_all"
 
+    @override
     def get_instruction_snippet(self) -> str:
         """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
@@ -21,6 +25,7 @@ class GetAllTool(BaseTool):
             "      Retrieve all stored memories. Returns empty list if none stored."
         )
 
+    @override
     def get_handler(self):
         """Get the async tool handler function."""
 

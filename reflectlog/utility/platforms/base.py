@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 import json
+from typing import Any, cast
 
 from ..types import SERVICE_NAME, TOKEN_PREFIX
 
@@ -38,27 +39,34 @@ class CredentialRetriever(ABC):
         if not raw:
             return None
 
-        # Handle JSON format (OAuth or legacy)
         if raw.startswith("{"):
             try:
-                parsed = json.loads(raw)
+                raw_json: Any = json.loads(raw)
+                if isinstance(raw_json, dict):
+                    parsed: dict[str, Any] = cast(dict[str, Any], raw_json)
 
-                # OAuth format: {"claudeAiOauth": {"accessToken": "..."}}
-                oauth_data = parsed.get("claudeAiOauth")
-                if isinstance(oauth_data, dict):
-                    access_token = oauth_data.get("accessToken")
-                    if access_token and access_token.startswith(self.token_prefix):
-                        return access_token
+                    oauth_data = parsed.get("claudeAiOauth")
+                    if isinstance(oauth_data, dict):
+                        typed_oauth: dict[str, Any] = cast(dict[str, Any], oauth_data)
+                        access_token = typed_oauth.get("accessToken")
+                        if (
+                            access_token
+                            and isinstance(access_token, str)
+                            and access_token.startswith(self.token_prefix)
+                        ):
+                            return access_token
 
-                # Legacy format: {"apiKey": "..."}
-                api_key = parsed.get("apiKey")
-                if api_key and api_key.startswith(self.token_prefix):
-                    return api_key
+                    api_key = parsed.get("apiKey")
+                    if (
+                        api_key
+                        and isinstance(api_key, str)
+                        and api_key.startswith(self.token_prefix)
+                    ):
+                        return api_key
 
             except json.JSONDecodeError:
                 pass
 
-        # Handle raw API key format
         if raw.startswith(self.token_prefix):
             return raw
 

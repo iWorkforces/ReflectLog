@@ -13,13 +13,12 @@ Clean Architecture Compliance:
 from dataclasses import dataclass
 import os
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self, final
 
 if TYPE_CHECKING:
     from typing import TypeGuard
 
-    from reflectlog.core import IStructuredLogger
-    from reflectlog.infrastructure.memory_store import MemoryRecord
+    from reflectlog.infrastructure.memory_store import MemoryRecord, MemoryStore
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -29,6 +28,7 @@ from reflectlog.application.exceptions import StorageError
 from reflectlog.application.types import Embeddings
 from reflectlog.application.utils.numba_utils import distance_to_similarity_cosine
 from reflectlog.application.utils.security import validate_project_id
+from reflectlog.core.logging import IStructuredLogger
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
@@ -136,6 +136,7 @@ class USearchConfig:
         )
 
 
+@final
 class USearchEngine(BaseModel):
     """USearch-based semantic search engine.
 
@@ -171,7 +172,7 @@ class USearchEngine(BaseModel):
     logger: IStructuredLogger | None = None
 
     _index: Index | None = PrivateAttr(default=None)
-    _memory_store: Any | None = PrivateAttr(default=None)
+    _memory_store: MemoryStore | None = PrivateAttr(default=None)
     # Instance-level lock for thread-safe lazy initialization (prevents cross-instance contention)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
@@ -287,7 +288,7 @@ class USearchEngine(BaseModel):
         return self._index
 
     @property
-    def memory_store(self) -> Any:
+    def memory_store(self) -> MemoryStore:
         """Get MemoryStore (thread-safe lazy initialization).
 
         Returns:
@@ -813,7 +814,7 @@ class USearchEngine(BaseModel):
         if self._memory_store is not None:
             self._memory_store.close()
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         """Enter context manager.
 
         Ensures the engine is initialized before use.

@@ -13,21 +13,20 @@ produces outputs for the next phase.
 from dataclasses import dataclass, field
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from reflectlog.infrastructure import TantivyEngine
     from reflectlog.infrastructure.smart_replacer import SmartReplacer
 
-    from .manager import MemoryManager
-
 import anyio
 from asyncer import asyncify, create_task_group
 
+from ...core.logging import IStructuredLogger
 from ..config import Config
 from ..exceptions import StorageError
 from ..types import ISemanticSearchEngine
-from ..utils import StructuredLogger, truncate_memory
+from ..utils import truncate_memory
 from .match_utils import has_exact_match
 
 
@@ -67,7 +66,12 @@ class AddResult:
     stored_count: int = 0
     skipped_count: int = 0
     replaced_count: int = 0
-    replacements: list[ReplacementInfo] = field(default_factory=list)
+    replacements: list[ReplacementInfo] = field(default_factory=lambda: [])
+
+
+class SmartReplacerProvider(Protocol):
+    @property
+    def smart_replacer(self) -> SmartReplacer | None: ...
 
 
 @dataclass
@@ -133,7 +137,7 @@ class DuplicateDetectionPhase:
         semantic_engine: ISemanticSearchEngine,
         tantivy_engine: TantivyEngine | None,
         config: Config,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ):
         """Initialize duplicate detection phase.
 
@@ -143,10 +147,13 @@ class DuplicateDetectionPhase:
             config: Application configuration.
             logger: Structured logger instance.
         """
+        if logger is None:
+            raise ValueError("logger is required")
+
         self._semantic_engine = semantic_engine
         self._tantivy_engine = tantivy_engine
         self.config = config
-        self.logger = logger
+        self.logger: IStructuredLogger = logger
         self._project_id = config.project_id
 
     async def execute(self, memories: list[str]) -> Phase1Result:
@@ -192,7 +199,7 @@ class DuplicateDetectionPhase:
                 is_dup = await asyncify(self._has_exact_match)(memory)
                 return (memory, is_dup)
 
-        # Run all duplicate checks in parallel
+        # asyncer task group required: soonify captures SoonValue results from parallel checks
         results: list[tuple[str, bool]] = []
         async with create_task_group() as tg:
 
@@ -270,8 +277,8 @@ class SmartReplacementPhase:
         self,
         semantic_engine: ISemanticSearchEngine,
         config: Config,
-        logger: StructuredLogger,
-        memory_manager: MemoryManager | None,
+        logger: IStructuredLogger | None,
+        memory_manager: SmartReplacerProvider | None,
     ):
         """Initialize smart replacement phase.
 
@@ -281,13 +288,16 @@ class SmartReplacementPhase:
             logger: Structured logger instance.
             memory_manager: MemoryManager instance for lazy SmartReplacer fetching (optional).
         """
+        if logger is None:
+            raise ValueError("logger is required")
+
         self._semantic_engine = semantic_engine
         self.config = config
-        self.logger = logger
+        self.logger: IStructuredLogger = logger
         self._project_id = config.project_id
         self._memory_manager = memory_manager
 
-    def _get_smart_replacer(self) -> Any:
+    def _get_smart_replacer(self) -> SmartReplacer | None:
         """Get SmartReplacer (lazy loading via memory_manager).
 
         Returns:
@@ -336,6 +346,7 @@ class SmartReplacementPhase:
         # Limit concurrent replacement checks to avoid overload
         semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
+        # asyncer task group required: soonify captures SoonValue results from parallel replacement checks
         replacement_results: list[tuple[str, list[ReplacementInfo]]] = []
         async with create_task_group() as tg:
 
@@ -515,6 +526,7 @@ class SmartReplacementPhase:
                 result = await check_single_candidate(existing_memory, similarity_score)
                 results.append(result)
 
+            # anyio task group sufficient: fire-and-forget pattern for candidate checks
             async with anyio.create_task_group() as tg:
                 for existing_memory, similarity_score in filtered_candidates:
                     tg.start_soon(collect_result, existing_memory, similarity_score)
@@ -549,7 +561,7 @@ class StoragePhase:
         semantic_engine: ISemanticSearchEngine,
         tantivy_engine: TantivyEngine | None,
         config: Config,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
         write_lock: threading.Lock | None = None,
     ):
         """Initialize storage phase.
@@ -560,10 +572,13 @@ class StoragePhase:
             config: Application configuration.
             logger: Structured logger instance.
         """
+        if logger is None:
+            raise ValueError("logger is required")
+
         self._semantic_engine = semantic_engine
         self._tantivy_engine = tantivy_engine
         self.config = config
-        self.logger = logger
+        self.logger: IStructuredLogger = logger
         self._project_id = config.project_id
         self._write_lock = write_lock
 
@@ -770,13 +785,13 @@ class StoragePhase:
         if self._write_lock is None:
             self._semantic_engine.delete(memory_id=memory_id)
             if self._tantivy_engine is not None:
-                self._tantivy_engine.delete(self._project_id, content)
+                _ = self._tantivy_engine.delete(self._project_id, content)
             return
 
         with self._write_lock:
             self._semantic_engine.delete(memory_id=memory_id)
             if self._tantivy_engine is not None:
-                self._tantivy_engine.delete(self._project_id, content)
+                _ = self._tantivy_engine.delete(self._project_id, content)
 
     def _add_memory(self, content: str) -> bool:
         """Add a single memory to BOTH USearch semantic and Tantivy full-text engines.
@@ -925,7 +940,7 @@ class AddPipeline:
         smart_replacement_phase: SmartReplacementPhase,
         storage_phase: StoragePhase,
         config: Config,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ):
         """Initialize add pipeline.
 
@@ -936,11 +951,14 @@ class AddPipeline:
             config: Application configuration.
             logger: Structured logger instance.
         """
+        if logger is None:
+            raise ValueError("logger is required")
+
         self._phase1 = duplicate_detection_phase
         self._phase2 = smart_replacement_phase
         self._phase3 = storage_phase
         self.config = config
-        self.logger = logger
+        self.logger: IStructuredLogger = logger
 
     async def execute(self, memories: list[str], dry_run: bool = False) -> AddResult:
         """Execute the 3-phase add pipeline.

@@ -30,7 +30,7 @@ Example:
 
 import threading
 import time
-from typing import Any
+from typing import Any, final
 
 from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
 from reflectlog.infrastructure import (
@@ -48,10 +48,11 @@ from reflectlog.infrastructure import (
     USearchEngine,
 )
 
+from ...core.logging import IStructuredLogger
 from ..config import Config
 from ..exceptions import InconsistentStateError, SearchError, StorageError
+from ..types import ISemanticSearchEngine
 from ..utils import (
-    StructuredLogger,
     truncate_memory,
 )
 from .add_phases import (
@@ -70,10 +71,11 @@ from .search_strategies import (
 )
 
 
+@final
 class MemoryManager:
     """Manages memory storage and retrieval using USearch with SQLite backend."""
 
-    def __init__(self, config: Config, logger: StructuredLogger):
+    def __init__(self, config: Config, logger: IStructuredLogger | None):
         """Initialize Hybrid MemoryManager with USearch semantic
         & Tantivy full-text engines.
 
@@ -82,8 +84,11 @@ class MemoryManager:
             logger: Structured logger instance.
         """
         super().__init__()
+        if logger is None:
+            raise ValueError("logger is required")
+
         self.config = config
-        self.logger = logger
+        self.logger: IStructuredLogger = logger
         self.project_id = config.project_id
 
         # Thread-safety: Single RLock with read-write semantics
@@ -147,7 +152,7 @@ class MemoryManager:
         else:
             embedder = base_embedder
 
-        self._semantic_engine: Any = USearchEngine(
+        self._semantic_engine: ISemanticSearchEngine = USearchEngine(
             usearch_config, embedder=embedder, logger=self.logger
         )
 
@@ -537,7 +542,7 @@ class MemoryManager:
             # 1. Add to USearch semantic engine
             self._semantic_engine.add(
                 project_id=self.project_id,
-                message=memory,
+                content=memory,
                 infer=self.config.enable_llm_infer,
             )
 
@@ -625,7 +630,7 @@ class MemoryManager:
             if memories_to_add:
                 inserted_memories = self._semantic_engine.add_batch(
                     project_id=self.project_id,
-                    messages=memories_to_add,
+                    contents=memories_to_add,
                     infer=self.config.enable_llm_infer,
                 )
 
@@ -951,10 +956,7 @@ class MemoryManager:
         Uses get_id_by_content() when available, with fallback to a
         legacy ID lookup API for compatibility.
         """
-        semantic_engine: Any = self._semantic_engine
-        if hasattr(semantic_engine, "get_id_by_content"):
-            return semantic_engine.get_id_by_content(self.project_id, content)
-        return self._semantic_engine.get_id_by_message(self.project_id, content)
+        return self._semantic_engine.get_id_by_content(self.project_id, content)
 
     def get_id_by_message(self, message: str) -> int | None:
         return self.get_id_by_content(message)

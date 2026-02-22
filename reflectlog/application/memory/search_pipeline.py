@@ -15,7 +15,7 @@ from typing import Protocol
 import anyio
 
 from reflectlog.application.config import Config
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.reranking import IReranker
 from reflectlog.core.search import (
     ISearchBackend,
@@ -104,7 +104,7 @@ class DefaultBackendExecutor:
         self,
         semantic_backend: ISearchBackend,
         fulltext_backend: ISearchBackend | None,
-    ):
+    ) -> None:
         self._semantic = semantic_backend
         self._fulltext = fulltext_backend
 
@@ -117,7 +117,7 @@ class DefaultBackendExecutor:
 
         async with anyio.create_task_group() as tg:
             # Semantic search
-            async def search_semantic():
+            async def search_semantic() -> None:
                 semantic_results = await self._semantic.search(
                     query=context.query,
                     project_id=context.project_id,
@@ -131,7 +131,7 @@ class DefaultBackendExecutor:
             fulltext_backend = self._fulltext
             if fulltext_backend is not None and context.enable_hybrid_search:
 
-                async def search_fulltext():
+                async def search_fulltext() -> None:
                     fulltext_results = await fulltext_backend.search(
                         query=context.query,
                         project_id=context.project_id,
@@ -147,7 +147,7 @@ class DefaultBackendExecutor:
 class RRFFusionStage:
     """Reciprocal Rank Fusion implementation."""
 
-    def __init__(self, k: float = 60.0):
+    def __init__(self, k: float = 60.0) -> None:
         self._k = k
 
     def fuse(
@@ -182,8 +182,8 @@ class RRFFusionStage:
         )
 
         # Return top results with original scores
-        top_results = []
-        seen = set()
+        top_results: list[ISearchResult] = []
+        seen: set[str] = set()
         for content, rrf_score in sorted_results:
             if len(top_results) >= limit:
                 break
@@ -227,7 +227,7 @@ class ConcatenationFusionStage:
             all_results.extend(backend_results)
 
         # Deduplicate by content
-        seen = set()
+        seen: set[str] = set()
         unique_results: list[ISearchResult] = []
         for result in all_results:
             if result.content not in seen:
@@ -290,7 +290,7 @@ class SearchPipeline:
         filter_stage: IFilterStage,
         reranker_stage: IReranker | None,
         config: SearchPipelineConfig,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ):
         """Initialize search pipeline.
 
@@ -302,12 +302,15 @@ class SearchPipeline:
             config: Pipeline configuration.
             logger: Structured logger.
         """
+        if logger is None:
+            raise ValueError("logger is required")
+
         self._backend_executor = backend_executor
         self._fusion_stage = fusion_stage
         self._filter_stage = filter_stage
         self._reranker = reranker_stage
         self._config = config
-        self._logger = logger
+        self._logger: IStructuredLogger = logger
 
     async def execute(
         self,
@@ -393,7 +396,7 @@ def create_default_pipeline(
     fulltext_backend: ISearchBackend | None,
     reranker: IReranker | None,
     config: Config,
-    logger: StructuredLogger,
+    logger: IStructuredLogger | None,
 ) -> SearchPipeline:
     """Create a search pipeline with default configuration.
 

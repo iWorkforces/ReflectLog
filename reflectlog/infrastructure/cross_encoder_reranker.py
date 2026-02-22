@@ -18,18 +18,14 @@ Example:
 from dataclasses import dataclass
 import importlib
 import threading
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    from reflectlog.core import IStructuredLogger
+from typing import Any, Protocol, final
 import warnings
 
+from asyncer import asyncify
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.config import Config
-
-if TYPE_CHECKING:
-    pass
+from reflectlog.core.logging import IStructuredLogger
 
 
 @dataclass(frozen=True)
@@ -90,6 +86,18 @@ class CrossEncoderConfig:
         )
 
 
+class FlagRerankerProtocol(Protocol):
+    def compute_score(
+        self,
+        sentence_pairs: list[tuple[str, str]],
+        *,
+        batch_size: int,
+        max_length: int,
+        normalize: bool,
+    ) -> float | list[float]: ...
+
+
+@final
 class CrossEncoderReranker(BaseModel):
     """Cross-encoder reranker using FlagEmbedding's FlagReranker.
 
@@ -123,7 +131,7 @@ class CrossEncoderReranker(BaseModel):
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     @property
-    def model(self) -> Any:
+    def model(self) -> FlagRerankerProtocol:
         """Get FlagReranker model (thread-safe lazy initialization).
 
         Returns:
@@ -150,10 +158,7 @@ class CrossEncoderReranker(BaseModel):
                     )
 
                 flag_embedding_module = importlib.import_module("FlagEmbedding")
-                flag_reranker_class = cast(
-                    Any,
-                    flag_embedding_module,
-                ).FlagReranker
+                flag_reranker_class = flag_embedding_module.FlagReranker
 
                 # Suppress tokenizer optimization warning from transformers
                 # ("You're using a XLMRobertaTokenizerFast tokenizer...")
@@ -471,6 +476,4 @@ class CrossEncoderReranker(BaseModel):
             List of (document, cross_encoder_score) tuples, sorted by score
             descending, filtered by score_threshold, and limited to top_k results.
         """
-        from asyncer import asyncify
-
         return await asyncify(self.rerank)(query, candidates, timestamp_map)

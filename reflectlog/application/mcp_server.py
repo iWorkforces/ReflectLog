@@ -4,6 +4,7 @@ from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
 
 from .config import Config, build_instructions, config
+from .config.settings import get_config
 from .memory import MemoryManager
 from .tools import (
     AddTool,
@@ -35,14 +36,16 @@ class FastMCPServer:
     - Server transport
     """
 
-    def __init__(self, server_config: Config = config):
+    def __init__(self, server_config: Config | object = config):
         """Initialize the MCP server with all components.
 
         Args:
             server_config: Configuration instance (defaults to singleton).
         """
         super().__init__()
-        self.config = server_config
+        self.config = (
+            server_config if isinstance(server_config, Config) else get_config()
+        )
 
         # Initialize structured logger
         self.logger = create_logger(
@@ -128,7 +131,7 @@ class FastMCPServer:
             handler = tool.get_handler()
 
             # Register with FastMCP using the decorator
-            self.mcp.tool(handler)
+            _ = self.mcp.tool(handler)
 
             self.logger.info(
                 f"Registered tool: {tool.get_name()}", extra={"tool": tool.get_name()}

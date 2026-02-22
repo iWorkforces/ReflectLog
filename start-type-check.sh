@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ReflectLogMCP - Type Checking Script
-# This script uses ty to perform static type checking on all Python files
+# This script uses ty and pyright to perform static type checking on all Python files
 
 set -e
 
@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 # Configuration
 TY_CONFIG_FILE="pyproject.toml"
 
-echo -e "${BLUE}🔍 ReflectLogMCP - Type Checking (ty)${NC}"
+echo -e "${BLUE}🔍 ReflectLogMCP - Type Checking (ty + pyright)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -82,6 +82,23 @@ check_ty() {
     echo -e "${CYAN}Version: $(uv run ty --version)${NC}"
 }
 
+check_pyright() {
+    if ! uv run pyright --version &> /dev/null; then
+        echo -e "${YELLOW}📦 pyright not found, installing...${NC}"
+        echo -e "${CYAN}Installing pyright via uv...${NC}"
+        uv pip install pyright
+
+        if ! uv run pyright --version &> /dev/null; then
+            echo -e "${RED}❌ Failed to install pyright${NC}"
+            echo -e "${YELLOW}Please install pyright manually: uv pip install pyright${NC}"
+            exit 1
+        fi
+    fi
+
+    echo -e "${GREEN}✅ pyright is available${NC}"
+    echo -e "${CYAN}Version: $(uv run pyright --version)${NC}"
+}
+
 # Function to upgrade ty to latest version
 upgrade_ty() {
     echo -e "${BLUE}🔄 Upgrading ty to latest version...${NC}"
@@ -128,6 +145,21 @@ run_type_check() {
     fi
 }
 
+run_pyright_check() {
+    echo -e "${BLUE}🔍 Running pyright type check...${NC}"
+    echo ""
+
+    if uv run pyright; then
+        echo ""
+        echo -e "${GREEN}✅ No pyright type errors found!${NC}"
+        return 0
+    else
+        echo ""
+        echo -e "${YELLOW}⚠️  Pyright type errors detected${NC}"
+        return 1
+    fi
+}
+
 # Function to run ty type check with concise output (for CI)
 run_type_check_concise() {
     echo -e "${BLUE}🔍 Running ty type check (concise)...${NC}"
@@ -167,7 +199,7 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --check       Run type checking (default)"
-    echo "  --concise     Run type checking with concise output (for CI)"
+    echo "  --concise     Run ty with concise output, then pyright"
     echo "  --stats       Show detailed type error statistics"
     echo "  --config      Show ty configuration"
     echo "  --install     Install/upgrade ty"
@@ -241,13 +273,25 @@ main() {
     # Execute main workflow
     check_uv
     check_ty
+    check_pyright
     upgrade_ty
     show_config
 
     case $ACTION in
         "check")
             if [ "$OUTPUT_FORMAT" = "concise" ]; then
-                if run_type_check_concise; then
+                TY_EXIT_CODE=0
+                PYRIGHT_EXIT_CODE=0
+
+                if ! run_type_check_concise; then
+                    TY_EXIT_CODE=1
+                fi
+
+                if ! run_pyright_check; then
+                    PYRIGHT_EXIT_CODE=1
+                fi
+
+                if [ $TY_EXIT_CODE -eq 0 ] && [ $PYRIGHT_EXIT_CODE -eq 0 ]; then
                     if [ "$SHOW_STATS" = true ]; then
                         show_stats
                     fi
@@ -261,7 +305,18 @@ main() {
                     exit 1
                 fi
             else
-                if run_type_check; then
+                TY_EXIT_CODE=0
+                PYRIGHT_EXIT_CODE=0
+
+                if ! run_type_check; then
+                    TY_EXIT_CODE=1
+                fi
+
+                if ! run_pyright_check; then
+                    PYRIGHT_EXIT_CODE=1
+                fi
+
+                if [ $TY_EXIT_CODE -eq 0 ] && [ $PYRIGHT_EXIT_CODE -eq 0 ]; then
                     if [ "$SHOW_STATS" = true ]; then
                         show_stats
                     fi

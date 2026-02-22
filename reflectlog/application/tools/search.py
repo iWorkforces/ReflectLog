@@ -1,7 +1,7 @@
 """Search tool implementation for ReflectLogMCP Server."""
 
 import time
-from typing import Annotated
+from typing import Annotated, override
 
 from pydantic import Field
 
@@ -14,10 +14,12 @@ from .base import BaseTool
 class SearchTool(BaseTool):
     """Tool for semantic search in memory storage."""
 
+    @override
     def get_name(self) -> str:
         """Get the tool name."""
         return "search"
 
+    @override
     def get_instruction_snippet(self) -> str:
         """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
@@ -26,6 +28,7 @@ class SearchTool(BaseTool):
             "      memories using vector embeddings (limit: configurable, default 5)."
         )
 
+    @override
     def get_handler(self):
         """Get the async tool handler function."""
 

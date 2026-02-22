@@ -13,7 +13,7 @@ import threading
 from typing import Protocol
 
 from reflectlog.application.config import Config
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.memory import IMemoryBackend
 from reflectlog.core.reranking import IReranker
 
@@ -234,7 +234,7 @@ class AddPipeline:
         replace_phase: IReplacementDetectionPhase,
         storage_phase: IStoragePhase,
         config: AddPipelineConfig,
-        logger: StructuredLogger,
+        logger: IStructuredLogger | None,
     ):
         super().__init__()
         """Initialize add pipeline.
@@ -246,11 +246,14 @@ class AddPipeline:
             config: Pipeline configuration.
             logger: Structured logger.
         """
+        if logger is None:
+            raise ValueError("logger is required")
+
         self._dedup_phase = dedup_phase
         self._replace_phase = replace_phase
         self._storage_phase = storage_phase
         self._config = config
-        self._logger = logger
+        self._logger: IStructuredLogger = logger
 
     async def execute(
         self,
@@ -303,7 +306,7 @@ def create_default_pipeline(
     fulltext_backend: IMemoryBackend | None,
     replace_detector: IReranker | None,
     config: Config,
-    logger: StructuredLogger,
+    logger: IStructuredLogger | None,
     write_lock: threading.Lock,
 ) -> AddPipeline:
     """Create an add pipeline with default configuration.

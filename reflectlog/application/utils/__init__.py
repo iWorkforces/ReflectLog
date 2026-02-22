@@ -1,15 +1,11 @@
 """Utilities for ReflectLogMCP Server."""
 
-from collections.abc import Callable
-from typing import Any, cast
-
-from . import circuit_breaker as _circuit_breaker
-from . import metrics as _metrics
 from .circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
     CircuitBreakerOpenError,
     CircuitState,
+    circuit_breaker_decorator,
 )
 from .config_reload import ConfigReloadManager, setup_signal_handler
 from .logging import (
@@ -17,7 +13,7 @@ from .logging import (
     create_logger,
     format_fusion_score_status,
 )
-from .metrics import MetricsRegistry, MetricValue
+from .metrics import MetricsRegistry, MetricValue, timed
 from .numba_utils import (
     compute_rrf_scores_batch,
     distance_to_similarity_cosine,
@@ -31,15 +27,6 @@ from .security import (
     sanitize_for_logging,
 )
 from .validation import truncate_memory, validate_memories
-
-_CIRCUIT_BREAKER_DECORATOR_NAME = "circuit_breaker_decorator"
-_TIMED_NAME = "timed"
-
-circuit_breaker_decorator = cast(
-    Callable[..., Any],
-    getattr(_circuit_breaker, _CIRCUIT_BREAKER_DECORATOR_NAME),
-)
-timed = cast(Callable[..., Any], getattr(_metrics, _TIMED_NAME))
 
 __all__ = [
     # CamelCase

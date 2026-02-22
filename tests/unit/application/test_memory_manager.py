@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-'''Unit tests for hybrid MemoryManager (USearch + Tantivy).'''
+"""Unit tests for hybrid MemoryManager (USearch + Tantivy)."""
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -9,11 +10,12 @@ from reflectlog.application.config.settings import Config
 from reflectlog.application.exceptions import StorageError
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 
 
 @pytest.fixture
 def mock_config() -> Config:
-    '''Mock configuration with hybrid search enabled.'''
+    """Mock configuration with hybrid search enabled."""
     config = Mock(spec=Config)
     config.project_id = "test_project"
     config.enable_hybrid_search = True
@@ -74,16 +76,16 @@ def mock_config() -> Config:
 
 @pytest.fixture
 def mock_logger():
-    '''Mock structured logger.'''
-    return Mock(spec=StructuredLogger)
+    """Mock structured logger."""
+    return cast(IStructuredLogger, Mock(spec=StructuredLogger))
 
 
 @pytest.mark.unit
 class TestHybridMemoryManager:
-    '''Tests for hybrid MemoryManager (USearch + TantivyEngine).'''
+    """Tests for hybrid MemoryManager (USearch + TantivyEngine)."""
 
     def test_initialization(self, mock_config, mock_logger):
-        '''Test basic initialization with TantivyEngine.'''
+        """Test basic initialization with TantivyEngine."""
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -102,7 +104,7 @@ class TestHybridMemoryManager:
                     mock_tantivy.assert_called_once()
 
     def test_initialization_without_hybrid_search(self, mock_config, mock_logger):
-        '''Test initialization with hybrid search disabled.'''
+        """Test initialization with hybrid search disabled."""
         mock_config.enable_hybrid_search = False
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
@@ -120,7 +122,7 @@ class TestHybridMemoryManager:
                     assert manager._tantivy_engine is None
 
     def test_add_memories(self, mock_config, mock_logger):
-        '''Test parallel indexing works with TantivyEngine.'''
+        """Test parallel indexing works with TantivyEngine."""
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -149,10 +151,10 @@ class TestHybridMemoryManager:
                     mock_tantivy.commit.assert_called_once()
 
     def test_search_for_removal_optimized(self, mock_config, mock_logger):
-        '''Test removal search using direct database lookup (O(log n) optimization).
+        """Test removal search using direct database lookup (O(log n) optimization).
 
         Sprint 1.4 changed from O(n) get_all() + iteration to O(log n) indexed lookup.
-        '''
+        """
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -177,7 +179,7 @@ class TestHybridMemoryManager:
                     assert candidates[0]["score"] == 1.0  # Exact match = perfect score
 
     def test_search_for_removal_not_found(self, mock_config, mock_logger):
-        '''Test removal search when memory is not found.'''
+        """Test removal search when memory is not found."""
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -196,7 +198,7 @@ class TestHybridMemoryManager:
                     assert len(candidates) == 0  # No candidates when not found
 
     def test_exact_match_detection(self, mock_config, mock_logger):
-        '''Test exact match detection uses Tantivy.'''
+        """Test exact match detection uses Tantivy."""
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -225,11 +227,11 @@ class TestHybridMemoryManager:
     def test_exact_match_detection_fallback_uses_database_lookup(
         self, mock_config, mock_logger
     ):
-        '''Test exact match detection fallback uses direct database lookup (Sprint 2.1).
+        """Test exact match detection fallback uses direct database lookup (Sprint 2.1).
 
         When Tantivy is not available, _has_exact_match() should use get_id_by_content()
         for O(log n) indexed lookup instead of semantic search with embedding API call.
-        '''
+        """
         mock_config.enable_hybrid_search = False  # Disable Tantivy
 
         with patch(
@@ -266,7 +268,7 @@ class TestHybridMemoryManager:
 
     @pytest.mark.asyncio
     async def test_search_uses_rrf_fusion(self, mock_config, mock_logger):
-        '''Test hybrid search uses RRFFusion for ranking.'''
+        """Test hybrid search uses RRFFusion for ranking."""
         mock_config.reranker_engine = "none"  # Skip LLM reranking in unit test
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
@@ -299,11 +301,11 @@ class TestHybridMemoryManager:
 
 @pytest.mark.unit
 class TestParallelMemoryAddition:
-    '''Tests for parallel memory addition via add_memories_async().'''
+    """Tests for parallel memory addition via add_memories_async()."""
 
     @pytest.mark.asyncio
     async def test_add_memories_async_empty_list(self, mock_config, mock_logger):
-        '''Empty list should return AddResult with 0 stored without any operations.'''
+        """Empty list should return AddResult with 0 stored without any operations."""
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -320,7 +322,7 @@ class TestParallelMemoryAddition:
 
     @pytest.mark.asyncio
     async def test_add_memories_async_single_memory(self, mock_config, mock_logger):
-        '''Single memory should skip concurrency overhead.'''
+        """Single memory should skip concurrency overhead."""
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -343,7 +345,7 @@ class TestParallelMemoryAddition:
 
     @pytest.mark.asyncio
     async def test_add_memories_async_multiple_memories(self, mock_config, mock_logger):
-        '''Multiple memories should be processed in parallel.'''
+        """Multiple memories should be processed in parallel."""
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -371,7 +373,7 @@ class TestParallelMemoryAddition:
     async def test_add_memories_async_respects_concurrency_limit(
         self, mock_config, mock_logger
     ):
-        '''Concurrency limit should be respected via semaphore.'''
+        """Concurrency limit should be respected via semaphore."""
         mock_config.add_max_concurrency = 2  # Low limit for testing
 
         with patch(
@@ -399,12 +401,12 @@ class TestParallelMemoryAddition:
     async def test_add_memories_async_handles_duplicates(
         self, mock_config, mock_logger
     ):
-        '''Duplicate memories should be skipped (via Tantivy detection).
+        """Duplicate memories should be skipped (via Tantivy detection).
 
         Note: With Sprint 2.2 phased parallel processing, duplicate checks run
         in parallel, so we use a side_effect function instead of a list to
         handle non-deterministic call order.
-        '''
+        """
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -437,7 +439,7 @@ class TestParallelMemoryAddition:
 
     @pytest.mark.asyncio
     async def test_add_memories_async_error_handling(self, mock_config, mock_logger):
-        '''Error during parallel addition should raise RuntimeError.'''
+        """Error during parallel addition should raise RuntimeError."""
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -466,11 +468,11 @@ class TestParallelMemoryAddition:
     async def test_add_memories_async_batch_deduplication(
         self, mock_config, mock_logger
     ):
-        '''Batch deduplication should skip duplicate memories within the same batch.
+        """Batch deduplication should skip duplicate memories within the same batch.
 
         Sprint 2.2: Phase 1 includes deduplicating within the batch itself
         before checking storage, to avoid storing the same memory twice.
-        '''
+        """
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -502,16 +504,16 @@ class TestParallelMemoryAddition:
 
 @pytest.mark.unit
 class TestConcurrencyConfiguration:
-    '''Tests for ADD_MAX_CONCURRENCY configuration.'''
+    """Tests for ADD_MAX_CONCURRENCY configuration."""
 
     def test_config_has_add_max_concurrency(self, mock_config):
-        '''Config should have add_max_concurrency attribute.'''
+        """Config should have add_max_concurrency attribute."""
         assert hasattr(mock_config, "add_max_concurrency")
         assert mock_config.add_max_concurrency == 4
 
     @pytest.mark.asyncio
     async def test_low_concurrency_limit(self, mock_config, mock_logger):
-        '''Low concurrency limit should still process all memories.'''
+        """Low concurrency limit should still process all memories."""
         mock_config.add_max_concurrency = 1  # Sequential processing
 
         with patch(
@@ -534,7 +536,7 @@ class TestConcurrencyConfiguration:
 
     @pytest.mark.asyncio
     async def test_high_concurrency_limit(self, mock_config, mock_logger):
-        '''High concurrency limit should allow more parallel tasks.'''
+        """High concurrency limit should allow more parallel tasks."""
         mock_config.add_max_concurrency = 100  # Higher than memory count
 
         with patch(
@@ -558,17 +560,17 @@ class TestConcurrencyConfiguration:
 
 @pytest.mark.unit
 class TestSingleResultRerankingSkip:
-    '''Tests for skipping reranking when only 0-1 results after fusion (Sprint optimization).
+    """Tests for skipping reranking when only 0-1 results after fusion (Sprint optimization).
 
     When fusion filtering produces <= 1 result, reranking is unnecessary because:
     - 0 results: Nothing to rerank
     - 1 result: No ordering to optimize
     This saves 15-25s of LLM API latency for single-result queries.
-    '''
+    """
 
     @pytest.mark.asyncio
     async def test_single_result_skips_llm_reranking(self, mock_config, mock_logger):
-        '''Single result after fusion should skip LLM reranking step.'''
+        """Single result after fusion should skip LLM reranking step."""
         mock_config.reranker_engine = "llm"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.5
@@ -626,7 +628,7 @@ class TestSingleResultRerankingSkip:
     async def test_single_result_skips_cross_encoder_reranking(
         self, mock_config, mock_logger
     ):
-        '''Single result after fusion should skip CrossEncoder reranking step.'''
+        """Single result after fusion should skip CrossEncoder reranking step."""
         mock_config.reranker_engine = "cross_encoder"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.5
@@ -676,7 +678,7 @@ class TestSingleResultRerankingSkip:
     async def test_zero_results_skips_reranking_implicitly(
         self, mock_config, mock_logger
     ):
-        '''Zero results after fusion should skip reranking (implicit - no candidates).'''
+        """Zero results after fusion should skip reranking (implicit - no candidates)."""
         mock_config.reranker_engine = "llm"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.5
@@ -720,7 +722,7 @@ class TestSingleResultRerankingSkip:
     async def test_multiple_results_proceed_to_reranking(
         self, mock_config, mock_logger
     ):
-        '''Multiple results after fusion should proceed to reranking normally.'''
+        """Multiple results after fusion should proceed to reranking normally."""
         mock_config.reranker_engine = "llm"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.3  # Low threshold to keep results
@@ -777,17 +779,17 @@ class TestSingleResultRerankingSkip:
 
 @pytest.mark.unit
 class TestTimestampPropagation:
-    '''Tests for timestamp propagation through the search pipeline (Temporal-aware reranking).
+    """Tests for timestamp propagation through the search pipeline (Temporal-aware reranking).
 
     These tests verify that created_at timestamps from USearchEngine are properly
     propagated through the hybrid search pipeline for use in temporal-aware reranking.
-    '''
+    """
 
     @pytest.mark.asyncio
     async def test_search_receives_timestamps_from_usearch(
         self, mock_config, mock_logger
     ):
-        '''USearch search results should include created_at timestamps (3-tuples).'''
+        """USearch search results should include created_at timestamps (3-tuples)."""
         mock_config.reranker_engine = "none"  # Skip reranking for simplicity
         mock_config.enable_rrf_fusion = True
 
@@ -828,7 +830,7 @@ class TestTimestampPropagation:
     async def test_timestamp_map_built_from_semantic_results(
         self, mock_config, mock_logger
     ):
-        '''Verify timestamp_map is built correctly from semantic search results.'''
+        """Verify timestamp_map is built correctly from semantic search results."""
         mock_config.reranker_engine = "none"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.0  # Keep all results
@@ -869,7 +871,7 @@ class TestTimestampPropagation:
 
     @pytest.mark.asyncio
     async def test_timestamps_preserved_through_fusion(self, mock_config, mock_logger):
-        '''Timestamps should be accessible after RRF fusion.'''
+        """Timestamps should be accessible after RRF fusion."""
         mock_config.reranker_engine = "none"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.0
@@ -903,7 +905,7 @@ class TestTimestampPropagation:
 
     @pytest.mark.asyncio
     async def test_semantic_only_path_uses_timestamps(self, mock_config, mock_logger):
-        '''When hybrid search is disabled, timestamps still come from USearch.'''
+        """When hybrid search is disabled, timestamps still come from USearch."""
         mock_config.enable_hybrid_search = False  # Semantic-only path
 
         with patch(

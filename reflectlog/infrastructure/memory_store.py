@@ -11,14 +11,12 @@ from dataclasses import dataclass
 import os
 import sqlite3
 import threading
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from reflectlog.core import IStructuredLogger
+from typing import Any, final
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.application.exceptions import StorageError
+from reflectlog.core.logging import IStructuredLogger
 
 
 @dataclass(frozen=True)
@@ -63,6 +61,7 @@ class ArchivedMemoryRecord:
     archived_at: str
 
 
+@final
 class MemoryStore(BaseModel):
     """SQLite-backed memory storage for USearch engine.
 

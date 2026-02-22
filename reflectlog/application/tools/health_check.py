@@ -1,6 +1,6 @@
 """Health check tool implementation for ReflectLogMCP Server."""
 
-from typing import Any
+from typing import Any, override
 
 from .base import BaseTool
 
@@ -8,10 +8,12 @@ from .base import BaseTool
 class HealthCheckTool(BaseTool):
     """Tool for health checking the server and its components."""
 
+    @override
     def get_name(self) -> str:
         """Get the tool name."""
         return "health_check"
 
+    @override
     def get_instruction_snippet(self) -> str:
         """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
@@ -19,6 +21,7 @@ class HealthCheckTool(BaseTool):
             "      Get server health status including component initialization state."
         )
 
+    @override
     def get_handler(self):
         """Get the async tool handler function."""
 
@@ -64,25 +67,24 @@ class HealthCheckTool(BaseTool):
                     }
                 }
             """
+            semantic_engine = getattr(self.memory, "_semantic_engine", None)
+            tantivy_engine = getattr(self.memory, "_tantivy_engine", None)
+
             try:
                 self.log_invocation("health_check")
 
                 # Check semantic engine state
                 semantic_engine_status = (
-                    "initialized"
-                    if self.memory._semantic_engine is not None
-                    else "not_initialized"
+                    "initialized" if semantic_engine is not None else "not_initialized"
                 )
 
                 # Check Tantivy engine state
                 tantivy_engine_status = (
-                    "initialized"
-                    if self.memory._tantivy_engine is not None
-                    else "disabled"
+                    "initialized" if tantivy_engine is not None else "disabled"
                 )
 
                 # Build health status response
-                health_status = {
+                health_status: dict[str, Any] = {
                     "status": "healthy",
                     "project_id": self.config.project_id,
                     "semantic_engine": semantic_engine_status,
@@ -118,13 +120,11 @@ class HealthCheckTool(BaseTool):
                     "diagnostics": {
                         "semantic_engine": (
                             "initialized"
-                            if self.memory._semantic_engine is not None
+                            if semantic_engine is not None
                             else "not_initialized"
                         ),
                         "tantivy_engine": (
-                            "initialized"
-                            if self.memory._tantivy_engine is not None
-                            else "disabled"
+                            "initialized" if tantivy_engine is not None else "disabled"
                         ),
                         "reranker_engine": self.config.reranker_engine,
                         "hybrid_search_enabled": self.config.enable_hybrid_search,

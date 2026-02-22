@@ -39,6 +39,14 @@ class PluginCapability:
     version: str = "0.0.0"
 
 
+def _empty_capabilities() -> list[PluginCapability]:
+    return []
+
+
+def _empty_dependencies() -> list[str]:
+    return []
+
+
 @dataclass
 class PluginMetadata:
     """Metadata about a registered plugin."""
@@ -47,8 +55,8 @@ class PluginMetadata:
     version: str
     description: str = ""
     author: str = ""
-    capabilities: list[PluginCapability] = field(default_factory=list)
-    dependencies: list[str] = field(default_factory=list)
+    capabilities: list[PluginCapability] = field(default_factory=_empty_capabilities)
+    dependencies: list[str] = field(default_factory=_empty_dependencies)
     state: PluginState = PluginState.DISCOVERED
     error_message: str | None = None
     discovered_at: datetime = field(default_factory=utc_now)
@@ -86,7 +94,7 @@ class PluginRegistry[T]:
         tools = registry.list_by_type(ITool)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize empty plugin registry."""
         self._plugins: dict[str, PluginMetadata] = {}
         self._instances: dict[str, T] = {}
@@ -308,7 +316,7 @@ class ToolRegistry(PluginRegistry[T]):
     managing MCP tool plugins.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize tool registry."""
         super().__init__()
         self._tool_names: set[str] = set()

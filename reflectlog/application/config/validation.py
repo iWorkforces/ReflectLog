@@ -656,22 +656,22 @@ def validate_config(config: object) -> list[ValidationError]:
     """
     validator = ConfigurationValidator()
 
-    def get_attr(name: str) -> Any:
+    def get_attr(name: str) -> object | None:
         return getattr(config, name, None)
 
     # Validate project_id
     project_id = get_attr("project_id")
-    if project_id:
+    if isinstance(project_id, str) and project_id:
         _ = validator.validate_project_id(project_id)
 
     # Validate transport
     transport = get_attr("transport")
-    if transport:
+    if isinstance(transport, str) and transport:
         _ = validator.validate_transport(transport)
 
     # Validate port
     port = get_attr("port")
-    if port is not None:
+    if isinstance(port, int):
         _ = validator.validate_port(port)
 
     # Validate percentage values
@@ -690,8 +690,8 @@ def validate_config(config: object) -> list[ValidationError]:
 
     for attr_name, field_name in percentage_fields:
         value = get_attr(attr_name)
-        if value is not None:
-            _ = validator.validate_percentage(field_name, value)
+        if isinstance(value, (int, float)):
+            _ = validator.validate_percentage(field_name, float(value))
 
     # Validate positive integers
     positive_int_fields = [
@@ -708,33 +708,33 @@ def validate_config(config: object) -> list[ValidationError]:
 
     for attr_name, field_name, min_val in positive_int_fields:
         value = get_attr(attr_name)
-        if value is not None:
+        if isinstance(value, int):
             _ = validator.validate_positive_int(field_name, value, min_val)
 
     # Validate reranker engine
     reranker_engine = get_attr("reranker_engine")
-    if reranker_engine:
+    if isinstance(reranker_engine, str) and reranker_engine:
         _ = validator.validate_reranker_engine(reranker_engine)
 
     # Validate LLM provider
     llm_provider = get_attr("llm_provider")
-    if llm_provider:
+    if isinstance(llm_provider, str) and llm_provider:
         _ = validator.validate_llm_provider(llm_provider)
 
     # Validate cross-encoder device
     cross_encoder_device = get_attr("cross_encoder_device")
-    if cross_encoder_device:
+    if isinstance(cross_encoder_device, str) and cross_encoder_device:
         _ = validator.validate_cross_encoder_device(cross_encoder_device)
 
     # Validate fusion method
     fusion_method = get_attr("fusion_method")
-    if fusion_method:
+    if isinstance(fusion_method, str) and fusion_method:
         _ = validator.validate_fusion_method(fusion_method)
 
     # Validate memory lengths
     min_length = get_attr("min_message_length")
     max_length = get_attr("max_message_length")
-    if min_length is not None and max_length is not None:
+    if isinstance(min_length, int) and isinstance(max_length, int):
         _ = validator.validate_memory_lengths(min_length, max_length)
 
     # Validate dependencies
@@ -742,24 +742,30 @@ def validate_config(config: object) -> list[ValidationError]:
     enable_rrf_fusion = get_attr("enable_rrf_fusion")
     reranker_engine = get_attr("reranker_engine")
     _ = validator.validate_dependencies(
-        enable_hybrid_search if enable_hybrid_search is not None else True,
-        enable_rrf_fusion if enable_rrf_fusion is not None else True,
-        reranker_engine if reranker_engine else "llm",
+        enable_hybrid_search if isinstance(enable_hybrid_search, bool) else True,
+        enable_rrf_fusion if isinstance(enable_rrf_fusion, bool) else True,
+        reranker_engine
+        if isinstance(reranker_engine, str) and reranker_engine
+        else "llm",
     )
 
     # Validate circuit breaker settings
     circuit_breaker_enabled = get_attr("circuit_breaker_enabled")
-    if circuit_breaker_enabled:
+    if isinstance(circuit_breaker_enabled, bool) and circuit_breaker_enabled:
+        failure_threshold = get_attr("circuit_breaker_failure_threshold")
+        timeout = get_attr("circuit_breaker_timeout")
+        success_threshold = get_attr("circuit_breaker_success_threshold")
+
         _ = validator.validate_circuit_breaker_settings(
             circuit_breaker_enabled,
-            get_attr("circuit_breaker_failure_threshold") or 5,
-            get_attr("circuit_breaker_timeout") or 60.0,
-            get_attr("circuit_breaker_success_threshold") or 2,
+            failure_threshold if isinstance(failure_threshold, int) else 5,
+            timeout if isinstance(timeout, (int, float)) else 60.0,
+            success_threshold if isinstance(success_threshold, int) else 2,
         )
 
     # Validate OpenRouter API key format
     openrouter_api_key = get_attr("openrouter_api_key")
-    if openrouter_api_key:
+    if isinstance(openrouter_api_key, str) and openrouter_api_key:
         _ = validator.validate_openrouter_api_key_format(openrouter_api_key)
 
     return validator.errors

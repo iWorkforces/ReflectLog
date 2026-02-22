@@ -8,6 +8,8 @@ consistent interface to the application layer.
 
 from typing import Protocol, runtime_checkable
 
+from reflectlog.application.types import MemoryRecord
+
 
 @runtime_checkable
 class IMemoryStore(Protocol):
@@ -21,7 +23,7 @@ class IMemoryStore(Protocol):
         self,
         project_id: str,
         content: str,
-        metadata: dict[str, object] | None = None,
+        metadata: MemoryRecord | None = None,
     ) -> str:
         """Add a memory entry to the store.
 
@@ -39,7 +41,7 @@ class IMemoryStore(Protocol):
         self,
         project_id: str,
         memory_id: str,
-    ) -> dict[str, object] | None:
+    ) -> MemoryRecord | None:
         """Retrieve a memory entry by ID.
 
         Args:
@@ -54,7 +56,7 @@ class IMemoryStore(Protocol):
     async def get_all(
         self,
         project_id: str,
-    ) -> list[dict[str, object]]:
+    ) -> list[MemoryRecord]:
         """Retrieve all memories for a project.
 
         Args:
@@ -86,7 +88,7 @@ class IMemoryStore(Protocol):
         project_id: str,
         memory_id: str,
         content: str,
-        metadata: dict[str, object] | None = None,
+        metadata: MemoryRecord | None = None,
     ) -> bool:
         """Update a memory entry.
 
@@ -105,7 +107,7 @@ class IMemoryStore(Protocol):
         self,
         project_id: str,
         content: str,
-    ) -> dict[str, object] | None:
+    ) -> MemoryRecord | None:
         """Find a memory by exact content match.
 
         Args:

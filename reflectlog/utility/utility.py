@@ -19,6 +19,17 @@ from claude_agent_sdk import (
 from .platforms import get_platform_retriever
 from .types import OAUTH_TOKEN_PREFIX, ApiKeyResult
 
+__all__ = [
+    "AssistantMessage",
+    "ClaudeAgentOptions",
+    "ResultMessage",
+    "TextBlock",
+    "generate_content",
+    "get_anthropic_api_key",
+    "get_claude_code_api_key",
+    "init_credentials",
+]
+
 
 def get_claude_code_api_key(verbose: bool = False) -> str | None:
     """Retrieve Claude Code API key from system keychain/credential store.
@@ -179,7 +190,7 @@ async def generate_content(
             for block in message.content:
                 if isinstance(block, TextBlock):
                     result_text += block.text
-        elif isinstance(message, ResultMessage) and message.is_error:
+        elif message.is_error:
             raise RuntimeError(f"Query failed: {message.subtype}")
 
     return result_text.strip()

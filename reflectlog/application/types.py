@@ -1,14 +1,10 @@
 """Type definitions for ReflectLogMCP Server."""
 
 from typing import (
-    TYPE_CHECKING,
-    Any,
     Protocol,
+    TypedDict,
     runtime_checkable,
 )
-
-if TYPE_CHECKING:
-    from reflectlog.infrastructure.memory_store import MemoryStore
 
 # Timestamp handling protocol
 # All timestamps in ReflectLogMCP use ISO 8601 format (UTC timezone)
@@ -24,16 +20,44 @@ if TYPE_CHECKING:
 # Empty string ("") is used for backward compatibility with data stored
 # before timestamp tracking was implemented.
 
+
 # Memory operation types
-type MemoryRecord = dict[str, Any]
+class MemoryRecord(TypedDict, total=False):
+    id: str
+    memory: str
+    score: float
+    project_id: str
+    content: str
+    created_at: str
+    metadata: dict[str, object]
+
+
 type SearchResult = dict[str, list[MemoryRecord]]
 type MemoryList = list[str]
 
 # Tool result types
 type ToolResult = None | MemoryList
 
+
 # Extra logging context
-type LogContext = dict[str, Any]
+class LogContext(TypedDict, total=False):
+    operation: str
+    project_id: str
+    tool: str
+    error: str
+    error_type: str
+
+
+class IArchiveMemoryStore(Protocol):
+    def archive(
+        self,
+        memory_id: int,
+        project_id: str,
+        content: str,
+        replaced_by: str,
+        reason: str,
+        confidence: float,
+    ) -> int | None: ...
 
 
 # Clean Architecture: Application layer defines interfaces
@@ -354,7 +378,7 @@ class ISemanticSearchEngine(Protocol):
         ...
 
     @property
-    def memory_store(self) -> MemoryStore:
+    def memory_store(self) -> IArchiveMemoryStore:
         """Get the underlying memory store for archive operations.
 
         Returns:

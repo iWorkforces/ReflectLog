@@ -1,6 +1,6 @@
 """Remove tool implementation for ReflectLogMCP Server."""
 
-from typing import Any
+from typing import Any, override
 
 from asyncer import asyncify
 
@@ -12,10 +12,12 @@ from .base import BaseTool
 class RemoveTool(BaseTool):
     """Tool for removing memories from memory storage."""
 
+    @override
     def get_name(self) -> str:
         """Get the tool name."""
         return "remove"
 
+    @override
     def get_instruction_snippet(self) -> str:
         """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
@@ -25,6 +27,7 @@ class RemoveTool(BaseTool):
             "      Removes all occurrences of each memory. Silently ignores non-existent memories."
         )
 
+    @override
     def get_handler(self):
         """Get the async tool handler function."""
 

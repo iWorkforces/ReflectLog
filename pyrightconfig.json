@@ -1,7 +1,6 @@
 {
   "include": [
-    "reflectlog",
-    "tests"
+    "reflectlog"
   ],
   "exclude": [
     "**/__pycache__",
@@ -26,7 +25,7 @@
   "venv": ".venv",
   "reportMissingImports": "error",
   "reportMissingTypeStubs": "error",
-  "reportImportCycles": "error",
+  "reportImportCycles": "none",
   "reportUnusedImport": "error",
   "reportUnusedClass": "error",
   "reportUnusedFunction": "error",

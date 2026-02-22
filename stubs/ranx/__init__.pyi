@@ -1,6 +1,18 @@
 """Type stubs for ranx library."""
 
-from typing import Any
+from typing import NotRequired, TypedDict
+
+class FuseParams(TypedDict, total=False):
+    """Parameters supported by fusion algorithms."""
+
+    k: NotRequired[int | float]
+    phi: NotRequired[int | float]
+    alpha: NotRequired[float]
+    beta: NotRequired[float]
+    gamma: NotRequired[float]
+    weights: NotRequired[dict[str, float]]
+    min_norm: NotRequired[float]
+    max_norm: NotRequired[float]
 
 class Run:
     """A ranked run containing query-document scores."""
@@ -18,7 +30,7 @@ def fuse(
     runs: list[Run],
     norm: str | None = None,
     method: str = "rrf",
-    params: dict[str, Any] | None = None,
+    params: FuseParams | dict[str, object] | None = None,
 ) -> Run:
     """Fuse multiple runs into a single combined run.
 

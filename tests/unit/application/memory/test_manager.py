@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-'''Unit tests for MemoryManager – targeting uncovered lines for 90%+ coverage.
+"""Unit tests for MemoryManager – targeting uncovered lines for 90%+ coverage.
 
 Uncovered lines targeted:
   334-353, 364-376, 390, 407, 413, 435-463, 483, 512, 527-560,
   594-602, 642, 654, 662, 774-775, 841-842, 853-857, 904-914,
   933, 983-984, 1002-1003
-'''
+"""
 
+from typing import cast
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -19,6 +20,8 @@ from reflectlog.application.exceptions import (
 )
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
+from reflectlog.infrastructure import CrossEncoderReranker, LLMReranker
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +33,7 @@ MODULE = "reflectlog.application.memory.manager"
 
 @pytest.fixture
 def mock_config() -> Config:
-    '''Minimal mock Config for MemoryManager tests.'''
+    """Minimal mock Config for MemoryManager tests."""
     config = Mock(spec=Config)
     config.project_id = "test_project"
     config.enable_hybrid_search = True
@@ -108,12 +111,12 @@ def mock_config() -> Config:
 
 @pytest.fixture
 def mock_logger():
-    '''Mock structured logger.'''
-    return Mock(spec=StructuredLogger)
+    """Mock structured logger."""
+    return cast(IStructuredLogger, Mock(spec=StructuredLogger))
 
 
 def _make_manager(config, logger):
-    '''Helper to construct MemoryManager with all infrastructure mocked.'''
+    """Helper to construct MemoryManager with all infrastructure mocked."""
     with (
         patch(f"{MODULE}.USearchEngine") as usearch_cls,
         patch(f"{MODULE}.LangchainQwenEmbeddings"),
@@ -139,10 +142,10 @@ def _make_manager(config, logger):
 
 @pytest.mark.unit
 class TestEagerInitialization:
-    '''Tests for _eager_initialize_engines covering uncovered branches.'''
+    """Tests for _eager_initialize_engines covering uncovered branches."""
 
     def test_eager_init_reranker_invalid_engine_raises(self, mock_config, mock_logger):
-        '''Invalid reranker_engine should raise ValueError (lines 334-340).'''
+        """Invalid reranker_engine should raise ValueError (lines 334-340)."""
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_reranker = True
@@ -152,7 +155,7 @@ class TestEagerInitialization:
             _make_manager(mock_config, mock_logger)
 
     def test_eager_init_reranker_returns_none_warns(self, mock_config, mock_logger):
-        '''Reranker get_reranker returning None should log warning (lines 349-359).'''
+        """Reranker get_reranker returning None should log warning (lines 349-359)."""
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_reranker = True
@@ -173,7 +176,7 @@ class TestEagerInitialization:
             assert manager._llm_reranker is not None
 
     def test_eager_init_reranker_with_llm(self, mock_config, mock_logger):
-        '''Eager init with valid llm reranker (lines 342-351).'''
+        """Eager init with valid llm reranker (lines 342-351)."""
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_reranker = True
@@ -194,7 +197,7 @@ class TestEagerInitialization:
             assert manager._llm_reranker is mock_reranker
 
     def test_eager_init_smart_replacer_disabled_raises(self, mock_config, mock_logger):
-        '''Eager smart replacer with enable_smart_replace=False raises (lines 364-369).'''
+        """Eager smart replacer with enable_smart_replace=False raises (lines 364-369)."""
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_smart_replacer = True
@@ -206,7 +209,7 @@ class TestEagerInitialization:
             _make_manager(mock_config, mock_logger)
 
     def test_eager_init_smart_replacer_enabled(self, mock_config, mock_logger):
-        '''Eager smart replacer with enable_smart_replace=True (lines 371-376).'''
+        """Eager smart replacer with enable_smart_replace=True (lines 371-376)."""
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_smart_replacer = True
@@ -227,7 +230,7 @@ class TestEagerInitialization:
             assert manager._smart_replacer is mock_replacer
 
     def test_eager_init_all_lazy_skipped(self, mock_config, mock_logger):
-        '''All components set to lazy should log skip message (line 390).'''
+        """All components set to lazy should log skip message (line 390)."""
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_reranker = False
@@ -248,16 +251,16 @@ class TestEagerInitialization:
 
 @pytest.mark.unit
 class TestLazyRerankerProperties:
-    '''Tests for llm_reranker, cross_encoder_reranker, get_reranker properties.'''
+    """Tests for llm_reranker, cross_encoder_reranker, get_reranker properties."""
 
     def test_llm_reranker_returns_none_when_not_llm(self, mock_config, mock_logger):
-        '''llm_reranker returns None when reranker_engine != "llm" (line 407).'''
+        """llm_reranker returns None when reranker_engine != "llm" (line 407)."""
         mock_config.reranker_engine = "none"
         manager, _, _ = _make_manager(mock_config, mock_logger)
         assert manager.llm_reranker is None
 
     def test_llm_reranker_returns_cached(self, mock_config, mock_logger):
-        '''llm_reranker returns cached instance on second call (line 407).'''
+        """llm_reranker returns cached instance on second call (line 407)."""
         mock_config.reranker_engine = "llm"
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -279,7 +282,7 @@ class TestLazyRerankerProperties:
             reranker_cls.assert_called_once()
 
     def test_llm_reranker_double_check_locking(self, mock_config, mock_logger):
-        '''llm_reranker double-check after lock (line 413).'''
+        """llm_reranker double-check after lock (line 413)."""
         mock_config.reranker_engine = "llm"
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -294,7 +297,7 @@ class TestLazyRerankerProperties:
 
             manager = MemoryManager(mock_config, mock_logger)
             # Pre-set the reranker to simulate another thread initialized it
-            sentinel = MagicMock()
+            sentinel = cast(LLMReranker, MagicMock())
             manager._llm_reranker = sentinel
             result = manager.llm_reranker
             assert result is sentinel
@@ -302,13 +305,13 @@ class TestLazyRerankerProperties:
     def test_cross_encoder_reranker_returns_none_when_not_configured(
         self, mock_config, mock_logger
     ):
-        '''cross_encoder_reranker returns None for non-cross_encoder (line 435-439).'''
+        """cross_encoder_reranker returns None for non-cross_encoder (line 435-439)."""
         mock_config.reranker_engine = "none"
         manager, _, _ = _make_manager(mock_config, mock_logger)
         assert manager.cross_encoder_reranker is None
 
     def test_cross_encoder_reranker_lazy_init(self, mock_config, mock_logger):
-        '''cross_encoder_reranker lazy initializes (lines 441-463).'''
+        """cross_encoder_reranker lazy initializes (lines 441-463)."""
         mock_config.reranker_engine = "cross_encoder"
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -327,7 +330,7 @@ class TestLazyRerankerProperties:
             ce_cls.assert_called_once()
 
     def test_cross_encoder_reranker_cached(self, mock_config, mock_logger):
-        '''cross_encoder_reranker returns cached on second call (line 435-439).'''
+        """cross_encoder_reranker returns cached on second call (line 435-439)."""
         mock_config.reranker_engine = "cross_encoder"
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -347,7 +350,7 @@ class TestLazyRerankerProperties:
             ce_cls.assert_called_once()
 
     def test_cross_encoder_reranker_double_check(self, mock_config, mock_logger):
-        '''cross_encoder_reranker double-check after lock (lines 444-448).'''
+        """cross_encoder_reranker double-check after lock (lines 444-448)."""
         mock_config.reranker_engine = "cross_encoder"
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -358,13 +361,13 @@ class TestLazyRerankerProperties:
         ):
             usearch_cls.return_value = MagicMock()
             manager = MemoryManager(mock_config, mock_logger)
-            sentinel = MagicMock()
+            sentinel = cast(CrossEncoderReranker, MagicMock())
             manager._cross_encoder_reranker = sentinel
             result = manager.cross_encoder_reranker
             assert result is sentinel
 
     def test_get_reranker_cross_encoder_path(self, mock_config, mock_logger):
-        '''get_reranker returns cross_encoder when configured (line 512).'''
+        """get_reranker returns cross_encoder when configured (line 512)."""
         mock_config.reranker_engine = "cross_encoder"
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -382,7 +385,7 @@ class TestLazyRerankerProperties:
             assert result is mock_ce
 
     def test_get_reranker_none_engine(self, mock_config, mock_logger):
-        '''get_reranker returns None for "none" engine.'''
+        """get_reranker returns None for "none" engine."""
         mock_config.reranker_engine = "none"
         manager, _, _ = _make_manager(mock_config, mock_logger)
         assert manager.get_reranker() is None
@@ -395,16 +398,16 @@ class TestLazyRerankerProperties:
 
 @pytest.mark.unit
 class TestSmartReplacerProperty:
-    '''Tests for smart_replacer lazy property.'''
+    """Tests for smart_replacer lazy property."""
 
     def test_smart_replacer_returns_none_when_disabled(self, mock_config, mock_logger):
-        '''smart_replacer returns None when enable_smart_replace=False.'''
+        """smart_replacer returns None when enable_smart_replace=False."""
         mock_config.enable_smart_replace = False
         manager, _, _ = _make_manager(mock_config, mock_logger)
         assert manager.smart_replacer is None
 
     def test_smart_replacer_double_check_locking(self, mock_config, mock_logger):
-        '''smart_replacer double-check after lock (line 483).'''
+        """smart_replacer double-check after lock (line 483)."""
         mock_config.enable_smart_replace = True
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -421,7 +424,7 @@ class TestSmartReplacerProperty:
             assert result is sentinel
 
     def test_smart_replacer_lazy_init(self, mock_config, mock_logger):
-        '''smart_replacer lazily initializes when enabled.'''
+        """smart_replacer lazily initializes when enabled."""
         mock_config.enable_smart_replace = True
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -447,10 +450,10 @@ class TestSmartReplacerProperty:
 
 @pytest.mark.unit
 class TestAddMemory:
-    '''Tests for _add_memory method.'''
+    """Tests for _add_memory method."""
 
     def test_add_memory_duplicate_skipped(self, mock_config, mock_logger):
-        '''Duplicate memory returns False (lines 527-535).'''
+        """Duplicate memory returns False (lines 527-535)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         # Tantivy search returns exact match
         mock_tantivy.search.return_value = [("hello world", 1.0)]
@@ -460,7 +463,7 @@ class TestAddMemory:
         mock_usearch.add.assert_not_called()
 
     def test_add_memory_success(self, mock_config, mock_logger):
-        '''Successful add returns True (lines 537-557).'''
+        """Successful add returns True (lines 537-557)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.search.return_value = []  # No duplicate
 
@@ -474,7 +477,7 @@ class TestAddMemory:
         mock_tantivy.add.assert_called_once_with("test_project", "new memory")
 
     def test_add_memory_without_tantivy(self, mock_config, mock_logger):
-        '''Add memory without Tantivy engine (semantic only).'''
+        """Add memory without Tantivy engine (semantic only)."""
         mock_config.enable_hybrid_search = False
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -492,7 +495,7 @@ class TestAddMemory:
             mock_usearch.add.assert_called_once()
 
     def test_add_memory_storage_error(self, mock_config, mock_logger):
-        '''Storage exception wraps in StorageError (lines 559-560).'''
+        """Storage exception wraps in StorageError (lines 559-560)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.search.return_value = []
         mock_usearch.add.side_effect = RuntimeError("disk full")
@@ -501,7 +504,7 @@ class TestAddMemory:
             manager._add_memory("error content")
 
     def test_add_memory_dedup_disabled(self, mock_config, mock_logger):
-        '''When deduplicate_memories=False, skip duplicate check.'''
+        """When deduplicate_memories=False, skip duplicate check."""
         mock_config.deduplicate_memories = False
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         result = manager._add_memory("any memory")
@@ -517,10 +520,10 @@ class TestAddMemory:
 
 @pytest.mark.unit
 class TestAddMemoriesBatchLogging:
-    '''Tests for add_memories batch dedup and logging edge cases.'''
+    """Tests for add_memories batch dedup and logging edge cases."""
 
     def test_add_memories_in_batch_duplicate(self, mock_config, mock_logger):
-        '''Duplicate within batch should be skipped (lines 593-602).'''
+        """Duplicate within batch should be skipped (lines 593-602)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.add_batch.side_effect = (
             lambda project_id, memories, infer: memories
@@ -531,7 +534,7 @@ class TestAddMemoriesBatchLogging:
         assert result == 2  # mem1 + mem2
 
     def test_add_memories_batch_insert_skipped_warning(self, mock_config, mock_logger):
-        '''Memories skipped during batch insert should log warning (line 654).'''
+        """Memories skipped during batch insert should log warning (line 654)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         # add_batch returns only subset - some memories skipped
         # Must clear side_effect (set by _make_manager) before setting return_value
@@ -548,7 +551,7 @@ class TestAddMemoriesBatchLogging:
         assert warning_logged
 
     def test_add_memories_stored_log_limit_exceeded(self, mock_config, mock_logger):
-        '''When stored memories exceed LOG_ADD_MEMORY_PREVIEW_LIMIT (line 662).'''
+        """When stored memories exceed LOG_ADD_MEMORY_PREVIEW_LIMIT (line 662)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         # Create more memories than LOG_ADD_MEMORY_PREVIEW_LIMIT (20)
         memories = [f"mem_{i}" for i in range(25)]
@@ -558,7 +561,7 @@ class TestAddMemoriesBatchLogging:
         assert result == 25
 
     def test_add_memories_log_limit_exceeded(self, mock_config, mock_logger):
-        '''When total memories exceed LOG_ADD_MEMORY_PREVIEW_LIMIT (line 642).'''
+        """When total memories exceed LOG_ADD_MEMORY_PREVIEW_LIMIT (line 642)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         # Create more memories than LOG_ADD_MEMORY_PREVIEW_LIMIT (20)
         memories = [f"mem_{i}" for i in range(25)]
@@ -580,11 +583,11 @@ class TestAddMemoriesBatchLogging:
 
 @pytest.mark.unit
 class TestSearchIndexSizeException:
-    '''Tests for search when index size lookup raises exception.'''
+    """Tests for search when index size lookup raises exception."""
 
     @pytest.mark.asyncio
     async def test_search_index_size_exception_fallback(self, mock_config, mock_logger):
-        '''Exception getting index size should fallback to 0 (lines 774-775).'''
+        """Exception getting index size should fallback to 0 (lines 774-775)."""
         mock_config.reranker_engine = "none"
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         # Make index property raise
@@ -606,12 +609,12 @@ class TestSearchIndexSizeException:
 
 @pytest.mark.unit
 class TestSearchForRemovalError:
-    '''Tests for search_for_removal error path.'''
+    """Tests for search_for_removal error path."""
 
     def test_search_for_removal_exception_raises_search_error(
         self, mock_config, mock_logger
     ):
-        '''Exception during lookup raises SearchError (lines 841-842).'''
+        """Exception during lookup raises SearchError (lines 841-842)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.side_effect = RuntimeError("db error")
 
@@ -626,10 +629,10 @@ class TestSearchForRemovalError:
 
 @pytest.mark.unit
 class TestDeleteOperations:
-    '''Tests for delete_by_id and delete_by_memory error paths.'''
+    """Tests for delete_by_id and delete_by_memory error paths."""
 
     def test_delete_by_id_success(self, mock_config, mock_logger):
-        '''delete_by_id calls semantic engine delete (lines 853-855).'''
+        """delete_by_id calls semantic engine delete (lines 853-855)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         manager.delete_by_id("42")
         mock_usearch.delete.assert_called_once_with(memory_id="42")
@@ -637,7 +640,7 @@ class TestDeleteOperations:
     def test_delete_by_id_exception_raises_storage_error(
         self, mock_config, mock_logger
     ):
-        '''delete_by_id wraps exception in StorageError (lines 856-857).'''
+        """delete_by_id wraps exception in StorageError (lines 856-857)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.delete.side_effect = RuntimeError("delete failed")
 
@@ -647,7 +650,7 @@ class TestDeleteOperations:
     def test_delete_by_memory_tantivy_failure_inconsistent_state(
         self, mock_config, mock_logger
     ):
-        '''Tantivy failure after USearch delete raises InconsistentStateError (lines 904-917).'''
+        """Tantivy failure after USearch delete raises InconsistentStateError (lines 904-917)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 42
         mock_tantivy.delete.side_effect = RuntimeError("tantivy broken")
@@ -664,7 +667,7 @@ class TestDeleteOperations:
     def test_delete_by_memory_inconsistent_state_reraise(
         self, mock_config, mock_logger
     ):
-        '''InconsistentStateError is re-raised, not wrapped (line 933).'''
+        """InconsistentStateError is re-raised, not wrapped (line 933)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 42
         mock_tantivy.delete.side_effect = RuntimeError("tantivy broken")
@@ -675,7 +678,7 @@ class TestDeleteOperations:
     def test_delete_by_memory_generic_exception_raises_storage_error(
         self, mock_config, mock_logger
     ):
-        '''Generic exception during delete wraps in StorageError (line 935).'''
+        """Generic exception during delete wraps in StorageError (line 935)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.side_effect = RuntimeError("lookup failed")
 
@@ -683,7 +686,7 @@ class TestDeleteOperations:
             manager.delete_by_memory("test memory")
 
     def test_delete_by_memory_not_found(self, mock_config, mock_logger):
-        '''delete_by_memory returns False when not found.'''
+        """delete_by_memory returns False when not found."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = None
 
@@ -691,7 +694,7 @@ class TestDeleteOperations:
         assert result is False
 
     def test_delete_by_memory_success(self, mock_config, mock_logger):
-        '''delete_by_memory returns True on success.'''
+        """delete_by_memory returns True on success."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 42
 
@@ -701,7 +704,7 @@ class TestDeleteOperations:
         mock_tantivy.delete.assert_called_once_with("test_project", "test memory")
 
     def test_delete_by_memory_without_tantivy(self, mock_config, mock_logger):
-        '''delete_by_memory works without Tantivy.'''
+        """delete_by_memory works without Tantivy."""
         mock_config.enable_hybrid_search = False
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -725,10 +728,10 @@ class TestDeleteOperations:
 
 @pytest.mark.unit
 class TestCloseErrorPaths:
-    '''Tests for close method error paths.'''
+    """Tests for close method error paths."""
 
     def test_close_tantivy_error_logged(self, mock_config, mock_logger):
-        '''Tantivy close error should be logged not raised (lines 983-991).'''
+        """Tantivy close error should be logged not raised (lines 983-991)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.flush.side_effect = RuntimeError("tantivy flush error")
 
@@ -741,7 +744,7 @@ class TestCloseErrorPaths:
         assert error_logged
 
     def test_close_usearch_error_logged(self, mock_config, mock_logger):
-        '''USearch close error should be logged not raised (lines 1002-1010).'''
+        """USearch close error should be logged not raised (lines 1002-1010)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.commit.side_effect = RuntimeError("usearch commit error")
 
@@ -754,7 +757,7 @@ class TestCloseErrorPaths:
         assert error_logged
 
     def test_close_both_errors_logged(self, mock_config, mock_logger):
-        '''Both engines failing should both be logged.'''
+        """Both engines failing should both be logged."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.flush.side_effect = RuntimeError("tantivy error")
         mock_usearch.commit.side_effect = RuntimeError("usearch error")
@@ -767,7 +770,7 @@ class TestCloseErrorPaths:
         assert usearch_err
 
     def test_close_success(self, mock_config, mock_logger):
-        '''Successful close should log completion.'''
+        """Successful close should log completion."""
         manager, _, _ = _make_manager(mock_config, mock_logger)
         manager.close()
         close_logged = any(
@@ -784,10 +787,10 @@ class TestCloseErrorPaths:
 
 @pytest.mark.unit
 class TestGetAll:
-    '''Tests for get_all method.'''
+    """Tests for get_all method."""
 
     def test_get_all_success(self, mock_config, mock_logger):
-        '''get_all returns memories from semantic engine.'''
+        """get_all returns memories from semantic engine."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.get_all.return_value = ["mem1", "mem2"]
 
@@ -796,7 +799,7 @@ class TestGetAll:
         mock_usearch.get_all.assert_called_once_with(project_id="test_project")
 
     def test_get_all_exception_raises_storage_error(self, mock_config, mock_logger):
-        '''get_all wraps exceptions in StorageError.'''
+        """get_all wraps exceptions in StorageError."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.get_all.side_effect = RuntimeError("db error")
 
@@ -811,10 +814,10 @@ class TestGetAll:
 
 @pytest.mark.unit
 class TestInitLogging:
-    '''Tests for __init__ logging based on reranker_engine and smart_replace.'''
+    """Tests for __init__ logging based on reranker_engine and smart_replace."""
 
     def test_init_cross_encoder_reranker_logging(self, mock_config, mock_logger):
-        '''Init with cross_encoder reranker logs correctly.'''
+        """Init with cross_encoder reranker logs correctly."""
         mock_config.reranker_engine = "cross_encoder"
         _make_manager(mock_config, mock_logger)
         ce_logged = any(
@@ -823,7 +826,7 @@ class TestInitLogging:
         assert ce_logged
 
     def test_init_smart_replace_enabled_logging(self, mock_config, mock_logger):
-        '''Init with smart replace enabled logs correctly.'''
+        """Init with smart replace enabled logs correctly."""
         mock_config.enable_smart_replace = True
         _make_manager(mock_config, mock_logger)
         sr_logged = any(
@@ -833,7 +836,7 @@ class TestInitLogging:
         assert sr_logged
 
     def test_init_embedding_cache_enabled(self, mock_config, mock_logger):
-        '''Init with embedding cache enabled wraps embedder.'''
+        """Init with embedding cache enabled wraps embedder."""
         mock_config.embedding_cache_enabled = True
         with (
             patch(f"{MODULE}.USearchEngine"),

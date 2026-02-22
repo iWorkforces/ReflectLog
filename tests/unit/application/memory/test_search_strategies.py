@@ -1,9 +1,10 @@
-'''Unit tests for search_strategies.py - 4-step search pipeline.
+"""Unit tests for search_strategies.py - 4-step search pipeline.
 
 Covers uncovered lines: 128-137, 295, 365, 374-378, 451, 457, 475,
 493-495, 538-573, 671-683.
-'''
+"""
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -18,6 +19,7 @@ from reflectlog.application.memory.search_strategies import (
     calculate_adaptive_overfetch,
 )
 from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +29,7 @@ from reflectlog.application.utils import StructuredLogger
 
 @pytest.fixture
 def mock_config() -> Mock:
-    '''Minimal mock Config for search_strategies tests.'''
+    """Minimal mock Config for search_strategies tests."""
     config = Mock(spec=Config)
     config.project_id = "test_project"
     config.fusion_ranking_threshold = 0.1
@@ -42,14 +44,14 @@ def mock_config() -> Mock:
 
 
 @pytest.fixture
-def mock_logger() -> Mock:
-    '''Mock structured logger.'''
-    return Mock(spec=StructuredLogger)
+def mock_logger() -> IStructuredLogger:
+    """Mock structured logger."""
+    return cast(IStructuredLogger, Mock(spec=StructuredLogger))
 
 
 @pytest.fixture
 def mock_semantic_engine() -> MagicMock:
-    '''Mock ISemanticSearchEngine.'''
+    """Mock ISemanticSearchEngine."""
     engine = MagicMock()
     engine.search = MagicMock(return_value=[])
     engine.ensure_initialized = MagicMock()
@@ -58,7 +60,7 @@ def mock_semantic_engine() -> MagicMock:
 
 @pytest.fixture
 def mock_tantivy_engine() -> MagicMock:
-    '''Mock TantivyEngine.'''
+    """Mock TantivyEngine."""
     engine = MagicMock()
     engine.search = MagicMock(return_value=[])
     engine.ensure_initialized = MagicMock()
@@ -67,7 +69,7 @@ def mock_tantivy_engine() -> MagicMock:
 
 @pytest.fixture
 def mock_fusion_engine() -> MagicMock:
-    '''Mock FusionEngine.'''
+    """Mock FusionEngine."""
     engine = MagicMock()
     engine.method = "rrf"
     engine.fuse = MagicMock(return_value=[])
@@ -76,7 +78,7 @@ def mock_fusion_engine() -> MagicMock:
 
 @pytest.fixture
 def mock_memory_manager() -> MagicMock:
-    '''Mock MemoryManager for lazy reranker fetching.'''
+    """Mock MemoryManager for lazy reranker fetching."""
     manager = MagicMock()
     manager.get_reranker = MagicMock(return_value=None)
     return manager
@@ -91,7 +93,7 @@ def pipeline(
     mock_logger,
     mock_memory_manager,
 ) -> SearchPipeline:
-    '''Construct a SearchPipeline with mocked dependencies.'''
+    """Construct a SearchPipeline with mocked dependencies."""
     return SearchPipeline(
         semantic_engine=mock_semantic_engine,
         tantivy_engine=mock_tantivy_engine,
@@ -112,7 +114,7 @@ def _make_context(
     reranker_engine: str = "none",
     project_id: str = "test_project",
 ) -> SearchContext:
-    '''Build a SearchContext with sensible defaults.'''
+    """Build a SearchContext with sensible defaults."""
     return SearchContext(
         query=query,
         limit=limit,
@@ -131,10 +133,10 @@ def _make_context(
 
 @pytest.mark.unit
 class TestSearchContext:
-    '''Tests for SearchContext dataclass.'''
+    """Tests for SearchContext dataclass."""
 
     def test_construction(self) -> None:
-        '''Fields should be stored correctly.'''
+        """Fields should be stored correctly."""
         ctx = _make_context(query="hello", limit=10, project_id="proj")
         assert ctx.query == "hello"
         assert ctx.limit == 10
@@ -143,10 +145,10 @@ class TestSearchContext:
 
 @pytest.mark.unit
 class TestSearchResult:
-    '''Tests for SearchResult dataclass.'''
+    """Tests for SearchResult dataclass."""
 
     def test_construction(self) -> None:
-        '''Fields should be stored correctly.'''
+        """Fields should be stored correctly."""
         result = SearchResult(
             memories=["a", "b"],
             timestamp_map={"a": "2025-01-01T00:00:00Z"},
@@ -165,13 +167,13 @@ class TestSearchResult:
 
 @pytest.mark.unit
 class TestSearchPipelineExecute:
-    '''Tests for SearchPipeline.execute().'''
+    """Tests for SearchPipeline.execute()."""
 
     @pytest.mark.asyncio
     async def test_execute_raises_search_error_on_failure(
         self, pipeline, mock_semantic_engine, mock_logger
     ) -> None:
-        '''execute() wraps unexpected exceptions in SearchError (lines 128-137).'''
+        """execute() wraps unexpected exceptions in SearchError (lines 128-137)."""
         mock_semantic_engine.search.side_effect = RuntimeError("engine boom")
 
         ctx = _make_context(enable_hybrid_search=False)
@@ -183,7 +185,7 @@ class TestSearchPipelineExecute:
 
     @pytest.mark.asyncio
     async def test_execute_semantic_only(self, pipeline, mock_semantic_engine) -> None:
-        '''Semantic-only search when hybrid is disabled.'''
+        """Semantic-only search when hybrid is disabled."""
         mock_semantic_engine.search.return_value = [
             ("msg1", 0.9, "2025-01-01T00:00:00Z"),
         ]
@@ -202,7 +204,7 @@ class TestSearchPipelineExecute:
         mock_tantivy_engine,
         mock_fusion_engine,
     ) -> None:
-        '''Hybrid search invokes full pipeline.'''
+        """Hybrid search invokes full pipeline."""
         mock_semantic_engine.search.return_value = [
             ("msg1", 0.9, "2025-01-01T00:00:00Z"),
         ]
@@ -223,7 +225,7 @@ class TestSearchPipelineExecute:
 
 @pytest.mark.unit
 class TestSearchTantivy:
-    '''Tests for _search_tantivy().'''
+    """Tests for _search_tantivy()."""
 
     def test_returns_empty_when_tantivy_is_none(
         self,
@@ -233,7 +235,7 @@ class TestSearchTantivy:
         mock_semantic_engine,
         mock_memory_manager,
     ) -> None:
-        '''_search_tantivy() returns [] when tantivy_engine is None (line 295).'''
+        """_search_tantivy() returns [] when tantivy_engine is None (line 295)."""
         pipeline = SearchPipeline(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=None,
@@ -254,10 +256,10 @@ class TestSearchTantivy:
 
 @pytest.mark.unit
 class TestConcatenateResults:
-    '''Tests for _concatenate_results().'''
+    """Tests for _concatenate_results()."""
 
     def test_limit_reached_during_semantic(self, pipeline) -> None:
-        '''Stops adding semantic results once limit is reached (line 365).'''
+        """Stops adding semantic results once limit is reached (line 365)."""
         semantic = [("s1", 0.9), ("s2", 0.8), ("s3", 0.7)]
         tantivy = [("t1", 0.6)]
 
@@ -268,7 +270,7 @@ class TestConcatenateResults:
         assert combined[1][0] == "s2"
 
     def test_limit_reached_during_tantivy(self, pipeline) -> None:
-        '''Stops adding tantivy results once limit is reached (lines 374-378).'''
+        """Stops adding tantivy results once limit is reached (lines 374-378)."""
         semantic = [("s1", 0.9)]
         tantivy = [("t1", 0.6), ("t2", 0.5), ("t3", 0.4)]
 
@@ -279,7 +281,7 @@ class TestConcatenateResults:
         assert combined[1][0] == "t1"
 
     def test_deduplication_across_engines(self, pipeline) -> None:
-        '''Duplicate memories across engines are skipped.'''
+        """Duplicate memories across engines are skipped."""
         semantic = [("shared", 0.9)]
         tantivy = [("shared", 0.6), ("unique", 0.5)]
 
@@ -297,12 +299,12 @@ class TestConcatenateResults:
 
 @pytest.mark.unit
 class TestGetReranker:
-    '''Tests for _get_reranker().'''
+    """Tests for _get_reranker()."""
 
     def test_returns_none_when_memory_manager_is_none(
         self, mock_config, mock_logger, mock_fusion_engine, mock_semantic_engine
     ) -> None:
-        '''_get_reranker() returns (None, None) when memory_manager is None (line 451).'''
+        """_get_reranker() returns (None, None) when memory_manager is None (line 451)."""
         pipeline = SearchPipeline(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=None,
@@ -319,7 +321,7 @@ class TestGetReranker:
     def test_returns_llm_reranker(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
-        '''Returns ("llm", reranker) when config says llm and reranker exists.'''
+        """Returns ("llm", reranker) when config says llm and reranker exists."""
         mock_config.reranker_engine = "llm"
         mock_reranker = MagicMock()
         mock_memory_manager.get_reranker.return_value = mock_reranker
@@ -331,7 +333,7 @@ class TestGetReranker:
     def test_returns_cross_encoder_reranker(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
-        '''Returns ("cross_encoder", reranker) when configured (line 457).'''
+        """Returns ("cross_encoder", reranker) when configured (line 457)."""
         mock_config.reranker_engine = "cross_encoder"
         mock_reranker = MagicMock()
         mock_memory_manager.get_reranker.return_value = mock_reranker
@@ -343,7 +345,7 @@ class TestGetReranker:
     def test_returns_none_when_reranker_is_none(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
-        '''Returns (None, None) when get_reranker() returns None.'''
+        """Returns (None, None) when get_reranker() returns None."""
         mock_config.reranker_engine = "llm"
         mock_memory_manager.get_reranker.return_value = None
 
@@ -359,13 +361,13 @@ class TestGetReranker:
 
 @pytest.mark.unit
 class TestStep4Reranking:
-    '''Tests for _step4_reranking().'''
+    """Tests for _step4_reranking()."""
 
     @pytest.mark.asyncio
     async def test_cross_encoder_path(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
-        '''_step4_reranking() delegates to _rerank_cross_encoder (line 475).'''
+        """_step4_reranking() delegates to _rerank_cross_encoder (line 475)."""
         mock_config.reranker_engine = "cross_encoder"
         mock_reranker = AsyncMock()
         mock_reranker.rerank_async = AsyncMock(return_value=[("msg1", 0.95)])
@@ -383,7 +385,7 @@ class TestStep4Reranking:
     async def test_no_reranker_returns_original(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
-        '''When no reranker is configured, returns results unchanged.'''
+        """When no reranker is configured, returns results unchanged."""
         mock_config.reranker_engine = "none"
         mock_memory_manager.get_reranker.return_value = None
 
@@ -401,13 +403,13 @@ class TestStep4Reranking:
 
 @pytest.mark.unit
 class TestRerankLLM:
-    '''Tests for _rerank_llm().'''
+    """Tests for _rerank_llm()."""
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_reranker_provided(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
-        '''_rerank_llm() returns results unmodified when no reranker (lines 493-495).'''
+        """_rerank_llm() returns results unmodified when no reranker (lines 493-495)."""
         mock_config.reranker_engine = "none"
         mock_memory_manager.get_reranker.return_value = None
 
@@ -423,7 +425,7 @@ class TestRerankLLM:
     async def test_llm_reranking_with_provided_reranker(
         self, pipeline, mock_config
     ) -> None:
-        '''_rerank_llm() calls reranker.rerank() and logs timing.'''
+        """_rerank_llm() calls reranker.rerank() and logs timing."""
         mock_reranker = AsyncMock()
         mock_reranker.rerank = AsyncMock(return_value=[("msg1", 0.95)])
 
@@ -445,13 +447,13 @@ class TestRerankLLM:
 
 @pytest.mark.unit
 class TestRerankCrossEncoder:
-    '''Tests for _rerank_cross_encoder().'''
+    """Tests for _rerank_cross_encoder()."""
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_reranker_provided(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
-        '''Returns results unmodified when cross_encoder_reranker is None (lines 538-541).'''
+        """Returns results unmodified when cross_encoder_reranker is None (lines 538-541)."""
         mock_config.reranker_engine = "none"
         mock_memory_manager.get_reranker.return_value = None
 
@@ -467,7 +469,7 @@ class TestRerankCrossEncoder:
     async def test_cross_encoder_reranking_with_provided_reranker(
         self, pipeline, mock_config, mock_logger
     ) -> None:
-        '''Full cross-encoder reranking path (lines 543-573).'''
+        """Full cross-encoder reranking path (lines 543-573)."""
         mock_reranker = AsyncMock()
         mock_reranker.rerank_async = AsyncMock(return_value=[("msg1", 0.95)])
 
@@ -492,10 +494,10 @@ class TestRerankCrossEncoder:
 
 @pytest.mark.unit
 class TestCalculateAdaptiveOverfetch:
-    '''Tests for calculate_adaptive_overfetch().'''
+    """Tests for calculate_adaptive_overfetch()."""
 
     def test_static_multiplier_when_adaptive_disabled(self, mock_config) -> None:
-        '''Uses static multiplier when adaptive is disabled.'''
+        """Uses static multiplier when adaptive is disabled."""
         mock_config.overfetch_adaptive = False
         mock_config.overfetch_multiplier = 3
 
@@ -503,7 +505,7 @@ class TestCalculateAdaptiveOverfetch:
         assert result == max(5 * 3, MIN_OVERFETCH_LIMIT)
 
     def test_static_multiplier_when_index_empty(self, mock_config) -> None:
-        '''Uses static multiplier when index_size is 0.'''
+        """Uses static multiplier when index_size is 0."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_multiplier = 3
 
@@ -511,7 +513,7 @@ class TestCalculateAdaptiveOverfetch:
         assert result == max(5 * 3, MIN_OVERFETCH_LIMIT)
 
     def test_max_multiplier_for_small_index(self, mock_config) -> None:
-        '''Uses max multiplier for small indexes (<= 100).'''
+        """Uses max multiplier for small indexes (<= 100)."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
         mock_config.overfetch_min_multiplier = 1.5
@@ -520,7 +522,7 @@ class TestCalculateAdaptiveOverfetch:
         assert result == int(10 * 3.0)
 
     def test_min_multiplier_for_large_index(self, mock_config) -> None:
-        '''Uses min multiplier for large indexes (>= 10000).'''
+        """Uses min multiplier for large indexes (>= 10000)."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
         mock_config.overfetch_min_multiplier = 1.5
@@ -529,7 +531,7 @@ class TestCalculateAdaptiveOverfetch:
         assert result == max(int(10 * 1.5), MIN_OVERFETCH_LIMIT)
 
     def test_logarithmic_interpolation_mid_index(self, mock_config) -> None:
-        '''Logarithmic interpolation for mid-range index (lines 671-683).'''
+        """Logarithmic interpolation for mid-range index (lines 671-683)."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
         mock_config.overfetch_min_multiplier = 1.5
@@ -542,7 +544,7 @@ class TestCalculateAdaptiveOverfetch:
         assert result >= MIN_OVERFETCH_LIMIT
 
     def test_minimum_overfetch_limit_enforced(self, mock_config) -> None:
-        '''Result is never below MIN_OVERFETCH_LIMIT.'''
+        """Result is never below MIN_OVERFETCH_LIMIT."""
         mock_config.overfetch_adaptive = False
         mock_config.overfetch_multiplier = 1
 
@@ -550,7 +552,7 @@ class TestCalculateAdaptiveOverfetch:
         assert result >= MIN_OVERFETCH_LIMIT
 
     def test_interpolation_at_boundary_100(self, mock_config) -> None:
-        '''Exact boundary at index_size=100 yields max multiplier.'''
+        """Exact boundary at index_size=100 yields max multiplier."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
         mock_config.overfetch_min_multiplier = 1.5
@@ -559,7 +561,7 @@ class TestCalculateAdaptiveOverfetch:
         assert result == int(10 * 3.0)
 
     def test_interpolation_at_boundary_10000(self, mock_config) -> None:
-        '''Exact boundary at index_size=10000 yields min multiplier.'''
+        """Exact boundary at index_size=10000 yields min multiplier."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
         mock_config.overfetch_min_multiplier = 1.5
@@ -575,7 +577,7 @@ class TestCalculateAdaptiveOverfetch:
 
 @pytest.mark.unit
 class TestHybridSearchIntegration:
-    '''Integration-style tests covering full pipeline flows.'''
+    """Integration-style tests covering full pipeline flows."""
 
     @pytest.mark.asyncio
     async def test_rrf_fusion_filters_all_results(
@@ -586,7 +588,7 @@ class TestHybridSearchIntegration:
         mock_fusion_engine,
         mock_config,
     ) -> None:
-        '''When all fused results are below threshold, returns empty.'''
+        """When all fused results are below threshold, returns empty."""
         mock_semantic_engine.search.return_value = [
             ("msg1", 0.9, "2025-01-01T00:00:00Z"),
         ]
@@ -609,7 +611,7 @@ class TestHybridSearchIntegration:
         mock_config,
         mock_logger,
     ) -> None:
-        '''A single result after fusion skips reranking.'''
+        """A single result after fusion skips reranking."""
         mock_semantic_engine.search.return_value = [
             ("msg1", 0.9, "2025-01-01T00:00:00Z"),
         ]
@@ -636,7 +638,7 @@ class TestHybridSearchIntegration:
         mock_config,
         mock_logger,
     ) -> None:
-        '''When RRF fusion disabled, uses concatenation (no threshold step).'''
+        """When RRF fusion disabled, uses concatenation (no threshold step)."""
         mock_semantic_engine.search.return_value = [
             ("msg1", 0.9, "2025-01-01T00:00:00Z"),
         ]
@@ -659,12 +661,12 @@ class TestHybridSearchIntegration:
 
 @pytest.mark.unit
 class TestSearchSemantic:
-    '''Tests for _search_semantic().'''
+    """Tests for _search_semantic()."""
 
     def test_fallback_on_error(
         self, pipeline, mock_semantic_engine, mock_logger
     ) -> None:
-        '''Returns empty list and logs warning on exception.'''
+        """Returns empty list and logs warning on exception."""
         mock_semantic_engine.search.side_effect = RuntimeError("embed fail")
 
         result = pipeline._search_semantic("query", 10, "proj")

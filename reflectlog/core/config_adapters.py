@@ -30,7 +30,7 @@ Example:
         service = SearchService(search_config=SearchConfigAdapter(config))
 """
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, assert_never, final
 
 from reflectlog.core.config import (
     IAppConfig,
@@ -46,7 +46,31 @@ if TYPE_CHECKING:
     from reflectlog.application.config.settings import Config
 
 
-class ConfigAdapter[IAppConfig]:
+type RerankerEngine = Literal["llm", "cross_encoder", "none"]
+
+
+def _validated_reranker_engine(reranker_engine: RerankerEngine) -> RerankerEngine:
+    if reranker_engine == "llm":
+        return "llm"
+    if reranker_engine == "cross_encoder":
+        return "cross_encoder"
+    if reranker_engine == "none":
+        return "none"
+    assert_never(reranker_engine)
+
+
+def _coerce_reranker_engine(value: str) -> RerankerEngine:
+    if value == "llm":
+        reranker_engine: RerankerEngine = "llm"
+    elif value == "cross_encoder":
+        reranker_engine = "cross_encoder"
+    else:
+        reranker_engine = "none"
+    return _validated_reranker_engine(reranker_engine)
+
+
+@final
+class ConfigAdapter(IAppConfig):
     """Adapter that makes Config satisfy IAppConfig protocol.
 
     This adapter wraps the application Config dataclass and provides
@@ -131,9 +155,9 @@ class ConfigAdapter[IAppConfig]:
         return self._config.fusion_ranking_threshold
 
     @property
-    def reranker_engine(self) -> Literal["llm", "cross_encoder", "none"]:
+    def reranker_engine(self) -> RerankerEngine:
         """Reranking engine type."""
-        return self._config.reranker_engine  # type: ignore[return-value]
+        return _coerce_reranker_engine(self._config.reranker_engine)
 
     @property
     def search_score_threshold(self) -> float:
@@ -260,7 +284,8 @@ class ConfigAdapter[IAppConfig]:
         return self._config.smart_replace_candidate_limit
 
 
-class ServerConfigAdapter[IServerConfig]:
+@final
+class ServerConfigAdapter(IServerConfig):
     """Adapter exposing only server configuration protocol.
 
     Use this when a component only needs server-level settings.
@@ -304,7 +329,8 @@ class ServerConfigAdapter[IServerConfig]:
         return self._config.project_id
 
 
-class SearchConfigAdapter[ISearchConfig]:
+@final
+class SearchConfigAdapter(ISearchConfig):
     """Adapter exposing only search configuration protocol.
 
     Use this when a component only needs search-related settings.
@@ -337,8 +363,8 @@ class SearchConfigAdapter[ISearchConfig]:
         return self._config.fusion_ranking_threshold
 
     @property
-    def reranker_engine(self) -> Literal["llm", "cross_encoder", "none"]:
-        return self._config.reranker_engine  # type: ignore[return-value]
+    def reranker_engine(self) -> RerankerEngine:
+        return _coerce_reranker_engine(self._config.reranker_engine)
 
     @property
     def search_score_threshold(self) -> float:
@@ -353,7 +379,8 @@ class SearchConfigAdapter[ISearchConfig]:
         return self._config.recency_decay_rate
 
 
-class StorageConfigAdapter[IStorageConfig]:
+@final
+class StorageConfigAdapter(IStorageConfig):
     """Adapter exposing only storage configuration protocol.
 
     Use this when a component only needs storage-related settings.
@@ -386,7 +413,8 @@ class StorageConfigAdapter[IStorageConfig]:
         return "cosine"
 
 
-class RerankerConfigAdapter[IRerankerConfig]:
+@final
+class RerankerConfigAdapter(IRerankerConfig):
     """Adapter exposing only reranker configuration protocol.
 
     Use this when a component only needs reranker settings.
@@ -419,7 +447,8 @@ class RerankerConfigAdapter[IRerankerConfig]:
         return self._config.reranker_batch_normalize
 
 
-class EmbedderConfigAdapter[IEmbedderConfig]:
+@final
+class EmbedderConfigAdapter(IEmbedderConfig):
     """Adapter exposing only embedder configuration protocol.
 
     Use this when a component only needs embedding settings.
@@ -460,7 +489,8 @@ class EmbedderConfigAdapter[IEmbedderConfig]:
         return self._config.embedding_cache_size
 
 
-class ReplacementConfigAdapter[IReplacementConfig]:
+@final
+class ReplacementConfigAdapter(IReplacementConfig):
     """Adapter exposing only replacement configuration protocol.
 
     Use this when a component only needs smart replacement settings.
@@ -489,7 +519,7 @@ class ReplacementConfigAdapter[IReplacementConfig]:
         return self._config.smart_replace_candidate_limit
 
 
-def create_config_adapter(config: Config) -> ConfigAdapter[IAppConfig]:
+def create_config_adapter(config: Config) -> ConfigAdapter:
     """Factory function to create a full ConfigAdapter.
 
     Args:
@@ -503,7 +533,7 @@ def create_config_adapter(config: Config) -> ConfigAdapter[IAppConfig]:
 
 def create_server_config_adapter(
     config: Config,
-) -> ServerConfigAdapter[IServerConfig]:
+) -> ServerConfigAdapter:
     """Factory function to create a ServerConfigAdapter.
 
     Args:
@@ -517,7 +547,7 @@ def create_server_config_adapter(
 
 def create_search_config_adapter(
     config: Config,
-) -> SearchConfigAdapter[ISearchConfig]:
+) -> SearchConfigAdapter:
     """Factory function to create a SearchConfigAdapter.
 
     Args:
@@ -531,7 +561,7 @@ def create_search_config_adapter(
 
 def create_storage_config_adapter(
     config: Config,
-) -> StorageConfigAdapter[IStorageConfig]:
+) -> StorageConfigAdapter:
     """Factory function to create a StorageConfigAdapter.
 
     Args:
@@ -545,7 +575,7 @@ def create_storage_config_adapter(
 
 def create_reranker_config_adapter(
     config: Config,
-) -> RerankerConfigAdapter[IRerankerConfig]:
+) -> RerankerConfigAdapter:
     """Factory function to create a RerankerConfigAdapter.
 
     Args:
@@ -559,7 +589,7 @@ def create_reranker_config_adapter(
 
 def create_embedder_config_adapter(
     config: Config,
-) -> EmbedderConfigAdapter[IEmbedderConfig]:
+) -> EmbedderConfigAdapter:
     """Factory function to create an EmbedderConfigAdapter.
 
     Args:
@@ -573,7 +603,7 @@ def create_embedder_config_adapter(
 
 def create_replacement_config_adapter(
     config: Config,
-) -> ReplacementConfigAdapter[IReplacementConfig]:
+) -> ReplacementConfigAdapter:
     """Factory function to create a ReplacementConfigAdapter.
 
     Args:

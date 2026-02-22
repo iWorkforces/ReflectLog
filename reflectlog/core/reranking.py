@@ -5,7 +5,21 @@ Rerankers improve search result quality by re-scoring results using
 additional signals like LLM relevance or cross-encoder similarity.
 """
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
+
+
+class RerankerMetadata(TypedDict, total=False):
+    provider: str
+    memory_age: str
+    fallback_score: float
+    raw_score: float
+    normalized_score: float
+
+
+class RerankerContext(TypedDict, total=False):
+    timestamp_map: dict[str, str]
+    enable_recency_boost: bool
+    recency_decay_rate: float
 
 
 @runtime_checkable
@@ -18,7 +32,7 @@ class IRankingResult(Protocol):
 
     content: str
     score: float
-    metadata: dict[str, Any]
+    metadata: dict[str, object]
 
 
 @runtime_checkable
@@ -42,7 +56,7 @@ class IReranker(Protocol):
         self,
         query: str,
         documents: list[str],
-        context: dict[str, Any] | None = None,
+        context: RerankerContext | None = None,
     ) -> list[IRankingResult]:
         """Score documents by relevance to query.
 
@@ -60,7 +74,7 @@ class IReranker(Protocol):
         self,
         query: str,
         document: str,
-        context: dict[str, Any] | None = None,
+        context: RerankerContext | None = None,
     ) -> IRankingResult:
         """Score a single document by relevance.
 

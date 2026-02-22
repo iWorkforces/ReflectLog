@@ -1,4 +1,4 @@
-'''Unit tests for the add pipeline module.
+"""Unit tests for the add pipeline module.
 
 Tests cover:
 - ReplacementInfo and AddResult dataclasses
@@ -9,9 +9,10 @@ Tests cover:
 - DefaultStoragePhase: write-lock, dual-engine storage
 - AddPipeline: full pipeline execution with all phases
 - create_default_pipeline factory function
-'''
+"""
 
 import threading
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -29,6 +30,7 @@ from reflectlog.application.memory.add_pipeline import (
     create_default_pipeline,
 )
 from reflectlog.application.utils import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +40,7 @@ from reflectlog.application.utils import StructuredLogger
 
 @pytest.fixture
 def mock_semantic_backend() -> AsyncMock:
-    '''Mock semantic backend (IMemoryBackend).'''
+    """Mock semantic backend (IMemoryBackend)."""
     backend = AsyncMock()
     backend.exists = AsyncMock(return_value=False)
     backend.add_batch = AsyncMock(side_effect=lambda pid, msgs: msgs)
@@ -48,27 +50,27 @@ def mock_semantic_backend() -> AsyncMock:
 
 @pytest.fixture
 def mock_fulltext_backend() -> AsyncMock:
-    '''Mock full-text backend (IMemoryBackend).'''
+    """Mock full-text backend (IMemoryBackend)."""
     backend = AsyncMock()
     backend.add = AsyncMock(return_value="id-2")
     return backend
 
 
 @pytest.fixture
-def mock_logger() -> Mock:
-    '''Mock structured logger.'''
-    return Mock(spec=StructuredLogger)
+def mock_logger() -> IStructuredLogger:
+    """Mock structured logger."""
+    return cast(IStructuredLogger, Mock(spec=StructuredLogger))
 
 
 @pytest.fixture
 def write_lock() -> threading.Lock:
-    '''Thread lock for storage phase.'''
+    """Thread lock for storage phase."""
     return threading.Lock()
 
 
 @pytest.fixture
 def pipeline_config() -> AddPipelineConfig:
-    '''Standard pipeline configuration.'''
+    """Standard pipeline configuration."""
     return AddPipelineConfig(
         deduplicate_memories=True,
         enable_smart_replace=False,
@@ -78,7 +80,7 @@ def pipeline_config() -> AddPipelineConfig:
 
 @pytest.fixture
 def pipeline_config_with_replace() -> AddPipelineConfig:
-    '''Pipeline configuration with smart replacement enabled.'''
+    """Pipeline configuration with smart replacement enabled."""
     return AddPipelineConfig(
         deduplicate_memories=True,
         enable_smart_replace=True,
@@ -93,10 +95,10 @@ def pipeline_config_with_replace() -> AddPipelineConfig:
 
 @pytest.mark.unit
 class TestReplacementInfo:
-    '''Tests for ReplacementInfo dataclass.'''
+    """Tests for ReplacementInfo dataclass."""
 
     def test_basic_creation(self) -> None:
-        '''Create ReplacementInfo with required fields.'''
+        """Create ReplacementInfo with required fields."""
         info = ReplacementInfo(
             old_memory="old text",
             new_memory="new text",
@@ -110,7 +112,7 @@ class TestReplacementInfo:
         assert info.similarity_score == 0.0
 
     def test_custom_similarity_score(self) -> None:
-        '''Create ReplacementInfo with custom similarity_score.'''
+        """Create ReplacementInfo with custom similarity_score."""
         info = ReplacementInfo(
             old_memory="a",
             new_memory="b",
@@ -128,10 +130,10 @@ class TestReplacementInfo:
 
 @pytest.mark.unit
 class TestAddResult:
-    '''Tests for AddResult dataclass.'''
+    """Tests for AddResult dataclass."""
 
     def test_default_values(self) -> None:
-        '''Default AddResult has all zeros and empty replacements.'''
+        """Default AddResult has all zeros and empty replacements."""
         result = AddResult()
         assert result.stored_count == 0
         assert result.skipped_count == 0
@@ -139,7 +141,7 @@ class TestAddResult:
         assert result.replacements == []
 
     def test_custom_values(self) -> None:
-        '''Create AddResult with custom values.'''
+        """Create AddResult with custom values."""
         info = ReplacementInfo(
             old_memory="old",
             new_memory="new",
@@ -159,7 +161,7 @@ class TestAddResult:
         assert result.replacements[0].confidence == 0.8
 
     def test_replacements_list_independence(self) -> None:
-        '''Each AddResult should have an independent replacements list.'''
+        """Each AddResult should have an independent replacements list."""
         r1 = AddResult()
         r2 = AddResult()
         r1.replacements.append(
@@ -180,10 +182,10 @@ class TestAddResult:
 
 @pytest.mark.unit
 class TestAddPipelineConfig:
-    '''Tests for AddPipelineConfig dataclass.'''
+    """Tests for AddPipelineConfig dataclass."""
 
     def test_creation(self) -> None:
-        '''Create config with all fields.'''
+        """Create config with all fields."""
         cfg = AddPipelineConfig(
             deduplicate_memories=True,
             enable_smart_replace=False,
@@ -201,12 +203,12 @@ class TestAddPipelineConfig:
 
 @pytest.mark.unit
 class TestDefaultDuplicateDetectionPhase:
-    '''Tests for DefaultDuplicateDetectionPhase.'''
+    """Tests for DefaultDuplicateDetectionPhase."""
 
     async def test_dedup_disabled_returns_all_memories(
         self, mock_semantic_backend: AsyncMock
     ) -> None:
-        '''When dedup is disabled, all memories pass through unchanged.'''
+        """When dedup is disabled, all memories pass through unchanged."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
@@ -223,7 +225,7 @@ class TestDefaultDuplicateDetectionPhase:
     async def test_batch_duplicate_removal(
         self, mock_semantic_backend: AsyncMock
     ) -> None:
-        '''Duplicate memories within the same batch are detected.'''
+        """Duplicate memories within the same batch are detected."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
@@ -241,7 +243,7 @@ class TestDefaultDuplicateDetectionPhase:
     async def test_storage_duplicate_removal(
         self, mock_semantic_backend: AsyncMock
     ) -> None:
-        '''Memories already in storage are detected as duplicates.'''
+        """Memories already in storage are detected as duplicates."""
         mock_semantic_backend.exists = AsyncMock(
             side_effect=lambda pid, msg: msg == "existing"
         )
@@ -260,7 +262,7 @@ class TestDefaultDuplicateDetectionPhase:
     async def test_combined_batch_and_storage_duplicates(
         self, mock_semantic_backend: AsyncMock
     ) -> None:
-        '''Both batch and storage duplicates are detected together.'''
+        """Both batch and storage duplicates are detected together."""
         mock_semantic_backend.exists = AsyncMock(
             side_effect=lambda pid, msg: msg == "in_storage"
         )
@@ -278,7 +280,7 @@ class TestDefaultDuplicateDetectionPhase:
         assert "new" in dupes
 
     async def test_empty_memories(self, mock_semantic_backend: AsyncMock) -> None:
-        '''Empty memory list returns empty results.'''
+        """Empty memory list returns empty results."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
@@ -291,7 +293,7 @@ class TestDefaultDuplicateDetectionPhase:
         assert count == 0
 
     async def test_no_duplicates(self, mock_semantic_backend: AsyncMock) -> None:
-        '''When all memories are unique, none are skipped.'''
+        """When all memories are unique, none are skipped."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
@@ -309,7 +311,7 @@ class TestDefaultDuplicateDetectionPhase:
         mock_semantic_backend: AsyncMock,
         mock_fulltext_backend: AsyncMock,
     ) -> None:
-        '''Fulltext backend is stored but not used for dedup checks.'''
+        """Fulltext backend is stored but not used for dedup checks."""
         phase = DefaultDuplicateDetectionPhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=mock_fulltext_backend,
@@ -328,10 +330,10 @@ class TestDefaultDuplicateDetectionPhase:
 
 @pytest.mark.unit
 class TestNoopReplacementDetectionPhase:
-    '''Tests for NoopReplacementDetectionPhase.'''
+    """Tests for NoopReplacementDetectionPhase."""
 
     async def test_returns_memories_unchanged(self) -> None:
-        '''Noop phase returns memories as-is with no replacements.'''
+        """Noop phase returns memories as-is with no replacements."""
         phase = NoopReplacementDetectionPhase()
         memories = ["msg1", "msg2"]
         result_msgs, replacements = await phase.detect(memories, "proj")
@@ -340,7 +342,7 @@ class TestNoopReplacementDetectionPhase:
         assert replacements == []
 
     async def test_empty_memories(self) -> None:
-        '''Noop phase handles empty memory list.'''
+        """Noop phase handles empty memory list."""
         phase = NoopReplacementDetectionPhase()
         result_msgs, replacements = await phase.detect([], "proj")
 
@@ -355,10 +357,10 @@ class TestNoopReplacementDetectionPhase:
 
 @pytest.mark.unit
 class TestDefaultReplacementDetectionPhase:
-    '''Tests for DefaultReplacementDetectionPhase.'''
+    """Tests for DefaultReplacementDetectionPhase."""
 
     async def test_returns_memories_unchanged(self) -> None:
-        '''Current stub returns memories as-is with no replacements.'''
+        """Current stub returns memories as-is with no replacements."""
         mock_reranker = AsyncMock()
         mock_reranker.name = "test_reranker"
         phase = DefaultReplacementDetectionPhase(mock_reranker)
@@ -369,7 +371,7 @@ class TestDefaultReplacementDetectionPhase:
         assert replacements == []
 
     async def test_empty_memories(self) -> None:
-        '''Handles empty memory list.'''
+        """Handles empty memory list."""
         mock_reranker = AsyncMock()
         mock_reranker.name = "test_reranker"
         phase = DefaultReplacementDetectionPhase(mock_reranker)
@@ -386,14 +388,14 @@ class TestDefaultReplacementDetectionPhase:
 
 @pytest.mark.unit
 class TestDefaultStoragePhase:
-    '''Tests for DefaultStoragePhase.'''
+    """Tests for DefaultStoragePhase."""
 
     async def test_store_empty_memories_returns_zero(
         self,
         mock_semantic_backend: AsyncMock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Storing empty memory list returns 0 without calling backend.'''
+        """Storing empty memory list returns 0 without calling backend."""
         phase = DefaultStoragePhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
@@ -409,7 +411,7 @@ class TestDefaultStoragePhase:
         mock_semantic_backend: AsyncMock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Store memories to semantic backend only (no fulltext).'''
+        """Store memories to semantic backend only (no fulltext)."""
         phase = DefaultStoragePhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=None,
@@ -427,7 +429,7 @@ class TestDefaultStoragePhase:
         mock_fulltext_backend: AsyncMock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Store memories to both semantic and fulltext backends.'''
+        """Store memories to both semantic and fulltext backends."""
         phase = DefaultStoragePhase(
             semantic_backend=mock_semantic_backend,
             fulltext_backend=mock_fulltext_backend,
@@ -447,7 +449,7 @@ class TestDefaultStoragePhase:
         mock_fulltext_backend: AsyncMock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Stored count comes from semantic backend result length.'''
+        """Stored count comes from semantic backend result length."""
         semantic = AsyncMock()
         # Backend returns fewer memories than input (e.g. dedup)
         semantic.add_batch = AsyncMock(return_value=["msg1"])
@@ -468,7 +470,7 @@ class TestDefaultStoragePhase:
         mock_semantic_backend: AsyncMock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Storage phase acquires the write lock during operation.'''
+        """Storage phase acquires the write lock during operation."""
         lock_acquired = False
         original_add_batch = mock_semantic_backend.add_batch
 
@@ -496,7 +498,7 @@ class TestDefaultStoragePhase:
 
 @pytest.mark.unit
 class TestAddPipeline:
-    '''Tests for AddPipeline orchestration.'''
+    """Tests for AddPipeline orchestration."""
 
     def _make_pipeline(
         self,
@@ -506,7 +508,7 @@ class TestAddPipeline:
         store_result: int = 0,
         config: AddPipelineConfig | None = None,
     ) -> tuple[AddPipeline, AsyncMock, AsyncMock, AsyncMock]:
-        '''Helper to build a pipeline with mock phases.'''
+        """Helper to build a pipeline with mock phases."""
         dedup = AsyncMock()
         dedup.detect = AsyncMock(return_value=dedup_result or (["msg1", "msg2"], [], 0))
 
@@ -523,7 +525,9 @@ class TestAddPipeline:
             enable_smart_replace=False,
             smart_replace_threshold=0.7,
         )
-        mock_logger = Mock(spec=StructuredLogger)
+        mock_logger: IStructuredLogger = cast(
+            IStructuredLogger, Mock(spec=StructuredLogger)
+        )
 
         pipeline = AddPipeline(
             dedup_phase=dedup,
@@ -535,7 +539,7 @@ class TestAddPipeline:
         return pipeline, dedup, replace, storage
 
     async def test_full_pipeline_no_duplicates_no_replace(self) -> None:
-        '''Full pipeline with no duplicates and no replacement.'''
+        """Full pipeline with no duplicates and no replacement."""
         pipeline, dedup, replace, storage = self._make_pipeline(
             dedup_result=(["msg1", "msg2"], [], 0),
             store_result=2,
@@ -550,7 +554,7 @@ class TestAddPipeline:
         storage.store.assert_called_once()
 
     async def test_pipeline_with_duplicates(self) -> None:
-        '''Pipeline correctly reports skipped duplicates.'''
+        """Pipeline correctly reports skipped duplicates."""
         pipeline, _, _, storage = self._make_pipeline(
             dedup_result=(["msg2"], ["msg1"], 1),
             store_result=1,
@@ -561,7 +565,7 @@ class TestAddPipeline:
         assert result.skipped_count == 1
 
     async def test_dry_run_skips_storage(self) -> None:
-        '''Dry run returns counts without storing anything.'''
+        """Dry run returns counts without storing anything."""
         pipeline, dedup, replace, storage = self._make_pipeline(
             dedup_result=(["msg1", "msg2"], ["msg3"], 1),
         )
@@ -574,7 +578,7 @@ class TestAddPipeline:
         storage.store.assert_not_called()
 
     async def test_smart_replace_enabled(self) -> None:
-        '''When smart replace is enabled, replacement phase runs.'''
+        """When smart replace is enabled, replacement phase runs."""
         replacement = ReplacementInfo(
             old_memory="old",
             new_memory="msg1",
@@ -600,7 +604,7 @@ class TestAddPipeline:
         replace.detect.assert_called_once_with(["msg1"], "proj")
 
     async def test_smart_replace_disabled_skips_phase(self) -> None:
-        '''When smart replace is disabled, replacement phase is skipped.'''
+        """When smart replace is disabled, replacement phase is skipped."""
         pipeline, _, replace, storage = self._make_pipeline(
             dedup_result=(["msg1"], [], 0),
             store_result=1,
@@ -618,7 +622,7 @@ class TestAddPipeline:
         replace.detect.assert_not_called()
 
     async def test_pipeline_passes_project_id(self) -> None:
-        '''Pipeline forwards project_id to all phases.'''
+        """Pipeline forwards project_id to all phases."""
         pipeline, dedup, replace, storage = self._make_pipeline(
             dedup_result=(["msg"], [], 0),
             replace_result=(["msg"], []),
@@ -636,7 +640,7 @@ class TestAddPipeline:
         storage.store.assert_called_once_with(["msg"], "test-project")
 
     async def test_pipeline_empty_after_dedup(self) -> None:
-        '''When all memories are duplicates, storage receives empty list.'''
+        """When all memories are duplicates, storage receives empty list."""
         pipeline, _, _, storage = self._make_pipeline(
             dedup_result=([], ["msg1", "msg2"], 2),
             store_result=0,
@@ -648,7 +652,7 @@ class TestAddPipeline:
         storage.store.assert_called_once_with([], "proj")
 
     async def test_pipeline_replace_reduces_memories(self) -> None:
-        '''Replacement phase can filter out memories.'''
+        """Replacement phase can filter out memories."""
         pipeline, _, replace, storage = self._make_pipeline(
             dedup_result=(["msg1", "msg2"], [], 0),
             replace_result=(
@@ -684,7 +688,7 @@ class TestAddPipeline:
 
 @pytest.mark.unit
 class TestCreateDefaultPipeline:
-    '''Tests for create_default_pipeline factory function.'''
+    """Tests for create_default_pipeline factory function."""
 
     def _make_config(
         self,
@@ -693,7 +697,7 @@ class TestCreateDefaultPipeline:
         smart_replace: bool = False,
         smart_replace_threshold: float = 0.7,
     ) -> Mock:
-        '''Create a minimal mock Config with required fields.'''
+        """Create a minimal mock Config with required fields."""
         config = Mock(spec=Config)
         config.deduplicate_memories = deduplicate
         config.enable_smart_replace = smart_replace
@@ -707,7 +711,7 @@ class TestCreateDefaultPipeline:
         mock_logger: Mock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Factory creates pipeline with noop replacement when disabled.'''
+        """Factory creates pipeline with noop replacement when disabled."""
         config = self._make_config(smart_replace=False)
 
         pipeline = create_default_pipeline(
@@ -729,7 +733,7 @@ class TestCreateDefaultPipeline:
         mock_logger: Mock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Factory creates pipeline with replacement when enabled.'''
+        """Factory creates pipeline with replacement when enabled."""
         config = self._make_config(smart_replace=True)
         mock_reranker = AsyncMock()
         mock_reranker.name = "test_reranker"
@@ -753,7 +757,7 @@ class TestCreateDefaultPipeline:
         mock_logger: Mock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Noop replacement when smart replace enabled but no detector.'''
+        """Noop replacement when smart replace enabled but no detector."""
         config = self._make_config(smart_replace=True)
 
         pipeline = create_default_pipeline(
@@ -773,7 +777,7 @@ class TestCreateDefaultPipeline:
         mock_logger: Mock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Factory creates pipeline when fulltext backend is None.'''
+        """Factory creates pipeline when fulltext backend is None."""
         config = self._make_config()
 
         pipeline = create_default_pipeline(
@@ -795,7 +799,7 @@ class TestCreateDefaultPipeline:
         mock_logger: Mock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Pipeline config fields match source Config values.'''
+        """Pipeline config fields match source Config values."""
         config = self._make_config(
             deduplicate=False,
             smart_replace=True,
@@ -824,7 +828,7 @@ class TestCreateDefaultPipeline:
         mock_logger: Mock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Dedup phase is configured with correct backends.'''
+        """Dedup phase is configured with correct backends."""
         config = self._make_config()
 
         pipeline = create_default_pipeline(
@@ -848,7 +852,7 @@ class TestCreateDefaultPipeline:
         mock_logger: Mock,
         write_lock: threading.Lock,
     ) -> None:
-        '''Storage phase is configured with correct backends and lock.'''
+        """Storage phase is configured with correct backends and lock."""
         config = self._make_config()
 
         pipeline = create_default_pipeline(
