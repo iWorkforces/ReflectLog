@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from reflectlog.application.config import REPLACEMENT_DETECTION_PROMPT, Config
 from reflectlog.application.utils.retry import async_retry_with_backoff
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
@@ -216,7 +217,7 @@ class AnthropicReplacementProvider:
     def __init__(
         self,
         model: str | None = None,
-        logger: Any = None,
+        logger: IStructuredLogger | None = None,
     ):
         """Initialize Anthropic replacement provider.
 
@@ -351,7 +352,7 @@ class AnthropicReplacementProvider:
 
 def create_replacement_provider(
     config: SmartReplacerConfig,
-    logger: Any = None,
+    logger: IStructuredLogger | None = None,
 ) -> IReplacementProvider:
     """Create a replacement provider based on configuration.
 
@@ -414,7 +415,7 @@ class SmartReplacer(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     config: SmartReplacerConfig
-    logger: Any = None
+    logger: IStructuredLogger | None = None
 
     _provider: IReplacementProvider | None = PrivateAttr(default=None)
 

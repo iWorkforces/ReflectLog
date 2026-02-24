@@ -7,7 +7,6 @@ import logging
 import random
 from typing import Any, ParamSpec, TypeVar
 
-# Generic types for async function decorator
 P = ParamSpec("P")
 T = TypeVar("T")
 

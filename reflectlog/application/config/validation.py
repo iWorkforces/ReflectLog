@@ -14,7 +14,7 @@ class ValidationError:
     """A single validation error."""
 
     field: str
-    value: Any
+    value: str | int | float | bool | None
     message: str
 
     def __str__(self) -> str:

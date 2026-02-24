@@ -1,15 +1,22 @@
 '''Unit tests for CrossEncoderReranker (using FlagReranker).'''
 
 import sys
-from typing import Any, Generator
+from typing import Any, Generator, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
+
+
+def create_mock_logger() -> IStructuredLogger:
+    '''Create a properly typed mock logger for testing.'''
+    return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
 
 @pytest.fixture(autouse=True)
@@ -334,7 +341,7 @@ class TestRerank:
         config = CrossEncoderConfig(enabled=True, batch_normalize=False)
 
         with patch("FlagEmbedding.FlagReranker"):
-            mock_logger = MagicMock()
+            mock_logger = create_mock_logger()
             reranker = CrossEncoderReranker(config=config, logger=mock_logger)
             reranker._model = MagicMock()
 
@@ -427,7 +434,7 @@ class TestCrossEncoderRerankerIntegration:
         )
 
         with patch("FlagEmbedding.FlagReranker"):
-            reranker = CrossEncoderReranker(config=config, logger=MagicMock())
+            reranker = CrossEncoderReranker(config=config, logger=create_mock_logger())
             reranker._model = MagicMock()
 
             # Assert to narrow the type from BaseReranker | None to MagicMock
@@ -622,7 +629,7 @@ class TestModelPropertyWithLogger:
             mock_model = MagicMock()
             mock_flag_reranker.return_value = mock_model
 
-            mock_logger = MagicMock()
+            mock_logger = create_mock_logger()
             reranker = CrossEncoderReranker(config=config, logger=mock_logger)
 
             # Access model property to trigger lazy loading
@@ -743,7 +750,7 @@ class TestRerankDisabledWithLogger:
         config = CrossEncoderConfig(enabled=False)
 
         with patch("FlagEmbedding.FlagReranker"):
-            mock_logger = MagicMock()
+            mock_logger = create_mock_logger()
             reranker = CrossEncoderReranker(config=config, logger=mock_logger)
 
             candidates = [("doc1", 0.8), ("doc2", 0.6)]
@@ -772,7 +779,7 @@ class TestBatchNormalizationWithLogger:
         )
 
         with patch("FlagEmbedding.FlagReranker"):
-            mock_logger = MagicMock()
+            mock_logger = create_mock_logger()
             reranker = CrossEncoderReranker(config=config, logger=mock_logger)
             reranker._model = MagicMock()
             assert reranker._model is not None
@@ -840,7 +847,7 @@ class TestRecencyDecay:
         )
 
         with patch("FlagEmbedding.FlagReranker"):
-            mock_logger = MagicMock()
+            mock_logger = create_mock_logger()
             reranker = CrossEncoderReranker(config=config, logger=mock_logger)
             reranker._model = MagicMock()
             assert reranker._model is not None

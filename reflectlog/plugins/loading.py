@@ -7,12 +7,10 @@ loading, initialization, activation, deactivation, and unloading.
 from collections.abc import Callable
 from dataclasses import dataclass
 import logging
-from typing import Protocol, TypeVar, cast, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 from .discovery import DiscoveredPlugin, PluginDiscoverer, PluginDiscoveryStrategy
 from .registry import PluginRegistry, PluginState
-
-T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 

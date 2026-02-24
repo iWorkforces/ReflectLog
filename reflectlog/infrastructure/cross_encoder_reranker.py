@@ -18,7 +18,7 @@ Example:
 from dataclasses import dataclass
 import importlib
 import threading
-from typing import Any, Protocol, final
+from typing import Protocol, final
 import warnings
 
 from asyncer import asyncify
@@ -127,7 +127,7 @@ class CrossEncoderReranker(BaseModel):
     config: CrossEncoderConfig
     logger: IStructuredLogger | None = None
 
-    _model: Any = PrivateAttr(default=None)
+    _model: FlagRerankerProtocol | None = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     @property
@@ -192,52 +192,8 @@ class CrossEncoderReranker(BaseModel):
                         },
                     )
 
-        return self._model
-
-        with self._init_lock:
-            # Double-check locking pattern
-            if self._model is None:
-                if self.logger:
-                    self.logger.info(
-                        f"Loading FlagReranker model: {self.config.model_name}",
-                        extra={
-                            "device": self.config.device,
-                            "use_fp16": self.config.use_fp16,
-                        },
-                    )
-
-                # Suppress tokenizer optimization warning from transformers
-                # ("You're using a XLMRobertaTokenizerFast tokenizer...")
-                # This is an internal FlagEmbedding implementation detail
-                from transformers import logging as hf_logging
-
-                original_verbosity = hf_logging.get_verbosity()
-                hf_logging.set_verbosity_error()
-
-                try:
-                    self._model = flag_reranker_class(
-                        self.config.model_name,
-                        use_fp16=self.config.use_fp16,
-                        devices=[self.config.device],
-                    )
-
-                    # Suppress "using the `__call__` method is faster" warning
-                    # that appears during compute_score() with fast tokenizers.
-                    # This warning is informational and not actionable since
-                    # FlagReranker handles tokenization internally.
-                    self._suppress_fast_tokenizer_warning()
-                finally:
-                    hf_logging.set_verbosity(original_verbosity)
-
-                if self.logger:
-                    self.logger.info(
-                        "FlagReranker model loaded successfully",
-                        extra={
-                            "model": self.config.model_name,
-                            "use_fp16": self.config.use_fp16,
-                        },
-                    )
-
+        # Model is guaranteed to be initialized after lock section
+        assert self._model is not None
         return self._model
 
     def _suppress_fast_tokenizer_warning(self) -> None:

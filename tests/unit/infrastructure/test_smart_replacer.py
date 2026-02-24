@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.smart_replacer import (
     AnthropicReplacementProvider,
     OpenAIReplacementProvider,
@@ -14,6 +16,11 @@ from reflectlog.infrastructure.smart_replacer import (
     SmartReplacerConfig,
     create_replacement_provider,
 )
+
+
+def create_mock_logger() -> IStructuredLogger:
+    '''Create a properly typed mock logger for testing.'''
+    return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
 
 class TestReplacementDecision:
@@ -344,7 +351,7 @@ class TestOpenAIReplacementProvider:
             ]
         )
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_provider._logger = mock_logger
 
         should_replace, confidence, _reason = await mock_provider.detect_replacement(
@@ -374,7 +381,7 @@ class TestOpenAIReplacementProvider:
             side_effect=Exception("Network timeout error")
         )
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_provider._logger = mock_logger
 
         should_replace, confidence, reason = await mock_provider.detect_replacement(
@@ -559,7 +566,7 @@ No valid JSON anywhere else either.'''
         with patch("reflectlog.utility.generate_content") as mock_generate:
             mock_generate.side_effect = Exception("API Error")
 
-            mock_logger = MagicMock()
+            mock_logger = create_mock_logger()
             provider._logger = mock_logger
 
             should_replace, confidence, reason = await provider.detect_replacement(
@@ -781,7 +788,7 @@ class TestCheckReplacement:
             side_effect=Exception("API Error")
         )
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_replacer.logger = mock_logger
 
         should_replace, confidence, reason = await mock_replacer.check_replacement(
@@ -803,7 +810,7 @@ class TestCheckReplacement:
         )
         mock_replacer._provider = mock_provider
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_replacer.logger = mock_logger
 
         should_replace, confidence, reason = await mock_replacer.check_replacement(
@@ -846,7 +853,7 @@ class TestCheckReplacement:
         )
         mock_replacer._provider = mock_provider
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_replacer.logger = mock_logger
 
         should_replace, confidence, reason = await mock_replacer.check_replacement(
@@ -894,7 +901,7 @@ class TestSmartReplacerIntegration:
         )
 
         with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
-            replacer = SmartReplacer(config=config, logger=MagicMock())
+            replacer = SmartReplacer(config=config, logger=create_mock_logger())
 
             mock_response = MagicMock()
             mock_response.choices = [MagicMock()]
@@ -933,7 +940,7 @@ class TestSmartReplacerIntegration:
         )
 
         with patch("reflectlog.utility.init_credentials"):
-            replacer = SmartReplacer(config=config, logger=MagicMock())
+            replacer = SmartReplacer(config=config, logger=create_mock_logger())
 
             with patch("reflectlog.utility.generate_content") as mock_generate:
                 mock_generate.return_value = json.dumps(
@@ -965,7 +972,7 @@ class TestSmartReplacerIntegration:
         )
 
         with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
-            replacer = SmartReplacer(config=config, logger=MagicMock())
+            replacer = SmartReplacer(config=config, logger=create_mock_logger())
 
             mock_response = MagicMock()
             mock_response.choices = [MagicMock()]

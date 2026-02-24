@@ -26,6 +26,7 @@ from openai.types.shared_params.response_format_json_schema import (
 )
 
 from reflectlog.application.utils.http_client import HttpClientFactory
+from reflectlog.core.logging import IStructuredLogger
 
 
 class IStructuredOutputSchema(Protocol):
@@ -55,7 +56,7 @@ class BaseOpenAIProvider:
         base_url: str,
         model: str,
         timeout: float = 30.0,
-        logger: Any = None,
+        logger: IStructuredLogger | None = None,
     ):
         """Initialize OpenAI-compatible provider.
 

@@ -8,7 +8,14 @@ import pytest
 from cachetools import LRUCache
 
 from reflectlog.application.types import Embeddings
+from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+
+
+def create_mock_logger() -> IStructuredLogger:
+    '''Create a properly typed mock logger for testing.'''
+    return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
 
 @pytest.fixture
@@ -37,7 +44,7 @@ def cached_disabled(mock_embedder: MagicMock) -> CachedEmbeddings:
 @pytest.fixture
 def cached_with_logger(mock_embedder: MagicMock) -> CachedEmbeddings:
     '''Create CachedEmbeddings with a mock logger.'''
-    logger = MagicMock()
+    logger = create_mock_logger()
     return CachedEmbeddings(
         embedder=mock_embedder, cache_size=5, enabled=True, logger=logger
     )
