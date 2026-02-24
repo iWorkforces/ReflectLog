@@ -820,7 +820,7 @@ class TestCheckReplacement:
         assert should_replace is False
         assert confidence == 0.0
         assert "JSON parse error" in reason
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_check_replacement_json_decode_error_no_logger(
@@ -863,7 +863,7 @@ class TestCheckReplacement:
         assert should_replace is False
         assert confidence == 0.0
         assert "Error: Unexpected failure" in reason
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_check_replacement_generic_exception_no_logger(

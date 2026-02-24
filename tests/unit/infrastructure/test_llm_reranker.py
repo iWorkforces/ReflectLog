@@ -260,7 +260,7 @@ class TestOpenAIRerankerProvider:
         )
 
         assert score == 0.7
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_score_document_empty_response_uses_fallback(
@@ -301,7 +301,7 @@ class TestOpenAIRerankerProvider:
         )
 
         assert score == 0.8
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_call_llm_with_structured_output_success(
@@ -361,7 +361,7 @@ class TestOpenAIRerankerProvider:
         assert second_call_kwargs["response_format"]["type"] == "json_object"
 
         # Verify warning was logged
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_fallback_on_structured_output_error(
@@ -388,7 +388,7 @@ class TestOpenAIRerankerProvider:
 
         # Verify fallback occurred
         assert mock_provider._client.chat.completions.create.call_count == 2  # type: ignore[union-attr]
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_no_fallback_on_unrelated_error(
@@ -488,7 +488,7 @@ class TestAnthropicRerankerProvider:
             )
 
             assert score == 0.6
-            mock_provider._logger.warning.assert_called_once()
+            mock_provider._logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
 
 class TestLLMRerankerInitialization:
@@ -751,7 +751,7 @@ class TestRerank:
         await mock_reranker.rerank("test query", candidates)
 
         # Should log debug message about completion
-        mock_logger.debug.assert_called()
+        mock_logger.debug.assert_called()  # type: ignore[unresolved-attribute]
 
 
 class TestLLMRerankerIntegration:
@@ -1236,7 +1236,7 @@ class TestRerankBatchNormalization:
             result = await mock_reranker.rerank("test query", candidates)
 
             mock_normalize.assert_called_once()
-            mock_reranker.logger.debug.assert_called()
+            mock_reranker.logger.debug.assert_called()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_rerank_batch_normalize_logs_range(
@@ -1259,7 +1259,7 @@ class TestRerankBatchNormalization:
 
             await mock_reranker.rerank("test query", candidates)
 
-            debug_calls = mock_reranker.logger.debug.call_args_list
+            debug_calls = mock_reranker.logger.debug.call_args_list  # type: ignore[unresolved-attribute]
             batch_log_found = any(
                 "Batch normalization" in (call[0][0] if call[0] else "")
                 for call in debug_calls

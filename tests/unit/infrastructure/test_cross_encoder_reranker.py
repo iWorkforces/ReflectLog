@@ -14,9 +14,10 @@ from reflectlog.infrastructure.cross_encoder_reranker import (
 )
 
 
-def create_mock_logger() -> IStructuredLogger:
-    '''Create a properly typed mock logger for testing.'''
-    return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
+def create_mock_logger() -> tuple[IStructuredLogger, MagicMock]:
+    '''Create a properly typed mock logger and its mock reference for testing.'''
+    mock = MagicMock(spec=StructuredLogger)
+    return cast(IStructuredLogger, mock), mock
 
 
 @pytest.fixture(autouse=True)
@@ -232,7 +233,7 @@ class TestRerank:
     def test_rerank_scores_and_sorts(self, mock_reranker: CrossEncoderReranker) -> None:
         '''Test that rerank scores candidates and sorts by score descending.'''
         # Mock model.compute_score to return scores (FlagReranker API)
-        mock_reranker._model.compute_score.return_value = [0.3, 0.9, 0.6]
+        mock_reranker._model.compute_score.return_value = [0.3, 0.9, 0.6]  # type: ignore[unresolved-attribute]
 
         candidates = [
             ("doc1", 0.8),
@@ -295,13 +296,13 @@ class TestRerank:
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
         '''Test that query-document pairs are built correctly for scoring.'''
-        mock_reranker._model.compute_score.return_value = [0.8, 0.7]
+        mock_reranker._model.compute_score.return_value = [0.8, 0.7]  # type: ignore[unresolved-attribute]
 
         candidates = [("Python guide", 0.5), ("JavaScript guide", 0.5)]
         mock_reranker.rerank("Python tutorials", candidates)
 
         # Verify compute_score was called with correct pairs (tuples, not lists)
-        call_args = mock_reranker._model.compute_score.call_args
+        call_args = mock_reranker._model.compute_score.call_args  # type: ignore[unresolved-attribute]
         pairs = call_args[0][0]
         assert pairs == [
             ("Python tutorials", "Python guide"),
@@ -341,8 +342,8 @@ class TestRerank:
         config = CrossEncoderConfig(enabled=True, batch_normalize=False)
 
         with patch("FlagEmbedding.FlagReranker"):
-            mock_logger = create_mock_logger()
-            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
+            logger, mock_logger = create_mock_logger()
+            reranker = CrossEncoderReranker(config=config, logger=logger)
             reranker._model = MagicMock()
 
             # Assert to narrow the type from BaseReranker | None to MagicMock
@@ -402,7 +403,7 @@ class TestRerankAsync:
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
         '''Test that rerank_async wraps the sync rerank method.'''
-        mock_reranker._model.compute_score.return_value = [0.9, 0.7]
+        mock_reranker._model.compute_score.return_value = [0.9, 0.7]  # type: ignore[unresolved-attribute]
 
         candidates = [("doc1", 0.8), ("doc2", 0.6)]
         result = await mock_reranker.rerank_async("test query", candidates)
@@ -434,7 +435,8 @@ class TestCrossEncoderRerankerIntegration:
         )
 
         with patch("FlagEmbedding.FlagReranker"):
-            reranker = CrossEncoderReranker(config=config, logger=create_mock_logger())
+            logger, _ = create_mock_logger()
+            reranker = CrossEncoderReranker(config=config, logger=logger)
             reranker._model = MagicMock()
 
             # Assert to narrow the type from BaseReranker | None to MagicMock
@@ -629,8 +631,8 @@ class TestModelPropertyWithLogger:
             mock_model = MagicMock()
             mock_flag_reranker.return_value = mock_model
 
-            mock_logger = create_mock_logger()
-            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
+            logger, mock_logger = create_mock_logger()
+            reranker = CrossEncoderReranker(config=config, logger=logger)
 
             # Access model property to trigger lazy loading
             _ = reranker.model
@@ -750,8 +752,8 @@ class TestRerankDisabledWithLogger:
         config = CrossEncoderConfig(enabled=False)
 
         with patch("FlagEmbedding.FlagReranker"):
-            mock_logger = create_mock_logger()
-            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
+            logger, mock_logger = create_mock_logger()
+            reranker = CrossEncoderReranker(config=config, logger=logger)
 
             candidates = [("doc1", 0.8), ("doc2", 0.6)]
             result = reranker.rerank("test query", candidates)
@@ -779,12 +781,13 @@ class TestBatchNormalizationWithLogger:
         )
 
         with patch("FlagEmbedding.FlagReranker"):
-            mock_logger = create_mock_logger()
-            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
-            reranker._model = MagicMock()
+            logger, mock_logger = create_mock_logger()
+            reranker = CrossEncoderReranker(config=config, logger=logger)
+            mock_model = MagicMock()
+            reranker._model = mock_model
             assert reranker._model is not None
 
-            reranker._model.compute_score.return_value = [0.17, 0.05, 0.001]
+            mock_model.compute_score.return_value = [0.17, 0.05, 0.001]
 
             candidates = [("doc1", 0.8), ("doc2", 0.7), ("doc3", 0.6)]
             reranker.rerank("query", candidates)
@@ -847,11 +850,12 @@ class TestRecencyDecay:
         )
 
         with patch("FlagEmbedding.FlagReranker"):
-            mock_logger = create_mock_logger()
-            reranker = CrossEncoderReranker(config=config, logger=mock_logger)
-            reranker._model = MagicMock()
+            logger, mock_logger = create_mock_logger()
+            reranker = CrossEncoderReranker(config=config, logger=logger)
+            mock_model = MagicMock()
+            reranker._model = mock_model
             assert reranker._model is not None
-            reranker._model.compute_score.return_value = [0.9, 0.8]
+            mock_model.compute_score.return_value = [0.9, 0.8]
 
             candidates = [("doc1", 0.5), ("doc2", 0.5)]
             timestamp_map = {
