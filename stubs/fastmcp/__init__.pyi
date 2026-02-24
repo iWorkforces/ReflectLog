@@ -11,6 +11,46 @@ JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
+
+class Context:
+    """FastMCP context for tool execution.
+
+    Provides access to request metadata and client communication.
+    """
+
+    @property
+    def request_id(self) -> str | None:
+        """Request identifier."""
+        ...
+
+    async def report_progress(
+        self,
+        progress: float,
+        total: float | None = None,
+    ) -> None:
+        """Report progress for long-running operations.
+
+        Args:
+            progress: Current progress value.
+            total: Optional total value for percentage calculation.
+        """
+        ...
+
+    def log(
+        self,
+        level: str,
+        message: str,
+        **kwargs: object,
+    ) -> None:
+        """Log a message to the MCP client.
+
+        Args:
+            level: Log level ('debug', 'info', 'warning', 'error').
+            message: Log message.
+            **kwargs: Additional structured data.
+        """
+        ...
+
 class Tool:
     """FastMCP Tool with registered function."""
 

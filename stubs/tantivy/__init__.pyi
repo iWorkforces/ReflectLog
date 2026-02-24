@@ -126,6 +126,42 @@ class Query:
 
     ...
 
+
+class Occur:
+    """Query occurrence modifier for BooleanQuery."""
+
+    Must: "Occur"
+    """The clause must be present."""
+    Should: "Occur"
+    """The clause should be present (optional)."""
+    MustNot: "Occur"
+    """The clause must not be present."""
+
+
+class Term:
+    """A search term for a specific field."""
+
+    def __init__(self, field: str, text: str) -> None:
+        """Create a term for the given field and text."""
+        ...
+
+
+class TermQuery(Query):
+    """A query that matches a specific term."""
+
+    def __init__(self, term: Term) -> None:
+        """Create a term query."""
+        ...
+
+
+class BooleanQuery(Query):
+    """A boolean combination of queries."""
+
+    def __init__(self, clauses: list[tuple[Occur, Query]]) -> None:
+        """Create a boolean query."""
+        ...
+
+
 class Index:
     """A Tantivy index for full-text search."""
 

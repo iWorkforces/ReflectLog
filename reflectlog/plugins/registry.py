@@ -8,7 +8,7 @@ or "find reranker plugins".
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 def utc_now() -> datetime:
@@ -62,9 +62,6 @@ class PluginMetadata:
     discovered_at: datetime = field(default_factory=utc_now)
     loaded_at: datetime | None = None
     activated_at: datetime | None = None
-
-
-T = TypeVar("T")
 
 
 @runtime_checkable
@@ -309,7 +306,7 @@ class PluginRegistry[T]:
         return self._instances.copy()
 
 
-class ToolRegistry(PluginRegistry[T]):
+class ToolRegistry[T](PluginRegistry[T]):
     """Specialized registry for MCP tools.
 
     This registry provides additional methods for querying and

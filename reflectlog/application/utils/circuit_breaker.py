@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from enum import Enum
 import inspect
 import time
-from typing import Any, TypedDict, TypeVar
+from typing import Any, TypedDict
 
 from reflectlog.core.logging import IStructuredLogger
 
@@ -39,9 +39,6 @@ class CircuitBreakerConfig:
         2  # Successes needed to close circuit (HALF_OPEN -> CLOSED)
     )
     exception_types: tuple[type[Exception], ...] = (Exception,)  # Exceptions to track
-
-
-T = TypeVar("T")
 
 
 class CircuitBreakerStats(TypedDict):
@@ -203,7 +200,7 @@ class CircuitBreaker:
                     },
                 )
 
-    async def call(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    async def call[T](self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         """Execute a function through the circuit breaker.
 
         Args:

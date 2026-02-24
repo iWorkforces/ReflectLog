@@ -24,6 +24,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index
 
+from reflectlog.application.config import Config
 from reflectlog.application.exceptions import StorageError
 from reflectlog.application.types import Embeddings
 from reflectlog.application.utils.numba_utils import distance_to_similarity_cosine
@@ -100,7 +101,7 @@ class USearchConfig:
         )
 
     @classmethod
-    def from_app_config(cls, config: Any) -> USearchConfig:
+    def from_app_config(cls, config: Config) -> USearchConfig:
         """Create USearchConfig from application Config.
 
         Args:

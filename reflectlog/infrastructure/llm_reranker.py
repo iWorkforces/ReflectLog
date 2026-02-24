@@ -14,6 +14,7 @@ from reflectlog.application.config import (
     SCORING_PROMPT_WITH_AGE,
     Config,
 )
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
@@ -265,7 +266,7 @@ class AnthropicRerankerProvider(IRerankerProvider):
     def __init__(
         self,
         model: str | None = None,
-        logger: Any = None,
+        logger: IStructuredLogger | None = None,
     ):
         """Initialize Anthropic reranker provider.
 
@@ -406,7 +407,7 @@ class AnthropicRerankerProvider(IRerankerProvider):
 
 def create_reranker_provider(
     config: LLMRerankerConfig,
-    logger: Any = None,
+    logger: IStructuredLogger | None = None,
 ) -> IRerankerProvider:
     """Create a reranker provider based on configuration.
 
@@ -468,7 +469,7 @@ class LLMReranker(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     config: LLMRerankerConfig
-    logger: Any = None
+    logger: IStructuredLogger | None = None
 
     _provider: IRerankerProvider | None = PrivateAttr(default=None)
 

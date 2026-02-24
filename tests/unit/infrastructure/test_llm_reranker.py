@@ -1,10 +1,13 @@
 '''Unit tests for LLMReranker.'''
 
 import json
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
+from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.llm_reranker import (
     AnthropicRerankerProvider,
     LLMReranker,
@@ -13,6 +16,11 @@ from reflectlog.infrastructure.llm_reranker import (
     RelevanceScore,
     create_reranker_provider,
 )
+
+
+def create_mock_logger() -> IStructuredLogger:
+    '''Create a properly typed mock logger for testing.'''
+    return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
 
 class TestRelevanceScore:
@@ -244,7 +252,7 @@ class TestOpenAIRerankerProvider:
             return_value=mock_response
         )
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_provider._logger = mock_logger
 
         _doc, score = await mock_provider.score_document(
@@ -252,7 +260,7 @@ class TestOpenAIRerankerProvider:
         )
 
         assert score == 0.7
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_score_document_empty_response_uses_fallback(
@@ -267,7 +275,7 @@ class TestOpenAIRerankerProvider:
             return_value=mock_response
         )
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_provider._logger = mock_logger
 
         _doc, score = await mock_provider.score_document(
@@ -285,7 +293,7 @@ class TestOpenAIRerankerProvider:
             side_effect=Exception("API Error")
         )
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_provider._logger = mock_logger
 
         _doc, score = await mock_provider.score_document(
@@ -293,7 +301,7 @@ class TestOpenAIRerankerProvider:
         )
 
         assert score == 0.8
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_call_llm_with_structured_output_success(
@@ -336,7 +344,7 @@ class TestOpenAIRerankerProvider:
             ]
         )
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_provider._logger = mock_logger
 
         await mock_provider._call_llm_with_structured_output(
@@ -353,7 +361,7 @@ class TestOpenAIRerankerProvider:
         assert second_call_kwargs["response_format"]["type"] == "json_object"
 
         # Verify warning was logged
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_fallback_on_structured_output_error(
@@ -371,7 +379,7 @@ class TestOpenAIRerankerProvider:
             ]
         )
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_provider._logger = mock_logger
 
         await mock_provider._call_llm_with_structured_output(
@@ -380,7 +388,7 @@ class TestOpenAIRerankerProvider:
 
         # Verify fallback occurred
         assert mock_provider._client.chat.completions.create.call_count == 2  # type: ignore[union-attr]
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_no_fallback_on_unrelated_error(
@@ -406,7 +414,7 @@ class TestAnthropicRerankerProvider:
         with patch("reflectlog.utility.init_credentials") as mock_init:
             provider = AnthropicRerankerProvider(
                 model="claude-3-sonnet",
-                logger=MagicMock(),
+                logger=create_mock_logger(),
             )
             mock_init.assert_called_once_with(verbose=False)
             return provider
@@ -480,7 +488,7 @@ class TestAnthropicRerankerProvider:
             )
 
             assert score == 0.6
-            mock_provider._logger.warning.assert_called_once()
+            mock_provider._logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
 
 
 class TestLLMRerankerInitialization:
@@ -736,14 +744,14 @@ class TestRerank:
 
         mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
 
-        mock_logger = MagicMock()
+        mock_logger = create_mock_logger()
         mock_reranker.logger = mock_logger
 
         candidates = [("doc1", 0.5)]
         await mock_reranker.rerank("test query", candidates)
 
         # Should log debug message about completion
-        mock_logger.debug.assert_called()
+        mock_logger.debug.assert_called()  # type: ignore[unresolved-attribute]
 
 
 class TestLLMRerankerIntegration:
@@ -762,7 +770,7 @@ class TestLLMRerankerIntegration:
         )
 
         with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
-            reranker = LLMReranker(config=config, logger=MagicMock())
+            reranker = LLMReranker(config=config, logger=create_mock_logger())
 
             # Mock the provider's score_document method
             call_count = 0
@@ -950,7 +958,7 @@ class TestRerankWithTimestampMap:
             enable_recency_boost=True,
         )
         with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
-            reranker = LLMReranker(config=config, logger=MagicMock())
+            reranker = LLMReranker(config=config, logger=create_mock_logger())
             return reranker
 
     @pytest.mark.asyncio
@@ -1018,7 +1026,7 @@ class TestRerankWithTimestampMap:
         )
 
         with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
-            reranker = LLMReranker(config=config, logger=MagicMock())
+            reranker = LLMReranker(config=config, logger=create_mock_logger())
 
             captured_ages: list[str | None] = []
 
@@ -1071,7 +1079,7 @@ class TestOpenAIRerankerProviderWithMemoryAge:
                 api_key="test-key",
                 base_url="https://openrouter.ai/api/v1",
                 model="x-ai/grok-4.1-fast",
-                logger=MagicMock(),
+                logger=create_mock_logger(),
             )
             provider._client = mock_client
             assert provider._client is not None
@@ -1111,7 +1119,7 @@ class TestAnthropicExtractJsonEdgeCases:
         with patch("reflectlog.utility.init_credentials"):
             return AnthropicRerankerProvider(
                 model="claude-3-sonnet",
-                logger=MagicMock(),
+                logger=create_mock_logger(),
             )
 
     def test_markdown_code_block_with_invalid_json(
@@ -1148,7 +1156,7 @@ class TestAnthropicScoreDocumentWithMemoryAge:
         with patch("reflectlog.utility.init_credentials"):
             return AnthropicRerankerProvider(
                 model="claude-3-sonnet",
-                logger=MagicMock(),
+                logger=create_mock_logger(),
             )
 
     @pytest.mark.asyncio
@@ -1195,7 +1203,7 @@ class TestRerankBatchNormalization:
             enable_recency_boost=False,
         )
         with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
-            reranker = LLMReranker(config=config, logger=MagicMock())
+            reranker = LLMReranker(config=config, logger=create_mock_logger())
             return reranker
 
     @pytest.mark.asyncio
@@ -1228,7 +1236,7 @@ class TestRerankBatchNormalization:
             result = await mock_reranker.rerank("test query", candidates)
 
             mock_normalize.assert_called_once()
-            mock_reranker.logger.debug.assert_called()
+            mock_reranker.logger.debug.assert_called()  # type: ignore[unresolved-attribute]
 
     @pytest.mark.asyncio
     async def test_rerank_batch_normalize_logs_range(
@@ -1251,7 +1259,7 @@ class TestRerankBatchNormalization:
 
             await mock_reranker.rerank("test query", candidates)
 
-            debug_calls = mock_reranker.logger.debug.call_args_list
+            debug_calls = mock_reranker.logger.debug.call_args_list  # type: ignore[unresolved-attribute]
             batch_log_found = any(
                 "Batch normalization" in (call[0][0] if call[0] else "")
                 for call in debug_calls

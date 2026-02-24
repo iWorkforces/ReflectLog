@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from typing import Generator
+from typing import Generator, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -10,7 +10,14 @@ import pytest
 
 from reflectlog.application.exceptions import StorageError
 from reflectlog.application.types import Embeddings
+from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
+
+
+def create_mock_logger() -> IStructuredLogger:
+    '''Create a properly typed mock logger for testing.'''
+    return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
 
 class MockEmbedder(Embeddings):
@@ -191,14 +198,14 @@ class TestUSearchEngineAdd:
     ) -> None:
         '''Add with infer=True should log a warning.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
             engine.add("user1", "Hello world", infer=True)
 
             # Should log warning about infer not being supported
-            logger.warning.assert_called()
+            logger.warning.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -346,7 +353,7 @@ class TestUSearchEngineDelete:
     ) -> None:
         '''Delete of non-existent content should log warning.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -354,7 +361,7 @@ class TestUSearchEngineDelete:
             engine.delete("999")
 
             # Should log warning about not found
-            logger.warning.assert_called()
+            logger.warning.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -557,7 +564,7 @@ class TestUSearchEngineExactSearch:
             embedding_dims=128,
             exact_search=True,
         )
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -565,7 +572,7 @@ class TestUSearchEngineExactSearch:
             engine.search("Hello", "user1", limit=5)
 
             # Should have logged the search mode
-            debug_calls = logger.debug.call_args_list
+            debug_calls = logger.debug.call_args_list  # type: ignore[unresolved-attribute]
             search_mode_logged = any(
                 "search mode" in str(call).lower() and "exact" in str(call).lower()
                 for call in debug_calls
@@ -667,13 +674,13 @@ class TestUSearchEngineIndexInit:
     ) -> None:
         '''When Index.restore returns None, should create a new index.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
             idx = engine.index
             assert idx is not None
-            logger.info.assert_called()
+            logger.info.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -682,7 +689,7 @@ class TestUSearchEngineIndexInit:
     ) -> None:
         '''If both restore and create fail, should raise RuntimeError.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
@@ -694,20 +701,20 @@ class TestUSearchEngineIndexInit:
             ):
                 _ = engine.index
 
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
 
     def test_index_init_logs_debug_on_create(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
         '''Creating new index should log debug and info messages.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
             _ = engine.index
-            debug_calls = [str(c) for c in logger.debug.call_args_list]
-            info_calls = [str(c) for c in logger.info.call_args_list]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
+            info_calls = [str(c) for c in logger.info.call_args_list]  # type: ignore[unresolved-attribute]
             assert any("not found" in c.lower() for c in debug_calls)
             assert any("Created new" in c for c in info_calls)
         finally:
@@ -718,7 +725,7 @@ class TestUSearchEngineIndexInit:
     ) -> None:
         '''Restoring an existing index should log loading info.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
 
         engine1 = USearchEngine(config=config, embedder=embedder)
         try:
@@ -730,7 +737,7 @@ class TestUSearchEngineIndexInit:
         engine2 = USearchEngine(config=config, embedder=embedder, logger=logger)
         try:
             _ = engine2.index
-            info_calls = [str(c) for c in logger.info.call_args_list]
+            info_calls = [str(c) for c in logger.info.call_args_list]  # type: ignore[unresolved-attribute]
             assert any("Loaded existing" in c for c in info_calls)
         finally:
             engine2.close()
@@ -744,7 +751,7 @@ class TestUSearchEngineAddErrorPaths:
     ) -> None:
         config, _, _ = temp_engine
         failing_embedder = FailingQueryEmbedder(dims=128)
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
 
         try:
@@ -753,7 +760,7 @@ class TestUSearchEngineAddErrorPaths:
 
             contents = engine.get_all("user1")
             assert "rollback test" not in contents
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -762,7 +769,7 @@ class TestUSearchEngineAddErrorPaths:
     ) -> None:
         '''StorageError with "Duplicate message" should be silently skipped.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -773,7 +780,7 @@ class TestUSearchEngineAddErrorPaths:
 
             engine.add("user1", "dup msg", infer=False)
 
-            logger.debug.assert_called()
+            logger.debug.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -782,7 +789,7 @@ class TestUSearchEngineAddErrorPaths:
     ) -> None:
         '''Unexpected exceptions in add should be wrapped in RuntimeError.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -794,7 +801,7 @@ class TestUSearchEngineAddErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to add content"):
                 engine.add("user1", "error msg", infer=False)
 
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -803,7 +810,7 @@ class TestUSearchEngineAddErrorPaths:
     ) -> None:
         '''RuntimeError without "Duplicate message" should be re-raised.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -815,7 +822,7 @@ class TestUSearchEngineAddErrorPaths:
             with pytest.raises(RuntimeError, match="connection lost"):
                 engine.add("user1", "error msg", infer=False)
 
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -841,7 +848,7 @@ class TestUSearchEngineAddBatch:
     ) -> None:
         '''add_batch should add multiple contents and return them.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -854,7 +861,7 @@ class TestUSearchEngineAddBatch:
             all_msgs = engine.get_all("user1")
             assert len(all_msgs) == 3
 
-            logger.debug.assert_called()
+            logger.debug.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -863,12 +870,12 @@ class TestUSearchEngineAddBatch:
     ) -> None:
         '''add_batch with infer=True should log a warning.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
             engine.add_batch("user1", ["msg"], infer=True)
-            warning_calls = [str(c) for c in logger.warning.call_args_list]
+            warning_calls = [str(c) for c in logger.warning.call_args_list]  # type: ignore[unresolved-attribute]
             assert any("infer=True" in c for c in warning_calls)
         finally:
             engine.close()
@@ -896,7 +903,7 @@ class TestUSearchEngineAddBatch:
     ) -> None:
         config, _, _ = temp_engine
         failing_embedder = FailingBatchEmbedder(dims=128)
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
 
         try:
@@ -916,7 +923,7 @@ class TestUSearchEngineAddBatch:
     ) -> None:
         config, _, _ = temp_engine
         bad_embedder = MismatchedSizeEmbedder(dims=128)
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=bad_embedder, logger=logger)
 
         try:
@@ -1007,7 +1014,7 @@ class TestUSearchEngineDistanceScoring:
                 metric="ip",
             )
             embedder = MockEmbedder(dims=128)
-            logger = MagicMock()
+            logger = create_mock_logger()
             engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
             try:
@@ -1017,7 +1024,7 @@ class TestUSearchEngineDistanceScoring:
                 assert len(scores) == 3
                 assert float(scores[0]) == pytest.approx(1.0)
                 assert float(scores[-1]) == pytest.approx(0.0)
-                logger.warning.assert_called()
+                logger.warning.assert_called()  # type: ignore[unresolved-attribute]
             finally:
                 engine.close()
 
@@ -1030,7 +1037,7 @@ class TestUSearchEngineSearchErrorPaths:
     ) -> None:
         '''Search on empty index with logger should log debug message.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -1038,7 +1045,7 @@ class TestUSearchEngineSearchErrorPaths:
             results = engine.search("hello", "user1", limit=5)
 
             assert results == []
-            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
             assert any("empty" in c.lower() for c in debug_calls)
         finally:
             engine.close()
@@ -1063,7 +1070,7 @@ class TestUSearchEngineSearchErrorPaths:
     ) -> None:
         config, _, _ = temp_engine
         failing_embedder = ToggleableFailingQueryEmbedder(dims=128)
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=failing_embedder, logger=logger)
 
         try:
@@ -1074,7 +1081,7 @@ class TestUSearchEngineSearchErrorPaths:
             with pytest.raises(RuntimeError, match="USearch search failed"):
                 engine.search("broken query", "user1", limit=5)
 
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -1087,13 +1094,13 @@ class TestUSearchEngineGetAllErrorPaths:
     ) -> None:
         '''get_all with logger should log content count.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
             engine.add("user1", "msg1", infer=False)
             engine.get_all("user1")
-            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
             assert any("Retrieved all" in c for c in debug_calls)
         finally:
             engine.close()
@@ -1103,7 +1110,7 @@ class TestUSearchEngineGetAllErrorPaths:
     ) -> None:
         '''Exceptions in get_all should be wrapped in RuntimeError.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -1117,7 +1124,7 @@ class TestUSearchEngineGetAllErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to retrieve contents"):
                 engine.get_all("user1")
 
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -1130,7 +1137,7 @@ class TestUSearchEngineDeleteErrorPaths:
     ) -> None:
         '''Deleting an existing content with logger should log debug.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -1140,7 +1147,7 @@ class TestUSearchEngineDeleteErrorPaths:
 
             engine.delete(str(content_id))
 
-            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
             assert any("deleted" in c.lower() for c in debug_calls)
         finally:
             engine.close()
@@ -1150,14 +1157,14 @@ class TestUSearchEngineDeleteErrorPaths:
     ) -> None:
         '''Invalid memory_id with logger should log error.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
             engine.ensure_initialized()
             with pytest.raises(RuntimeError, match="Invalid memory_id format"):
                 engine.delete("not-a-number")
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -1166,7 +1173,7 @@ class TestUSearchEngineDeleteErrorPaths:
     ) -> None:
         '''Unexpected exceptions in delete should be wrapped in RuntimeError.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -1179,7 +1186,7 @@ class TestUSearchEngineDeleteErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to delete content"):
                 engine.delete("42")
 
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 
@@ -1204,14 +1211,14 @@ class TestUSearchEngineCommitErrorPaths:
     ) -> None:
         '''Commit with logger should log save info.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
             engine.add("user1", "commit test", infer=False)
             engine.commit()
 
-            debug_calls = [str(c) for c in logger.debug.call_args_list]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
             assert any("saved" in c.lower() for c in debug_calls)
         finally:
             engine.close()
@@ -1221,7 +1228,7 @@ class TestUSearchEngineCommitErrorPaths:
     ) -> None:
         '''Exceptions in commit should be wrapped in RuntimeError.'''
         config, embedder, _ = temp_engine
-        logger = MagicMock()
+        logger = create_mock_logger()
         engine = USearchEngine(config=config, embedder=embedder, logger=logger)
 
         try:
@@ -1232,7 +1239,7 @@ class TestUSearchEngineCommitErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to save USearch index"):
                 engine.commit()
 
-            logger.error.assert_called()
+            logger.error.assert_called()  # type: ignore[unresolved-attribute]
         finally:
             engine.close()
 

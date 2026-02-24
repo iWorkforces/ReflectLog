@@ -208,3 +208,48 @@ class Index:
             True if key exists, False otherwise.
         """
         ...
+
+    def add_many(
+        self,
+        keys: Sequence[int],
+        vectors: NDArray[np.float32] | Sequence[Sequence[float]],
+    ) -> None:
+        """Add multiple vectors in batch.
+
+        Args:
+            keys: Sequence of unique integer keys.
+            vectors: Array of vectors (shape: n_vectors x ndim).
+
+        Raises:
+            ValueError: If dimensions don't match.
+        """
+        ...
+
+    def search_many(
+        self,
+        vectors: NDArray[np.float32] | Sequence[Sequence[float]],
+        count: int,
+        exact: bool = False,
+    ) -> list[BatchMatches]:
+        """Search for nearest neighbors for multiple query vectors.
+
+        Args:
+            vectors: Array of query vectors (shape: n_queries x ndim).
+            count: Maximum results per query.
+            exact: If True, use exact brute-force search.
+
+        Returns:
+            List of BatchMatches, one per query vector.
+        """
+        ...
+
+    def get(self, key: int) -> NDArray[np.float32] | None:
+        """Get a vector by its key.
+
+        Args:
+            key: The key of the vector to retrieve.
+
+        Returns:
+            The vector, or None if not found.
+        """
+        ...
