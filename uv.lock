@@ -2582,7 +2582,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "ruff", specifier = ">=0.15.2" },
+    { name = "ruff", specifier = ">=0.15.4" },
     { name = "ty", specifier = ">=0.0.19" },
 ]
 
