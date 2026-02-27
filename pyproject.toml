@@ -78,7 +78,7 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.8.0",
-    "ty>=0.0.18",
+    "ty>=0.0.19",
     "pyright>=1.1.408",
 ]
 
@@ -185,7 +185,8 @@ exclude = [
     "**/.mypy_cache",
     "**/.ruff_cache",
     "**/build",
-    "**/dist"
+    "**/dist",
+    "**/.*"
 ]
 ignore = [
     "**/__pycache__",
