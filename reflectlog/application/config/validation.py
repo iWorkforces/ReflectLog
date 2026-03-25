@@ -746,11 +746,11 @@ def validate_config(config: object) -> list[ValidationError]:
             raise ConfigurationError(
                 f"fusion_weights must be a list, got {type(fusion_weights).__name__}"
             )
-        if len(fusion_weights) < 2:
+        typed_weights: list[object] = cast(list[object], fusion_weights)
+        if len(typed_weights) < 2:
             raise ConfigurationError(
                 "fusion_weights must have at least 2 elements for weighted RRF"
             )
-        typed_weights: list[object] = cast(list[object], fusion_weights)
         for i, w in enumerate(typed_weights):
             if not isinstance(w, (int, float)):
                 raise ConfigurationError(
