@@ -66,6 +66,7 @@ class RanxFusionEngine(FusionEngine):
         method: str = "rrf",
         normalization: str | None = None,
         rrf_k: int = 60,
+        weights: list[float] | None = None,
         logger: IStructuredLogger | None = None,
     ):
         """Initialize the ranx fusion engine.
@@ -78,6 +79,8 @@ class RanxFusionEngine(FusionEngine):
                           based on method.
             rrf_k: RRF k parameter (only used when method='rrf'). Lower values
                   give more weight to top ranks. Defaults to 60.
+            weights: Optional list of weights for weighted RRF fusion. Must have
+                  at least 2 elements if provided. Defaults to None (equal weights).
             logger: Optional StructuredLogger instance for debug logging.
 
         Raises:
@@ -100,6 +103,7 @@ class RanxFusionEngine(FusionEngine):
         self._method = method
         self._normalization = normalization or DEFAULT_NORMALIZATIONS.get(method)
         self._rrf_k = rrf_k
+        self._weights = weights
         self.logger = logger
 
     @property
@@ -116,6 +120,11 @@ class RanxFusionEngine(FusionEngine):
     def rrf_k(self) -> int:
         """Return the RRF k parameter."""
         return self._rrf_k
+
+    @property
+    def weights(self) -> list[float] | None:
+        """Return the fusion weights for weighted RRF."""
+        return self._weights
 
     def _convert_to_run(self, result_set: list[tuple[str, float]], name: str) -> Run:
         """Convert (memory, score) tuples to a ranx Run object.
@@ -291,6 +300,8 @@ class RanxFusionEngine(FusionEngine):
         params: dict[str, Any] | None = None
         if self._method == "rrf":
             params = {"k": self._rrf_k}
+            if self._weights is not None:
+                params["weights"] = self._weights
 
         # Perform fusion
         combined = ranx_fuse(

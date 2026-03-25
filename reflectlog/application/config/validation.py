@@ -22,6 +22,14 @@ class ValidationError:
         return f"{self.field}: {self.message} (got: {self.value!r})"
 
 
+class ConfigurationError(Exception):
+    """Configuration validation error."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
 class ConfigurationValidator:
     """Validates configuration values.
 
@@ -730,6 +738,27 @@ def validate_config(config: object) -> list[ValidationError]:
     fusion_method = get_attr("fusion_method")
     if isinstance(fusion_method, str) and fusion_method:
         _ = validator.validate_fusion_method(fusion_method)
+
+    # Validate fusion weights
+    fusion_weights = get_attr("fusion_weights")
+    if fusion_weights is not None:
+        if not isinstance(fusion_weights, list):
+            raise ConfigurationError(
+                f"fusion_weights must be a list, got {type(fusion_weights).__name__}"
+            )
+        if len(fusion_weights) < 2:
+            raise ConfigurationError(
+                "fusion_weights must have at least 2 elements for weighted RRF"
+            )
+        for i, w in enumerate(fusion_weights):
+            if not isinstance(w, (int, float)):
+                raise ConfigurationError(
+                    f"fusion_weights[{i}] must be a number, got {type(w).__name__}"
+                )
+            if w < 0:
+                raise ConfigurationError(
+                    f"fusion_weights[{i}] must be non-negative, got {w}"
+                )
 
     # Validate memory lengths
     min_length = get_attr("min_message_length")

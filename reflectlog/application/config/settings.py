@@ -52,6 +52,7 @@ class SearchConfigDict(TypedDict):
     fusion_rrf_k: int
     fusion_ranking_threshold: float
     enable_rrf_fusion: bool
+    fusion_weights: list[float] | None
 
 
 class RerankerConfigDict(TypedDict):
@@ -205,6 +206,7 @@ class Config:
     fusion_rrf_k: int = 60  # RRF k parameter (lower = more weight to top ranks)
     fusion_ranking_threshold: float = 0.8  # Min normalized RRF score to keep (0-1)
     enable_rrf_fusion: bool = True  # Enable RRF fusion (false = concatenate results)
+    fusion_weights: list[float] | None = None  # Per-run weights for weighted RRF
 
     # Memory validation settings
     max_memory_length: int = 30720
@@ -374,6 +376,10 @@ class Config:
             ),
             "enable_rrf_fusion": os.environ.get("ENABLE_RRF_FUSION", "true").lower()
             == "true",
+            "fusion_weights": (
+                [float(w.strip()) for w in os.environ.get("FUSION_WEIGHTS", "").split(",") if w.strip()]
+                or None
+            ),
         }
 
     @staticmethod

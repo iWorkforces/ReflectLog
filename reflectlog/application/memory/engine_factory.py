@@ -184,6 +184,7 @@ class EngineFactory:
             method=config.fusion_method,
             normalization=config.fusion_normalization,
             rrf_k=config.fusion_rrf_k,
+            weights=config.fusion_weights,
             logger=logger,
         )
 
