@@ -205,7 +205,7 @@ class TestUSearchEngineAdd:
             engine.add("user1", "Hello world", infer=True)
 
             # Should log warning about infer not being supported
-            logger.warning.assert_called()  # type: ignore[unresolved-attribute]
+            logger.warning.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -361,7 +361,7 @@ class TestUSearchEngineDelete:
             engine.delete("999")
 
             # Should log warning about not found
-            logger.warning.assert_called()  # type: ignore[unresolved-attribute]
+            logger.warning.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -572,7 +572,7 @@ class TestUSearchEngineExactSearch:
             engine.search("Hello", "user1", limit=5)
 
             # Should have logged the search mode
-            debug_calls = logger.debug.call_args_list  # type: ignore[unresolved-attribute]
+            debug_calls = logger.debug.call_args_list  # type: ignore
             search_mode_logged = any(
                 "search mode" in str(call).lower() and "exact" in str(call).lower()
                 for call in debug_calls
@@ -680,7 +680,7 @@ class TestUSearchEngineIndexInit:
         try:
             idx = engine.index
             assert idx is not None
-            logger.info.assert_called()  # type: ignore[unresolved-attribute]
+            logger.info.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -701,7 +701,7 @@ class TestUSearchEngineIndexInit:
             ):
                 _ = engine.index
 
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
 
     def test_index_init_logs_debug_on_create(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
@@ -713,8 +713,8 @@ class TestUSearchEngineIndexInit:
 
         try:
             _ = engine.index
-            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
-            info_calls = [str(c) for c in logger.info.call_args_list]  # type: ignore[unresolved-attribute]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore
+            info_calls = [str(c) for c in logger.info.call_args_list]  # type: ignore
             assert any("not found" in c.lower() for c in debug_calls)
             assert any("Created new" in c for c in info_calls)
         finally:
@@ -737,7 +737,7 @@ class TestUSearchEngineIndexInit:
         engine2 = USearchEngine(config=config, embedder=embedder, logger=logger)
         try:
             _ = engine2.index
-            info_calls = [str(c) for c in logger.info.call_args_list]  # type: ignore[unresolved-attribute]
+            info_calls = [str(c) for c in logger.info.call_args_list]  # type: ignore
             assert any("Loaded existing" in c for c in info_calls)
         finally:
             engine2.close()
@@ -760,7 +760,7 @@ class TestUSearchEngineAddErrorPaths:
 
             contents = engine.get_all("user1")
             assert "rollback test" not in contents
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -780,7 +780,7 @@ class TestUSearchEngineAddErrorPaths:
 
             engine.add("user1", "dup msg", infer=False)
 
-            logger.debug.assert_called()  # type: ignore[unresolved-attribute]
+            logger.debug.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -801,7 +801,7 @@ class TestUSearchEngineAddErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to add content"):
                 engine.add("user1", "error msg", infer=False)
 
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -822,7 +822,7 @@ class TestUSearchEngineAddErrorPaths:
             with pytest.raises(RuntimeError, match="connection lost"):
                 engine.add("user1", "error msg", infer=False)
 
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -861,7 +861,7 @@ class TestUSearchEngineAddBatch:
             all_msgs = engine.get_all("user1")
             assert len(all_msgs) == 3
 
-            logger.debug.assert_called()  # type: ignore[unresolved-attribute]
+            logger.debug.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -875,7 +875,7 @@ class TestUSearchEngineAddBatch:
 
         try:
             engine.add_batch("user1", ["msg"], infer=True)
-            warning_calls = [str(c) for c in logger.warning.call_args_list]  # type: ignore[unresolved-attribute]
+            warning_calls = [str(c) for c in logger.warning.call_args_list]  # type: ignore
             assert any("infer=True" in c for c in warning_calls)
         finally:
             engine.close()
@@ -1024,7 +1024,7 @@ class TestUSearchEngineDistanceScoring:
                 assert len(scores) == 3
                 assert float(scores[0]) == pytest.approx(1.0)
                 assert float(scores[-1]) == pytest.approx(0.0)
-                logger.warning.assert_called()  # type: ignore[unresolved-attribute]
+                logger.warning.assert_called()  # type: ignore
             finally:
                 engine.close()
 
@@ -1045,7 +1045,7 @@ class TestUSearchEngineSearchErrorPaths:
             results = engine.search("hello", "user1", limit=5)
 
             assert results == []
-            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore
             assert any("empty" in c.lower() for c in debug_calls)
         finally:
             engine.close()
@@ -1081,7 +1081,7 @@ class TestUSearchEngineSearchErrorPaths:
             with pytest.raises(RuntimeError, match="USearch search failed"):
                 engine.search("broken query", "user1", limit=5)
 
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -1100,7 +1100,7 @@ class TestUSearchEngineGetAllErrorPaths:
         try:
             engine.add("user1", "msg1", infer=False)
             engine.get_all("user1")
-            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore
             assert any("Retrieved all" in c for c in debug_calls)
         finally:
             engine.close()
@@ -1124,7 +1124,7 @@ class TestUSearchEngineGetAllErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to retrieve contents"):
                 engine.get_all("user1")
 
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -1147,7 +1147,7 @@ class TestUSearchEngineDeleteErrorPaths:
 
             engine.delete(str(content_id))
 
-            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore
             assert any("deleted" in c.lower() for c in debug_calls)
         finally:
             engine.close()
@@ -1164,7 +1164,7 @@ class TestUSearchEngineDeleteErrorPaths:
             engine.ensure_initialized()
             with pytest.raises(RuntimeError, match="Invalid memory_id format"):
                 engine.delete("not-a-number")
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -1186,7 +1186,7 @@ class TestUSearchEngineDeleteErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to delete content"):
                 engine.delete("42")
 
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
         finally:
             engine.close()
 
@@ -1218,7 +1218,7 @@ class TestUSearchEngineCommitErrorPaths:
             engine.add("user1", "commit test", infer=False)
             engine.commit()
 
-            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore[unresolved-attribute]
+            debug_calls = [str(c) for c in logger.debug.call_args_list]  # type: ignore
             assert any("saved" in c.lower() for c in debug_calls)
         finally:
             engine.close()
@@ -1239,7 +1239,7 @@ class TestUSearchEngineCommitErrorPaths:
             with pytest.raises(RuntimeError, match="Failed to save USearch index"):
                 engine.commit()
 
-            logger.error.assert_called()  # type: ignore[unresolved-attribute]
+            logger.error.assert_called()  # type: ignore
         finally:
             engine.close()
 

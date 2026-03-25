@@ -1585,7 +1585,7 @@ class TestMemoryRecordDataclass:
         '''MemoryRecord should be immutable (frozen dataclass).'''
         record = MemoryRecord(id=1, project_id="proj1", content="hello")
         with pytest.raises(AttributeError):
-            record.content = "changed"  # type: ignore[misc]
+            record.content = "changed"  # type: ignore
 
 
 class TestArchivedMemoryRecordDataclass:
@@ -1625,7 +1625,7 @@ class TestArchivedMemoryRecordDataclass:
             archived_at="2025-01-01",
         )
         with pytest.raises(AttributeError):
-            record.content = "changed"  # type: ignore[misc]
+            record.content = "changed"  # type: ignore
 
 
 class TestMemoryStoreCustomTimeout:

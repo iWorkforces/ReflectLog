@@ -418,7 +418,7 @@ class TestCall:
             return "ok"
 
         with pytest.raises(CircuitBreakerOpenError):
-            await circuit_breaker.call(my_func)
+            await circuit_breaker.call(my_func)  # type: ignore
 
     async def test_open_circuit_without_last_failure_time(
         self, circuit_breaker: CircuitBreaker
@@ -432,7 +432,7 @@ class TestCall:
             return "ok"
 
         with pytest.raises(CircuitBreakerOpenError):
-            await circuit_breaker.call(my_func)
+            await circuit_breaker.call(my_func)  # type: ignore
 
     async def test_transitions_to_half_open_after_timeout(
         self, circuit_breaker: CircuitBreaker
@@ -460,7 +460,7 @@ class TestCall:
         async def my_func() -> str:
             return "ok"
 
-        await circuit_breaker.call(my_func)
+        await circuit_breaker.call(my_func)  # type: ignore
         # Should have logged transition to HALF_OPEN
         info_calls = mock_logger.info.call_args_list
         half_open_logged = any("HALF_OPEN" in str(call) for call in info_calls)
@@ -475,7 +475,7 @@ class TestCall:
             raise ValueError("service error")
 
         with pytest.raises(ValueError, match="service error"):
-            await circuit_breaker.call(failing_func)
+            await circuit_breaker.call(failing_func)  # type: ignore
 
         assert circuit_breaker._failure_count == 1
 
@@ -489,7 +489,7 @@ class TestCall:
 
         for _ in range(2):  # threshold is 2
             with pytest.raises(ValueError):
-                await circuit_breaker.call(failing_func)
+                await circuit_breaker.call(failing_func)  # type: ignore
 
         assert circuit_breaker._state == CircuitState.OPEN
 
@@ -512,7 +512,7 @@ class TestCall:
         # TypeError is not in exception_types, so it should propagate
         # but NOT be recorded by the circuit breaker
         with pytest.raises(TypeError):
-            await cb.call(raise_type_error)
+            await cb.call(raise_type_error)  # type: ignore
 
         assert cb._failure_count == 0
         assert cb._state == CircuitState.CLOSED
@@ -534,7 +534,7 @@ class TestCall:
             raise ValueError("tracked")
 
         with pytest.raises(ValueError):
-            await cb.call(raise_value_error)
+            await cb.call(raise_value_error)  # type: ignore
 
         assert cb._failure_count == 1
         assert cb._state == CircuitState.OPEN
@@ -573,7 +573,7 @@ class TestCall:
 
         for _ in range(2):
             with pytest.raises(ValueError):
-                await cb.call(fail)
+                await cb.call(fail)  # type: ignore
         assert cb._state == CircuitState.OPEN
 
         # Wait for timeout
@@ -606,7 +606,7 @@ class TestCall:
             raise ValueError("err")
 
         with pytest.raises(ValueError):
-            await cb.call(fail)
+            await cb.call(fail)  # type: ignore
         assert cb._state == CircuitState.OPEN
 
         # Wait for timeout
@@ -614,7 +614,7 @@ class TestCall:
 
         # Fail again in HALF_OPEN -> back to OPEN
         with pytest.raises(ValueError):
-            await cb.call(fail)
+            await cb.call(fail)  # type: ignore
         assert cb._state == CircuitState.OPEN
 
 

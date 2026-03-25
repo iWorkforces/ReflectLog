@@ -29,7 +29,7 @@ class TestTantivyConfig:
         '''Test that TantivyConfig is frozen/immutable.'''
         config = TantivyConfig(project_id="test", index_path="/tmp/test")
         with pytest.raises(AttributeError):
-            config.project_id = "new-project"  # type: ignore[misc]
+            config.project_id = "new-project"  # type: ignore
 
 
 @pytest.mark.unit

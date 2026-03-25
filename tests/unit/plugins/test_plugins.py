@@ -644,8 +644,8 @@ class TestDirectoryScanDiscovery:
 
         # Create a fake module
         fake_module = types.ModuleType("fake_pkg.plugin_tool")
-        fake_module.FoundPlugin = FoundPlugin  # type: ignore[attr-defined]
-        fake_module.BasePlugin = BasePlugin  # type: ignore[attr-defined]  # should be skipped
+        fake_module.FoundPlugin = FoundPlugin  # type: ignore
+        fake_module.BasePlugin = BasePlugin  # type: ignore  # should be skipped
 
         fake_pkg = types.ModuleType("fake_pkg")
         fake_pkg.__file__ = "/fake/fake_pkg/__init__.py"
@@ -763,8 +763,8 @@ class TestDirectoryScanDiscovery:
             pass
 
         fake_module = types.ModuleType("pkg.plugin_x")
-        fake_module.some_string = "not a class"  # type: ignore[attr-defined]
-        fake_module.some_int = 42  # type: ignore[attr-defined]
+        fake_module.some_string = "not a class"  # type: ignore
+        fake_module.some_int = 42  # type: ignore
 
         fake_pkg = types.ModuleType("pkg")
         fake_pkg.__file__ = "/fake/pkg/__init__.py"
@@ -858,7 +858,7 @@ class TestCompositeDiscovery:
                 DiscoveredPlugin(name="b", module_path="m", class_name="B"),
             ]
         )
-        composite = CompositeDiscovery(strategies=[s1, s2])
+        composite = CompositeDiscovery(strategies=[s1, s2])  # type: ignore
         result = await composite.discover()
 
         names = [p.name for p in result]
@@ -881,7 +881,7 @@ class TestCompositeDiscovery:
                 ),
             ]
         )
-        composite = CompositeDiscovery(strategies=[s1, s2])
+        composite = CompositeDiscovery(strategies=[s1, s2])  # type: ignore
         result = await composite.discover()
 
         assert len(result) == 1

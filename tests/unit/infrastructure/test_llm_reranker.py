@@ -200,7 +200,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 0.85}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             return_value=mock_response
         )
 
@@ -223,7 +223,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 1.5}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             return_value=mock_response
         )
 
@@ -248,7 +248,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "not valid json"
 
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             return_value=mock_response
         )
 
@@ -260,7 +260,7 @@ class TestOpenAIRerankerProvider:
         )
 
         assert score == 0.7
-        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
+        mock_logger.warning.assert_called_once()  # type: ignore
 
     @pytest.mark.asyncio
     async def test_score_document_empty_response_uses_fallback(
@@ -271,7 +271,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = None
 
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             return_value=mock_response
         )
 
@@ -289,7 +289,7 @@ class TestOpenAIRerankerProvider:
         self, mock_provider: OpenAIRerankerProvider
     ) -> None:
         '''Test that API error uses fallback score.'''
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             side_effect=Exception("API Error")
         )
 
@@ -301,7 +301,7 @@ class TestOpenAIRerankerProvider:
         )
 
         assert score == 0.8
-        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
+        mock_logger.warning.assert_called_once()  # type: ignore
 
     @pytest.mark.asyncio
     async def test_call_llm_with_structured_output_success(
@@ -312,7 +312,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 0.85}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             return_value=mock_response
         )
 
@@ -321,8 +321,8 @@ class TestOpenAIRerankerProvider:
         )
 
         # Verify structured output format was used
-        mock_provider._client.chat.completions.create.assert_called_once()  # type: ignore[union-attr]
-        call_kwargs = mock_provider._client.chat.completions.create.call_args[1]  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create.assert_called_once()  # type: ignore
+        call_kwargs = mock_provider._client.chat.completions.create.call_args[1]  # type: ignore
         assert call_kwargs["response_format"]["type"] == "json_schema"
         assert "json_schema" in call_kwargs["response_format"]
         assert call_kwargs["response_format"]["json_schema"]["strict"] is True
@@ -337,7 +337,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices[0].message.content = '{"score": 0.75}'
 
         # First call fails with json_schema error, second succeeds
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             side_effect=[
                 Exception("json_schema is not supported for this model"),
                 mock_response,
@@ -352,16 +352,16 @@ class TestOpenAIRerankerProvider:
         )
 
         # Verify fallback was called
-        assert mock_provider._client.chat.completions.create.call_count == 2  # type: ignore[union-attr]
+        assert mock_provider._client.chat.completions.create.call_count == 2  # type: ignore
 
         # Verify second call used json_object mode
         second_call_kwargs = (
-            mock_provider._client.chat.completions.create.call_args_list[1][1]  # type: ignore[union-attr]
+            mock_provider._client.chat.completions.create.call_args_list[1][1]  # type: ignore
         )
         assert second_call_kwargs["response_format"]["type"] == "json_object"
 
         # Verify warning was logged
-        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
+        mock_logger.warning.assert_called_once()  # type: ignore
 
     @pytest.mark.asyncio
     async def test_fallback_on_structured_output_error(
@@ -372,7 +372,7 @@ class TestOpenAIRerankerProvider:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 0.8}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             side_effect=[
                 Exception("structured outputs are not available"),
                 mock_response,
@@ -387,15 +387,15 @@ class TestOpenAIRerankerProvider:
         )
 
         # Verify fallback occurred
-        assert mock_provider._client.chat.completions.create.call_count == 2  # type: ignore[union-attr]
-        mock_logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
+        assert mock_provider._client.chat.completions.create.call_count == 2  # type: ignore
+        mock_logger.warning.assert_called_once()  # type: ignore
 
     @pytest.mark.asyncio
     async def test_no_fallback_on_unrelated_error(
         self, mock_provider: OpenAIRerankerProvider
     ) -> None:
         '''Test that unrelated errors are not caught for fallback.'''
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             side_effect=Exception("Network timeout error")
         )
 
@@ -488,7 +488,7 @@ class TestAnthropicRerankerProvider:
             )
 
             assert score == 0.6
-            mock_provider._logger.warning.assert_called_once()  # type: ignore[unresolved-attribute]
+            mock_provider._logger.warning.assert_called_once()  # type: ignore
 
 
 class TestLLMRerankerInitialization:
@@ -617,7 +617,7 @@ class TestRerank:
             }
             return (document, scores.get(document, fallback_score))
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         candidates = [
             ("doc1", 0.8),
@@ -649,7 +649,7 @@ class TestRerank:
         async def mock_score_single(query, document, fallback_score, memory_age=None):
             return (document, 0.5)  # All scores below threshold
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         candidates = [("doc1", 0.8), ("doc2", 0.7)]
         result = await mock_reranker.rerank("test query", candidates)
@@ -663,7 +663,7 @@ class TestRerank:
         async def mock_score_single(query, document, fallback_score, memory_age=None):
             return (document, 0.8)
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         original_doc = "This is a very long document with specific content"
         candidates = [(original_doc, 0.5)]
@@ -689,7 +689,7 @@ class TestRerank:
             await anyio.sleep(0.01)  # Simulate async work
             return (document, 0.8)
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         candidates = [(f"doc{i}", 0.5) for i in range(5)]
 
@@ -717,7 +717,7 @@ class TestRerank:
             current_concurrent -= 1
             return (document, 0.8)
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
         mock_reranker.config = LLMRerankerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -742,7 +742,7 @@ class TestRerank:
         async def mock_score_single(query, document, fallback_score, memory_age=None):
             return (document, 0.8)
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         mock_logger = create_mock_logger()
         mock_reranker.logger = mock_logger
@@ -751,7 +751,7 @@ class TestRerank:
         await mock_reranker.rerank("test query", candidates)
 
         # Should log debug message about completion
-        mock_logger.debug.assert_called()  # type: ignore[unresolved-attribute]
+        mock_logger.debug.assert_called()  # type: ignore
 
 
 class TestLLMRerankerIntegration:
@@ -784,7 +784,7 @@ class TestLLMRerankerIntegration:
                 call_count += 1
                 return (document, score)
 
-            reranker._provider.score_document = mock_score_document  # type: ignore[method-assign]
+            reranker._provider.score_document = mock_score_document  # type: ignore
 
             candidates = [
                 ("High relevance doc", 0.8),
@@ -974,7 +974,7 @@ class TestRerankWithTimestampMap:
             captured_ages.append(memory_age)
             return (document, 0.8)
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         # Create timestamp_map with ISO timestamps
         past_time = datetime.now(timezone.utc) - timedelta(hours=2)
@@ -1003,7 +1003,7 @@ class TestRerankWithTimestampMap:
             captured_ages.append(memory_age)
             return (document, 0.8)
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         candidates = [("doc1", 0.5), ("doc2", 0.5)]
         await mock_reranker.rerank("test query", candidates)
@@ -1036,7 +1036,7 @@ class TestRerankWithTimestampMap:
                 captured_ages.append(memory_age)
                 return (document, 0.8)
 
-            reranker._score_single = mock_score_single  # type: ignore[method-assign]
+            reranker._score_single = mock_score_single  # type: ignore
 
             from datetime import datetime, timedelta, timezone
 
@@ -1094,7 +1094,7 @@ class TestOpenAIRerankerProviderWithMemoryAge:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = '{"score": 0.9}'
 
-        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create = AsyncMock(  # type: ignore
             return_value=mock_response
         )
 
@@ -1107,7 +1107,7 @@ class TestOpenAIRerankerProviderWithMemoryAge:
 
         assert doc == "Learn Python basics"
         assert score == 0.9
-        mock_provider._client.chat.completions.create.assert_called_once()  # type: ignore[union-attr]
+        mock_provider._client.chat.completions.create.assert_called_once()  # type: ignore
 
 
 class TestAnthropicExtractJsonEdgeCases:
@@ -1216,7 +1216,7 @@ class TestRerankBatchNormalization:
             scores = {"doc1": 0.9, "doc2": 0.6, "doc3": 0.3}
             return (document, scores.get(document, fallback_score))
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         candidates = [
             ("doc1", 0.8),
@@ -1236,7 +1236,7 @@ class TestRerankBatchNormalization:
             result = await mock_reranker.rerank("test query", candidates)
 
             mock_normalize.assert_called_once()
-            mock_reranker.logger.debug.assert_called()  # type: ignore[unresolved-attribute]
+            mock_reranker.logger.debug.assert_called()  # type: ignore
 
     @pytest.mark.asyncio
     async def test_rerank_batch_normalize_logs_range(
@@ -1248,7 +1248,7 @@ class TestRerankBatchNormalization:
             scores = {"doc1": 0.8, "doc2": 0.4}
             return (document, scores.get(document, fallback_score))
 
-        mock_reranker._score_single = mock_score_single  # type: ignore[method-assign]
+        mock_reranker._score_single = mock_score_single  # type: ignore
 
         candidates = [("doc1", 0.5), ("doc2", 0.5)]
 
@@ -1259,7 +1259,7 @@ class TestRerankBatchNormalization:
 
             await mock_reranker.rerank("test query", candidates)
 
-            debug_calls = mock_reranker.logger.debug.call_args_list  # type: ignore[unresolved-attribute]
+            debug_calls = mock_reranker.logger.debug.call_args_list  # type: ignore
             batch_log_found = any(
                 "Batch normalization" in (call[0][0] if call[0] else "")
                 for call in debug_calls

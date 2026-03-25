@@ -14,9 +14,9 @@ Usage:
     locust -f locustfile.py --headless --host http://127.0.0.1:8089 --users 100
 '''
 
-import asyncio
-from locust import HttpUser, task, between, events  # type: ignore[import]
-from locust.runners import LOCUST_MODE_LOCAL  # type: ignore[import]
+import time
+from locust import HttpUser, task, between, events  # type: ignore
+from locust.runners import LOCUST_MODE_LOCAL  # type: ignore
 from random import randint
 
 
@@ -72,7 +72,7 @@ class ReflectLogMCPUser(HttpUser):
         Simulates full data retrieval operations.
         '''
         self.client.get("/mcp/get_all")
-        asyncio.sleep(randint(100, 500) / 1000.0)
+        time.sleep(randint(100, 500) / 1000.0)
 
     @task
     def health_check(self) -> None:
