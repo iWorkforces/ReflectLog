@@ -6,7 +6,7 @@ ensuring that all settings are valid and consistent before the server starts.
 
 from dataclasses import dataclass
 import re
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 
 @dataclass
@@ -750,7 +750,8 @@ def validate_config(config: object) -> list[ValidationError]:
             raise ConfigurationError(
                 "fusion_weights must have at least 2 elements for weighted RRF"
             )
-        for i, w in enumerate(fusion_weights):
+        typed_weights: list[object] = cast(list[object], fusion_weights)
+        for i, w in enumerate(typed_weights):
             if not isinstance(w, (int, float)):
                 raise ConfigurationError(
                     f"fusion_weights[{i}] must be a number, got {type(w).__name__}"
