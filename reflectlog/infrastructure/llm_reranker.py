@@ -483,7 +483,9 @@ class LLMReranker(BaseModel):
         self._provider = create_reranker_provider(self.config, self.logger)
 
         # TTL cache for reranking results to avoid redundant API calls
-        self._rerank_cache: dict[str, tuple[float, float]] = {}  # key -> (score, timestamp)
+        self._rerank_cache: dict[
+            str, tuple[float, float]
+        ] = {}  # key -> (score, timestamp)
         self._rerank_cache_ttl: float = 60.0  # seconds
 
     def _compute_cache_key(self, query: str, document: str) -> str:

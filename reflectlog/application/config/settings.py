@@ -377,7 +377,11 @@ class Config:
             "enable_rrf_fusion": os.environ.get("ENABLE_RRF_FUSION", "true").lower()
             == "true",
             "fusion_weights": (
-                [float(w.strip()) for w in os.environ.get("FUSION_WEIGHTS", "").split(",") if w.strip()]
+                [
+                    float(w.strip())
+                    for w in os.environ.get("FUSION_WEIGHTS", "").split(",")
+                    if w.strip()
+                ]
                 or None
             ),
         }
