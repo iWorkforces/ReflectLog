@@ -2,8 +2,10 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
 import json
 import re
+import time as _time
 from typing import Any, Protocol, TypedDict, final, override
 
 import anyio
@@ -480,6 +482,23 @@ class LLMReranker(BaseModel):
         # Initialize provider based on configuration
         self._provider = create_reranker_provider(self.config, self.logger)
 
+        # TTL cache for reranking results to avoid redundant API calls
+        self._rerank_cache: dict[str, tuple[float, float]] = {}  # key -> (score, timestamp)
+        self._rerank_cache_ttl: float = 60.0  # seconds
+
+    def _compute_cache_key(self, query: str, document: str) -> str:
+        """Compute deterministic cache key for a query-document pair.
+
+        Args:
+            query: Search query string.
+            document: Document text.
+
+        Returns:
+            MD5 hash hex string as cache key.
+        """
+        raw = f"{query}||{document}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
     async def _score_single(
         self,
         query: str,
@@ -490,6 +509,7 @@ class LLMReranker(BaseModel):
         """Score a single document's relevance to the query.
 
         Delegates to the configured provider for actual scoring.
+        Uses TTL cache to avoid redundant API calls for identical queries.
 
         Args:
             query: Search query string.
@@ -505,11 +525,24 @@ class LLMReranker(BaseModel):
         if self._provider is None:
             return (document, fallback_score)
 
+        # Check cache first
+        cache_key = self._compute_cache_key(query, document)
+        current_time = _time.time()
+        if cache_key in self._rerank_cache:
+            cached_score, cached_time = self._rerank_cache[cache_key]
+            if current_time - cached_time < self._rerank_cache_ttl:
+                return (document, cached_score)
+
         # Only pass memory_age if recency boost is enabled
         effective_age = memory_age if self.config.enable_recency_boost else None
-        return await self._provider.score_document(
+        _, score = await self._provider.score_document(
             query, document, fallback_score, effective_age
         )
+
+        # Cache the result
+        self._rerank_cache[cache_key] = (score, current_time)
+
+        return (document, score)
 
     async def rerank(
         self,
