@@ -1286,6 +1286,13 @@ class TantivyEngine(BaseModel):
             # Rebuild the index with only active documents
             self._rebuild_index_with_docs(docs_to_keep)
 
+            # Clean up old segment files
+            try:
+                if self._writer is not None:
+                    self._writer.garbage_collect_files()
+            except Exception:
+                pass  # Best effort - files will be cleaned up eventually
+
             elapsed_ms = int((time.time() - start_time) * 1000)
 
             if self.logger:

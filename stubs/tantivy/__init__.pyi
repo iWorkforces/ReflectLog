@@ -121,6 +121,10 @@ class IndexWriter:
         """Wait for background merge threads to complete."""
         ...
 
+    def garbage_collect_files(self) -> None:
+        """Remove obsolete segment files from disk."""
+        ...
+
 class Query:
     """A Tantivy query."""
 

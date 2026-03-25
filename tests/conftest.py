@@ -170,9 +170,9 @@ def mcp_server(set_env_vars, mock_usearch_engine):
 
         server = FastMCPServer()
         # Add backwards-compatible 'memory_manager' attribute for tests (accessing private attribute)
-        server.memory_manager = server._memory_manager  # type: ignore[attr-defined]
+        server.memory_manager = server._memory_manager  # type: ignore
         # Add backwards-compatible 'memory' attribute for tests
-        server.memory_manager.memory = mock_usearch_engine  # type: ignore[attr-defined]
+        server.memory_manager.memory = mock_usearch_engine  # type: ignore
         return server
 
 

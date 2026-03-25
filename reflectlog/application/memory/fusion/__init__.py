@@ -18,6 +18,7 @@ def create_fusion_engine(
     method: str = "rrf",
     normalization: str | None = None,
     rrf_k: int = 60,
+    weights: list[float] | None = None,
     logger: IStructuredLogger | None = None,
 ) -> FusionEngine:
     """Factory function to create a fusion engine.
@@ -30,6 +31,8 @@ def create_fusion_engine(
                       based on method.
         rrf_k: RRF k parameter (only used when method='rrf'). Lower values
               give more weight to top ranks. Defaults to 60.
+        weights: Optional list of weights for weighted RRF fusion. Must have
+                at least 2 elements if provided. Defaults to None (equal weights).
         logger: Optional StructuredLogger instance for debug logging.
 
     Returns:
@@ -42,6 +45,7 @@ def create_fusion_engine(
         method=method,
         normalization=normalization,
         rrf_k=rrf_k,
+        weights=weights,
         logger=logger,
     )
 

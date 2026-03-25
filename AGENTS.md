@@ -1,7 +1,7 @@
 # ReflectLogMCP Knowledge Base
 
-**Generated:** 2026-02-23
-**Commit:** 768b176
+**Generated:** 2026-03-25
+**Commit:** 7854528
 **Branch:** develop
 
 ## OVERVIEW
@@ -12,17 +12,21 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 ```
 ./
-├── reflectlog/              # Main package (80 .py files)
-│   ├── core/              # Protocol definitions (8 files)
-│   ├── application/         # Business logic (41 files)
-│   ├── infrastructure/      # External integrations (16 files)
-│   ├── plugins/           # Plugin system (4 files)
+├── reflectlog/              # Main package (~80 .py files, 21k lines)
+│   ├── core/              # Protocol definitions (8 files, 2k lines)
+│   ├── application/         # Business logic (41 files, 11k lines)
+│   │   ├── memory/        # Memory pipelines + fusion + reranking
+│   │   ├── tools/         # MCP tool implementations
+│   │   ├── config/        # Settings, validation, prompts, presets
+│   │   └── utils/         # Logging, metrics, retry, circuit breaker
+│   ├── infrastructure/      # External integrations (16 files, 5.7k lines)
+│   ├── plugins/           # Plugin system (4 files, 1.1k lines)
 │   └── utility/           # Platform utilities (8 files)
-├── tests/                # Unit + integration tests (54 files)
-├── stubs/               # Type stubs for third-party libs
-├── indexes/              # Persistent index data
-├── scripts/              # Build/CI scripts (3 scripts)
-└── *.sh                  # Custom wrapper scripts (3 scripts)
+├── tests/                # Unit + integration + load + security (71 files, 34k lines)
+├── stubs/               # Type stubs for third-party libs (14 .pyi files)
+├── indexes/              # Persistent index data (gitignored)
+├── scripts/              # Build/dev scripts + git hooks
+└── *.sh                  # Wrapper scripts (type-check, lint, unittest, server)
 ```
 
 ## WHERE TO LOOK
@@ -82,11 +86,16 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 - Never use legacy typing imports (`List`, `Optional`, `Union`) - use native syntax
 - Never acquire locks in wrong order (always `_write_lock` before `_lock`)
 - Never suppress type errors in CI - build fails on type violations
+- Never use triple single quotes in docstrings - use `"""` only
+- Never use bare `except:` - catch specific exceptions
+- Never use legacy typing imports (`List`, `Optional`, `Union`) - use native syntax
+- Never acquire locks in wrong order (always `_write_lock` before `_lock`)
+- Never suppress type errors in CI - build fails on type violations
 - Never use triple double quotes in docstrings - use `'''` only
 
 ## UNIQUE STYLES
 
-**Triple Single Quotes** - Docstrings use `'''not """`. Enforced by lint script.
+**Triple Double Quotes** - Docstrings use `"""` not `'''`. Enforced by ruff `docstring-quotes = "double"`.
 
 **Custom Build Wrappers** - All dev commands in bash scripts with auto-installation (`uv`, `ty`, `ruff`, `pytest`).
 
@@ -156,15 +165,18 @@ uv run reflectlog --transport http --port 9103
 
 | File | Lines | Complexity Driver |
 |-------|---------|------------------|
-| tantivy_engine.py | 1,312 | Full-text search wrapper, soft-delete, tombstone caching (LRU), compaction |
-| add_phases.py | 1,027 | 3-phase parallel pipeline, smart replacement LLM checks, sequential storage |
-| manager.py | 1,016 | Memory manager facade, complex initialization, lock hierarchy |
+| tantivy_engine.py | 1,324 | Full-text search, soft-delete, tombstone LRU cache, compaction |
+| test_tantivy_engine.py | 2,489 | Infrastructure test (test file) |
+| test_memory_store.py | 1,692 | Infrastructure test (test file) |
+| test_plugins.py | 1,591 | Plugin system test (test file) |
+| add_phases.py | 1,052 | 3-phase parallel pipeline, smart replacement LLM checks |
+| manager.py | 1,042 | Memory manager facade, complex init, lock hierarchy |
+| usearch_engine.py | 848 | Vector search, batch operations, dual search modes |
 | memory_store.py | 865 | SQLite CRUD, archival/recovery, batch operations |
-| usearch_engine.py | 839 | Vector search wrapper, batch operations, dual search modes |
-| validation.py | 773 | 60+ env var validation, type/range checking, SQL injection prevention |
-| search_strategies.py | 687 | 4-step pipeline, RRF fusion, threshold filtering, reranking |
-| settings.py | 665 | Configuration dataclass, 60+ fields, factory methods |
-| llm_reranker.py | 645 | LLM reranking, provider abstraction, parallel scoring, temporal scoring |
+| validation.py | 778 | 60+ env var validation, type/range checking |
+| search_strategies.py | 743 | 4-step pipeline, RRF fusion, threshold filtering |
+| settings.py | 757 | Configuration dataclass, 60+ fields, factory methods |
+| llm_reranker.py | 658 | LLM reranking, provider abstraction, temporal scoring |
 
 ## SUBDIRECTORIES WITH AGENTS.md
 
@@ -173,17 +185,18 @@ uv run reflectlog --transport http --port 9103
 | `reflectlog/` | 140 | Highest complexity (80 files, 5 packages) |
 | `reflectlog/application/` | 140 | Business logic (41 files, 4 subdirs) |
 | `reflectlog/infrastructure/` | 65 | External integrations (16 files, 5 subdirs) |
-| `reflectlog/application/memory/` | 52 | Memory management (14 files, 2 subdirs) |
+| `reflectlog/application/memory/` | 52 | Memory management (9 files, 2 subdirs) |
 | `reflectlog/application/utils/` | 34 | Utilities (10 files, logging/metrics/retry/security) |
 | `reflectlog/core/` | 28 | Protocol definitions (8 files) |
 | `reflectlog/utility/` | 30 | Platform utilities (8 files, 1 subdir) |
-| `reflectlog/plugins/` | 16 | Plugin system (4 files, 1140 lines) |
+| `reflectlog/plugins/` | 16 | Plugin system (4 files, 1.1k lines) |
 | `reflectlog/application/config/` | 19 | Configuration (5 files) |
-| `tests/` | 54 | Test suite (71 files, 90% coverage) |
-| `tests/integration/` | 15 | Integration tests with real engines (7 files) |
-| `tests/unit/application/` | 18 | Application layer unit tests (11 files) |
-| `tests/unit/application/memory/` | 12 | Memory pipeline tests (8 files) |
-| `tests/unit/application/utils/` | 12 | Utility tests (9 files) |
-| `tests/unit/infrastructure/` | 12 | Infrastructure tests (9 files) |
-| `scripts/` | 10 | Build/dev scripts, git hooks (3 files) |
-| `stubs/` | 12 | Type stubs for third-party libs (14 .pyi files) |
+| `reflectlog/application/tools/` | 15 | MCP tool implementations (7 files) |
+| `tests/` | 54 | Test suite (71 files, 90% coverage, 34k lines) |
+| `tests/unit/application/` | 18 | Application layer tests (11 files, 16k lines) |
+| `tests/unit/infrastructure/` | 12 | Infrastructure tests (9 files, 10k lines) |
+| `tests/unit/application/memory/` | 12 | Memory pipeline tests (8 files, 6.3k lines) |
+| `tests/unit/application/utils/` | 12 | Utility tests (9 files, 3.6k lines) |
+| `tests/integration/` | 15 | Integration tests (7 files, 2.6k lines) |
+| `scripts/` | 10 | Build/dev scripts, git hooks (3 scripts) |
+| `stubs/` | 12 | Type stubs (14 .pyi files) |

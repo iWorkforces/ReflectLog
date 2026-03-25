@@ -29,37 +29,6 @@ tests/integration/
 | test_mcp_workflows.py | Full add→search→remove cycles |
 | test_chaos.py | Random operations, edge case discovery |
 
-## KEY PATTERNS
-
-### Real Engine Initialization
-```python
-@pytest.fixture
-async def real_memory_manager(tmp_path):
-    '''Uses actual USearch + Tantivy, not mocks.'''
-    config = Config(project_id="test_integration", ...)
-    manager = MemoryManager(config)
-    yield manager
-    await manager.close()
-```
-
-### Concurrency Tests
-```python
-async def test_concurrent_adds_different_projects():
-    '''Multiple projects adding simultaneously.'''
-    async with anyio.create_task_group() as tg:
-        for project in projects:
-            tg.start_soon(add_messages, project, messages)
-```
-
-### Chaos Testing
-```python
-@pytest.mark.parametrize("seed", range(100))
-def test_random_operations(seed):
-    '''Fuzz testing with randomized operations.'''
-    random.seed(seed)
-    # Random mix of add/search/delete
-```
-
 ## ANTI-PATTERNS
 
 - Never mock USearch/Tantivy in integration tests
@@ -67,8 +36,4 @@ def test_random_operations(seed):
 - Never share managers between tests (isolation)
 
 ## NOTES
-
-- **Slow**: Integration tests take 10-60s each
-- **Requires cleanup**: Temp directories auto-removed
-- **NUMBA enabled**: JIT compilation active (unlike unit tests)
-- **Markers**: `@pytest.mark.integration`
+- Slow (10-60s each), NUMBA JIT enabled, `@pytest.mark.integration`

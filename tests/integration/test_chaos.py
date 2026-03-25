@@ -318,12 +318,12 @@ class TestDataCorruption:
 
         # Mock the reload method to do nothing for testing
         original_reload = reload_manager.reload_config
-        reload_manager.reload_config = Mock(return_value=Config.from_environment())  # type: ignore[assignment]
+        reload_manager.reload_config = Mock(return_value=Config.from_environment())  # type: ignore
 
         await manager.add_memories_async(["test memory"])
 
         # Restore original
-        reload_manager.reload_config = original_reload  # type: ignore[assignment]
+        reload_manager.reload_config = original_reload  # type: ignore
 
 
 def run_chaos_tests(
