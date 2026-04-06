@@ -6,37 +6,42 @@ External integrations wrapping third-party libraries with protocol-based interfa
 
 ```
 infrastructure/
-├── search/           # Search engines (USearch, Tantivy)
-├── embeddings/       # Embedding providers (Qwen3)
-├── reranking/        # Rerankers (LLM, cross-encoder)
-├── memory/           # Storage (MemoryStore, SmartReplacer)
-└── llm/              # LLM provider protocols
-```
+├── usearch_engine.py     # Semantic vector search (HNSW, batch, dual modes)
+├── tantivy_engine.py     # Full-text search, soft-delete, tombstone cache
+├── llm_reranker.py       # LLM reranking, provider abstraction, temporal
+├── cross_encoder_reranker.py  # Local BAAI/bge-reranker-v2-m3
+├── memory_store.py       # SQLite CRUD, archival/recovery
+├── smart_replacer.py     # LLM update detection, 0.7 threshold
+├── cached_embeddings.py  # LRU query cache (100 entries)
+├── qwen3_embedding.py    # Qwen3 Langchain embeddings
+├── llm_provider_base.py  # Base OpenAI provider protocol
+├── search/              # SearchEngineBase + re-exports
+└── embeddings/          # Re-exports (future expansion)
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
 |------|----------|--------|
-| USearch vector search | search/usearch_engine.py | HNSW, batch ops, dual modes |
-| Tantivy full-text | search/tantivy_engine.py | Soft-delete, tombstone LRU cache |
-| LLM reranking | reranking/llm_reranker.py | Provider abstraction, temporal scoring |
-| Cross-encoder | reranking/cross_encoder.py | Local BAAI/bge-reranker-v2-m3 |
-| Memory storage | memory/memory_store.py | SQLite CRUD, archival/recovery |
-| Smart replacement | memory/smart_replacer.py | LLM update detection, 0.7 threshold |
-| Embedding cache | embeddings/cached.py | LRU cache, 100 entry default |
-| Qwen3 embeddings | embeddings/langchain_qwen.py | Langchain integration |
+| USearch vector search | `usearch_engine.py` | HNSW, batch ops, dual modes |
+| Tantivy full-text | `tantivy_engine.py` | Soft-delete, tombstone LRU cache |
+| LLM reranking | `llm_reranker.py` | Provider abstraction, temporal scoring |
+| Cross-encoder | `cross_encoder_reranker.py` | Local BAAI/bge-reranker-v2-m3 |
+| Memory storage | `memory_store.py` | SQLite CRUD, archival/recovery |
+| Smart replacement | `smart_replacer.py` | LLM update detection, 0.7 threshold |
+| Embedding cache | `cached_embeddings.py` | LRU cache, 100 entries |
+| Qwen3 embeddings | `qwen3_embedding.py` | Langchain integration |
 
 ## CODE MAP
 
 | Symbol | Type | Location | Refs | Role |
 |--------|------|----------|--------|------|
-| USearchEngine | Class | search/usearch_engine.py | High | Semantic search, libSQL storage |
-| TantivyEngine | Class | search/tantivy_engine.py | High | Full-text search, soft-delete |
-| LLMReranker | Class | reranking/llm_reranker.py | Medium | LLM-based scoring, temporal |
-| CrossEncoderReranker | Class | reranking/cross_encoder.py | Low | Local reranking |
-| MemoryStore | Class | memory/memory_store.py | Medium | SQLite persistence |
-| SmartReplacer | Class | memory/smart_replacer.py | Medium | LLM memory update detection |
-| CachedEmbeddings | Class | embeddings/cached.py | Medium | LRU query cache |
+| USearchEngine | Class | usearch_engine.py | High | Semantic search, HNSW, batch ops |
+| TantivyEngine | Class | tantivy_engine.py | High | Full-text search, soft-delete |
+| LLMReranker | Class | llm_reranker.py | Medium | LLM-based scoring, temporal |
+| CrossEncoderReranker | Class | cross_encoder_reranker.py | Low | Local reranking |
+| MemoryStore | Class | memory_store.py | Medium | SQLite persistence |
+| SmartReplacer | Class | smart_replacer.py | Medium | LLM memory update detection |
+| CachedEmbeddings | Class | cached_embeddings.py | Medium | LRU query cache |
 
 ## CONVENTIONS
 

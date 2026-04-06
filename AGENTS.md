@@ -1,7 +1,7 @@
 # ReflectLogMCP Knowledge Base
 
-**Generated:** 2026-03-25
-**Commit:** 7854528
+**Generated:** 2026-04-06
+**Commit:** 9c391a0
 **Branch:** develop
 
 ## OVERVIEW
@@ -12,17 +12,17 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 ```
 ./
-├── reflectlog/              # Main package (~80 .py files, 21k lines)
+├── reflectlog/              # Main package (~98 files, 21k lines)
 │   ├── core/              # Protocol definitions (8 files, 2k lines)
-│   ├── application/         # Business logic (41 files, 11k lines)
+│   ├── application/         # Business logic (47 files, 11k lines)
 │   │   ├── memory/        # Memory pipelines + fusion + reranking
 │   │   ├── tools/         # MCP tool implementations
 │   │   ├── config/        # Settings, validation, prompts, presets
 │   │   └── utils/         # Logging, metrics, retry, circuit breaker
-│   ├── infrastructure/      # External integrations (16 files, 5.7k lines)
-│   ├── plugins/           # Plugin system (4 files, 1.1k lines)
-│   └── utility/           # Platform utilities (8 files)
-├── tests/                # Unit + integration + load + security (71 files, 34k lines)
+│   ├── infrastructure/      # External integrations (22 files, 5.7k lines)
+│   ├── plugins/           # Plugin system (5 files, 1.1k lines)
+│   └── utility/           # Platform utilities (10 files, 1 subdir)
+├── tests/                # Unit + integration + load + security (86 files, 34k lines)
 ├── stubs/               # Type stubs for third-party libs (14 .pyi files)
 ├── indexes/              # Persistent index data (gitignored)
 ├── scripts/              # Build/dev scripts + git hooks
@@ -81,17 +81,12 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
-- Never use `@type: ignore`, `@ts-expect-error`, `as any` (type safety strict)
+- Never use `@type: ignore`, `@ts-expect-error`, `as any` - type safety strict
 - Never use bare `except:` - catch specific exceptions
 - Never use legacy typing imports (`List`, `Optional`, `Union`) - use native syntax
 - Never acquire locks in wrong order (always `_write_lock` before `_lock`)
 - Never suppress type errors in CI - build fails on type violations
 - Never use triple single quotes in docstrings - use `"""` only
-- Never use bare `except:` - catch specific exceptions
-- Never use legacy typing imports (`List`, `Optional`, `Union`) - use native syntax
-- Never acquire locks in wrong order (always `_write_lock` before `_lock`)
-- Never suppress type errors in CI - build fails on type violations
-- Never use triple double quotes in docstrings - use `'''` only
 
 ## UNIQUE STYLES
 
@@ -182,17 +177,17 @@ uv run reflectlog --transport http --port 9103
 
 | Path | Score | Reason |
 |-------|--------|--------|
-| `reflectlog/` | 140 | Highest complexity (80 files, 5 packages) |
-| `reflectlog/application/` | 140 | Business logic (41 files, 4 subdirs) |
-| `reflectlog/infrastructure/` | 65 | External integrations (16 files, 5 subdirs) |
+| `reflectlog/` | 140 | Highest complexity (98 files, 5 packages) |
+| `reflectlog/application/` | 140 | Business logic (47 files, 4 subdirs) |
+| `reflectlog/infrastructure/` | 65 | External integrations (22 files, 5 subdirs) |
 | `reflectlog/application/memory/` | 52 | Memory management (9 files, 2 subdirs) |
 | `reflectlog/application/utils/` | 34 | Utilities (10 files, logging/metrics/retry/security) |
 | `reflectlog/core/` | 28 | Protocol definitions (8 files) |
-| `reflectlog/utility/` | 30 | Platform utilities (8 files, 1 subdir) |
-| `reflectlog/plugins/` | 16 | Plugin system (4 files, 1.1k lines) |
+| `reflectlog/utility/` | 30 | Platform utilities (10 files, 1 subdir) |
+| `reflectlog/plugins/` | 16 | Plugin system (5 files, 1.1k lines) |
 | `reflectlog/application/config/` | 19 | Configuration (5 files) |
 | `reflectlog/application/tools/` | 15 | MCP tool implementations (7 files) |
-| `tests/` | 54 | Test suite (71 files, 90% coverage, 34k lines) |
+| `tests/` | 54 | Test suite (86 files, 34k lines) |
 | `tests/unit/application/` | 18 | Application layer tests (11 files, 16k lines) |
 | `tests/unit/infrastructure/` | 12 | Infrastructure tests (9 files, 10k lines) |
 | `tests/unit/application/memory/` | 12 | Memory pipeline tests (8 files, 6.3k lines) |

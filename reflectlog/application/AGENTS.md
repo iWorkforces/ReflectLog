@@ -7,7 +7,7 @@ Orchestration layer implementing 3-phase add pipeline and 4-step search pipeline
 
 | Task | Location | Notes |
 |-------|-----------|--------|
-| Memory operations | `memory/manager.py` | Facade for all memory ops |
+│   ├── memory/        # Memory pipelines + fusion + reranking
 | Search pipeline | `memory/search_pipeline.py` | 4-step staged architecture |
 | Add pipeline | `memory/add_pipeline.py` | 3-phase parallel execution |
 | Fusion algorithms | `memory/fusion/` | RRF, CombSUM, Borda variants |
@@ -17,7 +17,7 @@ Orchestration layer implementing 3-phase add pipeline and 4-step search pipeline
 ## CONVENTIONS
 
 **Pipeline Architecture** - SearchPipeline and AddPipeline use pluggable stages/phases. Each stage returns SearchResult for composability.
-
+| Reranking | `application/memory/reranking/` | Score normalization + recency decay
 **3-Phase Add** - Phase 1: duplicate detection (parallel batch), Phase 2: smart replacement (LLM checks), Phase 3: sequential storage.
 
 **4-Step Search** - Step 1: parallel dual-search, Step 2: RRF fusion, Step 3: threshold filter, Step 4: LLM/cross-encoder rerank.

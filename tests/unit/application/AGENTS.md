@@ -35,12 +35,6 @@ tests/unit/application/
 - Never import real infrastructure classes
 - Never skip config reset between tests
 - Never use `@pytest.mark.integration` here
-- All mocked: no real USearch/Tantivy/LLM calls, each test <100ms
-## ANTI-PATTERNS
-
-- Never import real infrastructure classes
-- Never skip config reset between tests
-- Never use `@pytest.mark.integration` here
 
 ## NOTES
 
