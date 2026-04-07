@@ -18,7 +18,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
-from reflectlog.application.memory.fusion import FusionEngine
+from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.application.memory.engine_factory import (
     EngineFactory,
     EngineFactoryResult,
@@ -26,9 +26,10 @@ from reflectlog.application.memory.engine_factory import (
     create_llm_reranker,
     create_smart_replacer,
 )
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.infrastructure import TantivyEngine, USearchEngine
+from reflectlog.infrastructure.tantivy_engine import TantivyEngine
+from reflectlog.infrastructure.usearch_engine import USearchEngine
 
 
 @pytest.fixture

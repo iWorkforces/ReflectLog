@@ -12,7 +12,7 @@ import math
 
 import pytest
 
-from reflectlog.application.memory.reranking import (
+from reflectlog.application.memory.reranking.normalization import (
     apply_recency_decay,
     apply_threshold_with_safety_net,
     calculate_recency_factor,

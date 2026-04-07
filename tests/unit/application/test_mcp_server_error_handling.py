@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reflectlog.application.exceptions import (
+from reflectlog.core.exceptions import (
     ConfigurationError,
     StorageError,
 )

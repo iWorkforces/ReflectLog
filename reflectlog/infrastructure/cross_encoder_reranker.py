@@ -9,7 +9,7 @@ Uses FlagEmbedding's FlagReranker which is optimized for BGE reranker models
 with built-in FP16 support and score normalization.
 
 Example:
-    >>> from reflectlog.infrastructure import CrossEncoderConfig, CrossEncoderReranker
+    >>> from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
     >>> config = CrossEncoderConfig.from_app_config(app_config)
     >>> reranker = CrossEncoderReranker(config=config, logger=logger)
     >>> results = reranker.rerank("Python tutorials", candidates)
@@ -24,7 +24,7 @@ import warnings
 from asyncer import asyncify
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from reflectlog.application.config import Config
+from reflectlog.application.config.settings import Config
 from reflectlog.core.logging import IStructuredLogger
 
 
@@ -297,7 +297,7 @@ class CrossEncoderReranker(BaseModel):
 
         # Apply batch normalization if enabled
         if self.config.batch_normalize:
-            from reflectlog.application.memory.reranking import (
+            from reflectlog.application.memory.reranking.normalization import (
                 normalize_reranker_scores,
             )
 
@@ -323,7 +323,9 @@ class CrossEncoderReranker(BaseModel):
             and timestamp_map
             and scored
         ):
-            from reflectlog.application.memory.reranking import apply_recency_decay
+            from reflectlog.application.memory.reranking.normalization import (
+                apply_recency_decay,
+            )
 
             pre_decay_scores = [s for _, s in scored]
             scored = apply_recency_decay(
@@ -379,7 +381,7 @@ class CrossEncoderReranker(BaseModel):
         scored.sort(key=lambda x: x[1], reverse=True)
 
         # Apply threshold with optional safety net
-        from reflectlog.application.memory.reranking import (
+        from reflectlog.application.memory.reranking.normalization import (
             apply_threshold_with_safety_net,
         )
 

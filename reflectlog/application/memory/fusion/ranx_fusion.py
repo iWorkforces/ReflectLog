@@ -5,7 +5,7 @@ import math
 from typing import TYPE_CHECKING, Any, final, override
 
 if TYPE_CHECKING:
-    from reflectlog.core import IStructuredLogger
+    from reflectlog.core.logging import IStructuredLogger
 
 import numpy as np
 from ranx import Run

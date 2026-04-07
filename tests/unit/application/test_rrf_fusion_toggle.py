@@ -204,7 +204,7 @@ class TestSearchPipelineWithRRFToggle:
         """Mock structured logger."""
         from typing import cast
 
-        from reflectlog.application.utils import StructuredLogger
+        from reflectlog.application.utils.logging import StructuredLogger
         from reflectlog.core.logging import IStructuredLogger
 
         return cast(IStructuredLogger, Mock(spec=StructuredLogger))

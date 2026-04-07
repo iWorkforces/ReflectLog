@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reflectlog.application.exceptions import SearchError
+from reflectlog.core.exceptions import SearchError
 from reflectlog.infrastructure.tantivy_engine import (
     DEFAULT_TANTIVY_DOC_LIMIT,
     TantivyConfig,

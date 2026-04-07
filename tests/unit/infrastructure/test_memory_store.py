@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reflectlog.application.exceptions import StorageError
+from reflectlog.core.exceptions import StorageError
 from reflectlog.infrastructure.memory_store import (
     ArchivedMemoryRecord,
     MemoryRecord,

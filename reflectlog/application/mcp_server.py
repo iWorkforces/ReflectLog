@@ -3,18 +3,20 @@
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
 
-from .config import Config, build_instructions, config
-from .config.settings import get_config
-from .memory import MemoryManager
+from reflectlog.application import config
+from reflectlog.application.config.settings import Config, get_config
+from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.tools.add import AddTool
+from reflectlog.core.prompts import build_instructions
+
 from .tools import (
-    AddTool,
     BaseTool,
     GetAllTool,
     HealthCheckTool,
     RemoveTool,
     SearchTool,
 )
-from .utils import create_logger
+from .utils.logging import create_logger
 
 # Canonical registry of available MCP tool implementations.
 AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {

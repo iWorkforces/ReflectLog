@@ -3,12 +3,13 @@
 import time
 from typing import override
 
+from reflectlog.core.exceptions import StorageError
+
 from ..constants import (
     LOG_ADD_MEMORY_PREVIEW_LIMIT,
     LOG_SEPARATOR_LENGTH,
 )
-from ..exceptions import StorageError
-from ..utils import truncate_memory, validate_memories
+from ..utils.validation import truncate_memory, validate_memories
 from .base import BaseTool
 
 

@@ -19,7 +19,7 @@ import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from reflectlog.application.config import Config
+    from reflectlog.application.config.settings import Config
 
 logger = logging.getLogger(__name__)
 

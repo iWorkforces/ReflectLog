@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
-from reflectlog.application.exceptions import SearchError
+from reflectlog.core.exceptions import SearchError
 from reflectlog.application.memory.search_strategies import (
     MIN_OVERFETCH_LIMIT,
     SearchContext,
@@ -18,7 +18,7 @@ from reflectlog.application.memory.search_strategies import (
     SearchResult,
     calculate_adaptive_overfetch,
 )
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
 
 

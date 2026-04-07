@@ -14,24 +14,23 @@ import time
 from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
-    from reflectlog.infrastructure import (
-        CrossEncoderReranker,
-        LLMReranker,
-        TantivyEngine,
-    )
+    from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
+    from reflectlog.infrastructure.llm_reranker import LLMReranker
+    from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
 from asyncer import (
     asyncify,
     create_task_group,
 )
 
+from reflectlog.core.exceptions import SearchError
+
 from ...core.logging import IStructuredLogger
-from ..config import Config
-from ..exceptions import SearchError
+from ..config.settings import Config
 from ..types import ISemanticSearchEngine
-from ..utils import format_fusion_score_status
+from ..utils.logging import format_fusion_score_status
 from ..utils.validation import truncate_memory
-from .fusion import FusionEngine
+from .fusion.base import FusionEngine
 
 # Constants for magic numbers (documented for maintainability)
 MIN_OVERFETCH_LIMIT = 20  # Minimum docs to fetch for better fusion quality

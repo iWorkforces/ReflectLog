@@ -16,17 +16,18 @@ import time
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from reflectlog.infrastructure import TantivyEngine
     from reflectlog.infrastructure.smart_replacer import SmartReplacer
+    from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
 import anyio
 from asyncer import asyncify, create_task_group
 
+from reflectlog.core.exceptions import StorageError
+
 from ...core.logging import IStructuredLogger
-from ..config import Config
-from ..exceptions import StorageError
+from ..config.settings import Config
 from ..types import ISemanticSearchEngine
-from ..utils import truncate_memory
+from ..utils.validation import truncate_memory
 from .match_utils import has_exact_match
 
 

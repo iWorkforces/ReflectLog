@@ -33,26 +33,22 @@ import time
 from typing import Any, final
 
 from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
-from reflectlog.infrastructure import (
-    CachedEmbeddings,
+from reflectlog.core.exceptions import InconsistentStateError, SearchError, StorageError
+from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
-    LangchainQwenEmbeddings,
-    LLMReranker,
-    LLMRerankerConfig,
-    SmartReplacer,
-    SmartReplacerConfig,
-    TantivyConfig,
-    TantivyEngine,
-    USearchConfig,
-    USearchEngine,
 )
+from reflectlog.infrastructure.llm_reranker import LLMReranker, LLMRerankerConfig
+from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
+from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
+from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
+from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 from ...core.logging import IStructuredLogger
-from ..config import Config
-from ..exceptions import InconsistentStateError, SearchError, StorageError
+from ..config.settings import Config
 from ..types import ISemanticSearchEngine
-from ..utils import (
+from ..utils.validation import (
     truncate_memory,
 )
 from .add_phases import (
@@ -62,7 +58,8 @@ from .add_phases import (
     SmartReplacementPhase,
     StoragePhase,
 )
-from .fusion import FusionEngine, create_fusion_engine
+from .fusion import create_fusion_engine
+from .fusion.base import FusionEngine
 from .match_utils import has_exact_match
 from .search_strategies import (
     SearchContext,

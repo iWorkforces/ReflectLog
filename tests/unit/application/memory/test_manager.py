@@ -13,15 +13,16 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
-from reflectlog.application.exceptions import (
+from reflectlog.core.exceptions import (
     InconsistentStateError,
     SearchError,
     StorageError,
 )
 from reflectlog.application.memory.manager import MemoryManager
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.infrastructure import CrossEncoderReranker, LLMReranker
+from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
+from reflectlog.infrastructure.llm_reranker import LLMReranker
 
 
 # ---------------------------------------------------------------------------

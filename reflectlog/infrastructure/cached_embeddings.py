@@ -23,7 +23,8 @@ class CachedEmbeddings(BaseModel):
 
     Example:
         ```python
-        from reflectlog.infrastructure import LangchainQwenEmbeddings, CachedEmbeddings
+        from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 
         base_embedder = LangchainQwenEmbeddings({...})
         cached_embedder = CachedEmbeddings(

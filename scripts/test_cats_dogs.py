@@ -38,8 +38,8 @@ async def main():
     print("Testing: cats -> dogs replacement")
     print("=" * 70)
 
-    from reflectlog.application.config import Config
-    from reflectlog.application.memory import MemoryManager
+    from reflectlog.application.config.settings import Config
+    from reflectlog.application.memory.manager import MemoryManager
     from reflectlog.application.utils.logging import create_logger
 
     config = Config.from_environment()
@@ -87,7 +87,7 @@ async def main():
             print("   Let's check the similarity score...")
 
             # Check similarity manually
-            from reflectlog.infrastructure import SmartReplacer, SmartReplacerConfig
+            from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 
             sr_config = SmartReplacerConfig(
                 api_key="not-used",

@@ -5,19 +5,6 @@ This module provides the public API for ReflectLogMCP.
 
 from typing import Any
 
-# Export exception hierarchy for error handling
-from reflectlog.application.exceptions import (
-    ConfigurationError,
-    DuplicateError,
-    EmbeddingError,
-    InconsistentStateError,
-    InitializationError,
-    ReflectLogError,
-    RerankerError,
-    SearchError,
-    StorageError,
-    ValidationError,
-)
 from reflectlog.version import __version__
 
 
@@ -33,16 +20,4 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = [
-    "ConfigurationError",
-    "DuplicateError",
-    "EmbeddingError",
-    "InconsistentStateError",
-    "InitializationError",
-    "ReflectLogError",
-    "RerankerError",
-    "SearchError",
-    "StorageError",
-    "ValidationError",
-    "__version__",
-]
+__all__ = ["__version__"]

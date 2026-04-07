@@ -6,8 +6,8 @@ from typing import Any
 
 from reflectlog.core.logging import IStructuredLogger
 
-from ..config import Config
-from ..memory import MemoryManager
+from ..config.settings import Config
+from ..memory.manager import MemoryManager
 
 
 class BaseTool(ABC):

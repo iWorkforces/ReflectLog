@@ -8,23 +8,20 @@ modifying the factory interface.
 
 from dataclasses import dataclass
 
-from reflectlog.application.config import Config
-from reflectlog.application.memory.fusion import FusionEngine, create_fusion_engine
+from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.fusion import create_fusion_engine
+from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.infrastructure import (
-    CachedEmbeddings,
+from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
-    LangchainQwenEmbeddings,
-    LLMReranker,
-    LLMRerankerConfig,
-    SmartReplacer,
-    SmartReplacerConfig,
-    TantivyConfig,
-    TantivyEngine,
-    USearchConfig,
-    USearchEngine,
 )
+from reflectlog.infrastructure.llm_reranker import LLMReranker, LLMRerankerConfig
+from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
+from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
+from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
+from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 
 @dataclass

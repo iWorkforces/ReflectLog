@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from reflectlog.application.exceptions import StorageError
+from reflectlog.core.exceptions import StorageError
 from reflectlog.application.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger

@@ -11,12 +11,9 @@ from typing import Any, Protocol, TypedDict, final, override
 import anyio
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from reflectlog.application.config import (
-    SCORING_PROMPT,
-    SCORING_PROMPT_WITH_AGE,
-    Config,
-)
+from reflectlog.application.config.settings import Config
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.prompts import SCORING_PROMPT, SCORING_PROMPT_WITH_AGE
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
@@ -281,7 +278,7 @@ class AnthropicRerankerProvider(IRerankerProvider):
         super().__init__()
 
         # Lazy import to avoid dependency issues
-        from reflectlog.utility import init_credentials
+        from reflectlog.utility.utility import init_credentials
 
         _ = init_credentials(verbose=False)
         self._model = model
@@ -355,7 +352,7 @@ class AnthropicRerankerProvider(IRerankerProvider):
             Tuple of (document, score).
         """
         # Lazy import to avoid dependency issues
-        from reflectlog.utility import generate_content
+        from reflectlog.utility.utility import generate_content
 
         try:
             # Format the scoring prompt with or without temporal context
@@ -611,7 +608,7 @@ class LLMReranker(BaseModel):
 
         # Apply batch normalization if enabled
         if self.config.batch_normalize and scored_results:
-            from reflectlog.application.memory.reranking import (
+            from reflectlog.application.memory.reranking.normalization import (
                 normalize_reranker_scores,
             )
 
@@ -637,7 +634,9 @@ class LLMReranker(BaseModel):
             and timestamp_map
             and scored_results
         ):
-            from reflectlog.application.memory.reranking import apply_recency_decay
+            from reflectlog.application.memory.reranking.normalization import (
+                apply_recency_decay,
+            )
 
             pre_decay_scores = [s for _, s in scored_results]
             scored_results = apply_recency_decay(
@@ -664,7 +663,7 @@ class LLMReranker(BaseModel):
             scored_results.sort(key=lambda x: x[1], reverse=True)
 
         # Apply threshold with optional safety net
-        from reflectlog.application.memory.reranking import (
+        from reflectlog.application.memory.reranking.normalization import (
             apply_threshold_with_safety_net,
         )
 

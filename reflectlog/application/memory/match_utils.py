@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from reflectlog.infrastructure import TantivyEngine
+    from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
 from reflectlog.application.types import ISemanticSearchEngine
 from reflectlog.core.logging import IStructuredLogger

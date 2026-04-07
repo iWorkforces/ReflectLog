@@ -1,0 +1,42 @@
+[constraints]
+max_cycles = 0           # No circular dependencies allowed
+max_cc = 25              # Max cyclomatic complexity per function
+max_fn_lines = 100       # Max function length
+no_god_files = false     # Allow for now, will enable after splits
+
+# Layer definitions: higher order depends on lower order only.
+[[layers]]
+name = "core"
+paths = ["reflectlog/core/*"]
+order = 0
+
+[[layers]]
+name = "utility"
+paths = ["reflectlog/utility/*"]
+order = 0
+
+[[layers]]
+name = "application"
+paths = ["reflectlog/application/*"]
+order = 1
+
+[[layers]]
+name = "infrastructure"
+paths = ["reflectlog/infrastructure/*"]
+order = 2
+
+[[layers]]
+name = "plugins"
+paths = ["reflectlog/plugins/*"]
+order = 3
+
+# Boundary rules: enforce layering direction
+[[boundaries]]
+from = "reflectlog/core/*"
+to = "reflectlog/application/*"
+reason = "Core protocols must not depend on application layer"
+
+[[boundaries]]
+from = "reflectlog/infrastructure/*"
+to = "reflectlog/application/*"
+reason = "Infrastructure must not depend on application directly - use protocols from core or utilities from utility"

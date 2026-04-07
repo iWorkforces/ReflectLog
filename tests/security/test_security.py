@@ -24,7 +24,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 
 from reflectlog.application.memory.manager import MemoryManager
-from reflectlog.application.config import Config
+from reflectlog.application.config.settings import Config
 
 
 @pytest.fixture

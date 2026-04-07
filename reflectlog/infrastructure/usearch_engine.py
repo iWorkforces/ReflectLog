@@ -24,11 +24,11 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index
 
-from reflectlog.application.config import Config
-from reflectlog.application.exceptions import StorageError
+from reflectlog.application.config.settings import Config
 from reflectlog.application.types import Embeddings
 from reflectlog.application.utils.numba_utils import distance_to_similarity_cosine
 from reflectlog.application.utils.security import validate_project_id
+from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 
 
@@ -149,7 +149,7 @@ class USearchEngine(BaseModel):
 
     Example:
         ```python
-        from reflectlog.infrastructure import USearchConfig, USearchEngine
+        from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
         from langchain_openai import OpenAIEmbeddings
 
         config = USearchConfig(

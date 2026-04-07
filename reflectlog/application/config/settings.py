@@ -6,7 +6,8 @@ import re
 import threading
 from typing import Literal, TypedDict
 
-from ..exceptions import ConfigurationError
+from reflectlog.core.exceptions import ConfigurationError
+
 from ..utils.security import SecretString
 from .presets import apply_preset_to_env, get_active_preset
 

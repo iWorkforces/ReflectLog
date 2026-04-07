@@ -19,7 +19,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
 
-from reflectlog.application.exceptions import SearchError
+from reflectlog.core.exceptions import SearchError
 from reflectlog.core.logging import IStructuredLogger
 
 

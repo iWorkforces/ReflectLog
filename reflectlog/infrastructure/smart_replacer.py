@@ -8,12 +8,13 @@ from typing import Any, Protocol, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from reflectlog.application.config import REPLACEMENT_DETECTION_PROMPT, Config
-from reflectlog.application.utils.retry import async_retry_with_backoff
+from reflectlog.application.config.settings import Config
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.prompts import REPLACEMENT_DETECTION_PROMPT
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
+from reflectlog.utility.retry import async_retry_with_backoff
 
 
 class ReplacementDecision(BaseModel):
@@ -230,7 +231,7 @@ class AnthropicReplacementProvider:
         super().__init__()
 
         # Lazy import to avoid dependency issues
-        from reflectlog.utility import init_credentials
+        from reflectlog.utility.utility import init_credentials
 
         _ = init_credentials(verbose=False)
         self._model = model
@@ -300,7 +301,7 @@ class AnthropicReplacementProvider:
             Tuple of (should_replace, confidence, reason).
         """
         # Lazy import to avoid dependency issues
-        from reflectlog.utility import generate_content
+        from reflectlog.utility.utility import generate_content
 
         last_exception: Exception | None = None
 

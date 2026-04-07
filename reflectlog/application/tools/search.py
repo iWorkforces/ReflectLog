@@ -5,8 +5,9 @@ from typing import Annotated, override
 
 from pydantic import Field
 
+from reflectlog.core.exceptions import SearchError
+
 from ..constants import LOG_SEPARATOR_LENGTH
-from ..exceptions import SearchError
 from ..utils.validation import truncate_memory
 from .base import BaseTool
 
