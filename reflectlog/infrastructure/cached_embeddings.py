@@ -5,8 +5,8 @@ import hashlib
 from cachetools import LRUCache
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from reflectlog.application.types import Embeddings
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import Embeddings
 
 
 class CachedEmbeddings(BaseModel):

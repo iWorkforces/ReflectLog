@@ -26,8 +26,8 @@ from asyncer import (
 from reflectlog.core.exceptions import SearchError
 
 from ...core.logging import IStructuredLogger
+from ...core.types import ISemanticSearchEngine
 from ..config.settings import Config
-from ..types import ISemanticSearchEngine
 from ..utils.logging import format_fusion_score_status
 from ..utils.validation import truncate_memory
 from .fusion.base import FusionEngine

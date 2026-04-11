@@ -8,7 +8,7 @@ consistent interface to the application layer.
 
 from typing import Protocol, runtime_checkable
 
-from reflectlog.application.types import MemoryRecord
+from reflectlog.core.types import MemoryRecord
 
 
 @runtime_checkable

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.fusion import create_fusion_engine
 from reflectlog.application.memory.fusion.base import FusionEngine
+from reflectlog.core.config_adapters import ConfigAdapter
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.cross_encoder_reranker import (
@@ -97,7 +98,7 @@ class EngineFactory:
         Returns:
             Configured USearchEngine instance.
         """
-        usearch_config = USearchConfig.from_app_config(config)
+        usearch_config = USearchConfig.from_config(ConfigAdapter(config))
         embedder = self._create_embedder(config, logger)
         return USearchEngine(usearch_config, embedder=embedder, logger=logger)
 
@@ -202,7 +203,7 @@ def create_llm_reranker(
     if config.reranker_engine != "llm":
         return None
 
-    reranker_config = LLMRerankerConfig.from_app_config(config)
+    reranker_config = LLMRerankerConfig.from_config(ConfigAdapter(config))
     return LLMReranker(config=reranker_config, logger=logger)
 
 
@@ -222,7 +223,7 @@ def create_cross_encoder_reranker(
     if config.reranker_engine != "cross_encoder":
         return None
 
-    ce_config = CrossEncoderConfig.from_app_config(config)
+    ce_config = CrossEncoderConfig.from_config(ConfigAdapter(config))
     return CrossEncoderReranker(config=ce_config, logger=logger)
 
 
@@ -242,5 +243,5 @@ def create_smart_replacer(
     if not config.enable_smart_replace:
         return None
 
-    replacer_config = SmartReplacerConfig.from_app_config(config)
+    replacer_config = SmartReplacerConfig.from_config(ConfigAdapter(config))
     return SmartReplacer(config=replacer_config, logger=logger)

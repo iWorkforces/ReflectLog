@@ -11,11 +11,14 @@ from typing import Any, Protocol, TypedDict, final, override
 import anyio
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from reflectlog.application.config.settings import Config
+from reflectlog.core.config import IAppConfig
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.prompts import SCORING_PROMPT, SCORING_PROMPT_WITH_AGE
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
+)
+from reflectlog.infrastructure.reranker_post_processor import (
+    RerankerPostProcessor,
 )
 
 
@@ -120,18 +123,18 @@ class LLMRerankerConfig:
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
-    def from_app_config(cls, config: Config) -> LLMRerankerConfig:
-        """Create LLMRerankerConfig from application Config.
+    def from_config(cls, config: IAppConfig) -> LLMRerankerConfig:
+        """Create LLMRerankerConfig from IAppConfig protocol.
 
         Args:
-            config: Application configuration object.
+            config: Configuration satisfying IAppConfig protocol.
 
         Returns:
             LLMRerankerConfig instance configured from app settings.
         """
         return cls(
-            api_key=config.openrouter_api_key.get_secret_value(),
-            base_url=config.openrouter_base_url,
+            api_key=config.llm_api_key,
+            base_url=config.llm_api_base_url,
             model=config.llm_model,
             score_threshold=config.search_score_threshold,
             max_concurrency=config.rerank_max_concurrency,
@@ -471,6 +474,7 @@ class LLMReranker(BaseModel):
     logger: IStructuredLogger | None = None
 
     _provider: IRerankerProvider | None = PrivateAttr(default=None)
+    _post_processor: RerankerPostProcessor = PrivateAttr()
 
     def __init__(self, **data: Any):
         """Initialize LLMReranker with appropriate provider."""
@@ -478,6 +482,13 @@ class LLMReranker(BaseModel):
 
         # Initialize provider based on configuration
         self._provider = create_reranker_provider(self.config, self.logger)
+
+        # Shared post-processing pipeline (composition over inheritance)
+        self._post_processor = RerankerPostProcessor(
+            min_results=self.config.min_results,
+            batch_normalize=self.config.batch_normalize,
+            logger=self.logger,
+        )
 
         # TTL cache for reranking results to avoid redundant API calls
         self._rerank_cache: dict[
@@ -571,107 +582,15 @@ class LLMReranker(BaseModel):
         if not candidates:
             return []
 
-        # Use semaphore to limit concurrent LLM calls
-        semaphore = anyio.Semaphore(self.config.max_concurrency)
-        results: list[tuple[str, float] | None] = [None] * len(candidates)
-
-        async def score_with_semaphore(
-            idx: int, doc: str, fallback: float, memory_age: str | None
-        ) -> None:
-            """Score document with semaphore for concurrency control."""
-            async with semaphore:
-                results[idx] = await self._score_single(
-                    query, doc, fallback, memory_age
-                )
-
-        # Score all candidates in parallel with concurrency limit
-        async with anyio.create_task_group() as tg:
-            for idx, (document, fusion_score) in enumerate(candidates):
-                # Get memory age from timestamp_map if available and
-                # recency boost is enabled
-                memory_age = None
-                if (
-                    self.config.enable_recency_boost
-                    and timestamp_map
-                    and document in timestamp_map
-                ):
-                    memory_age = format_memory_age(timestamp_map[document])
-                tg.start_soon(
-                    score_with_semaphore, idx, document, fusion_score, memory_age
-                )
-
-        # Collect all scored results (filter out None results)
-        scored_results: list[tuple[str, float]] = []
-        for result in results:
-            if result is not None:
-                scored_results.append(result)
-
-        # Apply batch normalization if enabled
-        if self.config.batch_normalize and scored_results:
-            from reflectlog.application.memory.reranking.normalization import (
-                normalize_reranker_scores,
-            )
-
-            raw_scores = [s for _, s in scored_results]
-            scored_results = normalize_reranker_scores(scored_results)
-            if self.logger:
-                self.logger.debug(
-                    f"Batch normalization: enabled "
-                    f"(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} "
-                    f"-> normalized: 0.0-1.0)",
-                    extra={
-                        "batch_normalize": True,
-                        "raw_min": min(raw_scores),
-                        "raw_max": max(raw_scores),
-                    },
-                )
-
-        # Apply recency decay if enabled and timestamps are available
-        # This multiplies each score by exp(-decay_rate * hours_old)
-        if (
-            self.config.enable_recency_boost
-            and self.config.recency_decay_rate > 0
-            and timestamp_map
-            and scored_results
-        ):
-            from reflectlog.application.memory.reranking.normalization import (
-                apply_recency_decay,
-            )
-
-            pre_decay_scores = [s for _, s in scored_results]
-            scored_results = apply_recency_decay(
-                scored_results,
-                timestamp_map,
-                self.config.recency_decay_rate,
-            )
-            post_decay_scores = [s for _, s in scored_results]
-
-            if self.logger:
-                self.logger.debug(
-                    f"Recency decay: applied (rate={self.config.recency_decay_rate}), "
-                    f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
-                    f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
-                    extra={
-                        "recency_decay": True,
-                        "decay_rate": self.config.recency_decay_rate,
-                        "pre_decay_max": max(pre_decay_scores),
-                        "post_decay_max": max(post_decay_scores),
-                    },
-                )
-        else:
-            # Sort by score descending (apply_recency_decay already sorts)
-            scored_results.sort(key=lambda x: x[1], reverse=True)
-
-        # Apply threshold with optional safety net
-        from reflectlog.application.memory.reranking.normalization import (
-            apply_threshold_with_safety_net,
+        scored_results = await self._score_all_candidates(
+            query, candidates, timestamp_map
         )
+        scored_results = self._apply_post_processing(scored_results, timestamp_map)
 
         pre_filter_count = len(scored_results)
-        scored_results = apply_threshold_with_safety_net(
+        scored_results = self._post_processor.filter_by_threshold(
             scored_results,
             threshold=self.config.score_threshold,
-            min_results=self.config.min_results,
         )
 
         if self.logger:
@@ -688,5 +607,63 @@ class LLMReranker(BaseModel):
                     "provider": self.config.provider,
                 },
             )
+
+        return scored_results
+
+    async def _score_all_candidates(
+        self,
+        query: str,
+        candidates: list[tuple[str, float]],
+        timestamp_map: dict[str, str] | None,
+    ) -> list[tuple[str, float]]:
+        """Score all candidates in parallel with concurrency-limited LLM calls."""
+        semaphore = anyio.Semaphore(self.config.max_concurrency)
+        results: list[tuple[str, float] | None] = [None] * len(candidates)
+
+        async def score_with_semaphore(
+            idx: int, doc: str, fallback: float, memory_age: str | None
+        ) -> None:
+            async with semaphore:
+                results[idx] = await self._score_single(
+                    query, doc, fallback, memory_age
+                )
+
+        async with anyio.create_task_group() as tg:
+            for idx, (document, fusion_score) in enumerate(candidates):
+                memory_age = None
+                if (
+                    self.config.enable_recency_boost
+                    and timestamp_map
+                    and document in timestamp_map
+                ):
+                    memory_age = format_memory_age(timestamp_map[document])
+                tg.start_soon(
+                    score_with_semaphore, idx, document, fusion_score, memory_age
+                )
+
+        return [r for r in results if r is not None]
+
+    def _apply_post_processing(
+        self,
+        scored_results: list[tuple[str, float]],
+        timestamp_map: dict[str, str] | None,
+    ) -> list[tuple[str, float]]:
+        """Apply normalization, recency decay, and sorting."""
+        scored_results = self._post_processor.normalize(scored_results)
+
+        decay_enabled = (
+            self.config.enable_recency_boost
+            and self.config.recency_decay_rate > 0
+            and bool(timestamp_map)
+        )
+        scored_results = self._post_processor.apply_decay(
+            scored_results,
+            timestamp_map,
+            self.config.recency_decay_rate,
+            enabled=decay_enabled,
+        )
+
+        if not decay_enabled:
+            scored_results.sort(key=lambda x: x[1], reverse=True)
 
         return scored_results

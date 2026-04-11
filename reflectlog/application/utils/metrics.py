@@ -300,89 +300,70 @@ class MetricsRegistry:
         lines: list[str] = []
 
         with self._lock:
-            # Export counters
-            for name, label_sets in sorted(self._counters.items()):
-                if label_sets:
-                    lines.append(f"# HELP {name} Counter metric")
-                    lines.append(f"# TYPE {name} counter")
-                    for label_key, value in sorted(label_sets.items()):
-                        if label_key:
-                            # Parse back the labels from the key
-                            labels = dict(
-                                item.split("=") for item in label_key.split(",")
-                            )
-                            labels_str = ",".join(
-                                f'{k}="{v}"' for k, v in sorted(labels.items())
-                            )
-                            lines.append(f"{name}{{{labels_str}}} {value}")
-                        else:
-                            lines.append(f"{name} {value}")
-
-            # Export gauges
-            for name, label_sets in sorted(self._gauges.items()):
-                if label_sets:
-                    lines.append(f"# HELP {name} Gauge metric")
-                    lines.append(f"# TYPE {name} gauge")
-                    for label_key, value in sorted(label_sets.items()):
-                        if label_key:
-                            labels = dict(
-                                item.split("=") for item in label_key.split(",")
-                            )
-                            labels_str = ",".join(
-                                f'{k}="{v}"' for k, v in sorted(labels.items())
-                            )
-                            lines.append(f"{name}{{{labels_str}}} {value}")
-                        else:
-                            lines.append(f"{name} {value}")
-
-            # Export histograms
-            for name, label_sets in sorted(self._histograms.items()):
-                if label_sets:
-                    lines.append(f"# HELP {name} Histogram metric")
-                    lines.append(f"# TYPE {name} histogram")
-                    for label_key, values in sorted(label_sets.items()):
-                        if not values:
-                            continue
-
-                        values_sorted = sorted(values)
-                        count = len(values_sorted)
-                        total = sum(values_sorted)
-
-                        # Calculate quantiles
-                        quantiles = [0.5, 0.9, 0.95, 0.99]
-                        for q in quantiles:
-                            idx = int(q * (count - 1))
-                            quantile_value = values_sorted[max(0, min(idx, count - 1))]
-                            if label_key:
-                                labels = dict(
-                                    item.split("=") for item in label_key.split(",")
-                                )
-                                labels_str = ",".join(
-                                    f'{k}="{v}"' for k, v in sorted(labels.items())
-                                )
-                                lines.append(
-                                    f'{name}{{{labels_str},quantile="{q}"}} {quantile_value}'
-                                )
-                            else:
-                                lines.append(
-                                    f'{name}{{quantile="{q}"}} {quantile_value}'
-                                )
-
-                        # Export count and sum
-                        if label_key:
-                            labels = dict(
-                                item.split("=") for item in label_key.split(",")
-                            )
-                            labels_str = ",".join(
-                                f'{k}="{v}"' for k, v in sorted(labels.items())
-                            )
-                            lines.append(f"{name}{{{labels_str}_count}} {count}")
-                            lines.append(f"{name}{{{labels_str}_sum}} {total}")
-                        else:
-                            lines.append(f"{name}_count {count}")
-                            lines.append(f"{name}_sum {total}")
+            self._export_simple_metrics(lines, self._counters, "counter")
+            self._export_simple_metrics(lines, self._gauges, "gauge")
+            self._export_histograms(lines)
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _format_labels(label_key: str) -> str:
+        """Parse a comma-separated label key into Prometheus label format."""
+        labels = dict(item.split("=") for item in label_key.split(","))
+        return ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
+
+    @staticmethod
+    def _export_simple_metrics(
+        lines: list[str],
+        metric_store: dict[str, dict[str, float]],
+        metric_type: str,
+    ) -> None:
+        """Export counter or gauge metrics to Prometheus format."""
+        type_label = metric_type.capitalize()
+        for name, label_sets in sorted(metric_store.items()):
+            if not label_sets:
+                continue
+            lines.append(f"# HELP {name} {type_label} metric")
+            lines.append(f"# TYPE {name} {metric_type}")
+            for label_key, value in sorted(label_sets.items()):
+                if label_key:
+                    labels_str = MetricsRegistry._format_labels(label_key)
+                    lines.append(f"{name}{{{labels_str}}} {value}")
+                else:
+                    lines.append(f"{name} {value}")
+
+    def _export_histograms(self, lines: list[str]) -> None:
+        """Export histogram metrics with quantiles to Prometheus format."""
+        quantiles = [0.5, 0.9, 0.95, 0.99]
+
+        for name, label_sets in sorted(self._histograms.items()):
+            if not label_sets:
+                continue
+            lines.append(f"# HELP {name} Histogram metric")
+            lines.append(f"# TYPE {name} histogram")
+            for label_key, values in sorted(label_sets.items()):
+                if not values:
+                    continue
+
+                values_sorted = sorted(values)
+                count = len(values_sorted)
+                total = sum(values_sorted)
+                labels_str = self._format_labels(label_key) if label_key else ""
+
+                for q in quantiles:
+                    idx = int(q * (count - 1))
+                    qval = values_sorted[max(0, min(idx, count - 1))]
+                    if labels_str:
+                        lines.append(f'{name}{{{labels_str},quantile="{q}"}} {qval}')
+                    else:
+                        lines.append(f'{name}{{quantile="{q}"}} {qval}')
+
+                if labels_str:
+                    lines.append(f"{name}{{{labels_str}_count}} {count}")
+                    lines.append(f"{name}{{{labels_str}_sum}} {total}")
+                else:
+                    lines.append(f"{name}_count {count}")
+                    lines.append(f"{name}_sum {total}")
 
     def get_stats(self) -> dict[str, Any]:
         """Get a summary of all tracked metrics.

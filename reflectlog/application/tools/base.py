@@ -2,11 +2,13 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Never
 
+from reflectlog.core.exceptions import ReflectLogError
 from reflectlog.core.logging import IStructuredLogger
 
 from ..config.settings import Config
+from ..constants import LOG_SEPARATOR_LENGTH
 from ..memory.manager import MemoryManager
 
 
@@ -103,3 +105,85 @@ class BaseTool(ABC):
             f"Tool '{tool_name}' failed: {error}",
             extra={"tool": tool_name, "error": str(error), **kwargs},
         )
+
+    def _log_operation_header(
+        self, operation: str, title: str, **detail_kwargs: Any
+    ) -> float:
+        """Log operation header with separator and title.
+
+        Emits a visual separator line followed by a titled log entry.
+        Returns the current timestamp for later duration calculation.
+
+        Args:
+            operation: Tool name (e.g. "add", "search").
+            title: Operation title line (e.g. "ADD OPERATION: Storing 3 memory(ies)").
+            **detail_kwargs: Extra fields merged into the log entry.
+
+        Returns:
+            Start time as float (from time.time()) for use with _log_operation_footer.
+        """
+        import time
+
+        start_time = time.time()
+        self.logger.info(
+            "=" * LOG_SEPARATOR_LENGTH,
+            extra={"tool": operation, "section": "header"},
+        )
+        self.logger.info(
+            title,
+            extra={"tool": operation, **detail_kwargs},
+        )
+        return start_time
+
+    def _log_operation_footer(
+        self, operation: str, start_time: float, **detail_kwargs: Any
+    ) -> float:
+        """Log operation footer with timing and separator.
+
+        Emits a timing summary line and a visual separator to close the
+        operation block started by _log_operation_header.
+
+        Args:
+            operation: Tool name.
+            start_time: Timestamp from _log_operation_header return value.
+            **detail_kwargs: Extra fields merged into the timing log entry.
+
+        Returns:
+            Duration in milliseconds.
+        """
+        import time
+
+        duration_ms = (time.time() - start_time) * 1000
+        self.logger.info(
+            f"Completed in {duration_ms:.0f}ms",
+            extra={"tool": operation, "duration_ms": duration_ms, **detail_kwargs},
+        )
+        self.logger.info(
+            "=" * LOG_SEPARATOR_LENGTH,
+            extra={"tool": operation, "section": "footer"},
+        )
+        return duration_ms
+
+    def _raise_tool_error(
+        self,
+        operation: str,
+        error: Exception,
+        *,
+        error_cls: type[ReflectLogError],
+        message: str,
+        **kwargs: Any,
+    ) -> Never:
+        """Log error and raise a wrapped exception with from-chaining.
+
+        Args:
+            operation: Tool name.
+            error: The original exception.
+            error_cls: The ReflectLogError subclass to raise.
+            message: Human-readable prefix for the error message.
+            **kwargs: Extra context passed to log_error.
+
+        Raises:
+            ReflectLogError: Always raised (typed as Never).
+        """
+        self.log_error(operation, error, **kwargs)
+        raise error_cls(f"{message}: {error}") from error

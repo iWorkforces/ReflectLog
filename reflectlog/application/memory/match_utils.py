@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
-from reflectlog.application.types import ISemanticSearchEngine
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import ISemanticSearchEngine
 
 
 def escape_tantivy_query(query: str) -> str:

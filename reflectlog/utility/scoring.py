@@ -7,6 +7,9 @@ can import without violating the dependency hierarchy.
 Functions from numba_utils (JIT-compiled):
     - normalize_scores_minmax: Min-max normalization to [0, 1]
     - distance_to_similarity_cosine: Cosine distance → similarity
+    - filter_scores_by_threshold: Threshold filter with indices
+    - compute_rrf_scores_batch: Parallel RRF scoring
+    - warmup_numba_functions: Pre-compile all JIT functions
 
 Functions from reranking normalization:
     - normalize_reranker_scores: Batch min-max for reranker outputs
@@ -26,7 +29,7 @@ Usage:
 from datetime import UTC, datetime
 import math
 
-from numba import jit
+from numba import jit, prange
 import numpy as np
 from numpy.typing import NDArray
 
@@ -141,6 +144,143 @@ def distance_to_similarity_cosine(
     for i in range(len(distances)):
         result[i] = 1.0 - distances[i]
     return result
+
+
+@jit(nopython=True, cache=True, fastmath=True)
+def _filter_by_threshold(
+    scores: NDArray[np.float64],
+    threshold: float,
+) -> NDArray[np.bool_]:
+    """Create boolean mask for scores above threshold (numba-accelerated).
+
+    Args:
+        scores: 1D numpy array of scores.
+        threshold: Minimum score threshold.
+
+    Returns:
+        Boolean mask array where True indicates score >= threshold.
+    """
+    mask = np.empty(len(scores), dtype=np.bool_)
+    for i in range(len(scores)):
+        mask[i] = scores[i] >= threshold
+    return mask
+
+
+def filter_scores_by_threshold(
+    scores: NDArray[np.float64],
+    threshold: float,
+) -> tuple[NDArray[np.int64], NDArray[np.float64]]:
+    """Filter scores by threshold and return indices and filtered scores.
+
+    Args:
+        scores: 1D numpy array of scores.
+        threshold: Minimum score threshold.
+
+    Returns:
+        Tuple of (indices, filtered_scores) where indices are the original
+        positions of scores that passed the threshold.
+
+    Example:
+        >>> scores = np.array([0.3, 0.8, 0.5, 0.9])
+        >>> indices, filtered = filter_scores_by_threshold(scores, 0.6)
+        >>> print(indices)   # [1, 3]
+        >>> print(filtered)  # [0.8, 0.9]
+    """
+    mask = _filter_by_threshold(scores, threshold)
+    indices = np.where(mask)[0]
+    return indices, scores[mask]
+
+
+@jit(nopython=True, cache=True, fastmath=True, parallel=True)
+def compute_rrf_scores_batch(
+    ranks_matrix: NDArray[np.int64],
+    k: int = 60,
+) -> NDArray[np.float64]:
+    """Compute RRF scores for multiple documents across multiple rankings.
+
+    This is a parallel implementation of Reciprocal Rank Fusion:
+    RRF_score(d) = sum over rankings: 1 / (k + rank(d))
+
+    Rank Encoding:
+        - 1-indexed ranks (1 = first place, 2 = second place, etc.)
+        - 0 explicitly means "document not present in this ranking"
+        - Documents absent from a ranking simply don't contribute to the score
+
+    Args:
+        ranks_matrix: 2D array of shape (n_docs, n_rankings) where each value
+                     is the rank of that document in that ranking (1-indexed).
+                     Use 0 to indicate document not present in ranking.
+        k: RRF constant (default: 60). Lower values give more weight to top ranks.
+
+    Returns:
+        1D array of RRF scores for each document. Documents not present in any
+        ranking will have a score of 0.0.
+
+    Example:
+        >>> # Doc 0: rank 1 in ranking 0, rank 2 in ranking 1
+        >>> # Doc 1: rank 2 in ranking 0, not in ranking 1 (encoded as 0)
+        >>> ranks = np.array([[1, 2], [2, 0]], dtype=np.int64)
+        >>> scores = compute_rrf_scores_batch(ranks, k=60)
+        >>> # scores[0] = 1/(60+1) + 1/(60+2) ≈ 0.032
+        >>> # scores[1] = 1/(60+2) + 0 ≈ 0.016
+    """
+    n_docs = ranks_matrix.shape[0]
+    n_rankings = ranks_matrix.shape[1]
+    scores = np.zeros(n_docs, dtype=np.float64)
+
+    for i in prange(n_docs):
+        total = 0.0
+        for j in range(n_rankings):
+            rank = ranks_matrix[i, j]
+            if (
+                rank > 0
+            ):  # Only count if document is present in this ranking (0 = absent)
+                total += 1.0 / (k + rank)
+        scores[i] = total
+
+    return scores
+
+
+def warmup_numba_functions() -> bool:
+    """Pre-compile all numba JIT functions to avoid first-call latency.
+
+    Call this during application startup to ensure all numba functions
+    are compiled before they're needed in production code paths.
+
+    Returns:
+        True if all functions compiled successfully, False otherwise.
+
+    Raises:
+        ImportError: If numpy or numba is not available.
+
+    Example:
+        >>> from reflectlog.utility.scoring import warmup_numba_functions
+        >>> success = warmup_numba_functions()
+        >>> if not success:
+        ...     print("Numba JIT warmup failed")
+    """
+    try:
+        # Small test arrays for compilation
+        test_scores = np.array([0.1, 0.5, 0.9], dtype=np.float64)
+        test_distances = np.array([0.1, 0.3, 0.5], dtype=np.float32)
+        test_ranks = np.array([[1, 2], [2, 0]], dtype=np.int64)
+
+        # Trigger compilation of each function
+        _ = normalize_scores_minmax(test_scores)
+        _ = filter_scores_by_threshold(test_scores, 0.5)
+        _ = compute_rrf_scores_batch(test_ranks, k=60)
+        _ = distance_to_similarity_cosine(test_distances)
+
+        return True
+    except Exception as e:
+        import warnings
+
+        warnings.warn(
+            f"Numba JIT warmup failed: {e}. First calls will be slower.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
 
 
 # ---------------------------------------------------------------------------

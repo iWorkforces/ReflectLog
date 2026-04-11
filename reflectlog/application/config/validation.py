@@ -650,39 +650,34 @@ class ConfigurationValidator:
         return "\n".join(lines)
 
 
-def validate_config(config: object) -> list[ValidationError]:
-    """Validate a configuration object.
+def _get_attr(config: object, name: str) -> object | None:
+    """Get an attribute from a config object, returning None if not found."""
+    return getattr(config, name, None)
 
-    This is a convenience function that creates a validator and runs
-    all validation checks on the given configuration object.
 
-    Args:
-        config: A Config object (or object with similar attributes)
-
-    Returns:
-        List of validation errors (empty if valid)
-    """
-    validator = ConfigurationValidator()
-
-    def get_attr(name: str) -> object | None:
-        return getattr(config, name, None)
-
-    # Validate project_id
-    project_id = get_attr("project_id")
+def _validate_server_config(
+    validator: ConfigurationValidator,
+    config: object,
+) -> None:
+    """Validate server transport, port, and project ID."""
+    project_id = _get_attr(config, "project_id")
     if isinstance(project_id, str) and project_id:
         _ = validator.validate_project_id(project_id)
 
-    # Validate transport
-    transport = get_attr("transport")
+    transport = _get_attr(config, "transport")
     if isinstance(transport, str) and transport:
         _ = validator.validate_transport(transport)
 
-    # Validate port
-    port = get_attr("port")
+    port = _get_attr(config, "port")
     if isinstance(port, int):
         _ = validator.validate_port(port)
 
-    # Validate percentage values
+
+def _validate_search_config(
+    validator: ConfigurationValidator,
+    config: object,
+) -> None:
+    """Validate search limit, threshold, and percentage fields."""
     percentage_fields = [
         ("search_score_threshold", "SEARCH_SCORE_THRESHOLD"),
         ("fusion_ranking_threshold", "FUSION_RANKING_THRESHOLD"),
@@ -697,11 +692,10 @@ def validate_config(config: object) -> list[ValidationError]:
     ]
 
     for attr_name, field_name in percentage_fields:
-        value = get_attr(attr_name)
+        value = _get_attr(config, attr_name)
         if isinstance(value, (int, float)):
             _ = validator.validate_percentage(field_name, float(value))
 
-    # Validate positive integers
     positive_int_fields = [
         ("search_limit", "SEARCH_LIMIT", 1),
         ("remove_search_limit", "REMOVE_SEARCH_LIMIT", 1),
@@ -715,32 +709,43 @@ def validate_config(config: object) -> list[ValidationError]:
     ]
 
     for attr_name, field_name, min_val in positive_int_fields:
-        value = get_attr(attr_name)
+        value = _get_attr(config, attr_name)
         if isinstance(value, int):
             _ = validator.validate_positive_int(field_name, value, min_val)
 
-    # Validate reranker engine
-    reranker_engine = get_attr("reranker_engine")
-    if isinstance(reranker_engine, str) and reranker_engine:
-        _ = validator.validate_reranker_engine(reranker_engine)
 
-    # Validate LLM provider
-    llm_provider = get_attr("llm_provider")
-    if isinstance(llm_provider, str) and llm_provider:
-        _ = validator.validate_llm_provider(llm_provider)
+def _validate_storage_config(
+    validator: ConfigurationValidator,
+    config: object,
+) -> None:
+    """Validate memory lengths and logical dependencies."""
+    min_length = _get_attr(config, "min_message_length")
+    max_length = _get_attr(config, "max_message_length")
+    if isinstance(min_length, int) and isinstance(max_length, int):
+        _ = validator.validate_memory_lengths(min_length, max_length)
 
-    # Validate cross-encoder device
-    cross_encoder_device = get_attr("cross_encoder_device")
-    if isinstance(cross_encoder_device, str) and cross_encoder_device:
-        _ = validator.validate_cross_encoder_device(cross_encoder_device)
+    enable_hybrid_search = _get_attr(config, "enable_hybrid_search")
+    enable_rrf_fusion = _get_attr(config, "enable_rrf_fusion")
+    reranker_engine = _get_attr(config, "reranker_engine")
+    _ = validator.validate_dependencies(
+        enable_hybrid_search if isinstance(enable_hybrid_search, bool) else True,
+        enable_rrf_fusion if isinstance(enable_rrf_fusion, bool) else True,
+        reranker_engine
+        if isinstance(reranker_engine, str) and reranker_engine
+        else "llm",
+    )
 
-    # Validate fusion method
-    fusion_method = get_attr("fusion_method")
+
+def _validate_embedder_config(
+    validator: ConfigurationValidator,
+    config: object,
+) -> None:
+    """Validate fusion method and fusion weights."""
+    fusion_method = _get_attr(config, "fusion_method")
     if isinstance(fusion_method, str) and fusion_method:
         _ = validator.validate_fusion_method(fusion_method)
 
-    # Validate fusion weights
-    fusion_weights = get_attr("fusion_weights")
+    fusion_weights = _get_attr(config, "fusion_weights")
     if fusion_weights is not None:
         if not isinstance(fusion_weights, list):
             raise ConfigurationError(
@@ -761,30 +766,29 @@ def validate_config(config: object) -> list[ValidationError]:
                     f"fusion_weights[{i}] must be non-negative, got {w}"
                 )
 
-    # Validate memory lengths
-    min_length = get_attr("min_message_length")
-    max_length = get_attr("max_message_length")
-    if isinstance(min_length, int) and isinstance(max_length, int):
-        _ = validator.validate_memory_lengths(min_length, max_length)
 
-    # Validate dependencies
-    enable_hybrid_search = get_attr("enable_hybrid_search")
-    enable_rrf_fusion = get_attr("enable_rrf_fusion")
-    reranker_engine = get_attr("reranker_engine")
-    _ = validator.validate_dependencies(
-        enable_hybrid_search if isinstance(enable_hybrid_search, bool) else True,
-        enable_rrf_fusion if isinstance(enable_rrf_fusion, bool) else True,
-        reranker_engine
-        if isinstance(reranker_engine, str) and reranker_engine
-        else "llm",
-    )
+def _validate_reranker_config(
+    validator: ConfigurationValidator,
+    config: object,
+) -> None:
+    """Validate reranker engine, LLM provider, cross-encoder, and circuit breaker."""
+    reranker_engine = _get_attr(config, "reranker_engine")
+    if isinstance(reranker_engine, str) and reranker_engine:
+        _ = validator.validate_reranker_engine(reranker_engine)
 
-    # Validate circuit breaker settings
-    circuit_breaker_enabled = get_attr("circuit_breaker_enabled")
+    llm_provider = _get_attr(config, "llm_provider")
+    if isinstance(llm_provider, str) and llm_provider:
+        _ = validator.validate_llm_provider(llm_provider)
+
+    cross_encoder_device = _get_attr(config, "cross_encoder_device")
+    if isinstance(cross_encoder_device, str) and cross_encoder_device:
+        _ = validator.validate_cross_encoder_device(cross_encoder_device)
+
+    circuit_breaker_enabled = _get_attr(config, "circuit_breaker_enabled")
     if isinstance(circuit_breaker_enabled, bool) and circuit_breaker_enabled:
-        failure_threshold = get_attr("circuit_breaker_failure_threshold")
-        timeout = get_attr("circuit_breaker_timeout")
-        success_threshold = get_attr("circuit_breaker_success_threshold")
+        failure_threshold = _get_attr(config, "circuit_breaker_failure_threshold")
+        timeout = _get_attr(config, "circuit_breaker_timeout")
+        success_threshold = _get_attr(config, "circuit_breaker_success_threshold")
 
         _ = validator.validate_circuit_breaker_settings(
             circuit_breaker_enabled,
@@ -793,10 +797,37 @@ def validate_config(config: object) -> list[ValidationError]:
             success_threshold if isinstance(success_threshold, int) else 2,
         )
 
-    # Validate OpenRouter API key format
-    openrouter_api_key = get_attr("openrouter_api_key")
+
+def _validate_security_fields(
+    validator: ConfigurationValidator,
+    config: object,
+) -> None:
+    """Validate API key formats and security-sensitive fields."""
+    openrouter_api_key = _get_attr(config, "openrouter_api_key")
     if isinstance(openrouter_api_key, str) and openrouter_api_key:
         _ = validator.validate_openrouter_api_key_format(openrouter_api_key)
+
+
+def validate_config(config: object) -> list[ValidationError]:
+    """Validate a configuration object.
+
+    This is a convenience function that creates a validator and runs
+    all validation checks on the given configuration object.
+
+    Args:
+        config: A Config object (or object with similar attributes)
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    validator = ConfigurationValidator()
+
+    _validate_server_config(validator, config)
+    _validate_search_config(validator, config)
+    _validate_storage_config(validator, config)
+    _validate_embedder_config(validator, config)
+    _validate_reranker_config(validator, config)
+    _validate_security_fields(validator, config)
 
     return validator.errors
 

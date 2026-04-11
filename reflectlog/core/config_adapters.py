@@ -226,6 +226,56 @@ class ConfigAdapter(IAppConfig):
         """Enable batch normalization for reranker scores."""
         return self._config.reranker_batch_normalize
 
+    @property
+    def llm_api_key(self) -> str:
+        """API key for LLM provider (plain text)."""
+        return self._config.openrouter_api_key.get_secret_value()
+
+    @property
+    def llm_provider(self) -> str:
+        """LLM provider: openai or anthropic."""
+        return self._config.llm_provider
+
+    @property
+    def rerank_max_concurrency(self) -> int:
+        """Maximum parallel LLM reranking calls."""
+        return self._config.rerank_max_concurrency
+
+    @property
+    def cross_encoder_top_k(self) -> int:
+        """Number of top results to return after cross-encoder reranking."""
+        return self._config.cross_encoder_top_k
+
+    @property
+    def cross_encoder_batch_size(self) -> int:
+        """Batch size for cross-encoder inference."""
+        return self._config.cross_encoder_batch_size
+
+    @property
+    def cross_encoder_score_threshold(self) -> float:
+        """Minimum cross-encoder score to keep results."""
+        return self._config.cross_encoder_score_threshold
+
+    @property
+    def cross_encoder_use_fp16(self) -> bool:
+        """Enable FP16 for faster cross-encoder computation."""
+        return self._config.cross_encoder_use_fp16
+
+    @property
+    def cross_encoder_normalize(self) -> bool:
+        """Apply sigmoid to normalize cross-encoder scores."""
+        return self._config.cross_encoder_normalize
+
+    @property
+    def cross_encoder_max_length(self) -> int:
+        """Maximum token length for query-document pairs."""
+        return self._config.cross_encoder_max_length
+
+    @property
+    def reranker_min_results(self) -> int:
+        """Safety net: minimum results to return (0 = disabled)."""
+        return self._config.reranker_min_results
+
     # IEmbedderConfig properties
     @property
     def embedding_model(self) -> str:
@@ -282,6 +332,16 @@ class ConfigAdapter(IAppConfig):
     def smart_replace_candidate_limit(self) -> int:
         """Maximum candidates to check."""
         return self._config.smart_replace_candidate_limit
+
+    @property
+    def smart_replace_max_retries(self) -> int:
+        """Maximum retry attempts for smart replacement LLM calls."""
+        return self._config.smart_replace_max_retries
+
+    @property
+    def smart_replace_retry_delay(self) -> float:
+        """Base delay in seconds for exponential backoff."""
+        return self._config.smart_replace_retry_delay
 
 
 @final
@@ -446,6 +506,46 @@ class RerankerConfigAdapter(IRerankerConfig):
     def reranker_batch_normalize(self) -> bool:
         return self._config.reranker_batch_normalize
 
+    @property
+    def llm_api_key(self) -> str:
+        return self._config.openrouter_api_key.get_secret_value()
+
+    @property
+    def llm_provider(self) -> str:
+        return self._config.llm_provider
+
+    @property
+    def rerank_max_concurrency(self) -> int:
+        return self._config.rerank_max_concurrency
+
+    @property
+    def cross_encoder_top_k(self) -> int:
+        return self._config.cross_encoder_top_k
+
+    @property
+    def cross_encoder_batch_size(self) -> int:
+        return self._config.cross_encoder_batch_size
+
+    @property
+    def cross_encoder_score_threshold(self) -> float:
+        return self._config.cross_encoder_score_threshold
+
+    @property
+    def cross_encoder_use_fp16(self) -> bool:
+        return self._config.cross_encoder_use_fp16
+
+    @property
+    def cross_encoder_normalize(self) -> bool:
+        return self._config.cross_encoder_normalize
+
+    @property
+    def cross_encoder_max_length(self) -> int:
+        return self._config.cross_encoder_max_length
+
+    @property
+    def reranker_min_results(self) -> int:
+        return self._config.reranker_min_results
+
 
 @final
 class EmbedderConfigAdapter(IEmbedderConfig):
@@ -517,6 +617,14 @@ class ReplacementConfigAdapter(IReplacementConfig):
     @property
     def smart_replace_candidate_limit(self) -> int:
         return self._config.smart_replace_candidate_limit
+
+    @property
+    def smart_replace_max_retries(self) -> int:
+        return self._config.smart_replace_max_retries
+
+    @property
+    def smart_replace_retry_delay(self) -> float:
+        return self._config.smart_replace_retry_delay
 
 
 def create_config_adapter(config: Config) -> ConfigAdapter:

@@ -1,14 +1,10 @@
 """Add tool implementation for ReflectLogMCP Server."""
 
-import time
 from typing import override
 
 from reflectlog.core.exceptions import StorageError
 
-from ..constants import (
-    LOG_ADD_MEMORY_PREVIEW_LIMIT,
-    LOG_SEPARATOR_LENGTH,
-)
+from ..constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
 from ..utils.validation import truncate_memory, validate_memories
 from .base import BaseTool
 
@@ -83,28 +79,20 @@ class AddTool(BaseTool):
                 self.log_error("add", ValueError(error_msg), count=len(memories))
                 raise ValueError(f"Invalid memory: {error_msg}")
 
-            # Log invocation with detailed info
-            start_time = time.time()
+            # Log invocation and operation header
             mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.log_invocation(
                 "add", count=len(memories), mode=mode_str, dry_run=dry_run
             )
 
-            # Log operation header
             total_chars = sum(len(m) for m in memories)
-            self.logger.info(
-                "=" * LOG_SEPARATOR_LENGTH,
-                extra={"tool": "add", "section": "header"},
-            )
-            self.logger.info(
+            start_time = self._log_operation_header(
+                "add",
                 f"ADD OPERATION: Storing {len(memories)} memory(ies) "
                 f"({total_chars:,} total characters)",
-                extra={
-                    "tool": "add",
-                    "memory_count": len(memories),
-                    "total_characters": total_chars,
-                    "hybrid_mode": self.config.enable_hybrid_search,
-                },
+                memory_count=len(memories),
+                total_characters=total_chars,
+                hybrid_mode=self.config.enable_hybrid_search,
             )
 
             # Log memory previews (throttled for large batches)
@@ -133,8 +121,6 @@ class AddTool(BaseTool):
             try:
                 result = await self.memory.add_memories_async(memories, dry_run=dry_run)
 
-                # Log completion summary with timing
-                duration = (time.time() - start_time) * 1000  # ms
                 stored_count = result.stored_count
                 skipped_count = result.skipped_count
                 replaced_count = result.replaced_count
@@ -186,26 +172,23 @@ class AddTool(BaseTool):
                         },
                     )
 
-                avg_time = duration / len(memories) if memories else 0
+                duration_ms = self._log_operation_footer("add", start_time)
+
+                avg_time = duration_ms / len(memories) if memories else 0
                 self.logger.info(
-                    f"Completed in {duration:.0f}ms ({avg_time:.0f}ms/memory avg)",
-                    extra={
-                        "tool": "add",
-                        "duration_ms": duration,
-                        "avg_ms_per_memory": avg_time,
-                    },
-                )
-                self.logger.info(
-                    "=" * LOG_SEPARATOR_LENGTH,
-                    extra={"tool": "add", "section": "footer"},
+                    f"  {avg_time:.0f}ms/memory avg",
+                    extra={"tool": "add", "avg_ms_per_memory": avg_time},
                 )
 
                 self.log_completion("add", requested=len(memories), stored=stored_count)
 
             except Exception as e:
-                self.log_error("add", e, count=len(memories))
-                raise StorageError(
-                    f"Failed to add memories to memory store: {e}"
-                ) from e
+                self._raise_tool_error(
+                    "add",
+                    e,
+                    error_cls=StorageError,
+                    message="Failed to add memories to memory store",
+                    count=len(memories),
+                )
 
         return add

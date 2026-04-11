@@ -8,7 +8,7 @@ from typing import Any, Protocol, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from reflectlog.application.config.settings import Config
+from reflectlog.core.config import IAppConfig
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.prompts import REPLACEMENT_DETECTION_PROMPT
 from reflectlog.infrastructure.llm_provider_base import (
@@ -78,18 +78,18 @@ class SmartReplacerConfig:
     provider: str = "openai"  # Provider: "openai" or "anthropic"
 
     @classmethod
-    def from_app_config(cls, config: Config) -> SmartReplacerConfig:
-        """Create SmartReplacerConfig from application Config.
+    def from_config(cls, config: IAppConfig) -> SmartReplacerConfig:
+        """Create SmartReplacerConfig from IAppConfig protocol.
 
         Args:
-            config: Application configuration object.
+            config: Configuration satisfying IAppConfig protocol.
 
         Returns:
             SmartReplacerConfig instance configured from app settings.
         """
         return cls(
-            api_key=config.openrouter_api_key.get_secret_value(),
-            base_url=config.openrouter_base_url,
+            api_key=config.llm_api_key,
+            base_url=config.llm_api_base_url,
             model=config.llm_model,
             threshold=config.smart_replace_threshold,
             enabled=config.enable_smart_replace,

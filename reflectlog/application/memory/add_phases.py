@@ -25,8 +25,8 @@ from asyncer import asyncify, create_task_group
 from reflectlog.core.exceptions import StorageError
 
 from ...core.logging import IStructuredLogger
+from ...core.types import ISemanticSearchEngine
 from ..config.settings import Config
-from ..types import ISemanticSearchEngine
 from ..utils.validation import truncate_memory
 from .match_utils import has_exact_match
 
@@ -383,62 +383,64 @@ class SmartReplacementPhase:
             duration=duration,
         )
 
-    async def _check_for_replacement(
-        self, new_memory: str, smart_replacer: SmartReplacer
-    ) -> list[ReplacementInfo]:
-        """Check if new memory should replace existing memories.
-
-        Uses semantic search to find the most similar existing memories,
-        applies similarity pre-filter, then uses LLM to determine which
-        should be replaced.
+    async def _search_candidates(self, new_memory: str) -> list[tuple[str, float, str]]:
+        """Step 1: Find top N most similar memories via semantic search.
 
         Args:
             new_memory: The new memory being added.
-            smart_replacer: SmartReplacer instance.
 
         Returns:
-            List of ReplacementInfo objects for memories that should be replaced.
-            Empty list if no replacements needed.
+            List of (content, score, metadata) tuples from semantic search.
+            Empty list if no similar memories found.
         """
+        candidate_limit = self.config.smart_replace_candidate_limit
+        similar_results = await asyncify(self._semantic_engine.search)(
+            query=new_memory,
+            project_id=self._project_id,
+            limit=candidate_limit,
+        )
 
-        try:
-            # Step 1: Find top N most similar memories via semantic search
-            candidate_limit = self.config.smart_replace_candidate_limit
-            similar_results = await asyncify(self._semantic_engine.search)(
-                query=new_memory,
-                project_id=self._project_id,
-                limit=candidate_limit,
+        if not similar_results:
+            self.logger.debug(
+                "No similar memories found for replacement check",
+                extra={
+                    "project_id": self._project_id,
+                    "new_memory_preview": new_memory[:100],
+                },
             )
+        return similar_results
 
-            if not similar_results:
-                self.logger.debug(
-                    "No similar memories found for replacement check",
-                    extra={
-                        "project_id": self._project_id,
-                        "new_memory_preview": new_memory[:100],
-                    },
-                )
-                return []
+    def _filter_by_similarity(
+        self,
+        similar_results: list[tuple[str, float, str]],
+        new_memory: str,
+    ) -> list[tuple[str, float]]:
+        """Step 2: Filter candidates by similarity threshold (pre-filter).
 
-            # Step 2: Filter candidates by similarity threshold (pre-filter)
-            min_similarity = self.config.smart_replace_min_similarity
-            filtered_candidates = [
-                (mem, score)
-                for mem, score, _ in similar_results
-                if score >= min_similarity and mem != new_memory
-            ]
+        Args:
+            similar_results: Raw search results from semantic engine.
+            new_memory: The new memory (excluded from candidates).
 
-            if not filtered_candidates:
-                self.logger.debug(
-                    f"All candidates below similarity threshold ({min_similarity})",
-                    extra={
-                        "project_id": self._project_id,
-                        "candidate_count": len(similar_results),
-                        "min_similarity": min_similarity,
-                    },
-                )
-                return []
+        Returns:
+            Filtered list of (content, score) tuples above the threshold.
+        """
+        min_similarity = self.config.smart_replace_min_similarity
+        filtered_candidates = [
+            (mem, score)
+            for mem, score, _ in similar_results
+            if score >= min_similarity and mem != new_memory
+        ]
 
+        if not filtered_candidates:
+            self.logger.debug(
+                f"All candidates below similarity threshold ({min_similarity})",
+                extra={
+                    "project_id": self._project_id,
+                    "candidate_count": len(similar_results),
+                    "min_similarity": min_similarity,
+                },
+            )
+        else:
             self.logger.debug(
                 f"Found {len(filtered_candidates)} candidates above similarity threshold",
                 extra={
@@ -451,89 +453,134 @@ class SmartReplacementPhase:
                 },
             )
 
-            # Step 3: Check candidates in parallel with LLM (rate-limited)
-            # Reuse rerank_max_concurrency for API rate limiting
-            semaphore = anyio.Semaphore(self.config.rerank_max_concurrency)
+        return filtered_candidates
 
-            async def check_single_candidate(
-                existing_memory: str, similarity_score: float
-            ) -> ReplacementInfo | None:
-                """Check a single candidate for replacement (with semaphore)."""
-                async with semaphore:
-                    try:
-                        (
-                            should_replace,
-                            confidence,
-                            reason,
-                        ) = await smart_replacer.check_replacement(
-                            new_memory=new_memory,
-                            existing_memory=existing_memory,
-                        )
+    async def _check_candidates_with_llm(
+        self,
+        filtered_candidates: list[tuple[str, float]],
+        new_memory: str,
+        smart_replacer: SmartReplacer,
+    ) -> list[ReplacementInfo]:
+        """Step 3: Check candidates in parallel with LLM (rate-limited).
 
-                        if should_replace:
-                            self.logger.info(
-                                f"Smart replacement triggered (confidence={confidence:.2f})",
-                                extra={
-                                    "project_id": self._project_id,
-                                    "should_replace": True,
-                                    "confidence": confidence,
-                                    "similarity_score": similarity_score,
-                                    "reason": reason,
-                                    "old_memory_preview": truncate_memory(
-                                        existing_memory, max_length=60
-                                    ),
-                                    "new_memory_preview": truncate_memory(
-                                        new_memory, max_length=60
-                                    ),
-                                },
-                            )
-                            return ReplacementInfo(
-                                old_memory=existing_memory,
-                                new_memory=new_memory,
-                                confidence=confidence,
-                                reason=reason,
-                                similarity_score=similarity_score,
-                            )
-                        else:
-                            self.logger.debug(
-                                f"No replacement needed (confidence={confidence:.2f}): {reason}",
-                                extra={
-                                    "project_id": self._project_id,
-                                    "should_replace": False,
-                                    "confidence": confidence,
-                                    "reason": reason,
-                                },
-                            )
-                            return None
-                    except Exception as candidate_error:
-                        # Graceful degradation: log warning and skip this candidate
-                        self.logger.warning(
-                            f"LLM check failed for candidate: {candidate_error}",
+        Args:
+            filtered_candidates: Pre-filtered (content, score) tuples.
+            new_memory: The new memory being added.
+            smart_replacer: SmartReplacer instance for LLM checks.
+
+        Returns:
+            List of ReplacementInfo for memories that should be replaced.
+        """
+        semaphore = anyio.Semaphore(self.config.rerank_max_concurrency)
+
+        async def check_single_candidate(
+            existing_memory: str, similarity_score: float
+        ) -> ReplacementInfo | None:
+            """Check a single candidate for replacement (with semaphore)."""
+            async with semaphore:
+                try:
+                    (
+                        should_replace,
+                        confidence,
+                        reason,
+                    ) = await smart_replacer.check_replacement(
+                        new_memory=new_memory,
+                        existing_memory=existing_memory,
+                    )
+
+                    if should_replace:
+                        self.logger.info(
+                            f"Smart replacement triggered (confidence={confidence:.2f})",
                             extra={
                                 "project_id": self._project_id,
-                                "error": str(candidate_error),
-                                "existing_preview": existing_memory[:100],
+                                "should_replace": True,
+                                "confidence": confidence,
+                                "similarity_score": similarity_score,
+                                "reason": reason,
+                                "old_memory_preview": truncate_memory(
+                                    existing_memory, max_length=60
+                                ),
+                                "new_memory_preview": truncate_memory(
+                                    new_memory, max_length=60
+                                ),
+                            },
+                        )
+                        return ReplacementInfo(
+                            old_memory=existing_memory,
+                            new_memory=new_memory,
+                            confidence=confidence,
+                            reason=reason,
+                            similarity_score=similarity_score,
+                        )
+                    else:
+                        self.logger.debug(
+                            f"No replacement needed (confidence={confidence:.2f}): {reason}",
+                            extra={
+                                "project_id": self._project_id,
+                                "should_replace": False,
+                                "confidence": confidence,
+                                "reason": reason,
                             },
                         )
                         return None
+                except Exception as candidate_error:
+                    # Graceful degradation: log warning and skip this candidate
+                    self.logger.warning(
+                        f"LLM check failed for candidate: {candidate_error}",
+                        extra={
+                            "project_id": self._project_id,
+                            "error": str(candidate_error),
+                            "existing_preview": existing_memory[:100],
+                        },
+                    )
+                    return None
 
-            # Run all candidate checks in parallel
-            results: list[ReplacementInfo | None] = []
+        # Run all candidate checks in parallel
+        results: list[ReplacementInfo | None] = []
 
-            async def collect_result(
-                existing_memory: str, similarity_score: float
-            ) -> None:
-                """Run check and collect result."""
-                result = await check_single_candidate(existing_memory, similarity_score)
-                results.append(result)
+        async def collect_result(existing_memory: str, similarity_score: float) -> None:
+            """Run check and collect result."""
+            result = await check_single_candidate(existing_memory, similarity_score)
+            results.append(result)
 
-            # anyio task group sufficient: fire-and-forget pattern for candidate checks
-            async with anyio.create_task_group() as tg:
-                for existing_memory, similarity_score in filtered_candidates:
-                    tg.start_soon(collect_result, existing_memory, similarity_score)
+        # anyio task group sufficient: fire-and-forget pattern for candidate checks
+        async with anyio.create_task_group() as tg:
+            for existing_memory, similarity_score in filtered_candidates:
+                tg.start_soon(collect_result, existing_memory, similarity_score)
 
-            # Filter out None results (failed checks or no replacement needed)
-            return [r for r in results if r is not None]
+        # Filter out None results (failed checks or no replacement needed)
+        return [r for r in results if r is not None]
+
+    async def _check_for_replacement(
+        self, new_memory: str, smart_replacer: SmartReplacer
+    ) -> list[ReplacementInfo]:
+        """Check if new memory should replace existing memories.
+
+        Orchestrates a 3-step pipeline: search candidates, filter by
+        similarity threshold, then check with LLM.
+
+        Args:
+            new_memory: The new memory being added.
+            smart_replacer: SmartReplacer instance.
+
+        Returns:
+            List of ReplacementInfo objects for memories that should be replaced.
+            Empty list if no replacements needed.
+        """
+        try:
+            similar_results = await self._search_candidates(new_memory)
+            if not similar_results:
+                return []
+
+            filtered_candidates = self._filter_by_similarity(
+                similar_results, new_memory
+            )
+            if not filtered_candidates:
+                return []
+
+            return await self._check_candidates_with_llm(
+                filtered_candidates, new_memory, smart_replacer
+            )
 
         except Exception as e:
             # Graceful degradation: log warning and proceed without replacement
@@ -601,7 +648,6 @@ class StoragePhase:
         """
         phase_start = time.perf_counter()
 
-        stored_count = 0
         replaced_count = 0
         replacements: list[ReplacementInfo] = []
         memories_to_add: list[str] = []
@@ -627,65 +673,10 @@ class StoragePhase:
                     },
                 )
 
-                if not dry_run:
-                    try:
-                        # Archive the old memory before deletion (for recovery)
-                        archived = await asyncify(self._archive_for_replacement)(
-                            old_memory=replacement_info.old_memory,
-                            new_memory=memory,
-                            confidence=replacement_info.confidence,
-                            reason=replacement_info.reason,
-                        )
-                        if archived:
-                            self.logger.debug(
-                                "Old memory archived for recovery",
-                                extra={
-                                    "memory_index": idx + 1,
-                                    "action": "archive_success",
-                                },
-                            )
-
-                        # Delete the old memory
-                        msg_id = self._semantic_engine.get_id_by_content(
-                            self._project_id, replacement_info.old_memory
-                        )
-                        if msg_id is None:
-                            self.logger.warning(
-                                "Old memory not found for replacement delete",
-                                extra={
-                                    "memory_index": idx + 1,
-                                    "action": "delete_missing",
-                                },
-                            )
-                            continue
-
-                        self._delete_memory(
-                            memory_id=str(msg_id),
-                            content=replacement_info.old_memory,
-                        )
-
-                        replaced_count += 1
-                        replacements.append(replacement_info)
-                        self.logger.debug(
-                            "Old memory removed successfully",
-                            extra={
-                                "memory_index": idx + 1,
-                                "action": "delete_success",
-                                "archived": archived,
-                            },
-                        )
-                    except Exception as delete_error:
-                        # Graceful degradation: log warning and continue
-                        self.logger.warning(
-                            f"Failed to delete old memory: {delete_error}",
-                            extra={
-                                "memory_index": idx + 1,
-                                "action": "delete_failed",
-                                "error": str(delete_error),
-                            },
-                        )
-                else:
-                    # In dry_run mode, just record what would be replaced
+                success = await self._process_replacement(
+                    idx, memory, replacement_info, dry_run
+                )
+                if success:
                     replaced_count += 1
                     replacements.append(replacement_info)
 
@@ -693,26 +684,11 @@ class StoragePhase:
             if not dry_run:
                 memories_to_add.append(memory)
             else:
-                # In dry_run, assume it would be stored
-                stored_count += 1
+                pass  # dry_run stored_count handled below
 
-        if not dry_run and memories_to_add:
-            stored_memories = self._add_memories_batch(memories_to_add)
-            stored_count = len(stored_memories)
-            if stored_count != len(memories_to_add):
-                self.logger.warning(
-                    "Batch add stored fewer memories than expected",
-                    extra={
-                        "expected_count": len(memories_to_add),
-                        "stored_count": stored_count,
-                    },
-                )
-
-        # Commit changes (only in live mode)
-        if not dry_run:
-            if self._tantivy_engine is not None:
-                self._tantivy_engine.commit()
-            self._semantic_engine.commit()
+        stored_count = self._store_and_commit(memories_to_add, dry_run)
+        if dry_run:
+            stored_count = len(memories)
 
         duration = time.perf_counter() - phase_start
 
@@ -732,6 +708,115 @@ class StoragePhase:
             replacements=replacements,
             duration=duration,
         )
+
+    async def _process_replacement(
+        self,
+        idx: int,
+        memory: str,
+        replacement_info: ReplacementInfo,
+        dry_run: bool,
+    ) -> bool:
+        """Process a single replacement: archive and delete the old memory.
+
+        Args:
+            idx: Memory index (for logging).
+            memory: The new memory content.
+            replacement_info: Replacement details from LLM check.
+            dry_run: If True, only record what would be replaced.
+
+        Returns:
+            True if the replacement was processed (or recorded in dry_run).
+        """
+        if dry_run:
+            return True
+
+        try:
+            # Archive the old memory before deletion (for recovery)
+            archived = await asyncify(self._archive_for_replacement)(
+                old_memory=replacement_info.old_memory,
+                new_memory=memory,
+                confidence=replacement_info.confidence,
+                reason=replacement_info.reason,
+            )
+            if archived:
+                self.logger.debug(
+                    "Old memory archived for recovery",
+                    extra={
+                        "memory_index": idx + 1,
+                        "action": "archive_success",
+                    },
+                )
+
+            # Delete the old memory
+            msg_id = self._semantic_engine.get_id_by_content(
+                self._project_id, replacement_info.old_memory
+            )
+            if msg_id is None:
+                self.logger.warning(
+                    "Old memory not found for replacement delete",
+                    extra={
+                        "memory_index": idx + 1,
+                        "action": "delete_missing",
+                    },
+                )
+                return False
+
+            self._delete_memory(
+                memory_id=str(msg_id),
+                content=replacement_info.old_memory,
+            )
+
+            self.logger.debug(
+                "Old memory removed successfully",
+                extra={
+                    "memory_index": idx + 1,
+                    "action": "delete_success",
+                    "archived": archived,
+                },
+            )
+            return True
+        except Exception as delete_error:
+            # Graceful degradation: log warning and continue
+            self.logger.warning(
+                f"Failed to delete old memory: {delete_error}",
+                extra={
+                    "memory_index": idx + 1,
+                    "action": "delete_failed",
+                    "error": str(delete_error),
+                },
+            )
+            return False
+
+    def _store_and_commit(self, memories_to_add: list[str], dry_run: bool) -> int:
+        """Batch-add new memories and commit changes to engines.
+
+        Args:
+            memories_to_add: Memories collected for storage.
+            dry_run: If True, skip actual storage and commit.
+
+        Returns:
+            Number of memories actually stored.
+        """
+        if dry_run or not memories_to_add:
+            return 0
+
+        stored_memories = self._add_memories_batch(memories_to_add)
+        stored_count = len(stored_memories)
+        if stored_count != len(memories_to_add):
+            self.logger.warning(
+                "Batch add stored fewer memories than expected",
+                extra={
+                    "expected_count": len(memories_to_add),
+                    "stored_count": stored_count,
+                },
+            )
+
+        # Commit changes
+        if self._tantivy_engine is not None:
+            self._tantivy_engine.commit()
+        self._semantic_engine.commit()
+
+        return stored_count
 
     def _add_memories_batch(self, memories: list[str]) -> list[str]:
         """Add multiple memories to both semantic and full-text engines.
