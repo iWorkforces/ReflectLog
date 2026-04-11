@@ -143,8 +143,8 @@ class TestSmartReplacerConfig:
     def test_from_app_config(self) -> None:
         '''Test factory method from application config.'''
         mock_app_config = MagicMock()
-        mock_app_config.openrouter_api_key.get_secret_value.return_value = "api-key"
-        mock_app_config.openrouter_base_url = "https://openrouter.ai/api/v1"
+        mock_app_config.llm_api_key = "api-key"
+        mock_app_config.llm_api_base_url = "https://openrouter.ai/api/v1"
         mock_app_config.llm_model = "x-ai/grok-4.1-fast"
         mock_app_config.smart_replace_threshold = 0.8
         mock_app_config.enable_smart_replace = True
@@ -152,7 +152,7 @@ class TestSmartReplacerConfig:
         mock_app_config.smart_replace_retry_delay = 1.0
         mock_app_config.llm_provider = "openai"
 
-        config = SmartReplacerConfig.from_app_config(mock_app_config)
+        config = SmartReplacerConfig.from_config(mock_app_config)
 
         assert config.api_key == "api-key"
         assert config.base_url == "https://openrouter.ai/api/v1"
@@ -164,8 +164,8 @@ class TestSmartReplacerConfig:
     def test_from_app_config_anthropic_provider(self) -> None:
         '''Test factory method with anthropic provider.'''
         mock_app_config = MagicMock()
-        mock_app_config.openrouter_api_key.get_secret_value.return_value = "api-key"
-        mock_app_config.openrouter_base_url = "https://openrouter.ai/api/v1"
+        mock_app_config.llm_api_key = "api-key"
+        mock_app_config.llm_api_base_url = "https://openrouter.ai/api/v1"
         mock_app_config.llm_model = "claude-sonnet-4-20250514"
         mock_app_config.smart_replace_threshold = 0.7
         mock_app_config.enable_smart_replace = True
@@ -173,7 +173,7 @@ class TestSmartReplacerConfig:
         mock_app_config.smart_replace_retry_delay = 1.0
         mock_app_config.llm_provider = "anthropic"
 
-        config = SmartReplacerConfig.from_app_config(mock_app_config)
+        config = SmartReplacerConfig.from_config(mock_app_config)
 
         assert config.provider == "anthropic"
         assert config.model == "claude-sonnet-4-20250514"

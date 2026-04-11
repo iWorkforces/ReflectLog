@@ -102,16 +102,18 @@ class TestLLMRerankerConfig:
     def test_from_app_config(self) -> None:
         '''Test factory method from application config.'''
         mock_app_config = MagicMock()
-        mock_app_config.openrouter_api_key.get_secret_value.return_value = "api-key"
-        mock_app_config.openrouter_base_url = "https://openrouter.ai/api/v1"
+        mock_app_config.llm_api_key = "api-key"
+        mock_app_config.llm_api_base_url = "https://openrouter.ai/api/v1"
         mock_app_config.llm_model = "x-ai/grok-4.1-fast"
         mock_app_config.search_score_threshold = 0.6
         mock_app_config.rerank_max_concurrency = 8
         mock_app_config.reranker_min_results = 0
         mock_app_config.reranker_batch_normalize = True
         mock_app_config.llm_provider = "openai"
+        mock_app_config.enable_recency_boost = True
+        mock_app_config.recency_decay_rate = 0.01
 
-        config = LLMRerankerConfig.from_app_config(mock_app_config)
+        config = LLMRerankerConfig.from_config(mock_app_config)
 
         assert config.api_key == "api-key"
         assert config.base_url == "https://openrouter.ai/api/v1"

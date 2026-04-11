@@ -237,9 +237,9 @@ class TestCreateSemanticEngine:
         """Semantic engine should be created with USearchConfig and embedder."""
         result = factory._create_semantic_engine(mock_config, mock_logger)
 
-        mock_usearch_config_cls.from_app_config.assert_called_once_with(mock_config)
+        mock_usearch_config_cls.from_config.assert_called_once_with(mock_config)
         mock_usearch_cls.assert_called_once_with(
-            mock_usearch_config_cls.from_app_config.return_value,
+            mock_usearch_config_cls.from_config.return_value,
             embedder=mock_cached_cls.return_value,
             logger=mock_logger,
         )
@@ -263,7 +263,7 @@ class TestCreateSemanticEngine:
         factory._create_semantic_engine(mock_config, mock_logger)
 
         mock_usearch_cls.assert_called_once_with(
-            mock_usearch_config_cls.from_app_config.return_value,
+            mock_usearch_config_cls.from_config.return_value,
             embedder=mock_embedder_cls.return_value,
             logger=mock_logger,
         )
@@ -534,9 +534,9 @@ class TestCreateLLMReranker:
 
         result = create_llm_reranker(mock_config, mock_logger)
 
-        mock_config_cls.from_app_config.assert_called_once_with(mock_config)
+        mock_config_cls.from_config.assert_called_once_with(mock_config)
         mock_reranker_cls.assert_called_once_with(
-            config=mock_config_cls.from_app_config.return_value,
+            config=mock_config_cls.from_config.return_value,
             logger=mock_logger,
         )
         assert result is mock_reranker_cls.return_value
@@ -584,9 +584,9 @@ class TestCreateCrossEncoderReranker:
 
         result = create_cross_encoder_reranker(mock_config, mock_logger)
 
-        mock_config_cls.from_app_config.assert_called_once_with(mock_config)
+        mock_config_cls.from_config.assert_called_once_with(mock_config)
         mock_reranker_cls.assert_called_once_with(
-            config=mock_config_cls.from_app_config.return_value,
+            config=mock_config_cls.from_config.return_value,
             logger=mock_logger,
         )
         assert result is mock_reranker_cls.return_value
@@ -634,9 +634,9 @@ class TestCreateSmartReplacer:
 
         result = create_smart_replacer(mock_config, mock_logger)
 
-        mock_config_cls.from_app_config.assert_called_once_with(mock_config)
+        mock_config_cls.from_config.assert_called_once_with(mock_config)
         mock_replacer_cls.assert_called_once_with(
-            config=mock_config_cls.from_app_config.return_value,
+            config=mock_config_cls.from_config.return_value,
             logger=mock_logger,
         )
         assert result is mock_replacer_cls.return_value

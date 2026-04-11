@@ -1079,7 +1079,7 @@ class TestTantivyScoreNormalization:
         '''Test normalization of typical BM25 score range.'''
         import numpy as np
 
-        from reflectlog.application.utils.numba_utils import normalize_scores_minmax
+        from reflectlog.utility.scoring import normalize_scores_minmax
 
         # From user's example: 5.02, 1.9656, 1.9384
         scores = np.array([5.02, 1.9656, 1.9384], dtype=np.float64)
@@ -1095,7 +1095,7 @@ class TestTantivyScoreNormalization:
         '''Single result should be 0.5 (neutral midpoint with no range).'''
         import numpy as np
 
-        from reflectlog.application.utils.numba_utils import normalize_scores_minmax
+        from reflectlog.utility.scoring import normalize_scores_minmax
 
         scores = np.array([3.5], dtype=np.float64)
         normalized = normalize_scores_minmax(scores)
@@ -1106,7 +1106,7 @@ class TestTantivyScoreNormalization:
         '''All equal scores should become 0.5 (neutral midpoint with no range).'''
         import numpy as np
 
-        from reflectlog.application.utils.numba_utils import normalize_scores_minmax
+        from reflectlog.utility.scoring import normalize_scores_minmax
 
         scores = np.array([2.0, 2.0, 2.0], dtype=np.float64)
         normalized = normalize_scores_minmax(scores)
@@ -1117,7 +1117,7 @@ class TestTantivyScoreNormalization:
         '''Normalization should preserve relative ordering.'''
         import numpy as np
 
-        from reflectlog.application.utils.numba_utils import normalize_scores_minmax
+        from reflectlog.utility.scoring import normalize_scores_minmax
 
         scores = np.array([5.0, 3.0, 1.0, 4.0, 2.0], dtype=np.float64)
         normalized = normalize_scores_minmax(scores)
@@ -1133,7 +1133,7 @@ class TestTantivyScoreNormalization:
         '''Test with wide BM25 score range.'''
         import numpy as np
 
-        from reflectlog.application.utils.numba_utils import normalize_scores_minmax
+        from reflectlog.utility.scoring import normalize_scores_minmax
 
         scores = np.array([15.0, 0.5, 7.2, 3.1], dtype=np.float64)
         normalized = normalize_scores_minmax(scores)

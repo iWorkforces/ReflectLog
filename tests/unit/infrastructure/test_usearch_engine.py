@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from reflectlog.core.exceptions import StorageError
-from reflectlog.application.types import Embeddings
+from reflectlog.core.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
@@ -98,7 +98,7 @@ class TestUSearchConfigFromAppConfig:
         mock_config.qwen_embedding_dims = 4096
 
         with patch("os.getcwd", return_value="/tmp"):
-            config = USearchConfig.from_app_config(mock_config)
+            config = USearchConfig.from_config(mock_config)
 
         assert config.project_id == "test-project"
         assert config.embedding_dims == 3072
@@ -114,7 +114,7 @@ class TestUSearchConfigFromAppConfig:
         mock_config.qwen_embedding_dims = 4096
 
         with patch("os.getcwd", return_value="/tmp"):
-            config = USearchConfig.from_app_config(mock_config)
+            config = USearchConfig.from_config(mock_config)
 
         assert config.embedding_dims == 4096
 
@@ -592,7 +592,7 @@ class TestUSearchEngineExactSearch:
         mock_config.usearch_exact_search_threshold = 5000
 
         with patch("os.getcwd", return_value="/tmp"):
-            config = USearchConfig.from_app_config(mock_config)
+            config = USearchConfig.from_config(mock_config)
 
         assert config.exact_search is True
         assert config.exact_search_threshold == 5000

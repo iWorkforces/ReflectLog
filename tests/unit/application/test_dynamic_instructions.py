@@ -209,7 +209,7 @@ class TestDynamicInstructionsIntegration:
         ):
             mock_create_logger.return_value = MagicMock()
 
-            from reflectlog.application.config import Config
+            from reflectlog.application.config.settings import Config
             from reflectlog.application.mcp_server import FastMCPServer
 
             server_config = Config.from_environment()

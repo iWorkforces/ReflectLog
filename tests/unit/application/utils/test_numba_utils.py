@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from reflectlog.application.utils.numba_utils import (
+from reflectlog.utility.scoring import (
     _find_minmax,
     _normalize_inplace,
     compute_rrf_scores_batch,
@@ -399,7 +399,7 @@ class TestWarmupNumbaFunctionsFailure:
     def test_warmup_returns_false_on_exception(self) -> None:
         '''Warmup returns False and emits warning when a function raises.'''
         with patch(
-            "reflectlog.application.utils.numba_utils.normalize_scores_minmax",
+            "reflectlog.utility.scoring.normalize_scores_minmax",
             side_effect=RuntimeError("compilation failed"),
         ):
             with pytest.warns(RuntimeWarning, match="Numba JIT warmup failed"):
@@ -409,7 +409,7 @@ class TestWarmupNumbaFunctionsFailure:
     def test_warmup_returns_false_on_numpy_error(self) -> None:
         '''Warmup returns False when numpy operations fail.'''
         with patch(
-            "reflectlog.application.utils.numba_utils.np.array",
+            "reflectlog.utility.scoring.np.array",
             side_effect=MemoryError("out of memory"),
         ):
             with pytest.warns(RuntimeWarning, match="Numba JIT warmup failed"):
