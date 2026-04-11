@@ -1,7 +1,7 @@
 # ReflectLogMCP Knowledge Base
 
-**Generated:** 2026-04-06
-**Commit:** 9c391a0
+**Generated:** 2026-04-11
+**Commit:** 6f2b0f8
 **Branch:** develop
 
 ## OVERVIEW
@@ -12,17 +12,17 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 ```
 ./
-├── reflectlog/              # Main package (~98 files, 21k lines)
-│   ├── core/              # Protocol definitions (8 files, 2k lines)
-│   ├── application/         # Business logic (47 files, 11k lines)
+├── reflectlog/              # Main package (~98 files, ~21k lines)
+│   ├── core/              # Protocol definitions + types (11 files, ~2k lines)
+│   ├── application/         # Business logic (~47 files, ~11k lines)
 │   │   ├── memory/        # Memory pipelines + fusion + reranking
 │   │   ├── tools/         # MCP tool implementations
 │   │   ├── config/        # Settings, validation, prompts, presets
 │   │   └── utils/         # Logging, metrics, retry, circuit breaker
-│   ├── infrastructure/      # External integrations (22 files, 5.7k lines)
+│   ├── infrastructure/      # External integrations (~11 files, ~5.7k lines)
 │   ├── plugins/           # Plugin system (5 files, 1.1k lines)
-│   └── utility/           # Platform utilities (10 files, 1 subdir)
-├── tests/                # Unit + integration + load + security (86 files, 34k lines)
+│   └── utility/           # Platform utilities + scoring (7 files, 1 subdir)
+├── tests/                # Unit + integration + load + security (~86 files, ~34k lines)
 ├── stubs/               # Type stubs for third-party libs (14 .pyi files)
 ├── indexes/              # Persistent index data (gitignored)
 ├── scripts/              # Build/dev scripts + git hooks
@@ -47,6 +47,7 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 | MemoryManager | Class | application/memory/manager.py | High | Facade for all memory operations |
 | Config | Dataclass | application/config/settings.py | High | Centralized configuration |
 | ISearchBackend | Protocol | core/search.py | Medium | Abstract search engine interface |
+| ISemanticSearchEngine | Protocol | core/types.py | Medium | Semantic search engine interface |
 | USearchEngine | Class | infrastructure/usearch_engine.py | Medium | Semantic vector search backend |
 | TantivyEngine | Class | infrastructure/tantivy_engine.py | Medium | Full-text search backend |
 | ConfigAdapter | Class | core/config_adapters.py | High | Config-to-protocol adapter |
@@ -54,6 +55,8 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 | RanxFusionEngine | Class | application/memory/fusion/ranx_fusion.py | Medium | RRF/CombSUM/MNZ/Borda fusion |
 | IReranker | Protocol | core/reranking.py | Medium | Reranker interface |
 | LLMReranker | Class | infrastructure/llm_reranker.py | Medium | LLM-based reranking |
+| RerankerPostProcessor | Class | infrastructure/reranker_post_processor.py | Medium | Post-search reranking composition |
+| scoring.py | Module | utility/scoring.py | Medium | JIT-compiled RRF, normalization, filtering |
 
 ## CONVENTIONS
 
@@ -114,7 +117,7 @@ MCP server providing persistent, project-based semantic memory storage for AI ag
 
 **Exception Chaining** - All custom exceptions use `from e` to preserve tracebacks.
 
-**JIT Compilation** - Numba functions for performance-critical operations (RRF, normalization).
+**JIT Compilation** - Numba functions in `utility/scoring.py` for performance-critical operations (RRF, normalization).
 
 ## COMMANDS
 
@@ -147,7 +150,7 @@ uv run reflectlog --transport http --port 9103
 - **Smart Replacement**: LLM detects memory updates with `0.7` confidence threshold. Archives replaced for 30 days.
 - **Exact Match Fallback**: Database lookup when semantic search misses exact text match.
 - **Custom Exception Hierarchy**: All errors chain with `from e` to preserve tracebacks.
-- **Type Checker**: Uses `ty` (not mypy). `reportAny = "none"` - completely ignores `Any` types.
+- **Type Checker**: Uses `ty` (not mypy). `reportAny = "warning"` - warns on `Any` types.
 - **Coverage Precision**: 2 decimal places, reports even covered lines (`skip_covered = false`).
 - **Concurrent LLM Calls**: Smart replacement checks run in parallel with semaphore limiting.
 - **Three Transport Modes**: stdio, http, sse, streamable-http (not just stdio).
@@ -155,23 +158,39 @@ uv run reflectlog --transport http --port 9103
 - **Lock Hierarchy**: Always acquire `_write_lock` before `_lock` to prevent deadlocks.
 - **Protocol Adapters**: ConfigAdapter wraps Config dataclass to satisfy IServerConfig, ISearchConfig, etc.
 - **Resilience Patterns**: Retry with exponential backoff + jitter, circuit breaker for LLM APIs.
+- **Canonical Type Locations**: `core/types.py` has ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore. `application/types.py` has SearchResult, MemoryList, ToolResult, LogContext, ISemanticSearchConfig only.
+- **Scoring Functions**: All JIT-compiled functions live in `utility/scoring.py` (not application/utils/).
+- **Infrastructure Factory**: All infrastructure classes use `from_config()` (not `from_app_config()`).
 
 ## LARGE FILES (>500 lines)
 
 | File | Lines | Complexity Driver |
 |-------|---------|------------------|
-| tantivy_engine.py | 1,324 | Full-text search, soft-delete, tombstone LRU cache, compaction |
+| tantivy_engine.py | 1,353 | Full-text search, soft-delete, tombstone LRU cache, compaction |
 | test_tantivy_engine.py | 2,489 | Infrastructure test (test file) |
 | test_memory_store.py | 1,692 | Infrastructure test (test file) |
 | test_plugins.py | 1,591 | Plugin system test (test file) |
-| add_phases.py | 1,052 | 3-phase parallel pipeline, smart replacement LLM checks |
-| manager.py | 1,042 | Memory manager facade, complex init, lock hierarchy |
-| usearch_engine.py | 848 | Vector search, batch operations, dual search modes |
+| test_mcp_server.py | 1,410 | MCP server test (test file) |
+| test_add_phases.py | 1,324 | Add pipeline test (test file) |
+| test_usearch_engine.py | 1,310 | USearch test (test file) |
+| test_llm_reranker.py | 1,269 | LLM reranker test (test file) |
+| test_validation.py | 1,211 | Config validation test (test file) |
+| test_search_pipeline.py | 1,153 | Search pipeline test (test file) |
+| add_phases.py | 1,138 | 3-phase parallel pipeline, smart replacement LLM checks |
+| manager.py | 1,054 | Memory manager facade, complex init, lock hierarchy |
+| test_cross_encoder_reranker.py | 1,018 | Cross-encoder test (test file) |
+| test_smart_replacer.py | 999 | Smart replacer test (test file) |
+| test_config_adapters.py | 964 | Config adapter test (test file) |
+| test_memory_manager.py | 932 | Memory manager test (test file) |
+| test_circuit_breaker.py | 914 | Circuit breaker test (test file) |
+| usearch_engine.py | 860 | Vector search, batch operations, dual search modes |
 | memory_store.py | 865 | SQLite CRUD, archival/recovery, batch operations |
-| validation.py | 778 | 60+ env var validation, type/range checking |
-| search_strategies.py | 743 | 4-step pipeline, RRF fusion, threshold filtering |
-| settings.py | 757 | Configuration dataclass, 60+ fields, factory methods |
-| llm_reranker.py | 658 | LLM reranking, provider abstraction, temporal scoring |
+| validation.py | 839 | 60+ env var validation, type/range checking |
+| settings.py | 768 | Configuration dataclass, 60+ fields, factory methods |
+| search_strategies.py | 742 | 4-step pipeline, RRF fusion, threshold filtering |
+| config_adapters.py | 723 | Protocol adapters for Config dataclass |
+| llm_reranker.py | 669 | LLM reranking, provider abstraction, temporal scoring |
+| smart_replacer.py | 509 | LLM update detection, 0.7 confidence threshold |
 
 ## SUBDIRECTORIES WITH AGENTS.md
 
@@ -179,11 +198,11 @@ uv run reflectlog --transport http --port 9103
 |-------|--------|--------|
 | `reflectlog/` | 140 | Highest complexity (98 files, 5 packages) |
 | `reflectlog/application/` | 140 | Business logic (47 files, 4 subdirs) |
-| `reflectlog/infrastructure/` | 65 | External integrations (22 files, 5 subdirs) |
+| `reflectlog/infrastructure/` | 65 | External integrations (~11 files, 5 subdirs) |
 | `reflectlog/application/memory/` | 52 | Memory management (9 files, 2 subdirs) |
 | `reflectlog/application/utils/` | 34 | Utilities (10 files, logging/metrics/retry/security) |
-| `reflectlog/core/` | 28 | Protocol definitions (8 files) |
-| `reflectlog/utility/` | 30 | Platform utilities (10 files, 1 subdir) |
+| `reflectlog/core/` | 28 | Protocol definitions + types (11 files) |
+| `reflectlog/utility/` | 30 | Platform utilities + scoring (7 files, 1 subdir) |
 | `reflectlog/plugins/` | 16 | Plugin system (5 files, 1.1k lines) |
 | `reflectlog/application/config/` | 19 | Configuration (5 files) |
 | `reflectlog/application/tools/` | 15 | MCP tool implementations (7 files) |

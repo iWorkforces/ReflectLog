@@ -1,8 +1,6 @@
 # ReflectLogMCP Knowledge Base - Core Protocols
 
-**Generated:** 2026-01-29
-**Commit:** 35326f6
-**Branch:** develop
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 
 ## OVERVIEW
 
@@ -18,7 +16,8 @@ core/
 ├── memory.py            # Memory protocols (IMemoryStore, IMemoryBackend, IMemoryManager)
 ├── reranking.py         # Reranking protocols (IReranker, IRerankerProvider, IRankingResult, IRerankerConfig)
 ├── tools.py             # Tool protocols (ITool, IToolRegistry, IToolLoader, ToolParameter, ToolDefinition)
-└── logging.py           # Logging protocols (ILoggingService, ILogSink, LogLevel)
+├── logging.py           # Logging protocols (ILoggingService, ILogSink, LogLevel)
+└── types.py             # Canonical types (ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore)
 ```
 
 ## WHERE TO LOOK
@@ -32,6 +31,7 @@ core/
 | Config adaptation | config_adapters.py | ConfigAdapter, SearchConfigAdapter, etc. |
 | Tool registration | tools.py | ITool, IToolRegistry |
 | Logging abstraction | logging.py | ILoggingService, ILogSink |
+| Canonical types | types.py | ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore |
 
 ## CONVENTIONS
 

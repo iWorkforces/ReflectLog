@@ -1,5 +1,6 @@
 # Memory Management Layer
 
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 ## OVERVIEW
 3-phase add pipeline + 4-step search pipeline with RRF fusion and unified score normalization.
 
@@ -7,21 +8,24 @@
 ```
 memory/
 ├── manager.py              # MemoryManager orchestrator
-├── add_pipeline.py         # 3-phase add with pluggable phases
-├── search_pipeline.py      # 4-step search with pluggable stages
-├── fusion/                 # Fusion algorithms (RRF, CombSUM, Borda)
-└── reranking/              # Score normalization + recency decay
+├── add_phases.py            # 3-phase add with dedup + smart replacement
+├── search_strategies.py     # 4-step hybrid search with RRF fusion
+├── engine_factory.py        # Engine creation + cached embeddings
+├── match_utils.py           # Exact match detection
+├── fusion/                  # Fusion algorithms (RRF, CombSUM, Borda)
+└── reranking/               # Recency decay
 ```
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
 |-------|-----------|--------|
-| 3-phase add | `add_pipeline.py` | Phase 1: dedup, Phase 2: replace, Phase 3: store |
-| 4-step search | `search_pipeline.py` | Backend → Fusion → Filter → Rerank |
+| 3-phase add | `add_phases.py` | Phase 1: dedup, Phase 2: replace, Phase 3: store |
+| 4-step search | `search_strategies.py` | Backend → Fusion → Filter → Rerank |
+| Engine factory | `engine_factory.py` | Engine creation + cached embeddings |
 | RRF fusion | `fusion/ranx_fusion.py` | Reciprocal Rank Fusion (k=60 default) |
-| Score normalization | `reranking/normalization.py` | Batch min-max to 0-1 range |
-| Recency decay | `reranking/normalization.py` | Exponential: score * exp(-rate * hours) |
+| Score normalization | `utility/scoring.py` | Batch min-max to 0-1 range (JIT-compiled) |
+| Recency decay | `utility/scoring.py` | Exponential: score * exp(-rate * hours) |
 
 ## CONVENTIONS
 

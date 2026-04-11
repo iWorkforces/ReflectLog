@@ -1,6 +1,6 @@
 # ReflectLogMCP Test Suite
 
-**Generated:** 2026-01-27  **Commit:** 94d13da  **Branch:** develop
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 
 ## OVERVIEW
 
@@ -8,10 +8,13 @@ Comprehensive test suite covering unit and integration tests for the ReflectLogM
 
 ## STRUCTURE
 
-tests/ - 71 files, 34k lines
+tests/ - 88 files, 34k lines
 ├── conftest.py - Shared fixtures (15+)
 ├── unit/ - Unit tests (mirrors reflectlog/)
-└── integration/ - Real engine tests
+├── integration/ - Real engine tests
+├── load/ - Locust load tests
+├── security/ - Security tests
+└── test_*.py - Standalone test scripts
 
 ## TEST CONFIGURATION
 

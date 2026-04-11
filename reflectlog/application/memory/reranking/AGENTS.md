@@ -1,16 +1,18 @@
 # Agent Guidelines for reflectlog/application/memory/reranking/
 
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+
 ## OVERVIEW
-Batch min-max score normalization to [0,1] with exponential recency decay for rerankers.
+Recency decay scoring for rerankers. Score normalization and filtering functions live in `utility/scoring.py`.
 
 ## WHERE TO LOOK
 
-| Function | Normalizes | Description |
-|----------|------------|-------------|
-| normalize_reranker_scores | Reranker scores to [0,1] | Batch min-max; best=1.0, worst=0.0 |
-| apply_threshold_with_safety_net | Filtered results | Threshold with guaranteed min_results |
-| calculate_recency_factor | Timestamp to factor | exp(-rate * hours_old), 1.0=newest |
-| apply_recency_decay | Normalized scores | score * exp(-rate * hours), re-sorts |
+| Function | Location | Description |
+|----------|----------|-------------|
+| normalize_reranker_scores | `utility/scoring.py` | Batch min-max normalization to [0,1] |
+| apply_threshold_with_safety_net | `utility/scoring.py` | Threshold with guaranteed min_results |
+| calculate_recency_factor | `utility/scoring.py` | exp(-rate * hours_old), 1.0=newest |
+| apply_recency_decay | `utility/scoring.py` | score * exp(-rate * hours), re-sorts |
 
 ## ANTI-PATTERNS
 

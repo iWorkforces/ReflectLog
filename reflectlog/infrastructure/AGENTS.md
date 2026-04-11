@@ -1,5 +1,6 @@
 # Infrastructure Layer
 
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 External integrations wrapping third-party libraries with protocol-based interfaces.
 
 ## STRUCTURE
@@ -16,6 +17,7 @@ infrastructure/
 ├── qwen3_embedding.py    # Qwen3 Langchain embeddings
 ├── llm_provider_base.py  # Base OpenAI provider protocol
 ├── search/              # SearchEngineBase + re-exports
+├── reranker_post_processor.py  # Post-search reranking composition (LLM + cross-encoder + temporal)
 └── embeddings/          # Re-exports (future expansion)
 
 ## WHERE TO LOOK
@@ -30,6 +32,7 @@ infrastructure/
 | Smart replacement | `smart_replacer.py` | LLM update detection, 0.7 threshold |
 | Embedding cache | `cached_embeddings.py` | LRU cache, 100 entries |
 | Qwen3 embeddings | `qwen3_embedding.py` | Langchain integration |
+| Reranker composition | `reranker_post_processor.py` | LLM + cross-encoder + temporal |
 
 ## CODE MAP
 
@@ -42,6 +45,7 @@ infrastructure/
 | MemoryStore | Class | memory_store.py | Medium | SQLite persistence |
 | SmartReplacer | Class | smart_replacer.py | Medium | LLM memory update detection |
 | CachedEmbeddings | Class | cached_embeddings.py | Medium | LRU query cache |
+| RerankerPostProcessor | Class | reranker_post_processor.py | Medium | Post-search reranking composition |
 
 ## CONVENTIONS
 
@@ -49,7 +53,7 @@ infrastructure/
 
 **Lazy Initialization** - Expensive resources (embedders, rerankers, LLM providers) initialized on-demand with thread-safe patterns.
 
-**Factory Methods** - Components created via `from_config()` or `from_app_config()` class methods.
+**Factory Methods** - Components created via `from_config()` class methods.
 
 **Exception Wrapping** - Third-party errors wrapped in domain exceptions (VectorSearchError, RerankerError) with `from e` chaining.
 

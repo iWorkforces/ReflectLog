@@ -1,5 +1,7 @@
 # Agent Guidelines for reflectlog/plugins/
 
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+
 ## OVERVIEW
 Three-tier plugin system for runtime extensibility without core code modification.
 
