@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from reflectlog.application.config.prompts import (
+from reflectlog.core.prompts import (
     INSTRUCTIONS_HEADER,
     TOOL_ORDER,
     build_instructions,
@@ -209,7 +209,7 @@ class TestDynamicInstructionsIntegration:
         ):
             mock_create_logger.return_value = MagicMock()
 
-            from reflectlog.application.config import Config
+            from reflectlog.application.config.settings import Config
             from reflectlog.application.mcp_server import FastMCPServer
 
             server_config = Config.from_environment()
@@ -275,7 +275,7 @@ class TestBackwardCompatibility:
 
     def test_mcp_instructions_constant_includes_all_tools(self):
         """MCP_INSTRUCTIONS constant should include all tools (backward compatibility)."""
-        from reflectlog.application.config.prompts import MCP_INSTRUCTIONS
+        from reflectlog.core.prompts import MCP_INSTRUCTIONS
 
         assert "add(memories: list[str])" in MCP_INSTRUCTIONS
         assert "get_all() -> list[str]" in MCP_INSTRUCTIONS
@@ -284,7 +284,7 @@ class TestBackwardCompatibility:
 
     def test_mcp_instructions_has_header(self):
         """MCP_INSTRUCTIONS should have proper header."""
-        from reflectlog.application.config.prompts import MCP_INSTRUCTIONS
+        from reflectlog.core.prompts import MCP_INSTRUCTIONS
 
         assert "ReflectLogMCP Server" in MCP_INSTRUCTIONS
         assert "Available Tools:" in MCP_INSTRUCTIONS

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from _typeshed import SupportsWrite
 
 from reflectlog.application.mcp_server import FastMCPServer  # noqa: E402
-from reflectlog.application.utils.numba_utils import (  # noqa: E402
+from reflectlog.utility.scoring import (  # noqa: E402
     warmup_numba_functions,
 )
 from reflectlog.version import __version__  # noqa: E402
@@ -166,31 +166,8 @@ def main() -> None:
     Graceful shutdown is handled via signal handlers for SIGINT (Ctrl+C) and SIGTERM,
     ensuring all data from TantivyEngine and USearchEngine is persisted before exit.
     """
-    # Parse command-line arguments
     args = parse_args()
-
-    # Set environment variables based on CLI args or defaults
-    # Priority: CLI args > existing env vars > default (stdio for tool usage)
-    if args.transport:
-        os.environ["MCP_TRANSPORT"] = args.transport
-    elif "MCP_TRANSPORT" not in os.environ:
-        # Default to stdio when run as installed tool
-        os.environ["MCP_TRANSPORT"] = "stdio"
-
-    if args.port:
-        os.environ["MCP_PORT"] = str(args.port)
-
-    if args.host:
-        os.environ["MCP_HOST"] = args.host
-
-    if args.path:
-        os.environ["MCP_PATH"] = args.path
-
-    # Get the transport mode to determine where to print messages
-    transport_mode = os.environ.get("MCP_TRANSPORT", "stdio")
-
-    # In stdio mode, ALL output must go to stderr to avoid corrupting JSON-RPC protocol
-    # Only JSON-RPC messages should go to stdout in stdio mode
+    transport_mode = _apply_cli_env_vars(args)
     output_stream = sys.stderr if transport_mode == "stdio" else sys.stdout
 
     print(
@@ -200,18 +177,38 @@ def main() -> None:
     print(f"Version: {__version__}", file=output_stream)
     print(f"Transport: {transport_mode}", file=output_stream)
 
-    # Pre-compile numba JIT functions to avoid first-call latency (configurable)
-    # Environment variables:
-    #   NUMBA_WARMUP: Enable/disable JIT warmup (default: true)
-    #   NUMBA_WARMUP_MODE: Execution mode - sync, async, background (default: bg)
+    startup_start_time = time.time()
+    startup_phases = _run_numba_warmup(output_stream)
+
+    server = _start_server(output_stream, startup_start_time, startup_phases)
+    server.run()
+
+
+def _apply_cli_env_vars(args: argparse.Namespace) -> str:
+    """Set environment variables from CLI args and return transport mode."""
+    if args.transport:
+        os.environ["MCP_TRANSPORT"] = args.transport
+    elif "MCP_TRANSPORT" not in os.environ:
+        os.environ["MCP_TRANSPORT"] = "stdio"
+
+    if args.port:
+        os.environ["MCP_PORT"] = str(args.port)
+    if args.host:
+        os.environ["MCP_HOST"] = args.host
+    if args.path:
+        os.environ["MCP_PATH"] = args.path
+
+    return os.environ.get("MCP_TRANSPORT", "stdio")
+
+
+def _run_numba_warmup(
+    output_stream: SupportsWrite[str],
+) -> dict[str, float]:
+    """Run numba JIT warmup phase and return startup phases dict."""
     numba_warmup_enabled = os.environ.get("NUMBA_WARMUP", "true").lower() == "true"
     numba_warmup_mode = os.environ.get("NUMBA_WARMUP_MODE", "background").lower()
 
-    # Track overall startup time for performance monitoring
-    startup_start_time = time.time()
     startup_phases: dict[str, float] = {}
-
-    # Phase: Numba JIT warmup
     numba_start = time.time()
     _ = warmup_numba_with_config(
         enabled=numba_warmup_enabled,
@@ -219,45 +216,43 @@ def main() -> None:
         output_stream=output_stream,
     )
     startup_phases["numba_warmup"] = time.time() - numba_start
+    return startup_phases
 
-    # Create server with dependency injection
+
+def _start_server(
+    output_stream: SupportsWrite[str],
+    startup_start_time: float,
+    startup_phases: dict[str, float],
+) -> FastMCPServer:
+    """Initialize server with signal handlers and startup metrics.
+
+    Registers SIGINT/SIGTERM handlers for graceful shutdown.
+    """
     server: FastMCPServer | None = None
 
     def graceful_shutdown(signum: int, frame: object) -> None:
-        """Signal handler for graceful shutdown.
-
-        Ensures all data from TantivyEngine and USearchEngine is persisted
-        before the process exits.
-        """
+        """Signal handler for graceful shutdown."""
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         print(
             f"\nReceived {signal_name}, initiating graceful shutdown...",
             file=output_stream,
         )
-
         if server is not None:
             server.close()
-
         print("Shutdown complete.", file=output_stream)
         sys.exit(0)
 
-    # Register signal handlers for graceful shutdown
-    # SIGINT: Ctrl+C from terminal
-    # SIGTERM: Standard termination signal (e.g., from process managers)
     _ = signal.signal(signal.SIGINT, graceful_shutdown)
     _ = signal.signal(signal.SIGTERM, graceful_shutdown)
 
     try:
-        # Phase: Server initialization
         phase_start = time.time()
         server = FastMCPServer()
         startup_phases["server_initialization"] = time.time() - phase_start
 
-        # Phase: Total startup time
         total_startup_time = time.time() - startup_start_time
         startup_phases["total_startup"] = total_startup_time
 
-        # Log startup metrics
         print(
             f"Server startup completed in {total_startup_time * 1000:.1f}ms",
             file=output_stream,
@@ -267,15 +262,13 @@ def main() -> None:
             for phase, duration in startup_phases.items():
                 print(f"  {phase}: {duration * 1000:.1f}ms", file=output_stream)
 
-        # Store startup metrics on memory manager for health check
         server.set_startup_metrics(startup_phases)
-
-        server.run()
+        return server
     except KeyboardInterrupt:
-        # KeyboardInterrupt may be raised before signal handler is fully set up
         print("\nServer shutdown requested...", file=output_stream)
         if server is not None:
             server.close()
+        raise
     except Exception as e:
         print(f"Error during server operation: {e}", file=output_stream)
         if server is not None:

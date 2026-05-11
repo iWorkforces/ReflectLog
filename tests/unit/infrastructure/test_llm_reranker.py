@@ -102,16 +102,18 @@ class TestLLMRerankerConfig:
     def test_from_app_config(self) -> None:
         '''Test factory method from application config.'''
         mock_app_config = MagicMock()
-        mock_app_config.openrouter_api_key.get_secret_value.return_value = "api-key"
-        mock_app_config.openrouter_base_url = "https://openrouter.ai/api/v1"
+        mock_app_config.llm_api_key = "api-key"
+        mock_app_config.llm_api_base_url = "https://openrouter.ai/api/v1"
         mock_app_config.llm_model = "x-ai/grok-4.1-fast"
         mock_app_config.search_score_threshold = 0.6
         mock_app_config.rerank_max_concurrency = 8
         mock_app_config.reranker_min_results = 0
         mock_app_config.reranker_batch_normalize = True
         mock_app_config.llm_provider = "openai"
+        mock_app_config.enable_recency_boost = True
+        mock_app_config.recency_decay_rate = 0.01
 
-        config = LLMRerankerConfig.from_app_config(mock_app_config)
+        config = LLMRerankerConfig.from_config(mock_app_config)
 
         assert config.api_key == "api-key"
         assert config.base_url == "https://openrouter.ai/api/v1"
@@ -150,7 +152,7 @@ class TestCreateRerankerProvider:
             provider="anthropic",
         )
 
-        with patch("reflectlog.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.utility.init_credentials") as mock_init:
             provider = create_reranker_provider(config)
 
             assert isinstance(provider, AnthropicRerankerProvider)
@@ -411,7 +413,7 @@ class TestAnthropicRerankerProvider:
     @pytest.fixture
     def mock_provider(self) -> AnthropicRerankerProvider:
         '''Create a mocked AnthropicRerankerProvider instance.'''
-        with patch("reflectlog.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.utility.init_credentials") as mock_init:
             provider = AnthropicRerankerProvider(
                 model="claude-3-sonnet",
                 logger=create_mock_logger(),
@@ -460,7 +462,7 @@ class TestAnthropicRerankerProvider:
         self, mock_provider: AnthropicRerankerProvider
     ) -> None:
         '''Test successful document scoring with Anthropic.'''
-        with patch("reflectlog.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.utility.generate_content") as mock_generate:
             mock_generate.return_value = '{"score": 0.85}'
 
             doc, score = await mock_provider.score_document(
@@ -478,7 +480,7 @@ class TestAnthropicRerankerProvider:
         self, mock_provider: AnthropicRerankerProvider
     ) -> None:
         '''Test that errors use fallback score.'''
-        with patch("reflectlog.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.utility.generate_content") as mock_generate:
             mock_generate.side_effect = Exception("API Error")
 
             _doc, score = await mock_provider.score_document(
@@ -521,7 +523,7 @@ class TestLLMRerankerInitialization:
             provider="anthropic",
         )
 
-        with patch("reflectlog.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.utility.init_credentials") as mock_init:
             reranker = LLMReranker(config=config)
 
             mock_init.assert_called_once_with(verbose=False)
@@ -1116,7 +1118,7 @@ class TestAnthropicExtractJsonEdgeCases:
     @pytest.fixture
     def mock_provider(self) -> AnthropicRerankerProvider:
         '''Create a mocked AnthropicRerankerProvider.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             return AnthropicRerankerProvider(
                 model="claude-3-sonnet",
                 logger=create_mock_logger(),
@@ -1153,7 +1155,7 @@ class TestAnthropicScoreDocumentWithMemoryAge:
     @pytest.fixture
     def mock_provider(self) -> AnthropicRerankerProvider:
         '''Create a mocked AnthropicRerankerProvider with logger.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             return AnthropicRerankerProvider(
                 model="claude-3-sonnet",
                 logger=create_mock_logger(),
@@ -1164,7 +1166,7 @@ class TestAnthropicScoreDocumentWithMemoryAge:
         self, mock_provider: AnthropicRerankerProvider
     ) -> None:
         '''Test that memory_age triggers SCORING_PROMPT_WITH_AGE.'''
-        with patch("reflectlog.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.utility.generate_content") as mock_generate:
             mock_generate.return_value = '{"score": 0.75}'
 
             doc, score = await mock_provider.score_document(

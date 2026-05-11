@@ -1,4 +1,6 @@
-#SM|Agent Guidelines for reflectlog/
+# reflectlog Package
+
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 
 ## OVERVIEW
 MCP server providing persistent, project-based semantic memory storage. Combines USearch + Tantivy with RRF fusion and optional LLM reranking.
@@ -7,7 +9,8 @@ MCP server providing persistent, project-based semantic memory storage. Combines
 
 ```
 reflectlog/
-├── core/              # Protocol definitions (ISearchBackend, IReranker, IMemoryStore)
+├── core/              # Protocols + canonical types (ISearchBackend, IReranker, IMemoryStore)
+│                      # types.py: ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore
 ├── application/       # Business logic
 │   ├── memory/        # MemoryManager, search/add pipelines, fusion
 │   ├── tools/         # MCP tool implementations (add, search, get_all, remove)
@@ -15,7 +18,7 @@ reflectlog/
 │   └── utils/         # Logging, metrics, retry, circuit breaker
 ├── infrastructure/    # USearchEngine, TantivyEngine, LLM reranker, embeddings
 ├── plugins/          # Plugin discovery, registry, loading
-└── utility/          # Platform utilities
+└── utility/          # Platform utilities, scoring.py (JIT-compiled RRF, normalization, filtering)
 ```
 
 ## WHERE TO LOOK
@@ -26,12 +29,16 @@ reflectlog/
 | Search pipeline | `application/memory/search_strategies.py` | 4-step hybrid search with RRF |
 | Add pipeline | `application/memory/add_phases.py` | 3-phase parallel add with smart replacement |
 | Config | `application/config/settings.py` | 60+ env vars, dataclass |
-| Protocol interfaces | `core/` | ISearchBackend, IReranker, IMemoryStore |
+| Protocol interfaces | `core/` | ISearchBackend, IReranker, IMemoryStore, types.py |
 | Infrastructure | `infrastructure/` | USearch, Tantivy, LLM providers |
 
 ## CONVENTIONS
 
-**Triple Double Quotes** - Docstrings use `"""` not `'''`. Enforced by ruff `docstring-quotes = "double"`.
+**Factory Pattern** - Use `from_config()` class methods (not `from_app_config()`). Applied throughout for engine, reranker, and fusion creation.
+
+**Canonical Type Locations** - Core domain types live in `core/types.py` (MemoryRecord, Embeddings, ISemanticSearchEngine, IArchiveMemoryStore). Application-layer types in `application/types.py`. Don't mix them up.
+
+**Triple Double Quotes** - Docstrings use `"""` not `'''`. Enforced by ruff.
 
 **Adaptive Overfetch** - Multiplier adjusts 1.5-3x based on index size.
 

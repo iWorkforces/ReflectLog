@@ -8,12 +8,13 @@ from typing import Any, Protocol, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from reflectlog.application.config import REPLACEMENT_DETECTION_PROMPT, Config
-from reflectlog.application.utils.retry import async_retry_with_backoff
+from reflectlog.core.config import IAppConfig
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.prompts import REPLACEMENT_DETECTION_PROMPT
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
+from reflectlog.utility.retry import async_retry_with_backoff
 
 
 class ReplacementDecision(BaseModel):
@@ -77,18 +78,18 @@ class SmartReplacerConfig:
     provider: str = "openai"  # Provider: "openai" or "anthropic"
 
     @classmethod
-    def from_app_config(cls, config: Config) -> SmartReplacerConfig:
-        """Create SmartReplacerConfig from application Config.
+    def from_config(cls, config: IAppConfig) -> SmartReplacerConfig:
+        """Create SmartReplacerConfig from IAppConfig protocol.
 
         Args:
-            config: Application configuration object.
+            config: Configuration satisfying IAppConfig protocol.
 
         Returns:
             SmartReplacerConfig instance configured from app settings.
         """
         return cls(
-            api_key=config.openrouter_api_key.get_secret_value(),
-            base_url=config.openrouter_base_url,
+            api_key=config.llm_api_key,
+            base_url=config.llm_api_base_url,
             model=config.llm_model,
             threshold=config.smart_replace_threshold,
             enabled=config.enable_smart_replace,
@@ -230,7 +231,7 @@ class AnthropicReplacementProvider:
         super().__init__()
 
         # Lazy import to avoid dependency issues
-        from reflectlog.utility import init_credentials
+        from reflectlog.utility.utility import init_credentials
 
         _ = init_credentials(verbose=False)
         self._model = model
@@ -300,7 +301,7 @@ class AnthropicReplacementProvider:
             Tuple of (should_replace, confidence, reason).
         """
         # Lazy import to avoid dependency issues
-        from reflectlog.utility import generate_content
+        from reflectlog.utility.utility import generate_content
 
         last_exception: Exception | None = None
 

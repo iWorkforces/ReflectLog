@@ -13,10 +13,10 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from reflectlog.application.config import Config
-from reflectlog.application.memory import MemoryManager
-from reflectlog.application.types import Embeddings
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.core.types import Embeddings
+from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.application.utils.security import SecretString
 from reflectlog.core.logging import IStructuredLogger
 

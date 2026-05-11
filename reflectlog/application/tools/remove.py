@@ -4,8 +4,9 @@ from typing import Any, override
 
 from asyncer import asyncify
 
-from ..exceptions import StorageError
-from ..utils import truncate_memory
+from reflectlog.core.exceptions import StorageError
+
+from ..utils.validation import truncate_memory
 from .base import BaseTool
 
 
@@ -146,15 +147,14 @@ class RemoveTool(BaseTool):
                 )
 
             except Exception as e:
-                self.log_error(
+                self._raise_tool_error(
                     "remove",
                     e,
+                    error_cls=StorageError,
+                    message="Failed to remove memories from memory store",
                     requested_count=len(memories),
                     actual_removed=actual_removed,
                 )
-                raise StorageError(
-                    f"Failed to remove memories from memory store: {e}"
-                ) from e
 
         return remove
 

@@ -146,6 +146,56 @@ class IRerankerConfig(Protocol):
         ...
 
     @property
+    def llm_api_key(self) -> str:
+        """API key for LLM provider (plain text, not SecretString)."""
+        ...
+
+    @property
+    def llm_provider(self) -> str:
+        """LLM provider: openai or anthropic."""
+        ...
+
+    @property
+    def rerank_max_concurrency(self) -> int:
+        """Maximum parallel LLM reranking calls."""
+        ...
+
+    @property
+    def cross_encoder_top_k(self) -> int:
+        """Number of top results to return after cross-encoder reranking."""
+        ...
+
+    @property
+    def cross_encoder_batch_size(self) -> int:
+        """Batch size for cross-encoder inference."""
+        ...
+
+    @property
+    def cross_encoder_score_threshold(self) -> float:
+        """Minimum cross-encoder score to keep results."""
+        ...
+
+    @property
+    def cross_encoder_use_fp16(self) -> bool:
+        """Enable FP16 for faster cross-encoder computation."""
+        ...
+
+    @property
+    def cross_encoder_normalize(self) -> bool:
+        """Apply sigmoid to normalize cross-encoder scores."""
+        ...
+
+    @property
+    def cross_encoder_max_length(self) -> int:
+        """Maximum token length for query-document pairs."""
+        ...
+
+    @property
+    def reranker_min_results(self) -> int:
+        """Safety net: minimum results to return (0 = disabled)."""
+        ...
+
+    @property
     def llm_api_base_url(self) -> str:
         """API base URL for LLM provider."""
         ...
@@ -228,6 +278,16 @@ class IReplacementConfig(Protocol):
     @property
     def smart_replace_candidate_limit(self) -> int:
         """Maximum candidates to check."""
+        ...
+
+    @property
+    def smart_replace_max_retries(self) -> int:
+        """Maximum retry attempts for smart replacement LLM calls."""
+        ...
+
+    @property
+    def smart_replace_retry_delay(self) -> float:
+        """Base delay in seconds for exponential backoff."""
         ...
 
 

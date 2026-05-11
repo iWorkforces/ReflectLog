@@ -9,7 +9,7 @@ Uses FlagEmbedding's FlagReranker which is optimized for BGE reranker models
 with built-in FP16 support and score normalization.
 
 Example:
-    >>> from reflectlog.infrastructure import CrossEncoderConfig, CrossEncoderReranker
+    >>> from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderConfig, CrossEncoderReranker
     >>> config = CrossEncoderConfig.from_app_config(app_config)
     >>> reranker = CrossEncoderReranker(config=config, logger=logger)
     >>> results = reranker.rerank("Python tutorials", candidates)
@@ -24,8 +24,11 @@ import warnings
 from asyncer import asyncify
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from reflectlog.application.config import Config
+from reflectlog.core.config import IAppConfig
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.infrastructure.reranker_post_processor import (
+    RerankerPostProcessor,
+)
 
 
 @dataclass(frozen=True)
@@ -60,11 +63,11 @@ class CrossEncoderConfig:
     recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
-    def from_app_config(cls, config: Config) -> CrossEncoderConfig:
-        """Create CrossEncoderConfig from application Config.
+    def from_config(cls, config: IAppConfig) -> CrossEncoderConfig:
+        """Create CrossEncoderConfig from IAppConfig protocol.
 
         Args:
-            config: Application configuration object.
+            config: Configuration satisfying IAppConfig protocol.
 
         Returns:
             CrossEncoderConfig instance configured from app settings.
@@ -129,6 +132,16 @@ class CrossEncoderReranker(BaseModel):
 
     _model: FlagRerankerProtocol | None = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    _post_processor: RerankerPostProcessor = PrivateAttr()
+
+    def model_post_init(self, _context: object, /) -> None:
+        """Initialize post-processor after Pydantic model init."""
+        self._post_processor = RerankerPostProcessor(
+            min_results=self.config.min_results,
+            batch_normalize=self.config.batch_normalize,
+            logger=self.logger,
+            normalize_log_level="info",
+        )
 
     @property
     def model(self) -> FlagRerankerProtocol:
@@ -274,10 +287,23 @@ class CrossEncoderReranker(BaseModel):
                 )
             return candidates
 
-        # Build query-document pairs for FlagReranker
+        scored = self._compute_scores(query, candidates)
+        scored = self._apply_post_processing(scored, timestamp_map)
+        self._log_candidate_scores(scored)
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        scored = self._apply_threshold_and_limit(scored)
+
+        return scored
+
+    def _compute_scores(
+        self,
+        query: str,
+        candidates: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
+        """Score candidates using FlagReranker and combine with documents."""
         pairs: list[tuple[str, str]] = [(query, doc) for doc, _ in candidates]
 
-        # Score all pairs using FlagReranker
         scores = self.model.compute_score(
             pairs,
             batch_size=self.config.batch_size,
@@ -289,105 +315,71 @@ class CrossEncoderReranker(BaseModel):
         if isinstance(scores, (int, float)):
             scores = [scores]
 
-        # Combine documents with their cross-encoder scores
-        scored: list[tuple[str, float]] = [
+        return [
             (doc, float(score))
             for (doc, _), score in zip(candidates, scores, strict=True)
         ]
 
-        # Apply batch normalization if enabled
-        if self.config.batch_normalize:
-            from reflectlog.application.memory.reranking import (
-                normalize_reranker_scores,
-            )
+    def _apply_post_processing(
+        self,
+        scored: list[tuple[str, float]],
+        timestamp_map: dict[str, str] | None,
+    ) -> list[tuple[str, float]]:
+        """Apply normalization and optional recency decay."""
+        scored = self._post_processor.normalize(scored)
 
-            raw_scores = [s for _, s in scored]
-            scored = normalize_reranker_scores(scored)
-            if self.logger:
-                self.logger.info(
-                    f"   Batch normalization: enabled "
-                    f"(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} "
-                    f"-> normalized: 0.0-1.0)",
-                    extra={
-                        "batch_normalize": True,
-                        "raw_min": min(raw_scores),
-                        "raw_max": max(raw_scores),
-                    },
-                )
-
-        # Apply recency decay if enabled and timestamps are available
-        # This multiplies each score by exp(-decay_rate * hours_old)
-        if (
+        decay_enabled = (
             self.config.enable_recency_boost
             and self.config.recency_decay_rate > 0
-            and timestamp_map
-            and scored
-        ):
-            from reflectlog.application.memory.reranking import apply_recency_decay
+            and bool(timestamp_map)
+        )
+        return self._post_processor.apply_decay(
+            scored,
+            timestamp_map,
+            self.config.recency_decay_rate,
+            enabled=decay_enabled,
+        )
 
-            pre_decay_scores = [s for _, s in scored]
-            scored = apply_recency_decay(
-                scored,
-                timestamp_map,
-                self.config.recency_decay_rate,
-            )
-            post_decay_scores = [s for _, s in scored]
+    def _log_candidate_scores(self, scored: list[tuple[str, float]]) -> None:
+        """Log individual candidate scores with keep/filter status."""
+        if not self.logger:
+            return
 
-            if self.logger:
-                self.logger.debug(
-                    f"Recency decay: applied (rate={self.config.recency_decay_rate}), "
-                    f"score range: {max(pre_decay_scores):.4f}-{min(pre_decay_scores):.4f} -> "
-                    f"{max(post_decay_scores):.4f}-{min(post_decay_scores):.4f})",
-                    extra={
-                        "recency_decay": True,
-                        "decay_rate": self.config.recency_decay_rate,
-                        "pre_decay_max": max(pre_decay_scores),
-                        "post_decay_max": max(post_decay_scores),
-                    },
-                )
+        threshold = self.config.score_threshold
+        self.logger.info(
+            f"   FlagReranker scoring (threshold: {threshold:.2f}), "
+            f"normalize: {self.config.normalize}, batch_norm: {self.config.batch_normalize}):",
+            extra={
+                "threshold": threshold,
+                "normalize": self.config.normalize,
+                "batch_normalize": self.config.batch_normalize,
+                "candidate_count": len(scored),
+            },
+        )
 
-        # Log threshold and individual scores for transparency
-        if self.logger:
-            threshold = self.config.score_threshold
+        for idx, (doc, score) in enumerate(scored, 1):
+            status = "[KEEP]" if score >= threshold else "[FILTER]"
+            preview = doc[:60] + "..." if len(doc) > 60 else doc
             self.logger.info(
-                f"   FlagReranker scoring (threshold: {threshold:.2f}), "
-                f"normalize: {self.config.normalize}, batch_norm: {self.config.batch_normalize}):",
+                f"      [{idx}] {status} score={score:.4f} -> {preview}",
                 extra={
+                    "candidate_index": idx,
+                    "score": score,
                     "threshold": threshold,
-                    "normalize": self.config.normalize,
-                    "batch_normalize": self.config.batch_normalize,
-                    "candidate_count": len(scored),
+                    "status": "keep" if score >= threshold else "filter",
+                    "message_preview": preview,
                 },
             )
 
-            # Log each candidate with [KEEP]/[FILTER] status
-            for idx, (doc, score) in enumerate(scored, 1):
-                status = "[KEEP]" if score >= threshold else "[FILTER]"
-                preview = doc[:60] + "..." if len(doc) > 60 else doc
-                self.logger.info(
-                    f"      [{idx}] {status} score={score:.4f} -> {preview}",
-                    extra={
-                        "candidate_index": idx,
-                        "score": score,
-                        "threshold": threshold,
-                        "status": "keep" if score >= threshold else "filter",
-                        "message_preview": preview,
-                    },
-                )
-
-        # Sort by score descending before threshold filtering
-        scored.sort(key=lambda x: x[1], reverse=True)
-
-        # Apply threshold with optional safety net
-        from reflectlog.application.memory.reranking import (
-            apply_threshold_with_safety_net,
-        )
-
+    def _apply_threshold_and_limit(
+        self,
+        scored: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
+        """Filter by score threshold, log results, and limit to top_k."""
         pre_filter_count = len(scored)
-        scored = apply_threshold_with_safety_net(
+        scored = self._post_processor.filter_by_threshold(
             scored,
             threshold=self.config.score_threshold,
-            min_results=self.config.min_results,
         )
 
         if self.logger:
@@ -406,10 +398,7 @@ class CrossEncoderReranker(BaseModel):
                 },
             )
 
-        # Limit to top_k
-        result = scored[: self.config.top_k]
-
-        return result
+        return scored[: self.config.top_k]
 
     async def rerank_async(
         self,

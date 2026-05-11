@@ -5,13 +5,13 @@ import math
 from typing import TYPE_CHECKING, Any, final, override
 
 if TYPE_CHECKING:
-    from reflectlog.core import IStructuredLogger
+    from reflectlog.core.logging import IStructuredLogger
 
 import numpy as np
 from ranx import Run
 from ranx import fuse as ranx_fuse
 
-from reflectlog.application.utils.numba_utils import normalize_scores_minmax
+from reflectlog.utility.scoring import normalize_scores_minmax
 
 from .base import FusionEngine
 

@@ -15,7 +15,7 @@ from typing import Any, final
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from reflectlog.application.exceptions import StorageError
+from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 
 

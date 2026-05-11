@@ -1,12 +1,10 @@
 # ReflectLogMCP Knowledge Base - Utility
 
-**Generated:** 2026-01-29
-**Commit:** 35326f6
-**Branch:** develop
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 
 ## OVERVIEW
 
-Platform abstraction for secure credential retrieval from OS-specific stores.
+Platform abstraction for secure credential retrieval from OS-specific stores, plus JIT-compiled scoring functions.
 
 ## STRUCTURE
 
@@ -15,6 +13,7 @@ utility/
 ├── __init__.py          # Package exports (OAuth helpers, token prefixes)
 ├── types.py             # Constants (TOKEN_PREFIX, SERVICE_NAME, ApiKeyResult)
 ├── utility.py           # Credential retrieval functions (get_anthropic_api_key, init_credentials)
+├── scoring.py           # JIT-compiled RRF, normalization, filtering (Numba)
 └── platforms/           # OS-specific implementations
     ├── __init__.py      # get_platform_retriever() factory
     ├── base.py          # CredentialRetriever ABC with parse_credential()
@@ -31,6 +30,7 @@ utility/
 | Credential parsing | platforms/base.py | 3 formats: OAuth JSON, legacy JSON, raw token |
 | Main retrieval | utility.py | get_anthropic_api_key(), init_credentials() |
 | Type definitions | types.py | TOKEN_PREFIX, SERVICE_NAME constants |
+| Scoring functions | scoring.py | JIT-compiled RRF, batch normalization, recency decay, filtering |
 
 ## CONVENTIONS
 

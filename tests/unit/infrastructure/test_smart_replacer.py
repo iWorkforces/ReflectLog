@@ -143,8 +143,8 @@ class TestSmartReplacerConfig:
     def test_from_app_config(self) -> None:
         '''Test factory method from application config.'''
         mock_app_config = MagicMock()
-        mock_app_config.openrouter_api_key.get_secret_value.return_value = "api-key"
-        mock_app_config.openrouter_base_url = "https://openrouter.ai/api/v1"
+        mock_app_config.llm_api_key = "api-key"
+        mock_app_config.llm_api_base_url = "https://openrouter.ai/api/v1"
         mock_app_config.llm_model = "x-ai/grok-4.1-fast"
         mock_app_config.smart_replace_threshold = 0.8
         mock_app_config.enable_smart_replace = True
@@ -152,7 +152,7 @@ class TestSmartReplacerConfig:
         mock_app_config.smart_replace_retry_delay = 1.0
         mock_app_config.llm_provider = "openai"
 
-        config = SmartReplacerConfig.from_app_config(mock_app_config)
+        config = SmartReplacerConfig.from_config(mock_app_config)
 
         assert config.api_key == "api-key"
         assert config.base_url == "https://openrouter.ai/api/v1"
@@ -164,8 +164,8 @@ class TestSmartReplacerConfig:
     def test_from_app_config_anthropic_provider(self) -> None:
         '''Test factory method with anthropic provider.'''
         mock_app_config = MagicMock()
-        mock_app_config.openrouter_api_key.get_secret_value.return_value = "api-key"
-        mock_app_config.openrouter_base_url = "https://openrouter.ai/api/v1"
+        mock_app_config.llm_api_key = "api-key"
+        mock_app_config.llm_api_base_url = "https://openrouter.ai/api/v1"
         mock_app_config.llm_model = "claude-sonnet-4-20250514"
         mock_app_config.smart_replace_threshold = 0.7
         mock_app_config.enable_smart_replace = True
@@ -173,7 +173,7 @@ class TestSmartReplacerConfig:
         mock_app_config.smart_replace_retry_delay = 1.0
         mock_app_config.llm_provider = "anthropic"
 
-        config = SmartReplacerConfig.from_app_config(mock_app_config)
+        config = SmartReplacerConfig.from_config(mock_app_config)
 
         assert config.provider == "anthropic"
         assert config.model == "claude-sonnet-4-20250514"
@@ -208,7 +208,7 @@ class TestCreateReplacementProvider:
             provider="anthropic",
         )
 
-        with patch("reflectlog.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.utility.init_credentials") as mock_init:
             provider = create_replacement_provider(config)
 
             assert isinstance(provider, AnthropicReplacementProvider)
@@ -400,7 +400,7 @@ class TestAnthropicReplacementProvider:
 
     def test_extract_json_pure_json(self) -> None:
         '''Test extracting pure JSON from response.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         result = provider._extract_json_from_response(
@@ -413,7 +413,7 @@ class TestAnthropicReplacementProvider:
 
     def test_extract_json_markdown_code_block(self) -> None:
         '''Test extracting JSON from markdown code block.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         response = '''Here's the analysis:
@@ -431,7 +431,7 @@ That's my assessment.'''
 
     def test_extract_json_embedded_json(self) -> None:
         '''Test extracting embedded JSON from text.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         response = 'Result: {"should_replace": false, "confidence": 0.3} done.'
@@ -443,7 +443,7 @@ That's my assessment.'''
 
     def test_extract_json_markdown_block_invalid_json_falls_through(self) -> None:
         '''Test markdown code block with invalid JSON falls through to embedded strategy.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         response = '''Here's my analysis:
@@ -461,7 +461,7 @@ But the result is {"should_replace": true, "confidence": 0.8, "reason": "Updated
 
     def test_extract_json_markdown_block_invalid_json_no_fallback(self) -> None:
         '''Test markdown code block with invalid JSON and no valid embedded JSON raises.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         response = '''Here's my analysis:
@@ -477,7 +477,7 @@ No valid JSON anywhere else either.'''
 
     def test_extract_json_embedded_invalid_json_continues(self) -> None:
         '''Test embedded JSON patterns with invalid JSON continue to next match.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         response = 'Result: {invalid json} but also {"should_replace": false, "confidence": 0.4, "reason": "No match"}'
@@ -489,7 +489,7 @@ No valid JSON anywhere else either.'''
 
     def test_extract_json_all_embedded_invalid_raises(self) -> None:
         '''Test all embedded JSON patterns invalid raises ValueError.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         response = "Result: {bad json} and also {more bad} end"
@@ -499,7 +499,7 @@ No valid JSON anywhere else either.'''
 
     def test_extract_json_fails_raises_error(self) -> None:
         '''Test that extraction failure raises ValueError.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         with pytest.raises(ValueError, match="Could not extract JSON"):
@@ -508,10 +508,10 @@ No valid JSON anywhere else either.'''
     @pytest.mark.asyncio
     async def test_detect_replacement_success(self) -> None:
         '''Test successful replacement detection with Anthropic.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch("reflectlog.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.utility.generate_content") as mock_generate:
             mock_generate.return_value = json.dumps(
                 {
                     "should_replace": True,
@@ -538,10 +538,10 @@ No valid JSON anywhere else either.'''
     @pytest.mark.asyncio
     async def test_detect_replacement_with_markdown_response(self) -> None:
         '''Test replacement detection with markdown-wrapped response.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch("reflectlog.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.utility.generate_content") as mock_generate:
             mock_generate.return_value = '''Analysis complete:
 
 ```json
@@ -560,10 +560,10 @@ No valid JSON anywhere else either.'''
     @pytest.mark.asyncio
     async def test_all_retries_exhausted_returns_safe_defaults(self) -> None:
         '''Test that exhausted retries return safe defaults.'''
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        with patch("reflectlog.utility.generate_content") as mock_generate:
+        with patch("reflectlog.utility.utility.generate_content") as mock_generate:
             mock_generate.side_effect = Exception("API Error")
 
             mock_logger = create_mock_logger()
@@ -612,7 +612,7 @@ class TestSmartReplacerInitialization:
             provider="anthropic",
         )
 
-        with patch("reflectlog.utility.init_credentials") as mock_init:
+        with patch("reflectlog.utility.utility.init_credentials") as mock_init:
             replacer = SmartReplacer(config=config)
 
             mock_init.assert_called_once_with(verbose=False)
@@ -939,10 +939,10 @@ class TestSmartReplacerIntegration:
             provider="anthropic",
         )
 
-        with patch("reflectlog.utility.init_credentials"):
+        with patch("reflectlog.utility.utility.init_credentials"):
             replacer = SmartReplacer(config=config, logger=create_mock_logger())
 
-            with patch("reflectlog.utility.generate_content") as mock_generate:
+            with patch("reflectlog.utility.utility.generate_content") as mock_generate:
                 mock_generate.return_value = json.dumps(
                     {
                         "should_replace": True,

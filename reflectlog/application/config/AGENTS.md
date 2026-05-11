@@ -1,5 +1,7 @@
 # Agent Guidelines for reflectlog/application/config/
 
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+
 ## OVERVIEW
 
 Centralized configuration management with environment variable loading, comprehensive validation, and LLM prompt templates.

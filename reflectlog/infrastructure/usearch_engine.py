@@ -24,12 +24,12 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index
 
-from reflectlog.application.config import Config
-from reflectlog.application.exceptions import StorageError
-from reflectlog.application.types import Embeddings
-from reflectlog.application.utils.numba_utils import distance_to_similarity_cosine
-from reflectlog.application.utils.security import validate_project_id
+from reflectlog.core.config import IAppConfig
+from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import Embeddings
+from reflectlog.utility.scoring import distance_to_similarity_cosine
+from reflectlog.utility.security import validate_project_id
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
@@ -101,11 +101,11 @@ class USearchConfig:
         )
 
     @classmethod
-    def from_app_config(cls, config: Config) -> USearchConfig:
-        """Create USearchConfig from application Config.
+    def from_config(cls, config: IAppConfig) -> USearchConfig:
+        """Create USearchConfig from IAppConfig protocol.
 
         Args:
-            config: Application Config instance.
+            config: Configuration satisfying IAppConfig protocol.
 
         Returns:
             USearchConfig with extracted settings.
@@ -149,7 +149,7 @@ class USearchEngine(BaseModel):
 
     Example:
         ```python
-        from reflectlog.infrastructure import USearchConfig, USearchEngine
+        from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
         from langchain_openai import OpenAIEmbeddings
 
         config = USearchConfig(
@@ -569,7 +569,6 @@ class USearchEngine(BaseModel):
             backward compatibility with older data).
         """
         try:
-            # Check if index is empty
             if len(self.index) == 0:
                 if self.logger:
                     self.logger.debug(
@@ -578,64 +577,14 @@ class USearchEngine(BaseModel):
                     )
                 return []
 
-            # Determine search mode (exact vs approximate)
             use_exact = self._should_use_exact_search()
-            index_size = len(self.index)
+            self._log_search_mode(use_exact)
 
-            if self.logger:
-                search_mode = (
-                    "exact (brute-force)" if use_exact else "approximate (HNSW)"
-                )
-                self.logger.debug(
-                    f"USearch search mode: {search_mode}",
-                    extra={
-                        "project_id": self.config.project_id,
-                        "search_mode": "exact" if use_exact else "approximate",
-                        "index_size": index_size,
-                        "exact_search_config": self.config.exact_search,
-                        "exact_search_threshold": self.config.exact_search_threshold,
-                    },
-                )
-
-            # Generate query embedding
-            query_vector = self.embedder.embed_query(query)
-            query_np = np.array(query_vector, dtype=np.float32)
-
-            # Over-fetch to account for project_id filtering
-            overfetch_limit = min(limit * 3, len(self.index))
-            matches: BatchMatches = self.index.search(
-                query_np, overfetch_limit, exact=use_exact
+            matches = self._execute_index_search(query, limit, use_exact)
+            filtered_matches = self._filter_matches_by_project(
+                matches, project_id, limit
             )
-
-            # Batch fetch all memory records in single query (eliminates N+1 pattern)
-            keys = [int(match.key) for match in matches]
-            records = self.memory_store.get_batch(keys)
-
-            # Collect distances for batch conversion (numba-accelerated)
-            filtered_matches: list[tuple[MemoryRecord, Any]] = []  # (record, match)
-            for match in matches:
-                key = int(match.key)
-                record = records.get(key)
-                if record is not None and record.project_id == project_id:
-                    filtered_matches.append((record, match))
-                    if len(filtered_matches) >= limit:
-                        break
-
-            # Batch convert distances to similarities using numba
-            if filtered_matches:
-                distances = np.array(
-                    [match.distance for _, match in filtered_matches],
-                    dtype=np.float32,
-                )
-                similarities = self._distances_to_scores(distances)
-
-                # Build results with converted scores and created_at timestamps
-                results: list[tuple[str, float, str]] = [
-                    (record.content, float(similarities[i]), record.created_at)
-                    for i, (record, _) in enumerate(filtered_matches)
-                ]
-            else:
-                results = []
+            results = self._build_search_results(filtered_matches)
 
             if self.logger:
                 self.logger.debug(
@@ -663,6 +612,69 @@ class USearchEngine(BaseModel):
                     },
                 )
             raise RuntimeError(f"USearch search failed: {e}") from e
+
+    def _log_search_mode(self, use_exact: bool) -> None:
+        """Log the selected search mode with configuration details."""
+        if not self.logger:
+            return
+        search_mode = "exact (brute-force)" if use_exact else "approximate (HNSW)"
+        self.logger.debug(
+            f"USearch search mode: {search_mode}",
+            extra={
+                "project_id": self.config.project_id,
+                "search_mode": "exact" if use_exact else "approximate",
+                "index_size": len(self.index),
+                "exact_search_config": self.config.exact_search,
+                "exact_search_threshold": self.config.exact_search_threshold,
+            },
+        )
+
+    def _execute_index_search(
+        self, query: str, limit: int, use_exact: bool
+    ) -> BatchMatches:
+        """Generate query embedding and execute index search with overfetch."""
+        query_vector = self.embedder.embed_query(query)
+        query_np = np.array(query_vector, dtype=np.float32)
+        overfetch_limit = min(limit * 3, len(self.index))
+        return self.index.search(query_np, overfetch_limit, exact=use_exact)
+
+    def _filter_matches_by_project(
+        self,
+        matches: BatchMatches,
+        project_id: str,
+        limit: int,
+    ) -> list[tuple[MemoryRecord, Any]]:
+        """Filter matches by project_id using batch record fetch."""
+        keys = [int(match.key) for match in matches]
+        records = self.memory_store.get_batch(keys)
+
+        filtered: list[tuple[MemoryRecord, Any]] = []
+        for match in matches:
+            key = int(match.key)
+            record = records.get(key)
+            if record is not None and record.project_id == project_id:
+                filtered.append((record, match))
+                if len(filtered) >= limit:
+                    break
+        return filtered
+
+    def _build_search_results(
+        self, filtered_matches: list[tuple[MemoryRecord, Any]]
+    ) -> list[tuple[str, float, str]]:
+        """Convert filtered matches to scored results using numba distance conversion."""
+        if not filtered_matches:
+            return []
+
+        distances = np.array(
+            [match.distance for _, match in filtered_matches],
+            dtype=np.float32,
+        )
+        similarities = self._distances_to_scores(distances)
+
+        return [
+            (record.content, float(similarities[i]), record.created_at)
+            for i, (record, _) in enumerate(filtered_matches)
+        ]
 
     def get_all(self, project_id: str) -> list[str]:
         """Retrieve all stored memories for a project.

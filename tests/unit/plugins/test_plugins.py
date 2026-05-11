@@ -1469,42 +1469,38 @@ class TestPluginLoader:
 
 @pytest.mark.unit
 class TestPluginsInit:
-    '''Tests for plugins __init__.py re-exports.'''
+    '''Tests for plugins package structure.'''
 
-    def test_all_exports_importable(self) -> None:
-        '''All __all__ entries should be importable.'''
-        import reflectlog.plugins as pkg
-
-        for name in pkg.__all__:
-            assert hasattr(pkg, name), f"{name} not found in plugins package"
-
-    def test_key_classes_accessible(self) -> None:
-        '''Key classes accessible from package level.'''
-        from reflectlog.plugins import (
+    def test_key_classes_accessible_from_submodules(self) -> None:
+        '''Key classes accessible from direct submodule imports.'''
+        from reflectlog.plugins.discovery import (
             CompositeDiscovery,
             DirectoryScanDiscovery,
             DiscoveredPlugin,
             EntryPointDiscovery,
-            IPluggable,
-            IPluginLifecycle,
-            LifecycleHooks,
-            PluginCapability,
             PluginDiscoverer,
             PluginDiscoveryStrategy,
+            StaticRegistration,
+            load_plugin,
+        )
+        from reflectlog.plugins.loading import (
+            IPluginLifecycle,
+            LifecycleHooks,
             PluginLoader,
+        )
+        from reflectlog.plugins.registry import (
+            IPluggable,
+            PluginCapability,
             PluginMetadata,
             PluginRegistry,
             PluginState,
-            StaticRegistration,
             ToolRegistry,
-            load_plugin,
         )
 
         # Just verify they are the expected types
         assert PluginRegistry is not None
         assert PluginLoader is not None
         assert load_plugin is not None
-
 
 # ---------------------------------------------------------------------------
 # Edge case: deactivate_plugin when registry.deactivate returns False

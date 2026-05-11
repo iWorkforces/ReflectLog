@@ -28,6 +28,3 @@ def get_platform_retriever() -> CredentialRetriever | None:
             return LinuxCredentialRetriever()
         case _:
             return None
-
-
-__all__ = ["CredentialRetriever", "get_platform_retriever"]

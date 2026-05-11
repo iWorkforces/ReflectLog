@@ -22,7 +22,7 @@ from io import StringIO
 from unittest.mock import patch, Mock, MagicMock, AsyncMock
 
 from reflectlog.application.memory.manager import MemoryManager
-from reflectlog.application.config import Config
+from reflectlog.application.config.settings import Config
 
 
 @pytest.fixture
@@ -178,7 +178,7 @@ class TestEngineFailure:
         '''
 
         async def slow_search():
-            from reflectlog.infrastructure import USearchConfig
+            from reflectlog.infrastructure.usearch_engine import USearchConfig
 
             await asyncio.sleep(10)
             return []
@@ -312,7 +312,7 @@ class TestDataCorruption:
         Should reload cleanly without data loss.
         '''
         from reflectlog.application.utils.config_reload import ConfigReloadManager
-        from reflectlog.application.config import Config
+        from reflectlog.application.config.settings import Config
 
         reload_manager = ConfigReloadManager(lambda: Config.from_environment())
 

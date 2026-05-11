@@ -1,5 +1,7 @@
 # Agent Guidelines for reflectlog/application/tools/
 
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+
 ## OVERVIEW
 MCP tool implementations providing external interface to memory system. Each tool inherits BaseTool.
 

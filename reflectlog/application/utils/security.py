@@ -236,7 +236,7 @@ def validate_project_id(project_id: str) -> str:
         >>> validate_project_id("../../../etc")
         ValidationError: Invalid project_id: ../../../etc
     """
-    from ..exceptions import ValidationError
+    from reflectlog.core.exceptions import ValidationError
 
     if not project_id:
         raise ValidationError("project_id cannot be empty")

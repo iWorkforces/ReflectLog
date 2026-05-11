@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reflectlog.application.exceptions import (
+from reflectlog.core.exceptions import (
     ConfigurationError,
     SearchError,
     StorageError,
@@ -35,7 +35,7 @@ class TestFastMCPServerInitialization:
         '''
         import os
 
-        from reflectlog.application.config import Config
+        from reflectlog.application.config.settings import Config
 
         # Save original and clear PROJECT_ID
         original = os.environ.pop("PROJECT_ID", None)
@@ -1092,7 +1092,7 @@ class TestToolRegistrationConfiguration:
             logger = MagicMock()
             mock_create_logger.return_value = logger
 
-            from reflectlog.application.config import Config
+            from reflectlog.application.config.settings import Config
             from reflectlog.application.mcp_server import FastMCPServer
 
             server_config = Config.from_environment()
@@ -1287,7 +1287,7 @@ class TestServerClose:
             mock_logger = MagicMock()
             mock_create_logger.return_value = mock_logger
 
-            from reflectlog.application.config import Config
+            from reflectlog.application.config.settings import Config
 
             server_config = Config.from_environment()
             server = FastMCPServer(server_config=server_config)

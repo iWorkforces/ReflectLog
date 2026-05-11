@@ -14,7 +14,7 @@ from typing import Protocol
 
 import anyio
 
-from reflectlog.application.config import Config
+from reflectlog.application.config.settings import Config
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.reranking import IReranker
 from reflectlog.core.search import (

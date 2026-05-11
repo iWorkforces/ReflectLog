@@ -1,12 +1,12 @@
 """Search tool implementation for ReflectLogMCP Server."""
 
-import time
 from typing import Annotated, override
 
 from pydantic import Field
 
+from reflectlog.core.exceptions import SearchError
+
 from ..constants import LOG_SEPARATOR_LENGTH
-from ..exceptions import SearchError
 from ..utils.validation import truncate_memory
 from .base import BaseTool
 
@@ -78,18 +78,10 @@ class SearchTool(BaseTool):
                 []  # No semantically similar content
             """
             try:
-                start_time = time.time()
                 self.log_invocation("search", query=query)
 
                 # Log search header
-                self.logger.info(
-                    "=" * LOG_SEPARATOR_LENGTH,
-                    extra={"tool": "search", "section": "header"},
-                )
-                self.logger.info(
-                    "SEARCH OPERATION",
-                    extra={"tool": "search"},
-                )
+                start_time = self._log_operation_header("search", "SEARCH OPERATION")
                 self.logger.info(
                     f'   Query: "{query}"',
                     extra={"tool": "search", "query": query},
@@ -103,12 +95,10 @@ class SearchTool(BaseTool):
                 )
 
                 # Perform async hybrid search directly (search is now async)
-                search_start = time.time()
                 similar_memories = await self.memory.search(
                     query,
                     limit=self.config.search_limit,
                 )
-                search_duration = (time.time() - search_start) * 1000  # ms
 
                 # Log final results
                 if similar_memories:
@@ -151,20 +141,7 @@ class SearchTool(BaseTool):
                         },
                     )
 
-                # Log timing
-                total_duration = (time.time() - start_time) * 1000  # ms
-                self.logger.info(
-                    f"Search completed in {search_duration:.0f}ms (total: {total_duration:.0f}ms)",
-                    extra={
-                        "tool": "search",
-                        "search_duration_ms": search_duration,
-                        "total_duration_ms": total_duration,
-                    },
-                )
-                self.logger.info(
-                    "=" * LOG_SEPARATOR_LENGTH,
-                    extra={"tool": "search", "section": "footer"},
-                )
+                _ = self._log_operation_footer("search", start_time)
 
                 self.log_completion(
                     "search", query=query, result_count=len(similar_memories)
@@ -173,7 +150,12 @@ class SearchTool(BaseTool):
                 return similar_memories
 
             except Exception as e:
-                self.log_error("search", e, query=query)
-                raise SearchError(f"Failed to search memory store: {e}") from e
+                self._raise_tool_error(
+                    "search",
+                    e,
+                    error_cls=SearchError,
+                    message="Failed to search memory store",
+                    query=query,
+                )
 
         return search

@@ -3,15 +3,10 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from reflectlog.core import IStructuredLogger
+    from reflectlog.core.logging import IStructuredLogger
 
 from .base import FusionEngine
-from .ranx_fusion import (
-    DEFAULT_NORMALIZATIONS,
-    SUPPORTED_METHODS,
-    SUPPORTED_NORMALIZATIONS,
-    RanxFusionEngine,
-)
+from .ranx_fusion import RanxFusionEngine
 
 
 def create_fusion_engine(
@@ -51,10 +46,5 @@ def create_fusion_engine(
 
 
 __all__ = [
-    "DEFAULT_NORMALIZATIONS",
-    "SUPPORTED_METHODS",
-    "SUPPORTED_NORMALIZATIONS",
-    "FusionEngine",
-    "RanxFusionEngine",
     "create_fusion_engine",
 ]

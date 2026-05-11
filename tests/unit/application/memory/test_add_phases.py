@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
-from reflectlog.application.exceptions import StorageError
+from reflectlog.core.exceptions import StorageError
 from reflectlog.application.memory.add_phases import (
     AddPipeline,
     AddResult,
@@ -24,7 +24,7 @@ from reflectlog.application.memory.add_phases import (
     SmartReplacementPhase,
     StoragePhase,
 )
-from reflectlog.application.utils import StructuredLogger
+from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
 
 

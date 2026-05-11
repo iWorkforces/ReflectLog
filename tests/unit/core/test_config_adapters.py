@@ -1,0 +1,964 @@
+"""Tests for reflectlog.core.config_adapters module.
+
+Verifies protocol conformance for all adapter classes that bridge
+the monolithic Config dataclass to fine-grained protocol interfaces.
+"""
+
+import pytest
+
+from reflectlog.application.config.settings import Config
+from reflectlog.application.utils.security import SecretString
+from reflectlog.core.config import (
+    IAppConfig,
+    IEmbedderConfig,
+    IReplacementConfig,
+    IRerankerConfig,
+    ISearchConfig,
+    IServerConfig,
+    IStorageConfig,
+)
+from reflectlog.core.config_adapters import (
+    ConfigAdapter,
+    EmbedderConfigAdapter,
+    ReplacementConfigAdapter,
+    RerankerConfigAdapter,
+    SearchConfigAdapter,
+    ServerConfigAdapter,
+    StorageConfigAdapter,
+    _coerce_reranker_engine,
+    _validated_reranker_engine,
+    create_config_adapter,
+    create_embedder_config_adapter,
+    create_reranker_config_adapter,
+    create_replacement_config_adapter,
+    create_search_config_adapter,
+    create_server_config_adapter,
+    create_storage_config_adapter,
+)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def minimal_config() -> Config:
+    """Config with only required fields, all others at defaults."""
+    return Config(
+        project_id="test-project",
+        openrouter_api_key=SecretString("sk-test-key-12345"),
+    )
+
+
+@pytest.fixture
+def custom_config() -> Config:
+    """Config with all adapter-relevant fields set to non-default values."""
+    return Config(
+        project_id="custom-proj",
+        openrouter_api_key=SecretString("sk-custom-key-99999"),
+        transport="http",
+        host="0.0.0.0",
+        port=8080,
+        path="/custom-mcp",
+        log_level="DEBUG",
+        search_limit=20,
+        enable_hybrid_search=False,
+        enable_rrf_fusion=False,
+        fusion_rrf_k=30,
+        fusion_ranking_threshold=0.5,
+        reranker_engine="cross_encoder",
+        search_score_threshold=0.8,
+        enable_recency_boost=False,
+        recency_decay_rate=0.05,
+        embedding_dims=1536,
+        llm_model="openai/gpt-4o",
+        openrouter_base_url="https://api.example.com/v1",
+        cross_encoder_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        cross_encoder_device="cuda",
+        reranker_batch_normalize=False,
+        embedding_model="openai/text-embedding-3-small",
+        embedder_provider="langchain",
+        qwen_embedding_dims=2048,
+        embedding_batch_size=256,
+        embedding_max_concurrent_batches=8,
+        embedding_cache_enabled=False,
+        embedding_cache_size=50,
+        enable_smart_replace=False,
+        smart_replace_threshold=0.5,
+        smart_replace_min_similarity=0.8,
+        smart_replace_candidate_limit=5,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helper: _validated_reranker_engine / _coerce_reranker_engine
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRerankerEngineHelpers:
+    """Tests for _validated_reranker_engine and _coerce_reranker_engine."""
+
+    @pytest.mark.parametrize("engine", ["llm", "cross_encoder", "none"])
+    def test_validated_reranker_engine_valid(self, engine: str) -> None:
+        """Valid literals pass through unchanged."""
+        result = _validated_reranker_engine(engine)  # ty: ignore[invalid-argument-type]
+        assert result == engine
+
+    @pytest.mark.parametrize("engine", ["llm", "cross_encoder", "none"])
+    def test_coerce_reranker_engine_valid(self, engine: str) -> None:
+        """Valid string values coerce correctly."""
+        result = _coerce_reranker_engine(engine)
+        assert result == engine
+
+    def test_coerce_reranker_engine_unknown_defaults_to_none(self) -> None:
+        """Unknown reranker engine strings coerce to 'none'."""
+        assert _coerce_reranker_engine("unknown") == "none"
+        assert _coerce_reranker_engine("") == "none"
+        assert _coerce_reranker_engine("LLM") == "none"  # Case-sensitive
+
+
+# ---------------------------------------------------------------------------
+# ConfigAdapter (IAppConfig — all protocols combined)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestConfigAdapter:
+    """Tests for ConfigAdapter satisfying IAppConfig (all sub-protocols)."""
+
+    def test_isinstance_iappconfig(self, minimal_config: Config) -> None:
+        """ConfigAdapter satisfies the IAppConfig protocol."""
+        adapter = ConfigAdapter(minimal_config)
+        assert isinstance(adapter, IAppConfig)
+
+    def test_isinstance_all_sub_protocols(self, minimal_config: Config) -> None:
+        """ConfigAdapter satisfies every individual sub-protocol."""
+        adapter = ConfigAdapter(minimal_config)
+        assert isinstance(adapter, IServerConfig)
+        assert isinstance(adapter, ISearchConfig)
+        assert isinstance(adapter, IStorageConfig)
+        assert isinstance(adapter, IRerankerConfig)
+        assert isinstance(adapter, IEmbedderConfig)
+        assert isinstance(adapter, IReplacementConfig)
+
+    # -- IServerConfig properties --
+
+    def test_transport_default(self, minimal_config: Config) -> None:
+        """Default transport is 'stdio'."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.transport == "stdio"
+
+    def test_host_default(self, minimal_config: Config) -> None:
+        """Default host is 127.0.0.1."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.host == "127.0.0.1"
+
+    def test_port_default(self, minimal_config: Config) -> None:
+        """Default port is 9103."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.port == 9103
+
+    def test_path_default(self, minimal_config: Config) -> None:
+        """Default path is /mcp."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.path == "/mcp"
+
+    def test_log_level_default(self, minimal_config: Config) -> None:
+        """Default log level is INFO."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.log_level == "INFO"
+
+    def test_project_id(self, minimal_config: Config) -> None:
+        """project_id delegates to Config."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.project_id == "test-project"
+
+    # -- ISearchConfig properties --
+
+    def test_search_limit_default(self, minimal_config: Config) -> None:
+        """Default search_limit is 5."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.search_limit == 5
+
+    def test_enable_hybrid_search_default(self, minimal_config: Config) -> None:
+        """Default enable_hybrid_search is True."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.enable_hybrid_search is True
+
+    def test_enable_rrf_fusion_default(self, minimal_config: Config) -> None:
+        """Default enable_rrf_fusion is True."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.enable_rrf_fusion is True
+
+    def test_fusion_rrf_k_default(self, minimal_config: Config) -> None:
+        """Default fusion_rrf_k is 60."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.fusion_rrf_k == 60
+
+    def test_fusion_threshold_delegates_to_fusion_ranking_threshold(
+        self, minimal_config: Config
+    ) -> None:
+        """fusion_threshold maps to Config.fusion_ranking_threshold."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.fusion_threshold == 0.8
+
+    def test_reranker_engine_default(self, minimal_config: Config) -> None:
+        """Default reranker_engine is 'llm'."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.reranker_engine == "llm"
+
+    def test_reranker_engine_coercion(self, custom_config: Config) -> None:
+        """reranker_engine coerces through _coerce_reranker_engine."""
+        adapter = ConfigAdapter(custom_config)
+        assert adapter.reranker_engine == "cross_encoder"
+
+    def test_search_score_threshold_default(self, minimal_config: Config) -> None:
+        """Default search_score_threshold is 0.5."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.search_score_threshold == 0.5
+
+    def test_enable_recency_boost_default(self, minimal_config: Config) -> None:
+        """Default enable_recency_boost is True."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.enable_recency_boost is True
+
+    def test_recency_decay_rate_default(self, minimal_config: Config) -> None:
+        """Default recency_decay_rate is 0.01."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.recency_decay_rate == 0.01
+
+    # -- IStorageConfig properties --
+
+    def test_storage_path_hardcoded(self, minimal_config: Config) -> None:
+        """storage_path is always 'indexes'."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.storage_path == "indexes"
+
+    def test_usearch_index_path(self, minimal_config: Config) -> None:
+        """usearch_index_path includes project_id."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.usearch_index_path == "indexes/test-project/usearch"
+
+    def test_tantivy_index_path(self, minimal_config: Config) -> None:
+        """tantivy_index_path includes project_id."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.tantivy_index_path == "indexes/test-project/tantivy"
+
+    def test_embedding_dims_default(self, minimal_config: Config) -> None:
+        """Default embedding_dims is 3072."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.embedding_dims == 3072
+
+    def test_metric_hardcoded(self, minimal_config: Config) -> None:
+        """metric is always 'cosine'."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.metric == "cosine"
+
+    # -- IRerankerConfig properties --
+
+    def test_llm_model_default(self, minimal_config: Config) -> None:
+        """Default llm_model is 'x-ai/grok-4.1-fast'."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.llm_model == "x-ai/grok-4.1-fast"
+
+    def test_llm_api_base_url_delegates_to_openrouter_base_url(
+        self, minimal_config: Config
+    ) -> None:
+        """llm_api_base_url maps to Config.openrouter_base_url."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.llm_api_base_url == "https://openrouter.ai/api/v1"
+
+    def test_cross_encoder_model_default(self, minimal_config: Config) -> None:
+        """Default cross_encoder_model."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.cross_encoder_model == "BAAI/bge-reranker-v2-m3"
+
+    def test_cross_encoder_device_default(self, minimal_config: Config) -> None:
+        """Default cross_encoder_device is 'cpu'."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.cross_encoder_device == "cpu"
+
+    def test_reranker_batch_normalize_default(self, minimal_config: Config) -> None:
+        """Default reranker_batch_normalize is True."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.reranker_batch_normalize is True
+
+    # -- IEmbedderConfig properties --
+
+    def test_embedding_model_default(self, minimal_config: Config) -> None:
+        """Default embedding_model."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.embedding_model == "openai/text-embedding-3-large"
+
+    def test_embedder_provider_default(self, minimal_config: Config) -> None:
+        """Default embedder_provider is 'openai'."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.embedder_provider == "openai"
+
+    def test_qwen_embedding_dims_default(self, minimal_config: Config) -> None:
+        """Default qwen_embedding_dims is 4096."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.qwen_embedding_dims == 4096
+
+    def test_embedding_batch_size_default(self, minimal_config: Config) -> None:
+        """Default embedding_batch_size is 512."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.embedding_batch_size == 512
+
+    def test_embedding_max_concurrent_batches_default(
+        self, minimal_config: Config
+    ) -> None:
+        """Default embedding_max_concurrent_batches is 4."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.embedding_max_concurrent_batches == 4
+
+    def test_embedding_cache_enabled_default(self, minimal_config: Config) -> None:
+        """Default embedding_cache_enabled is True."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.embedding_cache_enabled is True
+
+    def test_embedding_cache_size_default(self, minimal_config: Config) -> None:
+        """Default embedding_cache_size is 100."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.embedding_cache_size == 100
+
+    # -- IReplacementConfig properties --
+
+    def test_enable_smart_replace_default(self, minimal_config: Config) -> None:
+        """Default enable_smart_replace is True."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.enable_smart_replace is True
+
+    def test_smart_replace_threshold_default(self, minimal_config: Config) -> None:
+        """Default smart_replace_threshold is 0.7."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.smart_replace_threshold == 0.7
+
+    def test_smart_replace_min_similarity_default(self, minimal_config: Config) -> None:
+        """Default smart_replace_min_similarity is 0.9."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.smart_replace_min_similarity == 0.9
+
+    def test_smart_replace_candidate_limit_default(
+        self, minimal_config: Config
+    ) -> None:
+        """Default smart_replace_candidate_limit is 3."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter.smart_replace_candidate_limit == 3
+
+    # -- Custom config delegation --
+
+    def test_all_properties_with_custom_config(self, custom_config: Config) -> None:
+        """All properties delegate correctly with non-default Config values."""
+        adapter = ConfigAdapter(custom_config)
+
+        # IServerConfig
+        assert adapter.transport == "http"
+        assert adapter.host == "0.0.0.0"
+        assert adapter.port == 8080
+        assert adapter.path == "/custom-mcp"
+        assert adapter.log_level == "DEBUG"
+        assert adapter.project_id == "custom-proj"
+
+        # ISearchConfig
+        assert adapter.search_limit == 20
+        assert adapter.enable_hybrid_search is False
+        assert adapter.enable_rrf_fusion is False
+        assert adapter.fusion_rrf_k == 30
+        assert adapter.fusion_threshold == 0.5
+        assert adapter.reranker_engine == "cross_encoder"
+        assert adapter.search_score_threshold == 0.8
+        assert adapter.enable_recency_boost is False
+        assert adapter.recency_decay_rate == 0.05
+
+        # IStorageConfig
+        assert adapter.storage_path == "indexes"
+        assert adapter.usearch_index_path == "indexes/custom-proj/usearch"
+        assert adapter.tantivy_index_path == "indexes/custom-proj/tantivy"
+        assert adapter.embedding_dims == 1536
+        assert adapter.metric == "cosine"
+
+        # IRerankerConfig
+        assert adapter.llm_model == "openai/gpt-4o"
+        assert adapter.llm_api_base_url == "https://api.example.com/v1"
+        assert adapter.cross_encoder_model == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        assert adapter.cross_encoder_device == "cuda"
+        assert adapter.reranker_batch_normalize is False
+
+        # IEmbedderConfig
+        assert adapter.embedding_model == "openai/text-embedding-3-small"
+        assert adapter.embedder_provider == "langchain"
+        assert adapter.qwen_embedding_dims == 2048
+        assert adapter.embedding_batch_size == 256
+        assert adapter.embedding_max_concurrent_batches == 8
+        assert adapter.embedding_cache_enabled is False
+        assert adapter.embedding_cache_size == 50
+
+        # IReplacementConfig
+        assert adapter.enable_smart_replace is False
+        assert adapter.smart_replace_threshold == 0.5
+        assert adapter.smart_replace_min_similarity == 0.8
+        assert adapter.smart_replace_candidate_limit == 5
+
+
+# ---------------------------------------------------------------------------
+# ServerConfigAdapter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestServerConfigAdapter:
+    """Tests for ServerConfigAdapter satisfying IServerConfig."""
+
+    def test_isinstance_iserver_config(self, minimal_config: Config) -> None:
+        """ServerConfigAdapter satisfies IServerConfig protocol."""
+        adapter = ServerConfigAdapter(minimal_config)
+        assert isinstance(adapter, IServerConfig)
+
+    def test_does_not_satisfy_other_protocols(self, minimal_config: Config) -> None:
+        """ServerConfigAdapter does NOT satisfy unrelated protocols."""
+        adapter = ServerConfigAdapter(minimal_config)
+        assert not isinstance(adapter, ISearchConfig)
+        assert not isinstance(adapter, IStorageConfig)
+        assert not isinstance(adapter, IRerankerConfig)
+        assert not isinstance(adapter, IEmbedderConfig)
+        assert not isinstance(adapter, IReplacementConfig)
+
+    def test_transport(self, custom_config: Config) -> None:
+        """transport delegates to Config.transport."""
+        adapter = ServerConfigAdapter(custom_config)
+        assert adapter.transport == "http"
+
+    def test_host(self, custom_config: Config) -> None:
+        """host delegates to Config.host."""
+        adapter = ServerConfigAdapter(custom_config)
+        assert adapter.host == "0.0.0.0"
+
+    def test_port(self, custom_config: Config) -> None:
+        """port delegates to Config.port."""
+        adapter = ServerConfigAdapter(custom_config)
+        assert adapter.port == 8080
+
+    def test_path(self, custom_config: Config) -> None:
+        """path delegates to Config.path."""
+        adapter = ServerConfigAdapter(custom_config)
+        assert adapter.path == "/custom-mcp"
+
+    def test_log_level(self, custom_config: Config) -> None:
+        """log_level delegates to Config.log_level."""
+        adapter = ServerConfigAdapter(custom_config)
+        assert adapter.log_level == "DEBUG"
+
+    def test_project_id(self, custom_config: Config) -> None:
+        """project_id delegates to Config.project_id."""
+        adapter = ServerConfigAdapter(custom_config)
+        assert adapter.project_id == "custom-proj"
+
+    def test_defaults(self, minimal_config: Config) -> None:
+        """All defaults match Config defaults."""
+        adapter = ServerConfigAdapter(minimal_config)
+        assert adapter.transport == "stdio"
+        assert adapter.host == "127.0.0.1"
+        assert adapter.port == 9103
+        assert adapter.path == "/mcp"
+        assert adapter.log_level == "INFO"
+        assert adapter.project_id == "test-project"
+
+
+# ---------------------------------------------------------------------------
+# SearchConfigAdapter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSearchConfigAdapter:
+    """Tests for SearchConfigAdapter satisfying ISearchConfig."""
+
+    def test_isinstance_isearch_config(self, minimal_config: Config) -> None:
+        """SearchConfigAdapter satisfies ISearchConfig protocol."""
+        adapter = SearchConfigAdapter(minimal_config)
+        assert isinstance(adapter, ISearchConfig)
+
+    def test_does_not_satisfy_other_protocols(self, minimal_config: Config) -> None:
+        """SearchConfigAdapter does NOT satisfy unrelated protocols."""
+        adapter = SearchConfigAdapter(minimal_config)
+        assert not isinstance(adapter, IServerConfig)
+        assert not isinstance(adapter, IStorageConfig)
+        assert not isinstance(adapter, IRerankerConfig)
+        assert not isinstance(adapter, IEmbedderConfig)
+        assert not isinstance(adapter, IReplacementConfig)
+
+    def test_search_limit(self, custom_config: Config) -> None:
+        """search_limit delegates to Config."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.search_limit == 20
+
+    def test_enable_hybrid_search(self, custom_config: Config) -> None:
+        """enable_hybrid_search delegates to Config."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.enable_hybrid_search is False
+
+    def test_enable_rrf_fusion(self, custom_config: Config) -> None:
+        """enable_rrf_fusion delegates to Config."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.enable_rrf_fusion is False
+
+    def test_fusion_rrf_k(self, custom_config: Config) -> None:
+        """fusion_rrf_k delegates to Config."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.fusion_rrf_k == 30
+
+    def test_fusion_threshold(self, custom_config: Config) -> None:
+        """fusion_threshold maps to Config.fusion_ranking_threshold."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.fusion_threshold == 0.5
+
+    def test_reranker_engine(self, custom_config: Config) -> None:
+        """reranker_engine coerces through _coerce_reranker_engine."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.reranker_engine == "cross_encoder"
+
+    def test_reranker_engine_coercion_invalid(self) -> None:
+        """Invalid reranker_engine in Config coerces to 'none'."""
+        config = Config(
+            project_id="test",
+            openrouter_api_key=SecretString("sk-key"),
+            reranker_engine="invalid_engine",
+        )
+        adapter = SearchConfigAdapter(config)
+        assert adapter.reranker_engine == "none"
+
+    def test_search_score_threshold(self, custom_config: Config) -> None:
+        """search_score_threshold delegates to Config."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.search_score_threshold == 0.8
+
+    def test_enable_recency_boost(self, custom_config: Config) -> None:
+        """enable_recency_boost delegates to Config."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.enable_recency_boost is False
+
+    def test_recency_decay_rate(self, custom_config: Config) -> None:
+        """recency_decay_rate delegates to Config."""
+        adapter = SearchConfigAdapter(custom_config)
+        assert adapter.recency_decay_rate == 0.05
+
+    def test_defaults(self, minimal_config: Config) -> None:
+        """All defaults match Config defaults."""
+        adapter = SearchConfigAdapter(minimal_config)
+        assert adapter.search_limit == 5
+        assert adapter.enable_hybrid_search is True
+        assert adapter.enable_rrf_fusion is True
+        assert adapter.fusion_rrf_k == 60
+        assert adapter.fusion_threshold == 0.8
+        assert adapter.reranker_engine == "llm"
+        assert adapter.search_score_threshold == 0.5
+        assert adapter.enable_recency_boost is True
+        assert adapter.recency_decay_rate == 0.01
+
+
+# ---------------------------------------------------------------------------
+# StorageConfigAdapter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestStorageConfigAdapter:
+    """Tests for StorageConfigAdapter satisfying IStorageConfig."""
+
+    def test_isinstance_istorage_config(self, minimal_config: Config) -> None:
+        """StorageConfigAdapter satisfies IStorageConfig protocol."""
+        adapter = StorageConfigAdapter(minimal_config)
+        assert isinstance(adapter, IStorageConfig)
+
+    def test_does_not_satisfy_other_protocols(self, minimal_config: Config) -> None:
+        """StorageConfigAdapter does NOT satisfy unrelated protocols."""
+        adapter = StorageConfigAdapter(minimal_config)
+        assert not isinstance(adapter, IServerConfig)
+        assert not isinstance(adapter, ISearchConfig)
+        assert not isinstance(adapter, IRerankerConfig)
+        assert not isinstance(adapter, IEmbedderConfig)
+        assert not isinstance(adapter, IReplacementConfig)
+
+    def test_storage_path_hardcoded(self, minimal_config: Config) -> None:
+        """storage_path is always 'indexes'."""
+        adapter = StorageConfigAdapter(minimal_config)
+        assert adapter.storage_path == "indexes"
+
+    def test_usearch_index_path(self, custom_config: Config) -> None:
+        """usearch_index_path includes project_id from Config."""
+        adapter = StorageConfigAdapter(custom_config)
+        assert adapter.usearch_index_path == "indexes/custom-proj/usearch"
+
+    def test_tantivy_index_path(self, custom_config: Config) -> None:
+        """tantivy_index_path includes project_id from Config."""
+        adapter = StorageConfigAdapter(custom_config)
+        assert adapter.tantivy_index_path == "indexes/custom-proj/tantivy"
+
+    def test_embedding_dims(self, custom_config: Config) -> None:
+        """embedding_dims delegates to Config."""
+        adapter = StorageConfigAdapter(custom_config)
+        assert adapter.embedding_dims == 1536
+
+    def test_metric_hardcoded(self, minimal_config: Config) -> None:
+        """metric is always 'cosine'."""
+        adapter = StorageConfigAdapter(minimal_config)
+        assert adapter.metric == "cosine"
+
+    def test_defaults(self, minimal_config: Config) -> None:
+        """All defaults match expected values."""
+        adapter = StorageConfigAdapter(minimal_config)
+        assert adapter.storage_path == "indexes"
+        assert adapter.usearch_index_path == "indexes/test-project/usearch"
+        assert adapter.tantivy_index_path == "indexes/test-project/tantivy"
+        assert adapter.embedding_dims == 3072
+        assert adapter.metric == "cosine"
+
+
+# ---------------------------------------------------------------------------
+# RerankerConfigAdapter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRerankerConfigAdapter:
+    """Tests for RerankerConfigAdapter satisfying IRerankerConfig."""
+
+    def test_isinstance_ireranker_config(self, minimal_config: Config) -> None:
+        """RerankerConfigAdapter satisfies IRerankerConfig protocol."""
+        adapter = RerankerConfigAdapter(minimal_config)
+        assert isinstance(adapter, IRerankerConfig)
+
+    def test_does_not_satisfy_other_protocols(self, minimal_config: Config) -> None:
+        """RerankerConfigAdapter does NOT satisfy unrelated protocols."""
+        adapter = RerankerConfigAdapter(minimal_config)
+        assert not isinstance(adapter, IServerConfig)
+        assert not isinstance(adapter, ISearchConfig)
+        assert not isinstance(adapter, IStorageConfig)
+        assert not isinstance(adapter, IEmbedderConfig)
+        assert not isinstance(adapter, IReplacementConfig)
+
+    def test_llm_model(self, custom_config: Config) -> None:
+        """llm_model delegates to Config."""
+        adapter = RerankerConfigAdapter(custom_config)
+        assert adapter.llm_model == "openai/gpt-4o"
+
+    def test_llm_api_base_url(self, custom_config: Config) -> None:
+        """llm_api_base_url maps to Config.openrouter_base_url."""
+        adapter = RerankerConfigAdapter(custom_config)
+        assert adapter.llm_api_base_url == "https://api.example.com/v1"
+
+    def test_cross_encoder_model(self, custom_config: Config) -> None:
+        """cross_encoder_model delegates to Config."""
+        adapter = RerankerConfigAdapter(custom_config)
+        assert adapter.cross_encoder_model == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+    def test_cross_encoder_device(self, custom_config: Config) -> None:
+        """cross_encoder_device delegates to Config."""
+        adapter = RerankerConfigAdapter(custom_config)
+        assert adapter.cross_encoder_device == "cuda"
+
+    def test_reranker_batch_normalize(self, custom_config: Config) -> None:
+        """reranker_batch_normalize delegates to Config."""
+        adapter = RerankerConfigAdapter(custom_config)
+        assert adapter.reranker_batch_normalize is False
+
+    def test_defaults(self, minimal_config: Config) -> None:
+        """All defaults match Config defaults."""
+        adapter = RerankerConfigAdapter(minimal_config)
+        assert adapter.llm_model == "x-ai/grok-4.1-fast"
+        assert adapter.llm_api_base_url == "https://openrouter.ai/api/v1"
+        assert adapter.cross_encoder_model == "BAAI/bge-reranker-v2-m3"
+        assert adapter.cross_encoder_device == "cpu"
+        assert adapter.reranker_batch_normalize is True
+
+
+# ---------------------------------------------------------------------------
+# EmbedderConfigAdapter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestEmbedderConfigAdapter:
+    """Tests for EmbedderConfigAdapter satisfying IEmbedderConfig."""
+
+    def test_isinstance_iembedder_config(self, minimal_config: Config) -> None:
+        """EmbedderConfigAdapter satisfies IEmbedderConfig protocol."""
+        adapter = EmbedderConfigAdapter(minimal_config)
+        assert isinstance(adapter, IEmbedderConfig)
+
+    def test_does_not_satisfy_other_protocols(self, minimal_config: Config) -> None:
+        """EmbedderConfigAdapter does NOT satisfy unrelated protocols."""
+        adapter = EmbedderConfigAdapter(minimal_config)
+        assert not isinstance(adapter, IServerConfig)
+        assert not isinstance(adapter, ISearchConfig)
+        assert not isinstance(adapter, IStorageConfig)
+        assert not isinstance(adapter, IRerankerConfig)
+        assert not isinstance(adapter, IReplacementConfig)
+
+    def test_embedding_model(self, custom_config: Config) -> None:
+        """embedding_model delegates to Config."""
+        adapter = EmbedderConfigAdapter(custom_config)
+        assert adapter.embedding_model == "openai/text-embedding-3-small"
+
+    def test_embedder_provider(self, custom_config: Config) -> None:
+        """embedder_provider delegates to Config."""
+        adapter = EmbedderConfigAdapter(custom_config)
+        assert adapter.embedder_provider == "langchain"
+
+    def test_qwen_embedding_dims(self, custom_config: Config) -> None:
+        """qwen_embedding_dims delegates to Config."""
+        adapter = EmbedderConfigAdapter(custom_config)
+        assert adapter.qwen_embedding_dims == 2048
+
+    def test_embedding_batch_size(self, custom_config: Config) -> None:
+        """embedding_batch_size delegates to Config."""
+        adapter = EmbedderConfigAdapter(custom_config)
+        assert adapter.embedding_batch_size == 256
+
+    def test_embedding_max_concurrent_batches(self, custom_config: Config) -> None:
+        """embedding_max_concurrent_batches delegates to Config."""
+        adapter = EmbedderConfigAdapter(custom_config)
+        assert adapter.embedding_max_concurrent_batches == 8
+
+    def test_embedding_cache_enabled(self, custom_config: Config) -> None:
+        """embedding_cache_enabled delegates to Config."""
+        adapter = EmbedderConfigAdapter(custom_config)
+        assert adapter.embedding_cache_enabled is False
+
+    def test_embedding_cache_size(self, custom_config: Config) -> None:
+        """embedding_cache_size delegates to Config."""
+        adapter = EmbedderConfigAdapter(custom_config)
+        assert adapter.embedding_cache_size == 50
+
+    def test_defaults(self, minimal_config: Config) -> None:
+        """All defaults match Config defaults."""
+        adapter = EmbedderConfigAdapter(minimal_config)
+        assert adapter.embedding_model == "openai/text-embedding-3-large"
+        assert adapter.embedder_provider == "openai"
+        assert adapter.qwen_embedding_dims == 4096
+        assert adapter.embedding_batch_size == 512
+        assert adapter.embedding_max_concurrent_batches == 4
+        assert adapter.embedding_cache_enabled is True
+        assert adapter.embedding_cache_size == 100
+
+
+# ---------------------------------------------------------------------------
+# ReplacementConfigAdapter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestReplacementConfigAdapter:
+    """Tests for ReplacementConfigAdapter satisfying IReplacementConfig."""
+
+    def test_isinstance_ireplacement_config(self, minimal_config: Config) -> None:
+        """ReplacementConfigAdapter satisfies IReplacementConfig protocol."""
+        adapter = ReplacementConfigAdapter(minimal_config)
+        assert isinstance(adapter, IReplacementConfig)
+
+    def test_does_not_satisfy_other_protocols(self, minimal_config: Config) -> None:
+        """ReplacementConfigAdapter does NOT satisfy unrelated protocols."""
+        adapter = ReplacementConfigAdapter(minimal_config)
+        assert not isinstance(adapter, IServerConfig)
+        assert not isinstance(adapter, ISearchConfig)
+        assert not isinstance(adapter, IStorageConfig)
+        assert not isinstance(adapter, IRerankerConfig)
+        assert not isinstance(adapter, IEmbedderConfig)
+
+    def test_enable_smart_replace(self, custom_config: Config) -> None:
+        """enable_smart_replace delegates to Config."""
+        adapter = ReplacementConfigAdapter(custom_config)
+        assert adapter.enable_smart_replace is False
+
+    def test_smart_replace_threshold(self, custom_config: Config) -> None:
+        """smart_replace_threshold delegates to Config."""
+        adapter = ReplacementConfigAdapter(custom_config)
+        assert adapter.smart_replace_threshold == 0.5
+
+    def test_smart_replace_min_similarity(self, custom_config: Config) -> None:
+        """smart_replace_min_similarity delegates to Config."""
+        adapter = ReplacementConfigAdapter(custom_config)
+        assert adapter.smart_replace_min_similarity == 0.8
+
+    def test_smart_replace_candidate_limit(self, custom_config: Config) -> None:
+        """smart_replace_candidate_limit delegates to Config."""
+        adapter = ReplacementConfigAdapter(custom_config)
+        assert adapter.smart_replace_candidate_limit == 5
+
+    def test_defaults(self, minimal_config: Config) -> None:
+        """All defaults match Config defaults."""
+        adapter = ReplacementConfigAdapter(minimal_config)
+        assert adapter.enable_smart_replace is True
+        assert adapter.smart_replace_threshold == 0.7
+        assert adapter.smart_replace_min_similarity == 0.9
+        assert adapter.smart_replace_candidate_limit == 3
+
+
+# ---------------------------------------------------------------------------
+# Factory functions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFactoryFunctions:
+    """Tests for create_*_adapter factory functions."""
+
+    def test_create_config_adapter(self, minimal_config: Config) -> None:
+        """create_config_adapter returns a ConfigAdapter."""
+        adapter = create_config_adapter(minimal_config)
+        assert isinstance(adapter, ConfigAdapter)
+        assert isinstance(adapter, IAppConfig)
+
+    def test_create_server_config_adapter(self, minimal_config: Config) -> None:
+        """create_server_config_adapter returns a ServerConfigAdapter."""
+        adapter = create_server_config_adapter(minimal_config)
+        assert isinstance(adapter, ServerConfigAdapter)
+        assert isinstance(adapter, IServerConfig)
+
+    def test_create_search_config_adapter(self, minimal_config: Config) -> None:
+        """create_search_config_adapter returns a SearchConfigAdapter."""
+        adapter = create_search_config_adapter(minimal_config)
+        assert isinstance(adapter, SearchConfigAdapter)
+        assert isinstance(adapter, ISearchConfig)
+
+    def test_create_storage_config_adapter(self, minimal_config: Config) -> None:
+        """create_storage_config_adapter returns a StorageConfigAdapter."""
+        adapter = create_storage_config_adapter(minimal_config)
+        assert isinstance(adapter, StorageConfigAdapter)
+        assert isinstance(adapter, IStorageConfig)
+
+    def test_create_reranker_config_adapter(self, minimal_config: Config) -> None:
+        """create_reranker_config_adapter returns a RerankerConfigAdapter."""
+        adapter = create_reranker_config_adapter(minimal_config)
+        assert isinstance(adapter, RerankerConfigAdapter)
+        assert isinstance(adapter, IRerankerConfig)
+
+    def test_create_embedder_config_adapter(self, minimal_config: Config) -> None:
+        """create_embedder_config_adapter returns an EmbedderConfigAdapter."""
+        adapter = create_embedder_config_adapter(minimal_config)
+        assert isinstance(adapter, EmbedderConfigAdapter)
+        assert isinstance(adapter, IEmbedderConfig)
+
+    def test_create_replacement_config_adapter(self, minimal_config: Config) -> None:
+        """create_replacement_config_adapter returns a ReplacementConfigAdapter."""
+        adapter = create_replacement_config_adapter(minimal_config)
+        assert isinstance(adapter, ReplacementConfigAdapter)
+        assert isinstance(adapter, IReplacementConfig)
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestEdgeCases:
+    """Edge case tests for config adapters."""
+
+    def test_storage_paths_with_special_project_id(self) -> None:
+        """Storage paths handle project_id with dots and hyphens."""
+        config = Config(
+            project_id="my-project.v2",
+            openrouter_api_key=SecretString("sk-key"),
+        )
+        adapter = ConfigAdapter(config)
+        assert adapter.usearch_index_path == "indexes/my-project.v2/usearch"
+        assert adapter.tantivy_index_path == "indexes/my-project.v2/tantivy"
+
+    def test_reranker_engine_none_string(self) -> None:
+        """Config with reranker_engine='none' coerces correctly."""
+        config = Config(
+            project_id="test",
+            openrouter_api_key=SecretString("sk-key"),
+            reranker_engine="none",
+        )
+        adapter = ConfigAdapter(config)
+        assert adapter.reranker_engine == "none"
+
+    def test_all_transport_modes(self) -> None:
+        """All transport literal values are supported."""
+        for transport in ("stdio", "http", "sse", "streamable-http"):
+            config = Config(
+                project_id="test",
+                openrouter_api_key=SecretString("sk-key"),
+                transport=transport,  # type: ignore[arg-type]
+            )
+            adapter = ConfigAdapter(config)
+            assert adapter.transport == transport
+
+    def test_same_config_shared_by_multiple_adapters(
+        self, minimal_config: Config
+    ) -> None:
+        """Multiple adapter types can wrap the same Config instance."""
+        server = ServerConfigAdapter(minimal_config)
+        search = SearchConfigAdapter(minimal_config)
+        storage = StorageConfigAdapter(minimal_config)
+        reranker = RerankerConfigAdapter(minimal_config)
+        embedder = EmbedderConfigAdapter(minimal_config)
+        replacement = ReplacementConfigAdapter(minimal_config)
+        full = ConfigAdapter(minimal_config)
+
+        # All share the same project_id source
+        assert server.project_id == "test-project"
+        assert full.project_id == "test-project"
+
+        # Verify they each satisfy only their own protocol
+        assert isinstance(server, IServerConfig)
+        assert isinstance(search, ISearchConfig)
+        assert isinstance(storage, IStorageConfig)
+        assert isinstance(reranker, IRerankerConfig)
+        assert isinstance(embedder, IEmbedderConfig)
+        assert isinstance(replacement, IReplacementConfig)
+        assert isinstance(full, IAppConfig)
+
+    def test_adapter_wraps_config_not_copies(self, minimal_config: Config) -> None:
+        """Adapter references the Config instance, not a copy."""
+        adapter = ConfigAdapter(minimal_config)
+        assert adapter._config is minimal_config
+
+    def test_zero_fusion_threshold(self) -> None:
+        """Config with zero fusion_ranking_threshold works."""
+        config = Config(
+            project_id="test",
+            openrouter_api_key=SecretString("sk-key"),
+            fusion_ranking_threshold=0.0,
+        )
+        adapter = ConfigAdapter(config)
+        assert adapter.fusion_threshold == 0.0
+
+    def test_extreme_search_limit(self) -> None:
+        """Config with high search_limit delegates correctly."""
+        config = Config(
+            project_id="test",
+            openrouter_api_key=SecretString("sk-key"),
+            search_limit=1000,
+        )
+        adapter = SearchConfigAdapter(config)
+        assert adapter.search_limit == 1000
+
+    def test_metric_always_cosine_regardless_of_config(self) -> None:
+        """metric is hardcoded to 'cosine', not from Config."""
+        config = Config(
+            project_id="test",
+            openrouter_api_key=SecretString("sk-key"),
+        )
+        # StorageConfigAdapter hardcodes "cosine"
+        adapter = StorageConfigAdapter(config)
+        assert adapter.metric == "cosine"
+        # ConfigAdapter also hardcodes "cosine"
+        full = ConfigAdapter(config)
+        assert full.metric == "cosine"
+
+    def test_storage_path_always_indexes(self) -> None:
+        """storage_path is hardcoded to 'indexes', not from Config."""
+        config = Config(
+            project_id="any-id",
+            openrouter_api_key=SecretString("sk-key"),
+        )
+        adapter = StorageConfigAdapter(config)
+        assert adapter.storage_path == "indexes"
+        full = ConfigAdapter(config)
+        assert full.storage_path == "indexes"

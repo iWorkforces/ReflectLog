@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from cachetools import LRUCache
 
-from reflectlog.application.types import Embeddings
+from reflectlog.core.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings

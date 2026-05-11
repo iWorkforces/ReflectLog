@@ -25,8 +25,8 @@ from openai.types.shared_params.response_format_json_schema import (
     ResponseFormatJSONSchema,
 )
 
-from reflectlog.application.utils.http_client import HttpClientFactory
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.utility.http import HttpClientFactory
 
 
 class IStructuredOutputSchema(Protocol):

@@ -95,7 +95,7 @@ class TestCrossEncoderConfig:
         mock_app_config.reranker_min_results = 2
         mock_app_config.reranker_batch_normalize = True
 
-        config = CrossEncoderConfig.from_app_config(mock_app_config)
+        config = CrossEncoderConfig.from_config(mock_app_config)
 
         assert config.enabled is True
         assert config.model_name == "BAAI/bge-reranker-v2-m3"
@@ -124,7 +124,7 @@ class TestCrossEncoderConfig:
         mock_app_config.reranker_min_results = 0
         mock_app_config.reranker_batch_normalize = True
 
-        config = CrossEncoderConfig.from_app_config(mock_app_config)
+        config = CrossEncoderConfig.from_config(mock_app_config)
 
         assert config.enabled is False
 

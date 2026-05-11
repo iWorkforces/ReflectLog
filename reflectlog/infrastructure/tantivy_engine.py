@@ -19,7 +19,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
 
-from reflectlog.application.exceptions import SearchError
+from reflectlog.core.exceptions import SearchError
 from reflectlog.core.logging import IStructuredLogger
 
 
@@ -612,7 +612,7 @@ class TantivyEngine(BaseModel):
             return [(msg, 1.0) for msg, _ in results]
 
         # Import here to avoid circular dependency
-        from reflectlog.application.utils.numba_utils import normalize_scores_minmax
+        from reflectlog.utility.scoring import normalize_scores_minmax
 
         memories = [msg for msg, _ in results]
         scores = np.array([score for _, score in results], dtype=np.float64)
@@ -648,73 +648,20 @@ class TantivyEngine(BaseModel):
                     )
                 return []
 
-            # Get cached tombstoned memories (O(1) after first call)
             tombstoned_memories = self._get_tombstoned_memories(project_id)
-
-            # Overfetch if there are tombstones to compensate for filtering
             search_limit = limit * 3 if tombstoned_memories else limit
 
-            # Build query with project_id filter
-            escaped_project_id = self._escape_tantivy_query(project_id)
-            query_text = query.strip()
-            if query_text:
-                combined_query = f'({query_text}) AND project_id:"{escaped_project_id}"'
-            else:
-                combined_query = f'project_id:"{escaped_project_id}"'
+            parsed_query = self._build_search_query(query, project_id)
+            results = self._collect_search_results(
+                parsed_query, search_limit, limit, tombstoned_memories
+            )
 
-            try:
-                parsed_query = self._index.parse_query(
-                    query=combined_query, default_field_names=["content"]
-                )
-            except ValueError:
-                if not query_text:
-                    raise
-                escaped_query_text = self._escape_tantivy_query(query_text)
-                combined_query = (
-                    f'({escaped_query_text}) AND project_id:"{escaped_project_id}"'
-                )
-                parsed_query = self._index.parse_query(
-                    query=combined_query, default_field_names=["content"]
-                )
-                if self.logger:
-                    self.logger.debug(
-                        "Escaped Tantivy query after parse failure",
-                        extra={
-                            "project_id": self.config.project_id,
-                            "original_query": query_text[:100],
-                            "escaped_query": escaped_query_text[:100],
-                        },
-                    )
-
-            top_docs = self.searcher.search(query=parsed_query, limit=search_limit)
-            results: list[tuple[str, float]] = []
-
-            for score, doc_addr in top_docs.hits:
-                doc = self.searcher.doc(doc_addr)
-                memory = doc.get_first("content")
-                if not isinstance(memory, str):
-                    continue
-
-                # Skip tombstoned memories (post-filtering with cached set)
-                if memory in tombstoned_memories:
-                    continue
-
-                if self.logger:
-                    self.logger.debug(f"Tantivy match: {memory[:100]}...")
-                results.append((memory, score))
-
-                # Stop once we have enough results
-                if len(results) >= limit:
-                    break
-
-            # Normalize BM25 scores to 0-1 range if enabled
             if self.config.normalize_scores and results:
                 results = self._normalize_scores(results)
 
             return results
 
         except ValueError as e:
-            # Query parsing errors (malformed queries) - recoverable, log as warning
             if self.logger:
                 self.logger.warning(
                     "Tantivy query parsing failed",
@@ -728,7 +675,6 @@ class TantivyEngine(BaseModel):
             return []
 
         except OSError as e:
-            # File system errors (permissions, disk full, etc.) - more serious
             if self.logger:
                 self.logger.error(
                     "Tantivy file system error during search",
@@ -742,8 +688,74 @@ class TantivyEngine(BaseModel):
             return []
 
         except Exception as e:
-            # Unexpected errors - raise SearchError for caller to handle
             raise SearchError(f"Tantivy search failed: {e}") from e
+
+    def _build_search_query(self, query: str, project_id: str) -> tantivy.Query:
+        """Build and parse a Tantivy query with project_id filter.
+
+        Falls back to escaped query text if initial parsing fails.
+        """
+        escaped_project_id = self._escape_tantivy_query(project_id)
+        query_text = query.strip()
+        if query_text:
+            combined_query = f'({query_text}) AND project_id:"{escaped_project_id}"'
+        else:
+            combined_query = f'project_id:"{escaped_project_id}"'
+
+        assert self._index is not None
+        try:
+            return self._index.parse_query(
+                query=combined_query, default_field_names=["content"]
+            )
+        except ValueError:
+            if not query_text:
+                raise
+            escaped_query_text = self._escape_tantivy_query(query_text)
+            combined_query = (
+                f'({escaped_query_text}) AND project_id:"{escaped_project_id}"'
+            )
+            parsed = self._index.parse_query(
+                query=combined_query, default_field_names=["content"]
+            )
+            if self.logger:
+                self.logger.debug(
+                    "Escaped Tantivy query after parse failure",
+                    extra={
+                        "project_id": self.config.project_id,
+                        "original_query": query_text[:100],
+                        "escaped_query": escaped_query_text[:100],
+                    },
+                )
+            return parsed
+
+    def _collect_search_results(
+        self,
+        parsed_query: tantivy.Query,
+        search_limit: int,
+        result_limit: int,
+        tombstoned_memories: set[str],
+    ) -> list[tuple[str, float]]:
+        """Execute query and collect results, filtering tombstoned memories."""
+        top_docs = self.searcher.search(query=parsed_query, limit=search_limit)
+        results: list[tuple[str, float]] = []
+
+        for score, doc_addr in top_docs.hits:
+            doc = self.searcher.doc(doc_addr)
+            memory = doc.get_first("content")
+            if not isinstance(memory, str):
+                continue
+
+            if memory in tombstoned_memories:
+                continue
+
+            if self.logger:
+                self.logger.debug(f"Tantivy match: {memory[:100]}...")
+            results.append((memory, score))
+
+            if len(results) >= result_limit:
+                break
+
+        return results
 
     def ensure_initialized(self) -> None:
         """Ensure the engine is fully initialized (thread-safe).
@@ -880,106 +892,109 @@ class TantivyEngine(BaseModel):
 
         # Fall back to rebuild approach when soft-delete disabled
         try:
-            if self._index is None:
-                return False
+            return self._delete_via_rebuild(project_id, content)
+        except ValueError as e:
+            self._log_delete_error(project_id, content, e, "warning", "QueryParseError")
+            return False
+        except OSError as e:
+            self._log_delete_error(
+                project_id,
+                content,
+                e,
+                "error",
+                "FileSystemError",
+                include_index_path=True,
+            )
+            return False
+        except Exception as e:
+            self._log_delete_error(project_id, content, e, "error", type(e).__name__)
+            return False
 
-            # Step 1: Get ALL documents from ALL projects (we'll rebuild the entire index)
-            all_docs = self._get_all_docs_all_projects()
+    def _delete_via_rebuild(self, project_id: str, content: str) -> bool:
+        """Delete a document using the full index rebuild approach."""
+        if self._index is None:
+            return False
 
-            # Step 2: Check if the target memory exists for the target project
-            target_exists = any(
-                pid == project_id and msg == content for pid, msg in all_docs
+        all_docs = self._get_all_docs_all_projects()
+
+        target_exists = any(
+            pid == project_id and msg == content for pid, msg in all_docs
+        )
+        if not target_exists:
+            if self.logger:
+                self.logger.debug(
+                    "Tantivy delete: document not found",
+                    extra={
+                        "project_id": project_id,
+                        "memory_preview": content[:50] if content else "",
+                    },
+                )
+            return False
+
+        docs_to_keep = [
+            (pid, msg)
+            for pid, msg in all_docs
+            if not (pid == project_id and msg == content)
+        ]
+        deleted_count = len(all_docs) - len(docs_to_keep)
+
+        if self.logger:
+            self.logger.debug(
+                "Tantivy delete: found document(s) to delete",
+                extra={
+                    "project_id": project_id,
+                    "memory_preview": content[:50] if content else "",
+                    "deleted_count": deleted_count,
+                    "remaining_count": len(docs_to_keep),
+                },
             )
 
-            if not target_exists:
-                if self.logger:
-                    self.logger.debug(
-                        "Tantivy delete: document not found",
-                        extra={
-                            "project_id": project_id,
-                            "memory_preview": content[:50] if content else "",
-                        },
-                    )
-                return False
+        self._rebuild_index_with_docs(docs_to_keep)
 
-            # Remove ALL occurrences of the memory for the target project
-            # (in case of duplicates), but preserve all other projects' data
-            docs_to_keep = [
-                (pid, msg)
-                for pid, msg in all_docs
-                if not (pid == project_id and msg == content)
-            ]
-            deleted_count = len(all_docs) - len(docs_to_keep)
+        if self.logger:
+            self.logger.debug(
+                "Tantivy delete: completed successfully",
+                extra={
+                    "project_id": project_id,
+                    "memory_preview": content[:50] if content else "",
+                    "deleted_count": deleted_count,
+                },
+            )
 
-            if self.logger:
-                self.logger.debug(
-                    "Tantivy delete: found document(s) to delete",
-                    extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
-                        "deleted_count": deleted_count,
-                        "remaining_count": len(docs_to_keep),
-                    },
-                )
+        return True
 
-            # Step 3: Rebuild the entire index with all remaining documents
-            # This is necessary because Tantivy-py's delete_documents() consumes the writer
-            # and we can't commit after it
-            self._rebuild_index_with_docs(docs_to_keep)
+    def _log_delete_error(
+        self,
+        project_id: str,
+        content: str,
+        error: Exception,
+        level: str,
+        error_type: str,
+        *,
+        include_index_path: bool = False,
+    ) -> None:
+        """Log a delete operation error at the specified level."""
+        if not self.logger:
+            return
 
-            if self.logger:
-                self.logger.debug(
-                    "Tantivy delete: completed successfully",
-                    extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
-                        "deleted_count": deleted_count,
-                    },
-                )
+        extra: dict[str, object] = {
+            "project_id": project_id,
+            "memory_preview": content[:50] if content else "",
+            "error": str(error),
+            "error_type": error_type,
+        }
+        if include_index_path:
+            extra["index_path"] = self.config.index_path
 
-            return True
-
-        except ValueError as e:
-            # Query parsing errors - recoverable
-            if self.logger:
-                self.logger.warning(
-                    "Tantivy delete query parsing failed",
-                    extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
-                        "error": str(e),
-                        "error_type": "QueryParseError",
-                    },
-                )
-            return False
-
-        except OSError as e:
-            # File system errors - more serious
-            if self.logger:
-                self.logger.error(
-                    "Tantivy delete file system error",
-                    extra={
-                        "project_id": project_id,
-                        "index_path": self.config.index_path,
-                        "error": str(e),
-                        "error_type": "FileSystemError",
-                    },
-                )
-            return False
-
-        except Exception as e:
-            # Unexpected errors - log at error level
-            if self.logger:
-                self.logger.error(
-                    "Tantivy delete failed unexpectedly",
-                    extra={
-                        "project_id": project_id,
-                        "memory_preview": content[:50] if content else "",
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    },
-                )
-            return False
+        msg = (
+            "Tantivy delete query parsing failed"
+            if level == "warning"
+            else "Tantivy delete failed unexpectedly"
+            if error_type != "FileSystemError"
+            else "Tantivy delete file system error"
+        )
+        log_fn = self.logger.warning if level == "warning" else self.logger.error
+        log_fn(msg, extra=extra)
 
     def _rebuild_index_with_docs(self, docs_to_keep: list[tuple[str, str]]) -> None:
         """Rebuild the index with the specified documents from all projects.
@@ -1220,78 +1235,21 @@ class TantivyEngine(BaseModel):
         start_time = time.time()
 
         if not force and not self.needs_compaction():
-            return {
-                "compacted": False,
-                "removed_tombstones": 0,
-                "removed_originals": 0,
-                "remaining_docs": 0,
-                "elapsed_ms": 0,
-            }
+            return self._compaction_result(compacted=False)
 
         try:
-            # Get stats before compaction
             stats_before = self.get_tombstone_stats()
 
             index = self._index
             if index is None:
-                return {
-                    "compacted": False,
-                    "removed_tombstones": 0,
-                    "removed_originals": 0,
-                    "remaining_docs": 0,
-                    "elapsed_ms": 0,
-                }
+                return self._compaction_result(compacted=False)
 
-            # Get all documents with their deletion status
-            query = index.parse_query(
-                query="*",
-                default_field_names=["content"],
+            docs_to_keep, removed_tombstones, removed_originals = (
+                self._collect_active_docs(index)
             )
-            top_docs = self.searcher.search(query=query, limit=100000)
 
-            # Collect all documents with metadata
-            all_docs: list[
-                tuple[str, str, int]
-            ] = []  # (project_id, memory, is_deleted)
-            tombstoned_memories: set[str] = set()
-
-            for _, doc_addr in top_docs.hits:
-                doc = self.searcher.doc(doc_addr)
-                project_id = doc.get_first("project_id")
-                memory = doc.get_first("content")
-                is_deleted_val = doc.get_first("is_deleted")
-                is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
-
-                if project_id is not None and memory is not None:
-                    all_docs.append((project_id, memory, is_deleted))
-                    if is_deleted == 1:
-                        tombstoned_memories.add(memory)
-
-            # Filter to keep only active memories that don't have tombstones
-            docs_to_keep: list[tuple[str, str]] = []
-            removed_originals = 0
-            removed_tombstones = 0
-
-            for project_id, memory, is_deleted in all_docs:
-                if memory in tombstoned_memories:
-                    # This memory has a tombstone, skip it
-                    if is_deleted == 1:
-                        removed_tombstones += 1
-                    else:
-                        removed_originals += 1
-                else:
-                    # Active memory without tombstone, keep it
-                    docs_to_keep.append((project_id, memory))
-
-            # Rebuild the index with only active documents
             self._rebuild_index_with_docs(docs_to_keep)
-
-            # Clean up old segment files
-            try:
-                if self._writer is not None:
-                    self._writer.garbage_collect_files()
-            except Exception:
-                pass  # Best effort - files will be cleaned up eventually
+            self._try_garbage_collect()
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 
@@ -1307,13 +1265,13 @@ class TantivyEngine(BaseModel):
                     },
                 )
 
-            return {
-                "compacted": True,
-                "removed_tombstones": removed_tombstones,
-                "removed_originals": removed_originals,
-                "remaining_docs": len(docs_to_keep),
-                "elapsed_ms": elapsed_ms,
-            }
+            return self._compaction_result(
+                compacted=True,
+                removed_tombstones=removed_tombstones,
+                removed_originals=removed_originals,
+                remaining_docs=len(docs_to_keep),
+                elapsed_ms=elapsed_ms,
+            )
 
         except Exception as e:
             elapsed_ms = int((time.time() - start_time) * 1000)
@@ -1322,10 +1280,74 @@ class TantivyEngine(BaseModel):
                     "Tantivy compaction failed",
                     extra={"error": str(e), "elapsed_ms": elapsed_ms},
                 )
-            return {
-                "compacted": False,
-                "removed_tombstones": 0,
-                "removed_originals": 0,
-                "remaining_docs": 0,
-                "elapsed_ms": elapsed_ms,
-            }
+            return self._compaction_result(compacted=False, elapsed_ms=elapsed_ms)
+
+    @staticmethod
+    def _compaction_result(
+        *,
+        compacted: bool,
+        removed_tombstones: int = 0,
+        removed_originals: int = 0,
+        remaining_docs: int = 0,
+        elapsed_ms: int = 0,
+    ) -> dict[str, int]:
+        """Build a compaction statistics dictionary."""
+        return {
+            "compacted": compacted,
+            "removed_tombstones": removed_tombstones,
+            "removed_originals": removed_originals,
+            "remaining_docs": remaining_docs,
+            "elapsed_ms": elapsed_ms,
+        }
+
+    def _collect_active_docs(
+        self, index: tantivy.Index
+    ) -> tuple[list[tuple[str, str]], int, int]:
+        """Collect active documents, filtering out tombstoned entries.
+
+        Returns:
+            Tuple of (docs_to_keep, removed_tombstones, removed_originals).
+        """
+        query = index.parse_query(
+            query="*",
+            default_field_names=["content"],
+        )
+        top_docs = self.searcher.search(query=query, limit=100000)
+
+        all_docs: list[tuple[str, str, int]] = []
+        tombstoned_memories: set[str] = set()
+
+        for _, doc_addr in top_docs.hits:
+            doc = self.searcher.doc(doc_addr)
+            project_id = doc.get_first("project_id")
+            memory = doc.get_first("content")
+            is_deleted_val = doc.get_first("is_deleted")
+            is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+
+            if project_id is not None and memory is not None:
+                all_docs.append((project_id, memory, is_deleted))
+                if is_deleted == 1:
+                    tombstoned_memories.add(memory)
+
+        docs_to_keep: list[tuple[str, str]] = []
+        removed_originals = 0
+        removed_tombstones = 0
+
+        for project_id, memory, is_deleted in all_docs:
+            if memory in tombstoned_memories:
+                if is_deleted == 1:
+                    removed_tombstones += 1
+                else:
+                    removed_originals += 1
+            else:
+                docs_to_keep.append((project_id, memory))
+
+        return docs_to_keep, removed_tombstones, removed_originals
+
+    def _try_garbage_collect(self) -> None:
+        """Best-effort garbage collection of old segment files."""
+        try:
+            if self._writer is not None:
+                self._writer.garbage_collect_files()
+        except Exception:
+            pass  # Files will be cleaned up eventually

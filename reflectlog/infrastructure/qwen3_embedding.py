@@ -9,7 +9,7 @@ import anyio
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from reflectlog.application.utils.http_client import HttpClientFactory
+from reflectlog.utility.http import HttpClientFactory
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:

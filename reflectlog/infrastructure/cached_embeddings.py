@@ -5,8 +5,8 @@ import hashlib
 from cachetools import LRUCache
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from reflectlog.application.types import Embeddings
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import Embeddings
 
 
 class CachedEmbeddings(BaseModel):
@@ -23,7 +23,8 @@ class CachedEmbeddings(BaseModel):
 
     Example:
         ```python
-        from reflectlog.infrastructure import LangchainQwenEmbeddings, CachedEmbeddings
+        from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 
         base_embedder = LangchainQwenEmbeddings({...})
         cached_embedder = CachedEmbeddings(

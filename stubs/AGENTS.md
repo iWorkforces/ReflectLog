@@ -1,8 +1,6 @@
 # Type Stubs Directory
 
-**Generated:** 2026-02-21
-**Commit:** 4c3af26
-**Branch:** develop
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 
 ## OVERVIEW
 

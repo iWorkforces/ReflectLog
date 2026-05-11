@@ -58,8 +58,8 @@ async def main():
     print()
 
     # Import after setting env vars
-    from reflectlog.application.config import Config
-    from reflectlog.application.memory import MemoryManager
+    from reflectlog.application.config.settings import Config
+    from reflectlog.application.memory.manager import MemoryManager
     from reflectlog.application.utils.logging import create_logger
 
     # Create config and logger

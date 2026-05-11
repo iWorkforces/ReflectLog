@@ -1,8 +1,6 @@
 # Application Layer Unit Tests
 
-**Generated:** 2026-02-21
-**Commit:** 4c3af26
-**Branch:** develop
+**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 
 ## OVERVIEW
 
@@ -30,12 +28,6 @@ tests/unit/application/
 | test_graceful_degradation.py | Engine failure handling |
 | test_ranx_fusion.py | RRF algorithm correctness |
 
-## ANTI-PATTERNS
-
-- Never import real infrastructure classes
-- Never skip config reset between tests
-- Never use `@pytest.mark.integration` here
-- All mocked: no real USearch/Tantivy/LLM calls, each test <100ms
 ## ANTI-PATTERNS
 
 - Never import real infrastructure classes

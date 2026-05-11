@@ -33,7 +33,23 @@ import time
 from typing import Any, final
 
 from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
-from reflectlog.infrastructure import (
+from reflectlog.core.exceptions import InconsistentStateError, SearchError, StorageError
+
+from ...core.config_adapters import ConfigAdapter
+from ...core.logging import IStructuredLogger
+from ...core.types import ISemanticSearchEngine
+from ..config.settings import Config
+from ..utils.validation import (
+    truncate_memory,
+)
+from .add_phases import (
+    AddPipeline,
+    AddResult,
+    DuplicateDetectionPhase,
+    SmartReplacementPhase,
+    StoragePhase,
+)
+from .engine_factory import (
     CachedEmbeddings,
     CrossEncoderConfig,
     CrossEncoderReranker,
@@ -47,22 +63,8 @@ from reflectlog.infrastructure import (
     USearchConfig,
     USearchEngine,
 )
-
-from ...core.logging import IStructuredLogger
-from ..config import Config
-from ..exceptions import InconsistentStateError, SearchError, StorageError
-from ..types import ISemanticSearchEngine
-from ..utils import (
-    truncate_memory,
-)
-from .add_phases import (
-    AddPipeline,
-    AddResult,
-    DuplicateDetectionPhase,
-    SmartReplacementPhase,
-    StoragePhase,
-)
-from .fusion import FusionEngine, create_fusion_engine
+from .fusion import create_fusion_engine
+from .fusion.base import FusionEngine
 from .match_utils import has_exact_match
 from .search_strategies import (
     SearchContext,
@@ -91,43 +93,42 @@ class MemoryManager:
         self.logger: IStructuredLogger = logger
         self.project_id = config.project_id
 
-        # Thread-safety: Single RLock with read-write semantics
-        # RLock allows multiple concurrent readers, writer has exclusive access
-        # This simplifies lock hierarchy and provides better performance
-        # protected methods
-        self._lock = threading.RLock()
+        self._init_locks()
+        self.is_hybrid_search = self.config.enable_hybrid_search
+        self._init_semantic_engine()
+        self._init_search_engine()
+        self._init_fusion_engine()
+        self._init_rerankers()
+        self._init_smart_replacer()
+        self._init_pipelines()
+        self._log_configuration()
 
-        # Lock hierarchy (outer to inner) - ALWAYS follow
-        # this order to prevent deadlocks:
-        # 1. _write_lock - for all write operations across async/sync boundary
-        # Usage pattern:
-        # - Read operations: use _lock only
-        # - Write operations: acquire _write_lock first, then _lock if needed
-        # - Never acquire _lock before _write_lock (risk of deadlock)
-        #
-        # Example (safe lock acquisition order):
-        #   with self._write_lock:
-        #       with self._lock:
-        #           # ... perform operation ...
-        # #
-        # Example (unsafe lock acquisition - DO NOT DO THIS):
-        #   with self._lock:         # DEADLOCK if another thread has _write_lock!
-        #       with self._write_lock:
-        #           # ... perform operation ...
-        # #
-        # Startup timing metrics (set by server.py after initialization)
+        if config.eager_initialization:
+            self._eager_initialize_engines()
+
+    def _init_locks(self) -> None:
+        """Create all threading locks and startup metrics placeholder.
+
+        Lock hierarchy (outer to inner) — ALWAYS follow this order
+        to prevent deadlocks:
+          1. _write_lock — for all write operations across async/sync boundary
+          2. _lock — for read operations and inner critical sections
+
+        Usage pattern:
+          - Read operations: use _lock only
+          - Write operations: acquire _write_lock first, then _lock if needed
+          - Never acquire _lock before _write_lock (risk of deadlock)
+        """
+        self._lock = threading.RLock()
         self._write_lock = threading.Lock()
         self.startup_metrics: dict[str, float] | None = None
-
-        # Lazy initialization locks for thread-safe resource creation
         self._reranker_lock = threading.RLock()
         self._smart_replacer_lock = threading.RLock()
 
-        # Hybrid mode enabled by default
-        self.is_hybrid_search = self.config.enable_hybrid_search
-
-        # 1. Initialize USearch semantic engine
-        usearch_config = USearchConfig.from_app_config(config)
+    def _init_semantic_engine(self) -> None:
+        """Create USearch semantic engine with optional embedding cache."""
+        config = self.config
+        usearch_config = USearchConfig.from_config(ConfigAdapter(config))
         base_embedder = LangchainQwenEmbeddings(
             config={
                 "model": config.embedding_model,
@@ -156,7 +157,8 @@ class MemoryManager:
             usearch_config, embedder=embedder, logger=self.logger
         )
 
-        # 2. Initialize Tantivy full-text engine (hybrid companion)
+    def _init_search_engine(self) -> None:
+        """Create Tantivy full-text engine when hybrid search is enabled."""
         self._tantivy_engine: TantivyEngine | None = None
         if self.is_hybrid_search:
             tantivy_config = TantivyConfig(
@@ -168,7 +170,8 @@ class MemoryManager:
             )
             self._tantivy_engine = TantivyEngine(tantivy_config, logger=self.logger)
 
-        # 3. Initialize fusion engine for hybrid ranking
+    def _init_fusion_engine(self) -> None:
+        """Create fusion engine for hybrid ranking."""
         self._fusion_engine: FusionEngine = create_fusion_engine(
             method=self.config.fusion_method,
             normalization=self.config.fusion_normalization,
@@ -176,17 +179,22 @@ class MemoryManager:
             logger=self.logger,
         )
 
-        # 4. Rerankers (LLM or CrossEncoder) - lazily initialized via properties
-        # These are created on first search to avoid startup overhead
+    def _init_rerankers(self) -> None:
+        """Set up reranker references for lazy initialization via properties.
+
+        Rerankers (LLM or CrossEncoder) are created on first search
+        to avoid startup overhead.
+        """
         self._llm_reranker: LLMReranker | None = None
         self._cross_encoder_reranker: CrossEncoderReranker | None = None
 
-        if self.config.reranker_engine == "llm":
+        config = self.config
+        if config.reranker_engine == "llm":
             self.logger.info(
                 f"LLM reranker configured (lazy init) [model={config.llm_model}]",
                 extra={"reranker_engine": "llm", "model": config.llm_model},
             )
-        elif self.config.reranker_engine == "cross_encoder":
+        elif config.reranker_engine == "cross_encoder":
             self.logger.info(
                 f"CrossEncoder reranker configured (lazy init) "
                 f"[model={config.cross_encoder_model}]",
@@ -202,11 +210,16 @@ class MemoryManager:
                 extra={"reranker_engine": "none"},
             )
 
-        # 5. SmartReplacer - lazily initialized via property
-        # Created on first add operation to avoid startup overhead
+    def _init_smart_replacer(self) -> None:
+        """Set up smart replacer reference for lazy initialization via property.
+
+        SmartReplacer is created on first add operation
+        to avoid startup overhead.
+        """
         self._smart_replacer: SmartReplacer | None = None
 
-        if self.config.enable_smart_replace:
+        config = self.config
+        if config.enable_smart_replace:
             self.logger.info(
                 f"SmartReplacer configured (lazy init) [model={config.llm_model}, "
                 f"threshold={config.smart_replace_threshold}]",
@@ -222,8 +235,8 @@ class MemoryManager:
                 extra={"smart_replacer": "disabled"},
             )
 
-        # 7. Initialize search pipeline
-        # Note: Rerankers are lazily loaded by the pipeline via memory_manager
+    def _init_pipelines(self) -> None:
+        """Create SearchPipeline and AddPipeline with their phase components."""
         self._search_pipeline = SearchPipeline(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
@@ -233,7 +246,6 @@ class MemoryManager:
             memory_manager=self,  # Pass self for lazy reranker fetching
         )
 
-        # 8. Initialize add pipeline
         self._duplicate_detection_phase = DuplicateDetectionPhase(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
@@ -261,6 +273,8 @@ class MemoryManager:
             logger=self.logger,
         )
 
+    def _log_configuration(self) -> None:
+        """Log the final configuration state after initialization."""
         self.logger.info(
             f"Initialized Hybrid MemoryManager [project_id={self.project_id}, "
             f"semantic_backend=usearch, "
@@ -269,12 +283,8 @@ class MemoryManager:
         )
         self.logger.info(
             f"tantivy_index={self.config.tantivy_index_path_template.format(project_id=self.project_id)}, "
-            f"embedder={config.embedder_provider}]",
+            f"embedder={self.config.embedder_provider}]",
         )
-
-        # 6. Eager initialization (pre-warm engines if enabled)
-        if config.eager_initialization:
-            self._eager_initialize_engines()
 
     def _eager_initialize_engines(self) -> None:
         """Pre-warm storage engines for faster first operation.
@@ -417,7 +427,7 @@ class MemoryManager:
                 return self._llm_reranker
 
             # Initialize LLM reranker
-            reranker_config = LLMRerankerConfig.from_app_config(self.config)
+            reranker_config = LLMRerankerConfig.from_config(ConfigAdapter(self.config))
             self._llm_reranker = LLMReranker(config=reranker_config, logger=self.logger)
             self.logger.info(
                 f"Lazy initialized LLM reranker [model={self.config.llm_model}]",
@@ -452,7 +462,7 @@ class MemoryManager:
                 return self._cross_encoder_reranker
 
             # Initialize CrossEncoder reranker
-            ce_config = CrossEncoderConfig.from_app_config(self.config)
+            ce_config = CrossEncoderConfig.from_config(ConfigAdapter(self.config))
             self._cross_encoder_reranker = CrossEncoderReranker(
                 config=ce_config, logger=self.logger
             )
@@ -487,7 +497,9 @@ class MemoryManager:
                 return self._smart_replacer
 
             # Initialize SmartReplacer
-            smart_replacer_config = SmartReplacerConfig.from_app_config(self.config)
+            smart_replacer_config = SmartReplacerConfig.from_config(
+                ConfigAdapter(self.config)
+            )
             self._smart_replacer = SmartReplacer(
                 config=smart_replacer_config, logger=self.logger
             )
