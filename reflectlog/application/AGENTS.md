@@ -1,4 +1,4 @@
-# ReflectLogMCP Application Layer
+# ReflectLog Application Layer
 
 **Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 

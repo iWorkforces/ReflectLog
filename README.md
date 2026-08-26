@@ -1,11 +1,11 @@
-# ReflectLogMCP
+# ReflectLog
 
 > An Agentic Memory Layer For Coding Agents
 
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.14.2-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-ReflectLogMCP is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that provides persistent, project-based memory storage for Claude Code and other AI agents. It combines semantic vector search with full-text search for intelligent memory retrieval.
+ReflectLog is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that provides persistent, project-based memory storage for Claude Code and other AI agents. It combines semantic vector search with full-text search for intelligent memory retrieval.
 
 ## Features
 
@@ -23,8 +23,8 @@ ReflectLogMCP is an [MCP (Model Context Protocol)](https://modelcontextprotocol.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/ReflectLogMCP.git
-cd ReflectLogMCP
+git clone https://github.com/your-org/ReflectLog.git
+cd ReflectLog
 
 # Install dependencies using uv
 uv sync
@@ -53,7 +53,7 @@ uv run reflectlog --transport http --port 9103
 
 ### MCP Tools
 
-ReflectLogMCP provides five MCP tools:
+ReflectLog provides five MCP tools:
 
 1. **add(memories: list[str])** - Store memories with semantic embeddings
 2. **get_all() -> list[str]** - Retrieve all stored memories
@@ -115,7 +115,7 @@ See `.env.example` for all available options.
 ## Architecture
 
 ```
-ReflectLogMCP/
+ReflectLog/
 ├── reflectlog/
 │   ├── server.py              # CLI entry point
 │   ├── application/           # Business logic

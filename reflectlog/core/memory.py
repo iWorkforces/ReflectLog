@@ -1,4 +1,4 @@
-"""Memory operation protocols for ReflectLogMCP.
+"""Memory operation protocols for ReflectLog.
 
 This module defines protocols for memory storage and retrieval operations.
 These abstractions enable different memory backends-whether based on vector

@@ -1,6 +1,6 @@
-"""ReflectLogMCP - An Agentic Memory Layer For Coding Agents.
+"""ReflectLog - An Agentic Memory Layer For Coding Agents.
 
-This module provides the public API for ReflectLogMCP.
+This module provides the public API for ReflectLog.
 """
 
 from typing import Any

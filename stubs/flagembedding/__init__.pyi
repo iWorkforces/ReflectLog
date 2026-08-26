@@ -1,7 +1,7 @@
 """Type stubs for FlagEmbedding library.
 
 This provides type hints for the FlagReranker class used in cross-encoder
-reranking. Only APIs used by ReflectLogMCP are stubbed.
+reranking. Only APIs used by ReflectLog are stubbed.
 
 Reference: https://github.com/FlagOpen/FlagEmbedding
 """

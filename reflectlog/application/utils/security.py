@@ -1,4 +1,4 @@
-"""Security utilities for ReflectLogMCP Server."""
+"""Security utilities for ReflectLog Server."""
 
 import re
 from typing import Any, cast

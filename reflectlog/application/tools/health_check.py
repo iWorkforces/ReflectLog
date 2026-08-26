@@ -1,4 +1,4 @@
-"""Health check tool implementation for ReflectLogMCP Server."""
+"""Health check tool implementation for ReflectLog Server."""
 
 from typing import Any, override
 

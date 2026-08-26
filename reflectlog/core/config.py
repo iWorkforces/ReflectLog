@@ -1,4 +1,4 @@
-"""Configuration protocols for ReflectLogMCP.
+"""Configuration protocols for ReflectLog.
 
 This module defines protocols that abstract configuration sources from
 configuration consumers. Components depend on these protocols rather than

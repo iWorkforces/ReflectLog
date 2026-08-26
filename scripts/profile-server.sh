@@ -1,5 +1,5 @@
 #!/bin/bash
-"""Start ReflectLogMCP server with cProfile performance profiling.
+"""Start ReflectLog server with cProfile performance profiling.
 
 Profiles CPU usage and execution time to identify performance bottlenecks.
 Useful for optimizing hot paths in search, add, and reranking operations.
@@ -40,7 +40,7 @@ PROFILE_MESSAGES="${PROFILE_MESSAGES:-1000}"
 PROFILE_DIR="/tmp/profile-stats"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
-print "🔍 Starting ReflectLogMCP with profiling..."
+print "🔍 Starting ReflectLog with profiling..."
 print "   Profile: $PROFILE_TYPE"
 print "   Timestamp: $TIMESTAMP"
 

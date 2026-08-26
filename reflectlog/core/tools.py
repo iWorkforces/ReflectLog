@@ -1,4 +1,4 @@
-"""Tool registration protocols for ReflectLogMCP.
+"""Tool registration protocols for ReflectLog.
 
 This module defines protocols for MCP tool implementations and registries.
 The tool abstraction enables discoverable, configurable tools that can

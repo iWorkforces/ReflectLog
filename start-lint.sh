@@ -19,7 +19,7 @@ PYTHON_FILES_PATTERN="*.py"
 RUFF_CONFIG_FILE="pyproject.toml"
 VENV_DIR="venv"
 
-echo -e "${BLUE}🔍 ReflectLogMCP - Code Linting${NC}"
+echo -e "${BLUE}🔍 ReflectLog - Code Linting${NC}"
 echo -e "${BLUE}=====================================${NC}"
 echo ""
 

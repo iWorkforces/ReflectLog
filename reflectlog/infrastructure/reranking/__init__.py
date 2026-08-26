@@ -1,1 +1,1 @@
-"""Reranker implementations for ReflectLogMCP."""
+"""Reranker implementations for ReflectLog."""

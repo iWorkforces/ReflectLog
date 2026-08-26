@@ -1,4 +1,4 @@
-"""Search tool implementation for ReflectLogMCP Server."""
+"""Search tool implementation for ReflectLog Server."""
 
 from typing import Annotated, override
 

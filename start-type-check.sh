@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ReflectLogMCP - Type Checking Script
+# ReflectLog - Type Checking Script
 # This script uses ty and pyright to perform static type checking on all Python files
 
 set -e
@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 # Configuration
 TY_CONFIG_FILE="pyproject.toml"
 
-echo -e "${BLUE}🔍 ReflectLogMCP - Type Checking (ty + pyright)${NC}"
+echo -e "${BLUE}🔍 ReflectLog - Type Checking (ty + pyright)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 

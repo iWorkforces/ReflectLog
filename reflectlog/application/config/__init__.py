@@ -1,1 +1,1 @@
-"""Configuration module for ReflectLogMCP Server."""
+"""Configuration module for ReflectLog Server."""

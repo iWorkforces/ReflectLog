@@ -1,1 +1,1 @@
-"""Memory storage implementations for ReflectLogMCP."""
+"""Memory storage implementations for ReflectLog."""

@@ -1,4 +1,4 @@
-"""Logging protocols for ReflectLogMCP.
+"""Logging protocols for ReflectLog.
 
 This module defines protocols for logging and observability. These
 abstractions enable different logging implementations while providing

@@ -1,4 +1,4 @@
-"""Configuration management for ReflectLogMCP Server."""
+"""Configuration management for ReflectLog Server."""
 
 from dataclasses import dataclass
 import os
@@ -139,7 +139,7 @@ def _parse_optional_bool(value: str | None) -> bool | None:
 
 @dataclass(frozen=True)
 class Config:
-    """Configuration settings for ReflectLogMCP Server.
+    """Configuration settings for ReflectLog Server.
 
     All settings are read from environment variables with sensible defaults.
     This class is immutable (frozen) to prevent accidental modifications at runtime.

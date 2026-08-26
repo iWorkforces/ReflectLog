@@ -1,1 +1,1 @@
-"""Plugin system for ReflectLogMCP."""
+"""Plugin system for ReflectLog."""

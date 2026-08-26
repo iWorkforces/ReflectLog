@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ReflectLogMCP - Unit Testing Script
+# ReflectLog - Unit Testing Script
 # This script uses pytest to run all unit tests in the codebase
 
 set -e
@@ -78,7 +78,7 @@ run_ptw() {
     fi
 }
 
-echo -e "${BLUE}🧪 ReflectLogMCP - Unit Testing${NC}"
+echo -e "${BLUE}🧪 ReflectLog - Unit Testing${NC}"
 echo -e "${BLUE}=====================================${NC}"
 echo ""
 

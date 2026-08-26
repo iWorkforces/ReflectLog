@@ -1,1 +1,1 @@
-"""Search engine implementations for ReflectLogMCP."""
+"""Search engine implementations for ReflectLog."""

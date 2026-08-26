@@ -1,4 +1,4 @@
-"""ReflectLogMCP application layer.
+"""ReflectLog application layer.
 
 This package contains the core business logic including:
 - MCP server orchestration

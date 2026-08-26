@@ -1,4 +1,4 @@
-"""Add tool implementation for ReflectLogMCP Server."""
+"""Add tool implementation for ReflectLog Server."""
 
 from typing import override
 
