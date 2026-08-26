@@ -1,8 +1,6 @@
 # Agent Guidelines for reflectlog/infrastructure/search/
 
-**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
-
-**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
 
 ## OVERVIEW
 Search engine base classes and abstractions. Actual implementations (USearch, Tantivy) are in parent `infrastructure/` directory.
@@ -28,3 +26,7 @@ Search engine base classes and abstractions. Actual implementations (USearch, Ta
 - Never skip ensure_initialized() before index operations
 - Never ignore commit() errors
 - Never use triple single quotes; use """ only
+
+## NOTES
+
+Concrete USearch and Tantivy engines remain in the parent directory.

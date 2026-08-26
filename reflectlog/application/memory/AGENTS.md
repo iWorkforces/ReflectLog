@@ -1,6 +1,6 @@
 # Memory Management Layer
 
-**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
 ## OVERVIEW
 3-phase add pipeline + 4-step search pipeline with RRF fusion and unified score normalization.
 

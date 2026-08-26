@@ -1,216 +1,109 @@
 # ReflectLog Knowledge Base
 
-**Generated:** 2026-04-11
-**Commit:** 6f2b0f8
+**Generated:** 2026-08-26
+**Commit:** 95567fa
 **Branch:** develop
 
 ## OVERVIEW
 
-MCP server providing persistent, project-based semantic memory storage for AI agents. Combines USearch vector search with Tantivy full-text search using RRF fusion, with optional LLM/cross-encoder reranking and smart memory replacement.
+ReflectLog is a Python 3.14 MCP memory server for persistent project memories. It combines USearch semantic retrieval, Tantivy full-text retrieval, RRF fusion, optional reranking, and smart replacement.
 
 ## STRUCTURE
 
 ```
 ./
-├── reflectlog/              # Main package (~98 files, ~21k lines)
-│   ├── core/              # Protocol definitions + types (11 files, ~2k lines)
-│   ├── application/         # Business logic (~47 files, ~11k lines)
-│   │   ├── memory/        # Memory pipelines + fusion + reranking
-│   │   ├── tools/         # MCP tool implementations
-│   │   ├── config/        # Settings, validation, prompts, presets
-│   │   └── utils/         # Logging, metrics, retry, circuit breaker
-│   ├── infrastructure/      # External integrations (~11 files, ~5.7k lines)
-│   ├── plugins/           # Plugin system (5 files, 1.1k lines)
-│   └── utility/           # Platform utilities + scoring (7 files, 1 subdir)
-├── tests/                # Unit + integration + load + security (~86 files, ~34k lines)
-├── stubs/               # Type stubs for third-party libs (14 .pyi files)
-├── indexes/              # Persistent index data (gitignored)
-├── scripts/              # Build/dev scripts + git hooks
-└── *.sh                  # Wrapper scripts (type-check, lint, unittest, server)
+├── reflectlog/                     # Runtime package
+│   ├── application/                # Pipelines, configuration, MCP tools
+│   ├── core/                       # Protocols, domain types, adapters
+│   ├── infrastructure/             # Engines and external integrations
+│   ├── plugins/                    # Discovery, registry, lifecycle
+│   └── utility/                    # Scoring and platform credentials
+├── tests/                          # Unit, integration, load, security suites
+├── stubs/                          # Third-party type stubs
+├── scripts/                        # Hook setup and developer utilities
+├── start-*.sh                      # Validation wrappers
+└── pyproject.toml                  # Package and tool configuration
 ```
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
-|-------|-----------|--------|
-| Memory operations | `reflectlog/application/memory/manager.py` | 3-phase add, 4-step search pipeline |
-| Search configuration | `reflectlog/application/config/settings.py` | 60+ env vars, factory pattern |
-| Protocol interfaces | `reflectlog/core/` | All abstractions defined here |
-| Infrastructure wrappers | `reflectlog/infrastructure/` | USearch, Tantivy, LLM providers |
-| Build commands | `start-type-check.sh`, `start-lint.sh`, `start-unittest.sh` | Custom wrappers, no CI/CD |
-| Utilities | `reflectlog/application/utils/` | Logging, metrics, retry, circuit breaker, security |
+|------|----------|-------|
+| CLI lifecycle | `reflectlog/server.py` | Argument parsing, warmup, signals, server startup |
+| MCP orchestration | `reflectlog/application/mcp_server.py` | Tool selection, registration, transports |
+| Memory facade | `reflectlog/application/memory/manager.py` | Engine construction, locking, public memory API |
+| Add/search pipelines | `reflectlog/application/memory/` | Three-phase add; staged hybrid search |
+| Environment config | `reflectlog/application/config/settings.py` | Frozen `Config`, parsing, presets |
+| Contracts and types | `reflectlog/core/` | Protocol-first dependency boundaries |
+| Storage/search backends | `reflectlog/infrastructure/` | USearch, Tantivy, SQLite, rerankers |
+| Score math | `reflectlog/utility/scoring.py` | Numba-compiled fusion, normalization, filtering |
+| Tests | `tests/` | Unit mirrors package; integration uses real engines |
 
 ## CODE MAP
 
 | Symbol | Type | Location | Refs | Role |
-|---------|------|----------|--------|------|
-| MemoryManager | Class | application/memory/manager.py | High | Facade for all memory operations |
-| Config | Dataclass | application/config/settings.py | High | Centralized configuration |
-| ISearchBackend | Protocol | core/search.py | Medium | Abstract search engine interface |
-| ISemanticSearchEngine | Protocol | core/types.py | Medium | Semantic search engine interface |
-| USearchEngine | Class | infrastructure/usearch_engine.py | Medium | Semantic vector search backend |
-| TantivyEngine | Class | infrastructure/tantivy_engine.py | Medium | Full-text search backend |
-| ConfigAdapter | Class | core/config_adapters.py | High | Config-to-protocol adapter |
-| FusionEngine | Protocol | application/memory/fusion/base.py | Medium | Fusion algorithm interface |
-| RanxFusionEngine | Class | application/memory/fusion/ranx_fusion.py | Medium | RRF/CombSUM/MNZ/Borda fusion |
-| IReranker | Protocol | core/reranking.py | Medium | Reranker interface |
-| LLMReranker | Class | infrastructure/llm_reranker.py | Medium | LLM-based reranking |
-| RerankerPostProcessor | Class | infrastructure/reranker_post_processor.py | Medium | Post-search reranking composition |
-| scoring.py | Module | utility/scoring.py | Medium | JIT-compiled RRF, normalization, filtering |
+|--------|------|----------|------|------|
+| `main` | Function | `reflectlog/server.py` | CLI | Configures and runs the MCP server |
+| `FastMCPServer` | Class | `application/mcp_server.py` | High | Builds and exposes selected tools |
+| `MemoryManager` | Class | `application/memory/manager.py` | High | Facade for add, search, get, and delete |
+| `Config` | Dataclass | `application/config/settings.py` | High | Environment-derived application settings |
+| `ConfigAdapter` | Class | `core/config_adapters.py` | High | Converts `Config` into fine-grained protocols |
+| `USearchEngine` | Class | `infrastructure/usearch_engine.py` | High | Semantic index and SQLite-backed records |
+| `TantivyEngine` | Class | `infrastructure/tantivy_engine.py` | High | Full-text index, tombstones, compaction |
+| `RanxFusionEngine` | Class | `application/memory/fusion/ranx_fusion.py` | Medium | RRF and alternative fusion algorithms |
+| `RerankerPostProcessor` | Class | `infrastructure/reranker_post_processor.py` | Medium | Reranker composition and temporal scoring |
 
 ## CONVENTIONS
 
-**Python 3.14+ Required** - No legacy typing syntax (`Optional[str]` forbidden). Use native unions (`str | None`).
-
-**Protocol-Based Design** - Components depend on protocols from `core/`, not concrete implementations. Enables runtime substitution and test mocking.
-
-**Lazy Initialization** - Expensive resources (embedders, rerankers) initialized on-demand with thread-safe patterns.
-
-**Lock Hierarchy** - `_write_lock` before `_lock`. USearch not thread-safe; serialize writes.
-
-**RRF Fusion** - `score(doc) = sum(1/(k+rank))` with `k=60` default. Normalized to 0-1 range.
-
-**Concurrency Model** - Hybrid threading + async:
-- `asyncify` wraps sync methods for async callers (preferred over `run_in_executor`)
-- `asyncer.create_task_group` ONLY when `soonify` is needed (return value capture)
-- `anyio.create_task_group` for fire-and-forget parallel tasks
-- `anyio.Semaphore` for concurrency limiting
-- `threading.Lock/RLock` for cross-thread state protection (C libraries)
-- NEVER use `asyncio.Lock` — it cannot protect across `asyncify` thread boundaries
-
-**No CI/CD** - No `.github/workflows`. Manual testing with custom shell wrappers (`start-*.sh`).
-
-**90% Coverage Minimum** - Enforced by test runner (unusually high).
+- Python 3.14+: native unions only; do not import legacy `typing` collection aliases.
+- Use protocols from `reflectlog/core/` at layer boundaries. Runtime implementations expose `from_config()` factories.
+- `Config` is immutable and environment-derived; use adapters rather than coupling application code to it.
+- Docstrings and strings use double quotes; Ruff enforces `docstring-quotes = "double"`.
+- Sync C-library operations cross `asyncify` thread boundaries. Use `threading.Lock`/`RLock`, not `asyncio.Lock`.
+- Preserve lock order: acquire `_write_lock` before `_lock`.
+- Wrap external failures in project exceptions and preserve causes with `raise ... from e`.
+- Use structured logging with redacted `extra` fields; never log memory content or credentials casually.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
-- Never use `@type: ignore`, `@ts-expect-error`, `as any` - type safety strict
-- Never use bare `except:` - catch specific exceptions
-- Never use legacy typing imports (`List`, `Optional`, `Union`) - use native syntax
-- Never acquire locks in wrong order (always `_write_lock` before `_lock`)
-- Never suppress type errors in CI - build fails on type violations
-- Never use triple single quotes in docstrings - use `"""` only
+- Do not suppress type errors with `type: ignore`, `@ts-expect-error`, or `as any`.
+- Do not use bare `except:` or empty exception handlers.
+- Do not access search engines directly from MCP tools; route operations through the memory pipelines/manager.
+- Do not treat USearch writes as thread-safe.
+- Do not normalize reranker scores one item at a time or apply recency decay before normalization.
+- Do not bypass Tantivy tombstone-compaction checks.
+- Do not expose secrets, tokens, or API keys in logs, exceptions, or tests.
 
 ## UNIQUE STYLES
 
-**Triple Double Quotes** - Docstrings use `"""` not `'''`. Enforced by ruff `docstring-quotes = "double"`.
-
-**Custom Build Wrappers** - All dev commands in bash scripts with auto-installation (`uv`, `ty`, `ruff`, `pytest`).
-
-**Git Hooks in VCS** - Hooks stored in `scripts/git-hooks/` (not `.git/hooks`) for version control.
-
-**Color-Coded Output** - All scripts use ANSI colors for human + CI readability.
-
-**Stubs Directory** - Custom `reflectlog/stubs/` path for type stubs (pyproject.toml).
-
-**Plugin Discovery** - Three mechanisms: entry points, directory scan, static registration.
-
-**Adaptive Overfetch** - Multiplier adjusts 1.5-3x based on index size.
-
-**Temporal Scoring** - Recency decay with configurable rate (`0.01` = ~69hr half-life).
-
-**Protocol-Based Dependency Injection** - ConfigAdapter wraps Config to satisfy fine-grained protocols.
-
-**Factory Pattern** - Used throughout: create_fusion_engine, HttpClientFactory, EngineFactory, etc.
-
-**Structured Logging** - All logging uses extra fields, auto-redaction of secrets.
-
-**Exception Chaining** - All custom exceptions use `from e` to preserve tracebacks.
-
-**JIT Compilation** - Numba functions in `utility/scoring.py` for performance-critical operations (RRF, normalization).
+- Add flow: duplicate detection, smart replacement, then sequential persistence.
+- Search flow: parallel backends, fusion, threshold filtering, then optional reranking.
+- Tantivy deletion is soft-delete first; compaction rebuilds when tombstone thresholds are exceeded.
+- The source of truth for `get_all()` is the USearch semantic backend; maintain backend consistency.
+- Plugin support covers entry points, directory scanning, and static registration.
+- Test configuration treats warnings as errors; coverage is reported by the wrapper but has no enforced fail-under gate.
 
 ## COMMANDS
 
 ```bash
-# Install
 uv sync
-
-# Type check (ty - strict)
 ./start-type-check.sh
-
-# Lint (ruff)
-./start-lint.sh --all        # Check + fix + format
-./start-lint.sh --check      # Check only
-./start-lint.sh --fix        # Fix auto-fixable
-
-# Test (pytest)
-./start-unittest.sh                      # Run all
-./start-unittest.sh --coverage           # With 90% threshold
-./start-unittest.sh --parallel           # pytest-xdist
-./start-unittest.sh --pattern test_add   # Filter tests
-
-# Server
+./start-lint.sh --check
+./start-lint.sh --all
+./start-unittest.sh
+./start-unittest.sh --coverage
+./start-unittest.sh --parallel
 uv run reflectlog --transport http --port 9103
 ```
 
 ## NOTES
 
-- **Source of Truth**: `get_all()` returns from USearchEngine (semantic backend). Both engines must stay in sync.
-- **Tantivy Soft-Delete**: O(1) vs O(n) rebuild. Compacts at 20% tombstones.
-- **Smart Replacement**: LLM detects memory updates with `0.7` confidence threshold. Archives replaced for 30 days.
-- **Exact Match Fallback**: Database lookup when semantic search misses exact text match.
-- **Custom Exception Hierarchy**: All errors chain with `from e` to preserve tracebacks.
-- **Type Checker**: Uses `ty` (not mypy). `reportAny = "warning"` - warns on `Any` types.
-- **Coverage Precision**: 2 decimal places, reports even covered lines (`skip_covered = false`).
-- **Concurrent LLM Calls**: Smart replacement checks run in parallel with semaphore limiting.
-- **Three Transport Modes**: stdio, http, sse, streamable-http (not just stdio).
-- **Query Embedding Cache**: LRU cache (default 100 entries) reduces API calls.
-- **Lock Hierarchy**: Always acquire `_write_lock` before `_lock` to prevent deadlocks.
-- **Protocol Adapters**: ConfigAdapter wraps Config dataclass to satisfy IServerConfig, ISearchConfig, etc.
-- **Resilience Patterns**: Retry with exponential backoff + jitter, circuit breaker for LLM APIs.
-- **Canonical Type Locations**: `core/types.py` has ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore. `application/types.py` has SearchResult, MemoryList, ToolResult, LogContext, ISemanticSearchConfig only.
-- **Scoring Functions**: All JIT-compiled functions live in `utility/scoring.py` (not application/utils/).
-- **Infrastructure Factory**: All infrastructure classes use `from_config()` (not `from_app_config()`).
+- `project.scripts.reflectlog` targets `reflectlog.server:main`.
+- `ty` checks both `reflectlog` and `tests`, with `stubs/` on its extra path.
+- `pytest` is async-auto; shared fixtures are in `tests/conftest.py`.
+- Memory and application-utility test fixtures disable Numba JIT for coverage; integration tests use real engines.
+- Hooks are versioned in `scripts/git-hooks/`; edit there, then install with `scripts/setup-git-hooks.sh`.
 
-## LARGE FILES (>500 lines)
+## GUIDANCE HIERARCHY
 
-| File | Lines | Complexity Driver |
-|-------|---------|------------------|
-| tantivy_engine.py | 1,353 | Full-text search, soft-delete, tombstone LRU cache, compaction |
-| test_tantivy_engine.py | 2,489 | Infrastructure test (test file) |
-| test_memory_store.py | 1,692 | Infrastructure test (test file) |
-| test_plugins.py | 1,591 | Plugin system test (test file) |
-| test_mcp_server.py | 1,410 | MCP server test (test file) |
-| test_add_phases.py | 1,324 | Add pipeline test (test file) |
-| test_usearch_engine.py | 1,310 | USearch test (test file) |
-| test_llm_reranker.py | 1,269 | LLM reranker test (test file) |
-| test_validation.py | 1,211 | Config validation test (test file) |
-| test_search_pipeline.py | 1,153 | Search pipeline test (test file) |
-| add_phases.py | 1,138 | 3-phase parallel pipeline, smart replacement LLM checks |
-| manager.py | 1,054 | Memory manager facade, complex init, lock hierarchy |
-| test_cross_encoder_reranker.py | 1,018 | Cross-encoder test (test file) |
-| test_smart_replacer.py | 999 | Smart replacer test (test file) |
-| test_config_adapters.py | 964 | Config adapter test (test file) |
-| test_memory_manager.py | 932 | Memory manager test (test file) |
-| test_circuit_breaker.py | 914 | Circuit breaker test (test file) |
-| usearch_engine.py | 860 | Vector search, batch operations, dual search modes |
-| memory_store.py | 865 | SQLite CRUD, archival/recovery, batch operations |
-| validation.py | 839 | 60+ env var validation, type/range checking |
-| settings.py | 768 | Configuration dataclass, 60+ fields, factory methods |
-| search_strategies.py | 742 | 4-step pipeline, RRF fusion, threshold filtering |
-| config_adapters.py | 723 | Protocol adapters for Config dataclass |
-| llm_reranker.py | 669 | LLM reranking, provider abstraction, temporal scoring |
-| smart_replacer.py | 509 | LLM update detection, 0.7 confidence threshold |
-
-## SUBDIRECTORIES WITH AGENTS.md
-
-| Path | Score | Reason |
-|-------|--------|--------|
-| `reflectlog/` | 140 | Highest complexity (98 files, 5 packages) |
-| `reflectlog/application/` | 140 | Business logic (47 files, 4 subdirs) |
-| `reflectlog/infrastructure/` | 65 | External integrations (~11 files, 5 subdirs) |
-| `reflectlog/application/memory/` | 52 | Memory management (9 files, 2 subdirs) |
-| `reflectlog/application/utils/` | 34 | Utilities (10 files, logging/metrics/retry/security) |
-| `reflectlog/core/` | 28 | Protocol definitions + types (11 files) |
-| `reflectlog/utility/` | 30 | Platform utilities + scoring (7 files, 1 subdir) |
-| `reflectlog/plugins/` | 16 | Plugin system (5 files, 1.1k lines) |
-| `reflectlog/application/config/` | 19 | Configuration (5 files) |
-| `reflectlog/application/tools/` | 15 | MCP tool implementations (7 files) |
-| `tests/` | 54 | Test suite (86 files, 34k lines) |
-| `tests/unit/application/` | 18 | Application layer tests (11 files, 16k lines) |
-| `tests/unit/infrastructure/` | 12 | Infrastructure tests (9 files, 10k lines) |
-| `tests/unit/application/memory/` | 12 | Memory pipeline tests (8 files, 6.3k lines) |
-| `tests/unit/application/utils/` | 12 | Utility tests (9 files, 3.6k lines) |
-| `tests/integration/` | 15 | Integration tests (7 files, 2.6k lines) |
-| `scripts/` | 10 | Build/dev scripts, git hooks (3 scripts) |
-| `stubs/` | 12 | Type stubs (14 .pyi files) |
+Focused child guides exist for the package and its application, core, infrastructure, plugin, and utility domains; the deepest guides cover memory fusion/reranking, platform credentials, and search bases. Test guides mirror the unit, integration, load, and security topology. `scripts/` and `stubs/` also have dedicated guidance.
