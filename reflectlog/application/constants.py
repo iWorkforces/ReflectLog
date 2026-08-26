@@ -1,4 +1,4 @@
-"""Centralized constants for ReflectLogMCP application.
+"""Centralized constants for ReflectLog application.
 
 This module contains internal constants used throughout the application.
 Configuration values should go in config/settings.py instead.

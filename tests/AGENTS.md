@@ -1,10 +1,10 @@
-# ReflectLogMCP Test Suite
+# ReflectLog Test Suite
 
 **Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 
 ## OVERVIEW
 
-Comprehensive test suite covering unit and integration tests for the ReflectLogMCP memory system. Enforces 90% minimum coverage threshold.
+Comprehensive test suite covering unit and integration tests for the ReflectLog memory system. Enforces 90% minimum coverage threshold.
 
 ## STRUCTURE
 

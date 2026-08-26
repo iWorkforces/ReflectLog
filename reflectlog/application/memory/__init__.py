@@ -1,1 +1,1 @@
-"""Memory management module for ReflectLogMCP Server."""
+"""Memory management module for ReflectLog Server."""

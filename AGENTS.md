@@ -1,4 +1,4 @@
-# ReflectLogMCP Knowledge Base
+# ReflectLog Knowledge Base
 
 **Generated:** 2026-04-11
 **Commit:** 6f2b0f8

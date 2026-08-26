@@ -1,4 +1,4 @@
-'''Load testing for ReflectLogMCP using Locust.
+'''Load testing for ReflectLog using Locust.
 
 Simulates high-traffic scenarios to identify performance bottlenecks
 under concurrent user load and system stress conditions.
@@ -20,8 +20,8 @@ from locust.runners import LOCUST_MODE_LOCAL  # type: ignore
 from random import randint
 
 
-class ReflectLogMCPUser(HttpUser):
-    '''Simulates ReflectLogMCP server user behavior.
+class ReflectLogUser(HttpUser):
+    '''Simulates ReflectLog server user behavior.
 
     Simulates realistic usage patterns:
     - Search queries (varied complexity)
@@ -105,7 +105,7 @@ def on_request(request_type: str, name: str | None, **kwargs: object) -> None:
 
 
 @events.test.add
-def test_search_throughput(user: ReflectLogMCPUser):
+def test_search_throughput(user: ReflectLogUser):
     '''Test search performance with various query sizes.
 
     Ensures search operations maintain acceptable response times
@@ -125,7 +125,7 @@ def test_search_throughput(user: ReflectLogMCPUser):
 
 
 @events.test.add
-def test_add_performance(user: ReflectLogMCPUser):
+def test_add_performance(user: ReflectLogUser):
     '''Test add performance under load.
 
     Measures throughput and latency for add operations.
@@ -148,7 +148,7 @@ def test_add_performance(user: ReflectLogMCPUser):
 
 
 @events.test.add
-def test_mixed_workload(user: ReflectLogMCPUser):
+def test_mixed_workload(user: ReflectLogUser):
     '''Test realistic mixed workload.
 
     Simulates concurrent users performing various operations.

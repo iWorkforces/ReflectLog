@@ -1,4 +1,4 @@
-"""ReflectLogMCP Server - Refactored modular implementation."""
+"""ReflectLog Server - Refactored modular implementation."""
 
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
@@ -29,7 +29,7 @@ AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {
 
 
 class FastMCPServer:
-    """Orchestrator for the ReflectLogMCP Server.
+    """Orchestrator for the ReflectLog Server.
 
     This class coordinates the initialization and registration of all components:
     - Configuration management
@@ -84,7 +84,7 @@ class FastMCPServer:
         # Register tools with FastMCP
         self._register_tools()
 
-        self.logger.info("ReflectLogMCP Server initialized successfully")
+        self.logger.info("ReflectLog Server initialized successfully")
 
     def _initialize_tools(self) -> None:
         """Initialize all MCP tool instances."""
@@ -283,7 +283,7 @@ class FastMCPServer:
 
 
 def main() -> None:
-    """Entry point for the ReflectLogMCP server.
+    """Entry point for the ReflectLog server.
 
     This function:
     1. Loads configuration from environment

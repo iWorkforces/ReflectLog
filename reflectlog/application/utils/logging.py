@@ -1,4 +1,4 @@
-"""Structured logging utilities for ReflectLogMCP Server."""
+"""Structured logging utilities for ReflectLog Server."""
 
 from contextlib import contextmanager
 import logging

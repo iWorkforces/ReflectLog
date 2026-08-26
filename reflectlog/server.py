@@ -171,7 +171,7 @@ def main() -> None:
     output_stream = sys.stderr if transport_mode == "stdio" else sys.stdout
 
     print(
-        "Starting ReflectLogMCP - Project-based AI Agent Memories...",
+        "Starting ReflectLog - Project-based AI Agent Memories...",
         file=output_stream,
     )
     print(f"Version: {__version__}", file=output_stream)

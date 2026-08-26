@@ -229,7 +229,7 @@ This was a complete END-TO-END test with:
         print("\nDetailed error:")
         traceback.print_exc()
         print("\nMake sure the server is running:")
-        print("  ./start-reflectlog-mcp-server.sh --project_id ReflectLogMCP")
+        print("  ./start-reflectlog-mcp-server.sh --project_id ReflectLog")
         raise
 
 

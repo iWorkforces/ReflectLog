@@ -1,4 +1,4 @@
-"""Reranking protocols for ReflectLogMCP.
+"""Reranking protocols for ReflectLog.
 
 This module defines protocols for relevance scoring and reranking operations.
 Rerankers improve search result quality by re-scoring results using

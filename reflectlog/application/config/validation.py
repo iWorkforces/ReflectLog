@@ -1,4 +1,4 @@
-"""Configuration validation for ReflectLogMCP Server.
+"""Configuration validation for ReflectLog Server.
 
 This module provides comprehensive validation for configuration values,
 ensuring that all settings are valid and consistent before the server starts.

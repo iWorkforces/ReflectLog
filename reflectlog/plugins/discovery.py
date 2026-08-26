@@ -1,4 +1,4 @@
-"""Plugin discovery mechanisms for ReflectLogMCP.
+"""Plugin discovery mechanisms for ReflectLog.
 
 This module provides mechanisms for discovering plugins from various sources:
 1. Entry point discovery (via package metadata)

@@ -1,6 +1,6 @@
 # Git Hooks
 
-This directory contains git hooks for the ReflectLogMCP project.
+This directory contains git hooks for the ReflectLog project.
 
 ## Available Hooks
 

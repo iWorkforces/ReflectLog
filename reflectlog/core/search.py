@@ -1,4 +1,4 @@
-"""Search engine protocols for ReflectLogMCP.
+"""Search engine protocols for ReflectLog.
 
 This module defines protocols for search operations. The search abstraction
 enables different search backends—vector search, full-text search, hybrid

@@ -1,4 +1,4 @@
-'''Security testing for ReflectLogMCP.
+'''Security testing for ReflectLog.
 
 Tests input sanitization, path traversal protection, and other
 security vulnerabilities to ensure system robustness.

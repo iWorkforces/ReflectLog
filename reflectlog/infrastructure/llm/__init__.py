@@ -1,1 +1,1 @@
-"""LLM provider implementations for ReflectLogMCP."""
+"""LLM provider implementations for ReflectLog."""

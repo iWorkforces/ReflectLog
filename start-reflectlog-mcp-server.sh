@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# ReflectLogMCP Server Startup Script
-# This script starts the ReflectLogMCP server
+# ReflectLog Server Startup Script
+# This script starts the ReflectLog server
 
 set -e
 
@@ -29,7 +29,7 @@ shutdown_server() {
 
     if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
         echo ""
-        echo -e "${YELLOW}🛑 Shutting down ReflectLogMCP Server Gracefully...${NC}"
+        echo -e "${YELLOW}🛑 Shutting down ReflectLog Server Gracefully...${NC}"
         echo -e "${CYAN}   Persisting USearch and Tantivy data to disk...${NC}"
 
         local target_pid="$SERVER_PID"
@@ -99,7 +99,7 @@ NC='\033[0m' # No Color
 # Usage/help function
 show_usage() {
     cat << EOF
-${BLUE}ReflectLogMCP Server${NC}
+${BLUE}ReflectLog Server${NC}
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
@@ -141,7 +141,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo -e "${BLUE}🚀 ReflectLogMCP Server${NC}"
+echo -e "${BLUE}🚀 ReflectLog Server${NC}"
 echo -e "${BLUE}================================${NC}"
 echo ""
 
@@ -190,7 +190,7 @@ echo ""
 # Check if we're in the correct directory
 if [ ! -f "reflectlog/server.py" ]; then
     echo -e "${RED}❌ reflectlog/server.py not found${NC}"
-    echo -e "${YELLOW}Please run this script from the ReflectLogMCP project root directory${NC}"
+    echo -e "${YELLOW}Please run this script from the ReflectLog project root directory${NC}"
     exit 1
 fi
 
@@ -242,7 +242,7 @@ fi
 echo ""
 
 # Display startup information
-echo -e "${BLUE}Starting ReflectLogMCP Server...${NC}"
+echo -e "${BLUE}Starting ReflectLog Server...${NC}"
 if [ ! -z "$MCP_TRANSPORT" ]; then
     echo -e "${CYAN}Transport: $MCP_TRANSPORT${NC}"
 else

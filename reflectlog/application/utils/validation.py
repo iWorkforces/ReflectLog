@@ -1,4 +1,4 @@
-"""Memory validation utilities for ReflectLogMCP Server."""
+"""Memory validation utilities for ReflectLog Server."""
 
 import re
 from typing import Any

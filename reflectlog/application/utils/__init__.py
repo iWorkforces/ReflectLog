@@ -1,1 +1,1 @@
-"""Utilities for ReflectLogMCP Server."""
+"""Utilities for ReflectLog Server."""

@@ -1,4 +1,4 @@
-"""Shared type definitions for ReflectLogMCP.
+"""Shared type definitions for ReflectLog.
 
 This module defines types that are shared across architectural boundaries
 (core, application, infrastructure). Moving these types here breaks the

@@ -1,4 +1,4 @@
-"""ReflectLogMCP Core Package.
+"""ReflectLog Core Package.
 
 This package contains protocol definitions and abstractions that define the
 interface contracts for the application layer. All components depend on

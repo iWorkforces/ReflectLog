@@ -1,4 +1,4 @@
-"""Custom exception hierarchy for ReflectLogMCP.
+"""Custom exception hierarchy for ReflectLog.
 
 This module defines a structured exception hierarchy that allows callers
 to distinguish between different types of errors and handle them appropriately.
@@ -17,7 +17,7 @@ Hierarchy:
 
 
 class ReflectLogError(Exception):
-    """Base exception for all ReflectLogMCP errors.
+    """Base exception for all ReflectLog errors.
 
     All custom exceptions in this project should inherit from this class
     to enable broad exception catching when needed.
@@ -26,7 +26,7 @@ class ReflectLogError(Exception):
         try:
             memory_manager.add_memories(memories)
         except ReflectLogError as e:
-            # Handle any ReflectLogMCP error
+            # Handle any ReflectLog error
             logger.error(f"Operation failed: {e}")
     """
 

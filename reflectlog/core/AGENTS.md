@@ -1,4 +1,4 @@
-# ReflectLogMCP Knowledge Base - Core Protocols
+# ReflectLog Knowledge Base - Core Protocols
 
 **Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
 

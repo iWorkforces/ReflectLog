@@ -1,1 +1,1 @@
-"""Embedding provider implementations for ReflectLogMCP."""
+"""Embedding provider implementations for ReflectLog."""

@@ -1,4 +1,4 @@
-"""Remove tool implementation for ReflectLogMCP Server."""
+"""Remove tool implementation for ReflectLog Server."""
 
 from typing import Any, override
 

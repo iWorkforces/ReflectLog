@@ -1,4 +1,4 @@
-"""MCP Tools for ReflectLogMCP Server."""
+"""MCP Tools for ReflectLog Server."""
 
 from .add import AddTool
 from .base import BaseTool

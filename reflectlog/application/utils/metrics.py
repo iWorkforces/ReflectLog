@@ -1,4 +1,4 @@
-"""Structured metrics collection for ReflectLogMCP Server.
+"""Structured metrics collection for ReflectLog Server.
 
 This module provides a Prometheus-style metrics collection system for monitoring
 the health and performance of the memory management system.
@@ -43,7 +43,7 @@ class MetricsRegistry:
     """Thread-safe registry for collecting application metrics.
 
     This class tracks various metrics for monitoring the health and performance
-    of the ReflectLogMCP server. Metrics can be exported in Prometheus format.
+    of the ReflectLog server. Metrics can be exported in Prometheus format.
 
     Example:
         ```python

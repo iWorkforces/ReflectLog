@@ -1,4 +1,4 @@
-'''Chaos testing for ReflectLogMCP.
+'''Chaos testing for ReflectLog.
 
 Simulates failure modes and edge cases to ensure
 system resilience under adverse conditions.

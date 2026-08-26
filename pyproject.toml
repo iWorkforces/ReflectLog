@@ -55,10 +55,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/iWorkforces/ReflectLogMCP"
-Repository = "https://github.com/iWorkforces/ReflectLogMCP"
-Issues = "https://github.com/iWorkforces/ReflectLogMCP/issues"
-Documentation = "https://github.com/iWorkforces/ReflectLogMCP#readme"
+Homepage = "https://github.com/iWorkforces/ReflectLog"
+Repository = "https://github.com/iWorkforces/ReflectLog"
+Issues = "https://github.com/iWorkforces/ReflectLog/issues"
+Documentation = "https://github.com/iWorkforces/ReflectLog#readme"
 
 [project.scripts]
 reflectlog = "reflectlog.server:main"

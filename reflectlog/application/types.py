@@ -1,4 +1,4 @@
-"""Application-layer type definitions for ReflectLogMCP Server.
+"""Application-layer type definitions for ReflectLog Server.
 
 Types shared across architectural boundaries (MemoryRecord, Embeddings,
 ISemanticSearchEngine, IArchiveMemoryStore) live in reflectlog.core.types.
@@ -14,7 +14,7 @@ from typing import (
 from reflectlog.core.types import MemoryRecord
 
 # Timestamp handling protocol
-# All timestamps in ReflectLogMCP use ISO 8601 format (UTC timezone)
+# All timestamps in ReflectLog use ISO 8601 format (UTC timezone)
 # Format: "YYYY-MM-DDTHH:MM:SS.ffffffZ" or "YYYY-MM-DDTHH:MM:SSZ"
 # Example: "2025-01-24T10:30:45.123456Z"
 #
