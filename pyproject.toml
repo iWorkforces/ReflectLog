@@ -1,14 +1,14 @@
 [project]
 name = "reflectlog"
-version = "0.3.1"
-description = "A MCP Server For AI Agent Project-base Memories"
+version = "0.3.2"
+description = "ReflectLog Is A MCP Server For AI Agent Project-base Memories"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "CCWorkforce Engineers" }
+    { name = "iWorkforces Engineers" }
 ]
-requires-python = ">=3.14.2"
-keywords = ["mcp", "claude-code", "semantic-memory"]
+requires-python = ">=3.14.7"
+keywords = ["mcp", "semantic-memory", "hybrid-search", "vector-database", "ai-agent", "reflectlog"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -18,47 +18,47 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
-    "fastmcp>=3.2.4",
+    "fastmcp>=3.4.7",
     "pydantic>=2.13.4",
-    "fastapi[standard]>=0.136.1",
-    "uvicorn[standard]>=0.46.0",
-    "asyncer>=0.0.17",
-    "anyio>=4.13.0",
-    "python-dotenv>=1.2.2",
-    "dynaconf>=3.2.13",
-    "mcp>=1.27.1",
+    "fastapi[standard]>=0.141.1",
+    "uvicorn[standard]>=0.52.4",
+    "asyncer>=0.0.18",
+    "anyio>=4.14.2",
+    "python-dotenv>=1.2.3",
+    "dynaconf>=3.3.5",
+    "mcp>=2.1.1",
     "uvloop>=0.22.1",
-    "httptools>=0.7.1",
-    "starlette>=1.0.0",
-    "openai>=2.36.0",
-    "tiktoken>=0.12.0",
-    "aiohttp>=3.13.5",
-    "aiodns>=4.0.0",
-    "httpx-aiohttp>=0.1.12",
+    "httptools>=0.8.0",
+    "starlette>=1.6.0",
+    "openai>=3.3.1",
+    "tiktoken>=0.14.0",
+    "aiohttp>=3.14.3",
+    "aiodns>=4.0.4",
+    "httpx-aiohttp>=0.2.0",
     "tantivy>=0.26.0",
-    "usearch>=2.25.2",
-    "numba>=0.65.1",
+    "usearch>=2.26.1",
+    "numba>=0.67.0",
     "ranx>=0.3.21",
     "httpx[http2]>=0.28.1",
     "jinja2>=3.1.6",
-    "python-multipart>=0.0.28",
+    "python-multipart>=0.0.32",
     "itsdangerous>=2.2.0",
     "pyyaml>=6.0.3",
-    "llvmlite==0.47.0",
-    "h2>=4.3.0",
-    "hpack>=4.1.0",
-    "sentence-transformers>=5.4.1",
-    "flagembedding>=1.4.0",
-    "transformers<=5.8.0",
-    "claude-agent-sdk>=0.1.80",
-    "pydantic-core>=2.46.4",
+    "llvmlite==0.49.0",
+    "h2>=4.4.1",
+    "hpack>=4.2.0",
+    "sentence-transformers>=6.0.0",
+    "flagembedding>=1.4.2",
+    "transformers<=5.15.1",
+    "claude-agent-sdk>=0.2.144",
+    "pydantic-core>=2.48.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/CCWorkforce/ReflectLogMCP"
-Repository = "https://github.com/CCWorkforce/ReflectLogMCP"
-Issues = "https://github.com/CCWorkforce/ReflectLogMCP/issues"
-Documentation = "https://github.com/CCWorkforce/ReflectLogMCP#readme"
+Homepage = "https://github.com/iWorkforces/ReflectLogMCP"
+Repository = "https://github.com/iWorkforces/ReflectLogMCP"
+Issues = "https://github.com/iWorkforces/ReflectLogMCP/issues"
+Documentation = "https://github.com/iWorkforces/ReflectLogMCP#readme"
 
 [project.scripts]
 reflectlog = "reflectlog.server:main"
@@ -72,13 +72,13 @@ packages = ["reflectlog"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.12",
-    "pytest>=9.0.3",
-    "pytest-asyncio>=1.3.0",
+    "ruff>=0.16.4",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
-    "ty>=0.0.35",
-    "pyright>=1.1.409",
+    "ty>=0.0.74",
+    "pyright>=1.1.411",
 ]
 
 [tool.pytest.ini_options]
