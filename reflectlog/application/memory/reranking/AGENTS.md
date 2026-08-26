@@ -1,6 +1,6 @@
 # Agent Guidelines for reflectlog/application/memory/reranking/
 
-**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
 
 ## OVERVIEW
 Recency decay scoring for rerankers. Score normalization and filtering functions live in `utility/scoring.py`.
@@ -20,3 +20,13 @@ Recency decay scoring for rerankers. Score normalization and filtering functions
 - Never apply recency decay before normalization
 - Never skip normalization - threshold semantics require [0,1] range
 - Never return empty results when safety net can provide minimum results
+
+## NOTES
+
+This package owns only the reranking integration point. The scoring functions remain in `reflectlog/utility/scoring.py` to preserve the dependency boundary.
+
+Use the parent memory guide for pipeline ordering and configuration ownership.
+
+## LIMITS
+
+Do not move scoring helpers into this package.

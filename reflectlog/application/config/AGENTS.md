@@ -1,10 +1,10 @@
 # Agent Guidelines for reflectlog/application/config/
 
-**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
 
 ## OVERVIEW
 
-Centralized configuration management with environment variable loading, comprehensive validation, and LLM prompt templates.
+Centralized configuration management with environment variable loading and comprehensive validation. LLM prompt templates live in `core/prompts.py`.
 
 ## STRUCTURE
 
@@ -12,7 +12,6 @@ Centralized configuration management with environment variable loading, comprehe
 config/
 ├── settings.py        # Config dataclass (60+ env vars, frozen)
 ├── validation.py      # ConfigurationValidator class
-├── prompts.py         # LLM prompt templates with jailbreak protection
 ├── presets.py         # Config presets (simple/balanced/performance/quality)
 └── __init__.py        # Public API exports
 ```
@@ -23,7 +22,7 @@ config/
 |-------|------|--------|
 | Config dataclass | settings.py | Frozen dataclass, environment variable loading |
 | Validation logic | validation.py | Type, range, SQL injection prevention |
-| Prompt templates | prompts.py | LLM reranking, smart replacement detection |
+| Prompt templates | `../../core/prompts.py` | LLM reranking, smart replacement detection |
 | Presets | presets.py | Pre-configured profiles for different use cases |
 | Factory methods | settings.py | create_*_config() for engine configs |
 

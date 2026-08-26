@@ -1,6 +1,6 @@
 # Agent Guidelines for reflectlog/application/tools/
 
-**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
 
 ## OVERVIEW
 MCP tool implementations providing external interface to memory system. Each tool inherits BaseTool.
@@ -23,3 +23,9 @@ MCP tool implementations providing external interface to memory system. Each too
 - Never skip input validation
 - Never use synchronous LLM calls in add pipeline
 - Never assume both search engines return same result count
+
+## NOTES
+
+Tools validate input, emit redacted structured metadata, delegate to `MemoryManager`, and translate errors. Keep engine, pipeline, and locking logic outside this package.
+
+Tool registration is owned by `application/mcp_server.py`.

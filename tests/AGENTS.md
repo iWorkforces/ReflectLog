@@ -1,10 +1,10 @@
 # ReflectLog Test Suite
 
-**Generated:** 2026-04-11  **Commit:** 6f2b0f8  **Branch:** develop
+**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
 
 ## OVERVIEW
 
-Comprehensive test suite covering unit and integration tests for the ReflectLog memory system. Enforces 90% minimum coverage threshold.
+Comprehensive test suite covering unit and integration tests for the ReflectLog memory system. Coverage is reported, but the current runner has no enforced fail-under gate.
 
 ## STRUCTURE
 
@@ -19,7 +19,7 @@ tests/ - 88 files, 34k lines
 ## TEST CONFIGURATION
 
 **Pytest:** `asyncio_mode = "auto"`, `asyncio_default_fixture_loop_scope = "function"`
-**Coverage:** 90% minimum, 2 decimal precision, HTML + term-missing reports
+**Coverage:** 2 decimal precision, HTML + term-missing reports; the wrapper warns below 75% but does not fail
 **Markers:** `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.slow`
 
 ## FIXTURE LOCATIONS
@@ -44,7 +44,7 @@ tests/ - 88 files, 34k lines
 ## RUNNING TESTS
 
 ```bash
-./start-unittest.sh --coverage   # 90% threshold
+./start-unittest.sh --coverage   # HTML + terminal coverage report
 ./start-unittest.sh --parallel   # Parallel execution
 pytest tests/unit/ -v           # Unit only
 pytest tests/integration/ -v    # Integration only
