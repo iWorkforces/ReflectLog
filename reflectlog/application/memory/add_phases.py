@@ -25,7 +25,7 @@ from asyncer import asyncify, create_task_group
 from reflectlog.core.exceptions import StorageError
 
 from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine
+from ...core.types import ISemanticSearchEngine, ReplacementTransition
 from ..config.settings import Config
 from ..utils.validation import truncate_memory
 from .match_utils import has_exact_match
@@ -599,9 +599,14 @@ class StoragePhase:
     """Phase 3: Sequential storage with replacement handling.
 
     This phase:
-    1. Processes replacements (archives and deletes old memories)
-    2. Adds new memories to storage
-    3. Commits changes to both engines
+    1. Records a durable SQLite replacement transition (archive + intent)
+    2. Deletes old memories from the active indexes
+    3. Adds new memories to storage
+    4. Commits each engine independently, then marks transitions complete
+
+    SQLite archive + transition is one local transaction. USearch and
+    Tantivy commits are not claimed as one atomic unit; unfinished
+    transitions are reconciled when MemoryManager starts.
     """
 
     def __init__(
@@ -651,12 +656,13 @@ class StoragePhase:
         replaced_count = 0
         replacements: list[ReplacementInfo] = []
         memories_to_add: list[str] = []
+        recorded_transition_ids: list[int] = []
 
         # Process each memory sequentially
         for idx, memory in enumerate(memories):
             replacement_infos = replacement_map.get(memory, [])
 
-            # Process replacements (delete old memories)
+            # Process replacements (record transition, then delete old memories)
             for replacement_info in replacement_infos:
                 self.logger.info(
                     "Replacing old memory with new one",
@@ -673,12 +679,14 @@ class StoragePhase:
                     },
                 )
 
-                success = await self._process_replacement(
+                success, transition_id = await self._process_replacement(
                     idx, memory, replacement_info, dry_run
                 )
                 if success:
                     replaced_count += 1
                     replacements.append(replacement_info)
+                    if transition_id is not None:
+                        recorded_transition_ids.append(transition_id)
 
             # Add the new memory (unless dry_run)
             if not dry_run:
@@ -687,6 +695,8 @@ class StoragePhase:
                 pass  # dry_run stored_count handled below
 
         stored_count = self._store_and_commit(memories_to_add, dry_run)
+        if not dry_run:
+            self._complete_transitions(recorded_transition_ids)
         if dry_run:
             stored_count = len(memories)
 
@@ -715,8 +725,11 @@ class StoragePhase:
         memory: str,
         replacement_info: ReplacementInfo,
         dry_run: bool,
-    ) -> bool:
-        """Process a single replacement: archive and delete the old memory.
+    ) -> tuple[bool, int | None]:
+        """Record a durable transition, then delete the old memory.
+
+        Archive / transition-record failure is raised so deletion cannot
+        proceed. Index commits remain independent of the SQLite intent row.
 
         Args:
             idx: Memory index (for logging).
@@ -725,67 +738,55 @@ class StoragePhase:
             dry_run: If True, only record what would be replaced.
 
         Returns:
-            True if the replacement was processed (or recorded in dry_run).
+            (processed, transition_id). transition_id is None in dry-run
+            or when the old memory is missing.
         """
         if dry_run:
-            return True
+            return True, None
 
-        try:
-            # Archive the old memory before deletion (for recovery)
-            archived = await asyncify(self._archive_for_replacement)(
-                old_memory=replacement_info.old_memory,
-                new_memory=memory,
-                confidence=replacement_info.confidence,
-                reason=replacement_info.reason,
-            )
-            if archived:
-                self.logger.debug(
-                    "Old memory archived for recovery",
-                    extra={
-                        "memory_index": idx + 1,
-                        "action": "archive_success",
-                    },
-                )
-
-            # Delete the old memory
-            msg_id = self._semantic_engine.get_id_by_content(
-                self._project_id, replacement_info.old_memory
-            )
-            if msg_id is None:
-                self.logger.warning(
-                    "Old memory not found for replacement delete",
-                    extra={
-                        "memory_index": idx + 1,
-                        "action": "delete_missing",
-                    },
-                )
-                return False
-
-            self._delete_memory(
-                memory_id=str(msg_id),
-                content=replacement_info.old_memory,
-            )
-
-            self.logger.debug(
-                "Old memory removed successfully",
+        transition = await asyncify(self._record_replacement_transition)(
+            replacement_info, memory
+        )
+        if transition is None:
+            self.logger.warning(
+                "Old memory not found for replacement delete",
                 extra={
                     "memory_index": idx + 1,
-                    "action": "delete_success",
-                    "archived": archived,
+                    "action": "delete_missing",
                 },
             )
-            return True
+            return False, None
+
+        try:
+            self._delete_memory(
+                memory_id=str(transition.old_memory_id),
+                content=replacement_info.old_memory,
+            )
         except Exception as delete_error:
-            # Graceful degradation: log warning and continue
             self.logger.warning(
                 f"Failed to delete old memory: {delete_error}",
                 extra={
                     "memory_index": idx + 1,
                     "action": "delete_failed",
+                    "transition_id": transition.id,
                     "error": str(delete_error),
                 },
             )
-            return False
+            raise StorageError(
+                f"Failed to delete old memory after recording transition "
+                f"{transition.id}: {delete_error}"
+            ) from delete_error
+
+        self.logger.debug(
+            "Old memory removed successfully",
+            extra={
+                "memory_index": idx + 1,
+                "action": "delete_success",
+                "transition_id": transition.id,
+                "archive_id": transition.archive_id,
+            },
+        )
+        return True, transition.id
 
     def _store_and_commit(self, memories_to_add: list[str], dry_run: bool) -> int:
         """Batch-add new memories and commit changes to engines.
@@ -940,73 +941,69 @@ class StoragePhase:
             logger=self.logger,
         )
 
-    def _archive_for_replacement(
-        self, old_memory: str, new_memory: str, confidence: float, reason: str
-    ) -> bool:
-        """Archive a memory before replacement (for recovery).
+    def _record_replacement_transition(
+        self, replacement_info: ReplacementInfo, new_memory: str
+    ) -> ReplacementTransition | None:
+        """Persist archive + pending transition before any index change.
 
-        This method archives a memory to the archived_messages table before
-        it gets deleted during smart replacement. This enables recovery if
-        the LLM made a mistake in determining the replacement.
-
-        Args:
-            old_memory: The memory being replaced and archived.
-            new_memory: The new memory that replaces it.
-            confidence: LLM confidence score for the replacement decision.
-            reason: LLM's explanation for why replacement was appropriate.
-
-        Returns:
-            True if archiving succeeded, False otherwise.
+        Raises:
+            StorageError: If the semantic store cannot record the transition.
         """
-        try:
-            msg_id = self._semantic_engine.get_id_by_content(
-                self._project_id, old_memory
-            )
-
-            if msg_id is None:
-                self.logger.warning(
-                    "Cannot archive - memory not found",
-                    extra={
-                        "project_id": self._project_id,
-                        "old_memory_preview": old_memory[:50],
-                    },
-                )
-                return False
-
-            memory_store = self._semantic_engine.memory_store
-            archive_id = memory_store.archive(
-                memory_id=msg_id,
-                project_id=self._project_id,
-                content=old_memory,
-                replaced_by=new_memory,
-                reason=reason,
-                confidence=confidence,
-            )
-
-            if archive_id is not None:
-                self.logger.info(
-                    "Memory archived before replacement",
-                    extra={
-                        "project_id": self._project_id,
-                        "archive_id": archive_id,
-                        "original_id": msg_id,
-                        "confidence": confidence,
-                    },
-                )
-                return True
-
-            return False
-
-        except Exception as e:
-            # Graceful degradation - log warning but don't block the replacement
+        msg_id = self._semantic_engine.get_id_by_content(
+            self._project_id, replacement_info.old_memory
+        )
+        if msg_id is None:
             self.logger.warning(
-                f"Failed to archive memory for replacement: {e}",
+                "Cannot archive - memory not found",
                 extra={
                     "project_id": self._project_id,
+                    "old_memory_preview": replacement_info.old_memory[:50],
+                },
+            )
+            return None
+
+        try:
+            transition = self._semantic_engine.memory_store.begin_replacement_transition(
+                old_memory_id=msg_id,
+                project_id=self._project_id,
+                old_content=replacement_info.old_memory,
+                new_content=new_memory,
+                reason=replacement_info.reason,
+                confidence=replacement_info.confidence,
+            )
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to record replacement transition: {e}",
+                extra={
+                    "project_id": self._project_id,
+                    "old_memory_id": msg_id,
                     "error": str(e),
                 },
             )
-            return False
+            raise StorageError(
+                f"Failed to record replacement transition: {e}"
+            ) from e
+
+        self.logger.info(
+            "Replacement transition recorded before index changes",
+            extra={
+                "project_id": self._project_id,
+                "transition_id": transition.id,
+                "archive_id": transition.archive_id,
+                "original_id": msg_id,
+                "confidence": replacement_info.confidence,
+            },
+        )
+        return transition
+
+    def _complete_transitions(self, transition_ids: list[int]) -> None:
+        """Mark recorded transitions complete after independent engine commits."""
+        if not transition_ids:
+            return
+
+        store = self._semantic_engine.memory_store
+        for transition_id in transition_ids:
+            store.complete_replacement_transition(transition_id)
 
 
 class AddPipeline:
