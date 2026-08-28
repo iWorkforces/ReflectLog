@@ -11,11 +11,15 @@ Types defined here:
     ISemanticSearchEngine: Protocol for semantic search engines.
 """
 
+from dataclasses import dataclass
 from typing import (
+    Literal,
     Protocol,
     TypedDict,
     runtime_checkable,
 )
+
+ReplacementTransitionStatus = Literal["pending", "completed"]
 
 
 class MemoryRecord(TypedDict, total=False):
@@ -28,6 +32,26 @@ class MemoryRecord(TypedDict, total=False):
     metadata: dict[str, object]
 
 
+@dataclass(frozen=True)
+class ReplacementTransition:
+    """Durable intent to replace one active memory with another.
+
+    Recorded in the semantic backend's SQLite store before either active
+    index is changed. Independent USearch and Tantivy commits are not
+    part of this record; unfinished rows are reconciled on restart.
+    """
+
+    id: int
+    project_id: str
+    old_memory_id: int
+    old_content: str
+    new_content: str
+    archive_id: int
+    reason: str
+    confidence: float
+    status: ReplacementTransitionStatus
+
+
 class IArchiveMemoryStore(Protocol):
     def archive(
         self,
@@ -38,6 +62,20 @@ class IArchiveMemoryStore(Protocol):
         reason: str,
         confidence: float,
     ) -> int | None: ...
+
+    def begin_replacement_transition(
+        self,
+        old_memory_id: int,
+        project_id: str,
+        old_content: str,
+        new_content: str,
+        reason: str,
+        confidence: float,
+    ) -> ReplacementTransition: ...
+
+    def list_pending_transitions(self) -> list[ReplacementTransition]: ...
+
+    def complete_replacement_transition(self, transition_id: int) -> None: ...
 
 
 @runtime_checkable

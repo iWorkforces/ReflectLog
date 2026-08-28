@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from reflectlog.core.exceptions import StorageError
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.memory_store import (
     ArchivedMemoryRecord,
     MemoryRecord,
@@ -853,14 +854,57 @@ class TestMemoryStoreDeleteBatch:
 class TestMemoryStoreArchive:
     '''Tests for MemoryStore.archive method.'''
 
-    def test_archive_raises_on_sql_error(self) -> None:
-        '''archive should raise StorageError due to SQL mismatch.'''
+    def test_archive_persists_all_six_values(self) -> None:
+        '''archive should persist original_id, project, content, replacement, reason, confidence.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
 
-            # The archive method has a SQL bug: 6 columns but 5 placeholders
-            # This should raise StorageError wrapping the sqlite3 error
+            archive_id = store.archive(
+                memory_id=7,
+                project_id="proj1",
+                content="old memory",
+                replaced_by="new memory",
+                reason="updated info",
+                confidence=0.91,
+            )
+
+            assert archive_id == 1
+            records = store.get_archived("proj1")
+            assert len(records) == 1
+            record = records[0]
+            assert record.id == 1
+            assert record.original_id == 7
+            assert record.project_id == "proj1"
+            assert record.content == "old memory"
+            assert record.replaced_by == "new memory"
+            assert record.reason == "updated info"
+            assert record.confidence == 0.91
+            store.close()
+
+    def test_archive_is_idempotent(self) -> None:
+        '''Retrying archive for the same pair must not create a duplicate row.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test.db")
+            store = MemoryStore(db_path=db_path)
+
+            first = store.archive(1, "proj1", "old", "new", "reason", 0.9)
+            second = store.archive(1, "proj1", "old", "new", "reason", 0.9)
+
+            assert first == second
+            assert len(store.get_archived("proj1")) == 1
+            store.close()
+
+    def test_archive_raises_on_sql_error(self) -> None:
+        '''archive should raise StorageError when the archive table is missing.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test.db")
+            store = MemoryStore(db_path=db_path)
+            cursor = store.connection.cursor()
+            _ = cursor.execute("DROP TABLE archived_memories")
+            store.connection.commit()
+            cursor.close()
+
             with pytest.raises(StorageError, match="Failed to archive memory"):
                 _ = store.archive(
                     memory_id=1,
@@ -876,8 +920,12 @@ class TestMemoryStoreArchive:
         '''archive should log on database failure.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = MagicMock(spec=IStructuredLogger)
             store = MemoryStore(db_path=db_path, logger=logger)
+            cursor = store.connection.cursor()
+            _ = cursor.execute("DROP TABLE archived_memories")
+            store.connection.commit()
+            cursor.close()
 
             with pytest.raises(StorageError):
                 _ = store.archive(

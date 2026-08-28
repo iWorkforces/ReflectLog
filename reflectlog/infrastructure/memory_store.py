@@ -17,6 +17,10 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import ReplacementTransition, ReplacementTransitionStatus
+
+TRANSITION_PENDING: ReplacementTransitionStatus = "pending"
+TRANSITION_COMPLETED: ReplacementTransitionStatus = "completed"
 
 
 @dataclass(frozen=True)
@@ -147,7 +151,13 @@ class MemoryStore(BaseModel):
     def _create_schema(self) -> None:
         """Create database schema if it doesn't exist."""
         cursor = self.connection.cursor()
-        # Main memories table
+        self._create_memories_schema(cursor)
+        self._create_archive_schema(cursor)
+        self._create_transition_schema(cursor)
+        cursor.close()
+
+    def _create_memories_schema(self, cursor: sqlite3.Cursor) -> None:
+        """Create the active memories table and lookup indexes."""
         _ = cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS memories (
@@ -166,7 +176,8 @@ class MemoryStore(BaseModel):
             "memories(project_id, content)"
         )
 
-        # Archived memories table (for smart replacement recovery)
+    def _create_archive_schema(self, cursor: sqlite3.Cursor) -> None:
+        """Create archived memory audit table and uniqueness guards."""
         _ = cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS archived_memories (
@@ -189,7 +200,39 @@ class MemoryStore(BaseModel):
             "CREATE INDEX IF NOT EXISTS idx_archived_at "
             "ON archived_memories(archived_at)"
         )
-        cursor.close()
+        _ = cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_archived_original_replaced "
+            "ON archived_memories(original_id, replaced_by)"
+        )
+
+    def _create_transition_schema(self, cursor: sqlite3.Cursor) -> None:
+        """Create durable replacement-transition intent table."""
+        _ = cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS replacement_transitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL,
+                old_memory_id INTEGER NOT NULL,
+                old_content TEXT NOT NULL,
+                new_content TEXT NOT NULL,
+                archive_id INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                status TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+        _ = cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_identity "
+            "ON replacement_transitions("
+            "project_id, old_memory_id, new_content)"
+        )
+        _ = cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_transition_pending "
+            "ON replacement_transitions(status)"
+        )
 
     def insert(self, project_id: str, content: str) -> int:
         """Insert a memory and return its ID.
@@ -621,6 +664,10 @@ class MemoryStore(BaseModel):
     ) -> int | None:
         """Archive a memory before deletion (for recovery).
 
+        Persists all six caller-supplied values. Retrying the same
+        ``(original_id, replaced_by)`` pair returns the existing row
+        instead of inserting a duplicate.
+
         Args:
             memory_id: Original memory ID being archived.
             project_id: Project identifier.
@@ -638,16 +685,15 @@ class MemoryStore(BaseModel):
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                _ = cursor.execute(
-                    """
-                    INSERT INTO archived_memories
-                        (original_id, project_id, content, replaced_by, reason,
-                         confidence)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (memory_id, project_id, content, replaced_by, reason, confidence),
+                archive_id = self._insert_archive_row(
+                    cursor,
+                    memory_id=memory_id,
+                    project_id=project_id,
+                    content=content,
+                    replaced_by=replaced_by,
+                    reason=reason,
+                    confidence=confidence,
                 )
-                archive_id = cursor.lastrowid
                 self.connection.commit()
 
                 if self.logger:
@@ -662,7 +708,8 @@ class MemoryStore(BaseModel):
                     )
                 return archive_id
 
-            except sqlite3.Error as e:
+            except (sqlite3.Error, StorageError) as e:
+                self.connection.rollback()
                 if self.logger:
                     self.logger.error(
                         "Failed to archive memory",
@@ -671,6 +718,314 @@ class MemoryStore(BaseModel):
                 raise StorageError(f"Failed to archive memory: {e}") from e
             finally:
                 cursor.close()
+
+    def begin_replacement_transition(
+        self,
+        old_memory_id: int,
+        project_id: str,
+        old_content: str,
+        new_content: str,
+        reason: str,
+        confidence: float,
+    ) -> ReplacementTransition:
+        """Record archive + pending transition in one SQLite transaction.
+
+        This is the durable intent log owned by the semantic backend. It
+        is not a cross-backend transaction: USearch and Tantivy commits
+        stay independent and are reconciled from this row on restart.
+
+        Args:
+            old_memory_id: Active memory ID being replaced.
+            project_id: Project identifier.
+            old_content: Content of the memory being replaced.
+            new_content: Replacement content to converge toward.
+            reason: LLM explanation for the replacement.
+            confidence: LLM confidence score (0.0-1.0).
+
+        Returns:
+            The pending (or already recorded) transition.
+
+        Raises:
+            StorageError: If the archive or transition insert fails.
+        """
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute("BEGIN")
+                archive_id = self._insert_archive_row(
+                    cursor,
+                    memory_id=old_memory_id,
+                    project_id=project_id,
+                    content=old_content,
+                    replaced_by=new_content,
+                    reason=reason,
+                    confidence=confidence,
+                )
+                transition = self._insert_transition_row(
+                    cursor,
+                    project_id=project_id,
+                    old_memory_id=old_memory_id,
+                    old_content=old_content,
+                    new_content=new_content,
+                    archive_id=archive_id,
+                    reason=reason,
+                    confidence=confidence,
+                )
+                self.connection.commit()
+
+                if self.logger:
+                    self.logger.debug(
+                        "Replacement transition recorded",
+                        extra={
+                            "transition_id": transition.id,
+                            "archive_id": archive_id,
+                            "old_memory_id": old_memory_id,
+                            "project_id": project_id,
+                            "status": transition.status,
+                        },
+                    )
+                return transition
+
+            except (sqlite3.Error, StorageError) as e:
+                self.connection.rollback()
+                if self.logger:
+                    self.logger.error(
+                        "Failed to record replacement transition",
+                        extra={
+                            "old_memory_id": old_memory_id,
+                            "project_id": project_id,
+                            "error": str(e),
+                        },
+                    )
+                raise StorageError(
+                    f"Failed to record replacement transition: {e}"
+                ) from e
+            finally:
+                cursor.close()
+
+    def list_pending_transitions(self) -> list[ReplacementTransition]:
+        """Return unfinished replacement transitions in insert order.
+
+        Raises:
+            StorageError: If database operation fails.
+        """
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute(
+                    """
+                    SELECT id, project_id, old_memory_id, old_content,
+                           new_content, archive_id, reason, confidence, status
+                    FROM replacement_transitions
+                    WHERE status = ?
+                    ORDER BY id
+                    """,
+                    (TRANSITION_PENDING,),
+                )
+                return [self._row_to_transition(row) for row in cursor.fetchall()]
+
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to list pending replacement transitions",
+                        extra={"error": str(e)},
+                    )
+                raise StorageError(
+                    f"Failed to list pending replacement transitions: {e}"
+                ) from e
+            finally:
+                cursor.close()
+
+    def complete_replacement_transition(self, transition_id: int) -> None:
+        """Mark a replacement transition completed (idempotent).
+
+        Args:
+            transition_id: Transition row ID.
+
+        Raises:
+            StorageError: If database operation fails.
+        """
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute(
+                    """
+                    UPDATE replacement_transitions
+                    SET status = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (TRANSITION_COMPLETED, transition_id),
+                )
+                self.connection.commit()
+
+                if self.logger:
+                    self.logger.debug(
+                        "Replacement transition completed",
+                        extra={"transition_id": transition_id},
+                    )
+
+            except sqlite3.Error as e:
+                self.connection.rollback()
+                if self.logger:
+                    self.logger.error(
+                        "Failed to complete replacement transition",
+                        extra={"transition_id": transition_id, "error": str(e)},
+                    )
+                raise StorageError(
+                    f"Failed to complete replacement transition: {e}"
+                ) from e
+            finally:
+                cursor.close()
+
+    def _insert_archive_row(
+        self,
+        cursor: sqlite3.Cursor,
+        memory_id: int,
+        project_id: str,
+        content: str,
+        replaced_by: str,
+        reason: str,
+        confidence: float,
+    ) -> int:
+        """Insert an archive row or return the existing unique row ID."""
+        existing_id = self._existing_archive_id(cursor, memory_id, replaced_by)
+        if existing_id is not None:
+            return existing_id
+
+        try:
+            _ = cursor.execute(
+                """
+                INSERT INTO archived_memories
+                    (original_id, project_id, content, replaced_by, reason,
+                     confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (memory_id, project_id, content, replaced_by, reason, confidence),
+            )
+        except sqlite3.IntegrityError:
+            existing_id = self._existing_archive_id(cursor, memory_id, replaced_by)
+            if existing_id is not None:
+                return existing_id
+            raise
+
+        archive_id = cursor.lastrowid
+        if archive_id is None:
+            raise StorageError("Archive insert did not return a row ID")
+        return int(archive_id)
+
+    def _existing_archive_id(
+        self, cursor: sqlite3.Cursor, memory_id: int, replaced_by: str
+    ) -> int | None:
+        """Return the archive ID for an existing unique pair, if any."""
+        _ = cursor.execute(
+            """
+            SELECT id FROM archived_memories
+            WHERE original_id = ? AND replaced_by = ?
+            """,
+            (memory_id, replaced_by),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row is not None else None
+
+    def _insert_transition_row(
+        self,
+        cursor: sqlite3.Cursor,
+        project_id: str,
+        old_memory_id: int,
+        old_content: str,
+        new_content: str,
+        archive_id: int,
+        reason: str,
+        confidence: float,
+    ) -> ReplacementTransition:
+        """Insert a pending transition or return the existing identity row."""
+        existing = self._existing_transition(
+            cursor, project_id, old_memory_id, new_content
+        )
+        if existing is not None:
+            return existing
+
+        try:
+            _ = cursor.execute(
+                """
+                INSERT INTO replacement_transitions
+                    (project_id, old_memory_id, old_content, new_content,
+                     archive_id, reason, confidence, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    project_id,
+                    old_memory_id,
+                    old_content,
+                    new_content,
+                    archive_id,
+                    reason,
+                    confidence,
+                    TRANSITION_PENDING,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            existing = self._existing_transition(
+                cursor, project_id, old_memory_id, new_content
+            )
+            if existing is not None:
+                return existing
+            raise
+
+        transition_id = cursor.lastrowid
+        if transition_id is None:
+            raise StorageError("Transition insert did not return a row ID")
+        return ReplacementTransition(
+            id=int(transition_id),
+            project_id=project_id,
+            old_memory_id=old_memory_id,
+            old_content=old_content,
+            new_content=new_content,
+            archive_id=archive_id,
+            reason=reason,
+            confidence=confidence,
+            status=TRANSITION_PENDING,
+        )
+
+    def _existing_transition(
+        self,
+        cursor: sqlite3.Cursor,
+        project_id: str,
+        old_memory_id: int,
+        new_content: str,
+    ) -> ReplacementTransition | None:
+        """Return the transition for a unique identity, if present."""
+        _ = cursor.execute(
+            """
+            SELECT id, project_id, old_memory_id, old_content, new_content,
+                   archive_id, reason, confidence, status
+            FROM replacement_transitions
+            WHERE project_id = ? AND old_memory_id = ? AND new_content = ?
+            """,
+            (project_id, old_memory_id, new_content),
+        )
+        row = cursor.fetchone()
+        return self._row_to_transition(row) if row is not None else None
+
+    def _row_to_transition(self, row: tuple[object, ...]) -> ReplacementTransition:
+        """Map a replacement_transitions SELECT row to a dataclass."""
+        status_value = str(row[8])
+        transition_status: ReplacementTransitionStatus = (
+            TRANSITION_COMPLETED
+            if status_value == TRANSITION_COMPLETED
+            else TRANSITION_PENDING
+        )
+        return ReplacementTransition(
+            id=int(str(row[0])),
+            project_id=str(row[1]),
+            old_memory_id=int(str(row[2])),
+            old_content=str(row[3]),
+            new_content=str(row[4]),
+            archive_id=int(str(row[5])),
+            reason=str(row[6]),
+            confidence=float(str(row[7])),
+            status=transition_status,
+        )
 
     def get_archived(
         self, project_id: str, limit: int = 100
