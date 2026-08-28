@@ -18,7 +18,7 @@ from reflectlog.infrastructure.memory_store import MemoryStore
 def _transition() -> ReplacementTransition:
     return ReplacementTransition(
         id=3,
-        project_id="proj",
+        workspace_id="proj",
         old_memory_id=11,
         old_content="old convention",
         new_content="new convention",
@@ -35,9 +35,22 @@ class TestApplyPendingTransition:
 
     def test_deletes_old_and_inserts_missing_new(self) -> None:
         semantic = MagicMock()
-        semantic.get_id_by_content.return_value = None
+        semantic.get_id_by_content.side_effect = [None, None, 99]
+        semantic.index = {99}
         tantivy = MagicMock()
-        tantivy.find_by_exact_match.return_value = []
+        seen_new = {"yes": False}
+
+        def find(_pid: str, content: str) -> list[str]:
+            if content == "new convention" and seen_new["yes"]:
+                return [content]
+            return []
+
+        def add(_pid: str, content: str) -> None:
+            if content == "new convention":
+                seen_new["yes"] = True
+
+        tantivy.find_by_exact_match.side_effect = find
+        tantivy.add.side_effect = add
         logger = MagicMock()
 
         apply_pending_transition(
@@ -50,7 +63,7 @@ class TestApplyPendingTransition:
         semantic.delete.assert_called_once_with(memory_id="11")
         tantivy.delete.assert_called_once_with("proj", "old convention")
         semantic.add.assert_called_once_with(
-            project_id="proj",
+            workspace_id="proj",
             content="new convention",
             infer=False,
         )
@@ -61,10 +74,12 @@ class TestApplyPendingTransition:
 
     def test_skips_insert_when_replacement_already_present(self) -> None:
         semantic = MagicMock()
-        semantic.get_id_by_content.return_value = 99
-        semantic.index = {99: object()}
+        semantic.get_id_by_content.side_effect = [None, 99, 99]
+        semantic.index = {99}
         tantivy = MagicMock()
-        tantivy.find_by_exact_match.return_value = ["new convention"]
+        tantivy.find_by_exact_match.side_effect = (
+            lambda _pid, content: [content] if content == "new convention" else []
+        )
 
         apply_pending_transition(
             _transition(),
@@ -77,9 +92,84 @@ class TestApplyPendingTransition:
         tantivy.add.assert_not_called()
         semantic.memory_store.complete_replacement_transition.assert_called_once_with(3)
 
-    def test_works_without_tantivy(self) -> None:
+    def test_reindexes_missing_vector(self) -> None:
+        semantic = MagicMock()
+        semantic.get_id_by_content.side_effect = [None, 7]
+        semantic.index = set()
+        add_calls = {"n": 0}
+
+        def add_and_index(**_kwargs: object) -> None:
+            add_calls["n"] += 1
+            semantic.index.add(7)
+
+        semantic.add.side_effect = add_and_index
+
+        apply_pending_transition(
+            _transition(),
+            semantic_engine=semantic,
+            tantivy_engine=None,
+            logger=MagicMock(),
+        )
+
+        assert semantic.add.called
+        semantic.memory_store.complete_replacement_transition.assert_called_once()
+
+    def test_skips_tantivy_delete_when_old_text_was_readded(self) -> None:
+        semantic = MagicMock()
+        semantic.get_id_by_content.side_effect = [22, 99, 99]
+        semantic.index = {99}
+        tantivy = MagicMock()
+        tantivy.find_by_exact_match.side_effect = (
+            lambda _pid, content: [content] if content == "new convention" else []
+        )
+
+        apply_pending_transition(
+            _transition(),
+            semantic_engine=semantic,
+            tantivy_engine=tantivy,
+            logger=MagicMock(),
+        )
+
+        tantivy.delete.assert_not_called()
+        semantic.memory_store.complete_replacement_transition.assert_called_once()
+
+    def test_leaves_pending_when_tantivy_still_has_old(self) -> None:
+        semantic = MagicMock()
+        semantic.get_id_by_content.side_effect = [None, 99, 99]
+        semantic.index = {99}
+        tantivy = MagicMock()
+        tantivy.find_by_exact_match.side_effect = lambda _pid, content: [content]
+
+        apply_pending_transition(
+            _transition(),
+            semantic_engine=semantic,
+            tantivy_engine=tantivy,
+            logger=MagicMock(),
+        )
+
+        semantic.memory_store.complete_replacement_transition.assert_not_called()
+
+    def test_does_not_complete_when_indexes_disagree(self) -> None:
         semantic = MagicMock()
         semantic.get_id_by_content.return_value = None
+        semantic.index = set()
+        tantivy = MagicMock()
+        tantivy.find_by_exact_match.return_value = []
+        semantic.add.side_effect = RuntimeError("embedder down")
+
+        with pytest.raises(RuntimeError, match="embedder down"):
+            apply_pending_transition(
+                _transition(),
+                semantic_engine=semantic,
+                tantivy_engine=tantivy,
+                logger=MagicMock(),
+            )
+        semantic.memory_store.complete_replacement_transition.assert_not_called()
+
+    def test_works_without_tantivy(self) -> None:
+        semantic = MagicMock()
+        semantic.get_id_by_content.side_effect = [None, 7]
+        semantic.index = {7}
 
         apply_pending_transition(
             _transition(),
@@ -158,7 +248,7 @@ class TestReconcilePendingReplacements:
             store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
             planted = store.begin_replacement_transition(
                 old_memory_id=11,
-                project_id="proj",
+                workspace_id="proj",
                 old_content="old convention",
                 new_content="new convention",
                 reason="updated",
@@ -166,7 +256,8 @@ class TestReconcilePendingReplacements:
             )
             semantic = MagicMock()
             semantic.memory_store = store
-            semantic.get_id_by_content.return_value = None
+            semantic.get_id_by_content.side_effect = [None, 99]
+            semantic.index = {99}
 
             count = reconcile_pending_replacements(
                 semantic_engine=semantic,
@@ -188,7 +279,7 @@ class TestReconcilePendingReplacements:
             store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
             _ = store.begin_replacement_transition(
                 old_memory_id=11,
-                project_id="proj",
+                workspace_id="proj",
                 old_content="old convention",
                 new_content="new convention",
                 reason="updated",

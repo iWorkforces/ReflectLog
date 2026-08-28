@@ -1,7 +1,7 @@
 """SQLite-backed memory storage for USearch engine.
 
 This module provides persistent memory text storage separate from the
-USearch vector index. Memories are stored with their project_id for filtering
+USearch vector index. Memories are stored with their workspace_id for filtering
 and the SQLite row ID is used as the USearch key.
 
 Uses SQLite with WAL mode for improved concurrent write performance via MVCC.
@@ -17,7 +17,11 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.types import ReplacementTransition, ReplacementTransitionStatus
+from reflectlog.core.types import (
+    ReplacementTransition,
+    ReplacementTransitionRequest,
+    ReplacementTransitionStatus,
+)
 
 TRANSITION_PENDING: ReplacementTransitionStatus = "pending"
 TRANSITION_COMPLETED: ReplacementTransitionStatus = "completed"
@@ -29,13 +33,13 @@ class MemoryRecord:
 
     Attributes:
         id: libSQL auto-increment ID (used as USearch key).
-        project_id: Project identifier for filtering.
+        workspace_id: Workspace identifier for filtering.
         content: The memory text content.
         created_at: Timestamp when the memory was created (ISO format string).
     """
 
     id: int
-    project_id: str
+    workspace_id: str
     content: str
     created_at: str = ""  # Default empty for backward compatibility
 
@@ -47,7 +51,7 @@ class ArchivedMemoryRecord:
     Attributes:
         id: Archive record ID.
         original_id: Original memory ID before archiving.
-        project_id: Project identifier.
+        workspace_id: Workspace identifier.
         content: The archived memory text.
         replaced_by: The new memory that replaced this one.
         reason: LLM explanation for why replacement occurred.
@@ -57,7 +61,7 @@ class ArchivedMemoryRecord:
 
     id: int
     original_id: int
-    project_id: str
+    workspace_id: str
     content: str
     replaced_by: str
     reason: str
@@ -151,10 +155,37 @@ class MemoryStore(BaseModel):
     def _create_schema(self) -> None:
         """Create database schema if it doesn't exist."""
         cursor = self.connection.cursor()
+        self._rename_legacy_project_id_columns(cursor)
         self._create_memories_schema(cursor)
         self._create_archive_schema(cursor)
         self._create_transition_schema(cursor)
         cursor.close()
+
+    def _rename_legacy_project_id_columns(self, cursor: sqlite3.Cursor) -> None:
+        """Rename leftover project_id columns so existing databases keep working."""
+        for table in ("memories", "archived_memories", "replacement_transitions"):
+            if not self._table_exists(cursor, table):
+                continue
+            columns = self._table_columns(cursor, table)
+            if "project_id" in columns and "workspace_id" not in columns:
+                _ = cursor.execute(
+                    f"ALTER TABLE {table} RENAME COLUMN project_id TO workspace_id"
+                )
+        _ = cursor.execute("DROP INDEX IF EXISTS idx_project_id")
+        _ = cursor.execute("DROP INDEX IF EXISTS idx_archived_project_id")
+
+    def _table_exists(self, cursor: sqlite3.Cursor, table: str) -> bool:
+        """Return True when the named table is already present."""
+        _ = cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table,),
+        )
+        return cursor.fetchone() is not None
+
+    def _table_columns(self, cursor: sqlite3.Cursor, table: str) -> set[str]:
+        """Return column names for an existing table."""
+        _ = cursor.execute(f"PRAGMA table_info({table})")
+        return {str(row[1]) for row in cursor.fetchall()}
 
     def _create_memories_schema(self, cursor: sqlite3.Cursor) -> None:
         """Create the active memories table and lookup indexes."""
@@ -162,18 +193,18 @@ class MemoryStore(BaseModel):
             """
             CREATE TABLE IF NOT EXISTS memories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
                 content TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """
         )
         _ = cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_project_id ON memories(project_id)"
+            "CREATE INDEX IF NOT EXISTS idx_workspace_id ON memories(workspace_id)"
         )
         _ = cursor.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_dedup ON "
-            "memories(project_id, content)"
+            "memories(workspace_id, content)"
         )
 
     def _create_archive_schema(self, cursor: sqlite3.Cursor) -> None:
@@ -183,7 +214,7 @@ class MemoryStore(BaseModel):
             CREATE TABLE IF NOT EXISTS archived_memories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 original_id INTEGER NOT NULL,
-                project_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
                 content TEXT NOT NULL,
                 replaced_by TEXT NOT NULL,
                 reason TEXT NOT NULL,
@@ -193,13 +224,14 @@ class MemoryStore(BaseModel):
         """
         )
         _ = cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_archived_project_id "
-            "ON archived_memories(project_id)"
+            "CREATE INDEX IF NOT EXISTS idx_archived_workspace_id "
+            "ON archived_memories(workspace_id)"
         )
         _ = cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_archived_at "
             "ON archived_memories(archived_at)"
         )
+        self._dedupe_archive_pairs(cursor)
         _ = cursor.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_archived_original_replaced "
             "ON archived_memories(original_id, replaced_by)"
@@ -211,7 +243,7 @@ class MemoryStore(BaseModel):
             """
             CREATE TABLE IF NOT EXISTS replacement_transitions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
                 old_memory_id INTEGER NOT NULL,
                 old_content TEXT NOT NULL,
                 new_content TEXT NOT NULL,
@@ -224,21 +256,46 @@ class MemoryStore(BaseModel):
             )
         """
         )
+        self._dedupe_transition_old_ids(cursor)
+        _ = cursor.execute("DROP INDEX IF EXISTS idx_transition_identity")
         _ = cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_identity "
-            "ON replacement_transitions("
-            "project_id, old_memory_id, new_content)"
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_old_memory "
+            "ON replacement_transitions(workspace_id, old_memory_id)"
         )
         _ = cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_transition_pending "
             "ON replacement_transitions(status)"
         )
 
-    def insert(self, project_id: str, content: str) -> int:
+    def _dedupe_archive_pairs(self, cursor: sqlite3.Cursor) -> None:
+        """Keep one archive row per (original_id, replaced_by) before uniquing."""
+        _ = cursor.execute(
+            """
+            DELETE FROM archived_memories
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM archived_memories
+                GROUP BY original_id, replaced_by
+            )
+            """
+        )
+
+    def _dedupe_transition_old_ids(self, cursor: sqlite3.Cursor) -> None:
+        """Keep one transition per old memory before exclusive uniquing."""
+        _ = cursor.execute(
+            """
+            DELETE FROM replacement_transitions
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM replacement_transitions
+                GROUP BY workspace_id, old_memory_id
+            )
+            """
+        )
+
+    def insert(self, workspace_id: str, content: str) -> int:
         """Insert a memory and return its ID.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             content: Memory text content.
 
         Returns:
@@ -251,8 +308,8 @@ class MemoryStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 _ = cursor.execute(
-                    "INSERT INTO memories (project_id, content) VALUES (?, ?)",
-                    (project_id, content),
+                    "INSERT INTO memories (workspace_id, content) VALUES (?, ?)",
+                    (workspace_id, content),
                 )
                 row_id = cursor.lastrowid
                 self.connection.commit()
@@ -265,7 +322,7 @@ class MemoryStore(BaseModel):
                         "Memory inserted",
                         extra={
                             "memory_id": row_id,
-                            "project_id": project_id,
+                            "workspace_id": workspace_id,
                             "memory_length": len(content),
                         },
                     )
@@ -277,26 +334,26 @@ class MemoryStore(BaseModel):
                     if self.logger:
                         self.logger.debug(
                             "Duplicate memory detected",
-                            extra={"project_id": project_id, "error": str(e)},
+                            extra={"workspace_id": workspace_id, "error": str(e)},
                         )
                     raise StorageError(f"Duplicate memory: {e}") from e
                 # Other libsql errors
                 if self.logger:
                     self.logger.error(
                         "Failed to insert memory",
-                        extra={"project_id": project_id, "error": str(e)},
+                        extra={"workspace_id": workspace_id, "error": str(e)},
                     )
                 raise StorageError(f"Failed to insert memory: {e}") from e
             finally:
                 cursor.close()
 
     def insert_many(
-        self, project_id: str, contents: list[str]
+        self, workspace_id: str, contents: list[str]
     ) -> list[tuple[str, int]]:
         """Insert multiple memories in a single transaction.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             contents: List of memory texts to insert.
 
         Returns:
@@ -318,8 +375,8 @@ class MemoryStore(BaseModel):
                 for content in contents:
                     try:
                         _ = cursor.execute(
-                            "INSERT INTO memories (project_id, content) VALUES (?, ?)",
-                            (project_id, content),
+                            "INSERT INTO memories (workspace_id, content) VALUES (?, ?)",
+                            (workspace_id, content),
                         )
                         row_id = cursor.lastrowid
                         if row_id is None:
@@ -335,7 +392,7 @@ class MemoryStore(BaseModel):
                             if self.logger:
                                 self.logger.debug(
                                     "Duplicate memory skipped during batch insert",
-                                    extra={"project_id": project_id, "error": str(e)},
+                                    extra={"workspace_id": workspace_id, "error": str(e)},
                                 )
                             continue
                         raise
@@ -345,7 +402,7 @@ class MemoryStore(BaseModel):
                     self.logger.debug(
                         "Batch insert completed",
                         extra={
-                            "project_id": project_id,
+                            "workspace_id": workspace_id,
                             "inserted_count": len(inserted),
                             "skipped_duplicates": skipped,
                         },
@@ -358,7 +415,7 @@ class MemoryStore(BaseModel):
                     self.logger.error(
                         "Failed to insert memories batch",
                         extra={
-                            "project_id": project_id,
+                            "workspace_id": workspace_id,
                             "memory_count": len(contents),
                             "error": str(e),
                         },
@@ -383,7 +440,7 @@ class MemoryStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 _ = cursor.execute(
-                    "SELECT id, project_id, content, created_at "
+                    "SELECT id, workspace_id, content, created_at "
                     "FROM memories WHERE id = ?",
                     (memory_id,),
                 )
@@ -394,7 +451,7 @@ class MemoryStore(BaseModel):
 
                 return MemoryRecord(
                     id=row[0],
-                    project_id=row[1],
+                    workspace_id=row[1],
                     content=row[2],
                     created_at=row[3] if row[3] else "",
                 )
@@ -433,7 +490,7 @@ class MemoryStore(BaseModel):
             try:
                 placeholders = ",".join("?" * len(memory_ids))
                 _ = cursor.execute(
-                    f"SELECT id, project_id, content, created_at "
+                    f"SELECT id, workspace_id, content, created_at "
                     f"FROM memories WHERE id IN ({placeholders})",
                     memory_ids,
                 )
@@ -442,7 +499,7 @@ class MemoryStore(BaseModel):
                 return {
                     row[0]: MemoryRecord(
                         id=row[0],
-                        project_id=row[1],
+                        workspace_id=row[1],
                         content=row[2],
                         created_at=row[3] if row[3] else "",
                     )
@@ -459,11 +516,11 @@ class MemoryStore(BaseModel):
             finally:
                 cursor.close()
 
-    def get_all(self, project_id: str) -> list[str]:
-        """Get all memories for a project.
+    def get_all(self, workspace_id: str) -> list[str]:
+        """Get all memories for a workspace.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
 
         Returns:
             List of memory strings.
@@ -475,8 +532,8 @@ class MemoryStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 _ = cursor.execute(
-                    "SELECT content FROM memories WHERE project_id = ? ORDER BY id",
-                    (project_id,),
+                    "SELECT content FROM memories WHERE workspace_id = ? ORDER BY id",
+                    (workspace_id,),
                 )
                 rows = cursor.fetchall()
 
@@ -486,7 +543,7 @@ class MemoryStore(BaseModel):
                 if self.logger:
                     self.logger.error(
                         "Failed to get all memories",
-                        extra={"project_id": project_id, "error": str(e)},
+                        extra={"workspace_id": workspace_id, "error": str(e)},
                     )
                 raise StorageError(f"Failed to retrieve all memories: {e}") from e
             finally:
@@ -585,11 +642,11 @@ class MemoryStore(BaseModel):
             finally:
                 cursor.close()
 
-    def exists(self, project_id: str, content: str) -> bool:
+    def exists(self, workspace_id: str, content: str) -> bool:
         """Check if a memory exists (for deduplication).
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             content: Memory text to check.
 
         Returns:
@@ -603,8 +660,8 @@ class MemoryStore(BaseModel):
             try:
                 _ = cursor.execute(
                     "SELECT 1 FROM memories "
-                    "WHERE project_id = ? AND content = ? LIMIT 1",
-                    (project_id, content),
+                    "WHERE workspace_id = ? AND content = ? LIMIT 1",
+                    (workspace_id, content),
                 )
                 exists = cursor.fetchone() is not None
                 return exists
@@ -613,17 +670,17 @@ class MemoryStore(BaseModel):
                 if self.logger:
                     self.logger.error(
                         "Failed to check memory existence",
-                        extra={"project_id": project_id, "error": str(e)},
+                        extra={"workspace_id": workspace_id, "error": str(e)},
                     )
                 raise StorageError(f"Failed to check memory existence: {e}") from e
             finally:
                 cursor.close()
 
-    def get_id_by_content(self, project_id: str, content: str) -> int | None:
+    def get_id_by_content(self, workspace_id: str, content: str) -> int | None:
         """Get the ID of a memory by its content.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             content: Memory text to look up.
 
         Returns:
@@ -637,8 +694,8 @@ class MemoryStore(BaseModel):
             try:
                 _ = cursor.execute(
                     "SELECT id FROM memories "
-                    "WHERE project_id = ? AND content = ? LIMIT 1",
-                    (project_id, content),
+                    "WHERE workspace_id = ? AND content = ? LIMIT 1",
+                    (workspace_id, content),
                 )
                 row = cursor.fetchone()
                 return row[0] if row else None
@@ -647,7 +704,7 @@ class MemoryStore(BaseModel):
                 if self.logger:
                     self.logger.error(
                         "Failed to get memory ID",
-                        extra={"project_id": project_id, "error": str(e)},
+                        extra={"workspace_id": workspace_id, "error": str(e)},
                     )
                 raise StorageError(f"Failed to get memory ID: {e}") from e
             finally:
@@ -656,7 +713,7 @@ class MemoryStore(BaseModel):
     def archive(
         self,
         memory_id: int,
-        project_id: str,
+        workspace_id: str,
         content: str,
         replaced_by: str,
         reason: str,
@@ -670,7 +727,7 @@ class MemoryStore(BaseModel):
 
         Args:
             memory_id: Original memory ID being archived.
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             content: The memory text being archived.
             replaced_by: The new memory that replaces this one.
             reason: LLM explanation for why replacement occurred.
@@ -688,7 +745,7 @@ class MemoryStore(BaseModel):
                 archive_id = self._insert_archive_row(
                     cursor,
                     memory_id=memory_id,
-                    project_id=project_id,
+                    workspace_id=workspace_id,
                     content=content,
                     replaced_by=replaced_by,
                     reason=reason,
@@ -702,7 +759,7 @@ class MemoryStore(BaseModel):
                         extra={
                             "archive_id": archive_id,
                             "original_id": memory_id,
-                            "project_id": project_id,
+                            "workspace_id": workspace_id,
                             "confidence": confidence,
                         },
                     )
@@ -722,7 +779,7 @@ class MemoryStore(BaseModel):
     def begin_replacement_transition(
         self,
         old_memory_id: int,
-        project_id: str,
+        workspace_id: str,
         old_content: str,
         new_content: str,
         reason: str,
@@ -736,7 +793,7 @@ class MemoryStore(BaseModel):
 
         Args:
             old_memory_id: Active memory ID being replaced.
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             old_content: Content of the memory being replaced.
             new_content: Replacement content to converge toward.
             reason: LLM explanation for the replacement.
@@ -752,24 +809,16 @@ class MemoryStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 _ = cursor.execute("BEGIN")
-                archive_id = self._insert_archive_row(
+                transition = self._record_one_transition(
                     cursor,
-                    memory_id=old_memory_id,
-                    project_id=project_id,
-                    content=old_content,
-                    replaced_by=new_content,
-                    reason=reason,
-                    confidence=confidence,
-                )
-                transition = self._insert_transition_row(
-                    cursor,
-                    project_id=project_id,
-                    old_memory_id=old_memory_id,
-                    old_content=old_content,
-                    new_content=new_content,
-                    archive_id=archive_id,
-                    reason=reason,
-                    confidence=confidence,
+                    ReplacementTransitionRequest(
+                        old_memory_id=old_memory_id,
+                        workspace_id=workspace_id,
+                        old_content=old_content,
+                        new_content=new_content,
+                        reason=reason,
+                        confidence=confidence,
+                    ),
                 )
                 self.connection.commit()
 
@@ -778,9 +827,9 @@ class MemoryStore(BaseModel):
                         "Replacement transition recorded",
                         extra={
                             "transition_id": transition.id,
-                            "archive_id": archive_id,
+                            "archive_id": transition.archive_id,
                             "old_memory_id": old_memory_id,
-                            "project_id": project_id,
+                            "workspace_id": workspace_id,
                             "status": transition.status,
                         },
                     )
@@ -793,7 +842,7 @@ class MemoryStore(BaseModel):
                         "Failed to record replacement transition",
                         extra={
                             "old_memory_id": old_memory_id,
-                            "project_id": project_id,
+                            "workspace_id": workspace_id,
                             "error": str(e),
                         },
                     )
@@ -802,6 +851,59 @@ class MemoryStore(BaseModel):
                 ) from e
             finally:
                 cursor.close()
+
+    def begin_replacement_transitions(
+        self, requests: list[ReplacementTransitionRequest]
+    ) -> list[ReplacementTransition]:
+        """Record many archive + pending rows in one SQLite transaction."""
+        if not requests:
+            return []
+
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute("BEGIN")
+                recorded = [
+                    self._record_one_transition(cursor, request) for request in requests
+                ]
+                self.connection.commit()
+                return recorded
+            except (sqlite3.Error, StorageError) as e:
+                self.connection.rollback()
+                if self.logger:
+                    self.logger.error(
+                        "Failed to record replacement transitions",
+                        extra={"request_count": len(requests), "error": str(e)},
+                    )
+                raise StorageError(
+                    f"Failed to record replacement transitions: {e}"
+                ) from e
+            finally:
+                cursor.close()
+
+    def _record_one_transition(
+        self, cursor: sqlite3.Cursor, request: ReplacementTransitionRequest
+    ) -> ReplacementTransition:
+        """Insert one archive + transition row inside an open transaction."""
+        archive_id = self._insert_archive_row(
+            cursor,
+            memory_id=request.old_memory_id,
+            workspace_id=request.workspace_id,
+            content=request.old_content,
+            replaced_by=request.new_content,
+            reason=request.reason,
+            confidence=request.confidence,
+        )
+        return self._insert_transition_row(
+            cursor,
+            workspace_id=request.workspace_id,
+            old_memory_id=request.old_memory_id,
+            old_content=request.old_content,
+            new_content=request.new_content,
+            archive_id=archive_id,
+            reason=request.reason,
+            confidence=request.confidence,
+        )
 
     def list_pending_transitions(self) -> list[ReplacementTransition]:
         """Return unfinished replacement transitions in insert order.
@@ -814,7 +916,7 @@ class MemoryStore(BaseModel):
             try:
                 _ = cursor.execute(
                     """
-                    SELECT id, project_id, old_memory_id, old_content,
+                    SELECT id, workspace_id, old_memory_id, old_content,
                            new_content, archive_id, reason, confidence, status
                     FROM replacement_transitions
                     WHERE status = ?
@@ -852,10 +954,16 @@ class MemoryStore(BaseModel):
                     """
                     UPDATE replacement_transitions
                     SET status = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
+                    WHERE id = ? AND status = ?
                     """,
-                    (TRANSITION_COMPLETED, transition_id),
+                    (TRANSITION_COMPLETED, transition_id, TRANSITION_PENDING),
                 )
+                if cursor.rowcount == 0:
+                    existing = self._transition_status(cursor, transition_id)
+                    if existing != TRANSITION_COMPLETED:
+                        raise StorageError(
+                            f"Replacement transition {transition_id} was not pending"
+                        )
                 self.connection.commit()
 
                 if self.logger:
@@ -881,7 +989,7 @@ class MemoryStore(BaseModel):
         self,
         cursor: sqlite3.Cursor,
         memory_id: int,
-        project_id: str,
+        workspace_id: str,
         content: str,
         replaced_by: str,
         reason: str,
@@ -896,11 +1004,11 @@ class MemoryStore(BaseModel):
             _ = cursor.execute(
                 """
                 INSERT INTO archived_memories
-                    (original_id, project_id, content, replaced_by, reason,
+                    (original_id, workspace_id, content, replaced_by, reason,
                      confidence)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (memory_id, project_id, content, replaced_by, reason, confidence),
+                (memory_id, workspace_id, content, replaced_by, reason, confidence),
             )
         except sqlite3.IntegrityError:
             existing_id = self._existing_archive_id(cursor, memory_id, replaced_by)
@@ -927,10 +1035,21 @@ class MemoryStore(BaseModel):
         row = cursor.fetchone()
         return int(row[0]) if row is not None else None
 
+    def _transition_status(
+        self, cursor: sqlite3.Cursor, transition_id: int
+    ) -> str | None:
+        """Return the stored status for a transition id, if any."""
+        _ = cursor.execute(
+            "SELECT status FROM replacement_transitions WHERE id = ?",
+            (transition_id,),
+        )
+        row = cursor.fetchone()
+        return str(row[0]) if row is not None else None
+
     def _insert_transition_row(
         self,
         cursor: sqlite3.Cursor,
-        project_id: str,
+        workspace_id: str,
         old_memory_id: int,
         old_content: str,
         new_content: str,
@@ -938,23 +1057,25 @@ class MemoryStore(BaseModel):
         reason: str,
         confidence: float,
     ) -> ReplacementTransition:
-        """Insert a pending transition or return the existing identity row."""
-        existing = self._existing_transition(
-            cursor, project_id, old_memory_id, new_content
-        )
+        """Insert a pending transition or return the exclusive existing row."""
+        existing = self._existing_transition(cursor, workspace_id, old_memory_id)
         if existing is not None:
+            if existing.new_content != new_content:
+                raise StorageError(
+                    "Old memory already has a replacement transition"
+                )
             return existing
 
         try:
             _ = cursor.execute(
                 """
                 INSERT INTO replacement_transitions
-                    (project_id, old_memory_id, old_content, new_content,
+                    (workspace_id, old_memory_id, old_content, new_content,
                      archive_id, reason, confidence, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    project_id,
+                    workspace_id,
                     old_memory_id,
                     old_content,
                     new_content,
@@ -965,19 +1086,19 @@ class MemoryStore(BaseModel):
                 ),
             )
         except sqlite3.IntegrityError:
-            existing = self._existing_transition(
-                cursor, project_id, old_memory_id, new_content
-            )
-            if existing is not None:
+            existing = self._existing_transition(cursor, workspace_id, old_memory_id)
+            if existing is not None and existing.new_content == new_content:
                 return existing
-            raise
+            raise StorageError(
+                "Old memory already has a replacement transition"
+            ) from None
 
         transition_id = cursor.lastrowid
         if transition_id is None:
             raise StorageError("Transition insert did not return a row ID")
         return ReplacementTransition(
             id=int(transition_id),
-            project_id=project_id,
+            workspace_id=workspace_id,
             old_memory_id=old_memory_id,
             old_content=old_content,
             new_content=new_content,
@@ -990,19 +1111,18 @@ class MemoryStore(BaseModel):
     def _existing_transition(
         self,
         cursor: sqlite3.Cursor,
-        project_id: str,
+        workspace_id: str,
         old_memory_id: int,
-        new_content: str,
     ) -> ReplacementTransition | None:
-        """Return the transition for a unique identity, if present."""
+        """Return the exclusive transition for an old memory, if present."""
         _ = cursor.execute(
             """
-            SELECT id, project_id, old_memory_id, old_content, new_content,
+            SELECT id, workspace_id, old_memory_id, old_content, new_content,
                    archive_id, reason, confidence, status
             FROM replacement_transitions
-            WHERE project_id = ? AND old_memory_id = ? AND new_content = ?
+            WHERE workspace_id = ? AND old_memory_id = ?
             """,
-            (project_id, old_memory_id, new_content),
+            (workspace_id, old_memory_id),
         )
         row = cursor.fetchone()
         return self._row_to_transition(row) if row is not None else None
@@ -1017,7 +1137,7 @@ class MemoryStore(BaseModel):
         )
         return ReplacementTransition(
             id=int(str(row[0])),
-            project_id=str(row[1]),
+            workspace_id=str(row[1]),
             old_memory_id=int(str(row[2])),
             old_content=str(row[3]),
             new_content=str(row[4]),
@@ -1028,12 +1148,12 @@ class MemoryStore(BaseModel):
         )
 
     def get_archived(
-        self, project_id: str, limit: int = 100
+        self, workspace_id: str, limit: int = 100
     ) -> list[ArchivedMemoryRecord]:
-        """Get archived memories for a project.
+        """Get archived memories for a workspace.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             limit: Maximum number of records to return.
 
         Returns:
@@ -1047,14 +1167,14 @@ class MemoryStore(BaseModel):
             try:
                 _ = cursor.execute(
                     """
-                    SELECT id, original_id, project_id, content, replaced_by,
+                    SELECT id, original_id, workspace_id, content, replaced_by,
                            reason, confidence, archived_at
                     FROM archived_memories
-                    WHERE project_id = ?
+                    WHERE workspace_id = ?
                     ORDER BY archived_at DESC
                     LIMIT ?
                     """,
-                    (project_id, limit),
+                    (workspace_id, limit),
                 )
                 rows = cursor.fetchall()
 
@@ -1062,7 +1182,7 @@ class MemoryStore(BaseModel):
                     ArchivedMemoryRecord(
                         id=row[0],
                         original_id=row[1],
-                        project_id=row[2],
+                        workspace_id=row[2],
                         content=row[3],
                         replaced_by=row[4],
                         reason=row[5],
@@ -1076,7 +1196,7 @@ class MemoryStore(BaseModel):
                 if self.logger:
                     self.logger.error(
                         "Failed to get archived memories",
-                        extra={"project_id": project_id, "error": str(e)},
+                        extra={"workspace_id": workspace_id, "error": str(e)},
                     )
                 raise StorageError(f"Failed to get archived memories: {e}") from e
             finally:
@@ -1100,7 +1220,7 @@ class MemoryStore(BaseModel):
                 # Get the archived record
                 _ = cursor.execute(
                     """
-                    SELECT project_id, content FROM archived_memories WHERE id = ?
+                    SELECT workspace_id, content FROM archived_memories WHERE id = ?
                     """,
                     (archive_id,),
                 )
@@ -1114,12 +1234,12 @@ class MemoryStore(BaseModel):
                         )
                     return None
 
-                project_id, content = row[0], row[1]
+                workspace_id, content = row[0], row[1]
 
                 # Insert back into memories table
                 _ = cursor.execute(
-                    "INSERT INTO memories (project_id, content) VALUES (?, ?)",
-                    (project_id, content),
+                    "INSERT INTO memories (workspace_id, content) VALUES (?, ?)",
+                    (workspace_id, content),
                 )
                 new_id = cursor.lastrowid
 
@@ -1136,7 +1256,7 @@ class MemoryStore(BaseModel):
                         extra={
                             "archive_id": archive_id,
                             "new_memory_id": new_id,
-                            "project_id": project_id,
+                            "workspace_id": workspace_id,
                         },
                     )
                 return new_id

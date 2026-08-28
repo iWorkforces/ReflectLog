@@ -17,7 +17,7 @@ from reflectlog.infrastructure.memory_store import (
 def _begin(store: MemoryStore) -> ReplacementTransition:
     return store.begin_replacement_transition(
         old_memory_id=11,
-        project_id="proj1",
+        workspace_id="proj1",
         old_content="Use tabs",
         new_content="Use spaces",
         reason="updated convention",
@@ -40,7 +40,7 @@ class TestBeginReplacementTransition:
             assert transition.new_content == "Use spaces"
             assert transition.reason == "updated convention"
             assert transition.confidence == 0.95
-            assert transition.project_id == "proj1"
+            assert transition.workspace_id == "proj1"
 
             archives = store.get_archived("proj1")
             assert len(archives) == 1
@@ -60,6 +60,71 @@ class TestBeginReplacementTransition:
             assert first.archive_id == second.archive_id
             assert len(store.get_archived("proj1")) == 1
             assert len(store.list_pending_transitions()) == 1
+            store.close()
+
+    def test_dedupes_archive_pairs_before_unique_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            cursor = store.connection.cursor()
+            _ = cursor.execute("DROP INDEX IF EXISTS idx_archived_original_replaced")
+            _ = cursor.execute(
+                "INSERT INTO archived_memories "
+                "(original_id, workspace_id, content, replaced_by, reason, confidence) "
+                "VALUES (1, 'proj1', 'old', 'new', 'r', 0.9), "
+                "(1, 'proj1', 'old', 'new', 'r', 0.8)"
+            )
+            store.connection.commit()
+            cursor.close()
+            store.close()
+
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            archives = store.get_archived("proj1")
+            assert len(archives) == 1
+            store.close()
+
+    def test_rejects_second_successor_for_same_old_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            _ = _begin(store)
+            with pytest.raises(StorageError, match="already has a replacement"):
+                _ = store.begin_replacement_transition(
+                    old_memory_id=11,
+                    workspace_id="proj1",
+                    old_content="Use tabs",
+                    new_content="Use two spaces",
+                    reason="conflict",
+                    confidence=0.5,
+                )
+            assert len(store.list_pending_transitions()) == 1
+            assert store.list_pending_transitions()[0].new_content == "Use spaces"
+            store.close()
+
+    def test_batch_records_all_or_none(self) -> None:
+        from reflectlog.core.types import ReplacementTransitionRequest
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            _ = store.begin_replacement_transitions(
+                [
+                    ReplacementTransitionRequest(
+                        old_memory_id=1,
+                        workspace_id="proj1",
+                        old_content="old-a",
+                        new_content="new",
+                        reason="updated",
+                        confidence=0.9,
+                    ),
+                    ReplacementTransitionRequest(
+                        old_memory_id=2,
+                        workspace_id="proj1",
+                        old_content="old-b",
+                        new_content="new",
+                        reason="updated",
+                        confidence=0.9,
+                    ),
+                ]
+            )
+            assert len(store.list_pending_transitions()) == 2
             store.close()
 
     def test_rolls_back_archive_when_transition_insert_fails(self) -> None:

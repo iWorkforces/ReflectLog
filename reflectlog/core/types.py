@@ -26,7 +26,7 @@ class MemoryRecord(TypedDict, total=False):
     id: str
     memory: str
     score: float
-    project_id: str
+    workspace_id: str
     content: str
     created_at: str
     metadata: dict[str, object]
@@ -42,7 +42,7 @@ class ReplacementTransition:
     """
 
     id: int
-    project_id: str
+    workspace_id: str
     old_memory_id: int
     old_content: str
     new_content: str
@@ -52,11 +52,23 @@ class ReplacementTransition:
     status: ReplacementTransitionStatus
 
 
+@dataclass(frozen=True)
+class ReplacementTransitionRequest:
+    """Inputs needed to record one exclusive old-memory transition."""
+
+    old_memory_id: int
+    workspace_id: str
+    old_content: str
+    new_content: str
+    reason: str
+    confidence: float
+
+
 class IArchiveMemoryStore(Protocol):
     def archive(
         self,
         memory_id: int,
-        project_id: str,
+        workspace_id: str,
         content: str,
         replaced_by: str,
         reason: str,
@@ -66,12 +78,16 @@ class IArchiveMemoryStore(Protocol):
     def begin_replacement_transition(
         self,
         old_memory_id: int,
-        project_id: str,
+        workspace_id: str,
         old_content: str,
         new_content: str,
         reason: str,
         confidence: float,
     ) -> ReplacementTransition: ...
+
+    def begin_replacement_transitions(
+        self, requests: list[ReplacementTransitionRequest]
+    ) -> list[ReplacementTransition]: ...
 
     def list_pending_transitions(self) -> list[ReplacementTransition]: ...
 
@@ -175,7 +191,7 @@ class ISemanticSearchEngine(Protocol):
         def search_memories(
             engine: ISemanticSearchEngine, query: str
         ) -> list[tuple[str, float]]:
-            return engine.search(query=query, project_id="project", limit=5)
+            return engine.search(query=query, workspace_id="project", limit=5)
         ```
     """
 
@@ -184,11 +200,11 @@ class ISemanticSearchEngine(Protocol):
         """Engine name for identification."""
         ...
 
-    def add(self, project_id: str, content: str, infer: bool) -> None:
+    def add(self, workspace_id: str, content: str, infer: bool) -> None:
         """Add a memory to the semantic index.
 
         Args:
-            project_id: Project identifier for filtering.
+            workspace_id: Workspace identifier for filtering.
             content: Memory content to index.
             infer: Whether to enable LLM-based memory inference.
 
@@ -200,11 +216,11 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
-    def add_batch(self, project_id: str, contents: list[str], infer: bool) -> list[str]:
+    def add_batch(self, workspace_id: str, contents: list[str], infer: bool) -> list[str]:
         """Add multiple memories to the semantic index in a single batch.
 
         Args:
-            project_id: Project identifier for filtering.
+            workspace_id: Workspace identifier for filtering.
             contents: List of memory texts to index.
             infer: Whether to enable LLM-based memory inference.
 
@@ -216,14 +232,14 @@ class ISemanticSearchEngine(Protocol):
     def search(
         self,
         query: str,
-        project_id: str,
+        workspace_id: str,
         limit: int,
     ) -> list[tuple[str, float, str]]:
         """Execute semantic search.
 
         Args:
             query: Search query string.
-            project_id: Filter results by project_id.
+            workspace_id: Filter results by workspace_id.
             limit: Maximum number of results.
 
         Returns:
@@ -248,11 +264,11 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
-    def get_all(self, project_id: str) -> list[str]:
-        """Retrieve all stored memories for a project.
+    def get_all(self, workspace_id: str) -> list[str]:
+        """Retrieve all stored memories for a workspace.
 
         Args:
-            project_id: Project identifier for filtering.
+            workspace_id: Workspace identifier for filtering.
 
         Returns:
             List of all memories stored for the project.
@@ -312,11 +328,11 @@ class ISemanticSearchEngine(Protocol):
         """Return True if lazy initialization has already completed."""
         ...
 
-    def get_id_by_content(self, project_id: str, content: str) -> int | None:
+    def get_id_by_content(self, workspace_id: str, content: str) -> int | None:
         """Get the ID of a memory by its content.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             content: Memory text to look up.
 
         Returns:

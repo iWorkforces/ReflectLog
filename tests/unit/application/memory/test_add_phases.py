@@ -38,7 +38,7 @@ from reflectlog.core.logging import IStructuredLogger
 def mock_config() -> Config:
     """Minimal mock Config for add_phases tests."""
     config = Mock(spec=Config)
-    config.project_id = "test_project"
+    config.workspace_id = "test_project"
     config.add_max_concurrency = 4
     config.rerank_max_concurrency = 5
     config.smart_replace_candidate_limit = 3
@@ -60,7 +60,7 @@ def mock_semantic_engine():
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.add_batch = MagicMock(
-        side_effect=lambda project_id, contents, infer: contents
+        side_effect=lambda workspace_id, contents, infer: contents
     )
     engine.search = MagicMock(return_value=[])
     engine.delete = MagicMock(return_value=None)
@@ -202,7 +202,7 @@ class TestDuplicateDetectionPhase:
         )
 
         # Tantivy finds exact match for "existing"
-        def tantivy_search(query, project_id, limit):
+        def tantivy_search(query, workspace_id, limit):
             if "existing" in query:
                 return [("existing", 1.0)]
             return []
@@ -592,11 +592,17 @@ class TestStoragePhase:
             reason="updated",
             similarity_score=0.85,
         )
-        mock_semantic_engine.get_id_by_content.return_value = 42
+        mock_semantic_engine.get_id_by_content.side_effect = (
+            lambda _pid, content: 42 if content == "old msg" else 99
+        )
+        mock_semantic_engine.index = {99}
+        mock_tantivy_engine.find_by_exact_match.side_effect = (
+            lambda _pid, content: [content] if content == "new msg" else []
+        )
         mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
             ReplacementTransition(
                 id=9,
-                project_id="test_project",
+                workspace_id="test_project",
                 old_memory_id=42,
                 old_content="old msg",
                 new_content="new msg",
@@ -669,10 +675,11 @@ class TestStoragePhase:
             reason="updated",
         )
         mock_semantic_engine.get_id_by_content.return_value = 42
+        mock_semantic_engine.index = set()
         mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
             ReplacementTransition(
                 id=9,
-                project_id="test_project",
+                workspace_id="test_project",
                 old_memory_id=42,
                 old_content="old msg",
                 new_content="new msg",
@@ -767,7 +774,7 @@ class TestStoragePhase:
 
         assert result == ["msg1", "msg2"]
         mock_semantic_engine.add_batch.assert_called_once_with(
-            project_id="test_project",
+            workspace_id="test_project",
             contents=["msg1", "msg2"],
             infer=False,
         )
@@ -928,7 +935,7 @@ class TestStoragePhase:
 
         assert result is True
         mock_semantic_engine.add.assert_called_once_with(
-            project_id="test_project",
+            workspace_id="test_project",
             content="new msg",
             infer=False,
         )
@@ -1048,7 +1055,7 @@ class TestStoragePhase:
         """Successful transition record returns the stored row."""
         transition = ReplacementTransition(
             id=9,
-            project_id="test_project",
+            workspace_id="test_project",
             old_memory_id=42,
             old_content="old msg",
             new_content="new msg",
@@ -1079,7 +1086,7 @@ class TestStoragePhase:
         assert result is transition
         mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once_with(
             old_memory_id=42,
-            project_id="test_project",
+            workspace_id="test_project",
             old_content="old msg",
             new_content="new msg",
             reason="updated",
@@ -1135,7 +1142,55 @@ class TestStoragePhase:
         with pytest.raises(StorageError, match="Failed to record replacement"):
             phase._record_replacement_transition(info, "new msg")
 
-        mock_logger.warning.assert_called()
+    async def test_records_all_transitions_before_any_delete(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Every intended old is recorded before the first index delete."""
+        order: list[str] = []
+        mock_semantic_engine.get_id_by_content.side_effect = [11, 12, 99, 99]
+        mock_semantic_engine.index = {99}
+        mock_tantivy_engine.find_by_exact_match.side_effect = (
+            lambda _pid, content: [content] if content == "new msg" else []
+        )
+
+        def record(*_args: object, **_kwargs: object) -> ReplacementTransition:
+            order.append("record")
+            return ReplacementTransition(
+                id=len(order),
+                workspace_id="test_project",
+                old_memory_id=10 + len(order),
+                old_content="old",
+                new_content="new msg",
+                archive_id=100,
+                reason="updated",
+                confidence=0.9,
+                status="pending",
+            )
+
+        def delete(*, memory_id: str) -> None:
+            order.append(f"delete:{memory_id}")
+
+        mock_semantic_engine.memory_store.begin_replacement_transition.side_effect = (
+            record
+        )
+        mock_semantic_engine.delete.side_effect = delete
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        infos = [
+            ReplacementInfo(old_memory="old-a", new_memory="new msg", confidence=0.9, reason="a"),
+            ReplacementInfo(old_memory="old-b", new_memory="new msg", confidence=0.9, reason="b"),
+        ]
+        result = await phase.execute(
+            ["new msg"], replacement_map={"new msg": infos}
+        )
+        assert result.replaced_count == 2
+        assert order[:2] == ["record", "record"]
+        assert order[2].startswith("delete:")
 
     async def test_archive_failure_prevents_delete(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger

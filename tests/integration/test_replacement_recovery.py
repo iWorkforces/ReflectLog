@@ -55,12 +55,36 @@ def _manager(tmpdir: str, *, hybrid: bool = True) -> Generator[MemoryManager]:
         cleanup_manager(manager)
 
 
+def _abandon_without_persist(manager: MemoryManager) -> None:
+    """Drop in-memory indexes without commit, like a SIGKILL."""
+    engine = manager._semantic_engine
+    store = getattr(engine, "memory_store", None)
+    if store is not None:
+        store.close()
+    if isinstance(engine, USearchEngine) and engine._index is not None:
+        engine._index = None
+    tantivy = manager._tantivy_engine
+    if not isinstance(tantivy, TantivyEngine):
+        return
+    if tantivy._writer is not None:
+        tantivy._writer = None
+    tantivy._searcher = None
+    tantivy._index = None
+
+
 def _assert_converged(manager: MemoryManager) -> None:
     memories = manager.get_all()
     assert memories == [NEW]
+    new_id = manager.get_id_by_content(NEW)
+    assert new_id is not None
+    index = getattr(manager._semantic_engine, "index", None)
+    assert index is not None
+    assert new_id in index
+    assert manager.get_id_by_content(OLD) is None
+
     store = manager._semantic_engine.memory_store
     assert isinstance(store, MemoryStore)
-    archives = store.get_archived(manager.project_id)
+    archives = store.get_archived(manager.workspace_id)
     assert len(archives) == 1
     assert archives[0].content == OLD
     assert archives[0].replaced_by == NEW
@@ -70,8 +94,10 @@ def _assert_converged(manager: MemoryManager) -> None:
 
     tantivy = manager._tantivy_engine
     if tantivy is not None:
-        assert tantivy.find_by_exact_match(manager.project_id, NEW)
-        assert not tantivy.find_by_exact_match(manager.project_id, OLD)
+        new_hits = tantivy.find_by_exact_match(manager.workspace_id, NEW)
+        assert NEW in new_hits
+        assert len(set(new_hits)) == 1
+        assert not tantivy.find_by_exact_match(manager.workspace_id, OLD)
 
 
 async def _replace(manager: MemoryManager) -> None:
@@ -109,8 +135,8 @@ def _crash_after_semantic_delete(_manager: MemoryManager) -> Generator[None]:
 def _crash_after_tantivy_delete(_manager: MemoryManager) -> Generator[None]:
     original = TantivyEngine.delete
 
-    def boom(self: TantivyEngine, project_id: str, content: str) -> bool:
-        deleted = original(self, project_id, content)
+    def boom(self: TantivyEngine, workspace_id: str, content: str) -> bool:
+        deleted = original(self, workspace_id, content)
         raise RuntimeError("crash after tantivy delete")
         return deleted
 
@@ -123,9 +149,9 @@ def _crash_after_insert(_manager: MemoryManager) -> Generator[None]:
     original = USearchEngine.add_batch
 
     def boom(
-        self: USearchEngine, project_id: str, contents: list[str], infer: bool
+        self: USearchEngine, workspace_id: str, contents: list[str], infer: bool
     ) -> list[str]:
-        stored = original(self, project_id, contents, infer)
+        stored = original(self, workspace_id, contents, infer)
         raise RuntimeError("crash after insert")
         return stored
 
@@ -134,30 +160,39 @@ def _crash_after_insert(_manager: MemoryManager) -> Generator[None]:
 
 
 @contextmanager
-def _crash_after_commit(manager: MemoryManager) -> Generator[None]:
-    original_semantic = USearchEngine.commit
-    original_tantivy = TantivyEngine.commit
-    hybrid = manager._tantivy_engine is not None
-    committed = {"semantic": False, "tantivy": not hybrid}
+def _crash_after_tantivy_add(_manager: MemoryManager) -> Generator[None]:
+    original = TantivyEngine.add
 
-    def semantic_boom(self: USearchEngine) -> None:
-        original_semantic(self)
-        committed["semantic"] = True
-        if committed["tantivy"]:
-            raise RuntimeError("crash after commit")
+    def boom(self: TantivyEngine, workspace_id: str, content: str) -> None:
+        original(self, workspace_id, content)
+        raise RuntimeError("crash after tantivy add")
 
-    def tantivy_boom(self: TantivyEngine) -> None:
-        original_tantivy(self)
-        committed["tantivy"] = True
-        if committed["semantic"]:
-            raise RuntimeError("crash after commit")
+    with patch.object(TantivyEngine, "add", boom):
+        yield
 
-    with patch.object(USearchEngine, "commit", semantic_boom):
-        if not hybrid:
-            yield
-        else:
-            with patch.object(TantivyEngine, "commit", tantivy_boom):
-                yield
+
+@contextmanager
+def _crash_before_usearch_save(_manager: MemoryManager) -> Generator[None]:
+    def boom(self: USearchEngine) -> None:
+        raise RuntimeError("crash before usearch save")
+
+    with patch.object(USearchEngine, "commit", boom):
+        yield
+
+
+@contextmanager
+def _crash_after_semantic_delete_once(_manager: MemoryManager) -> Generator[None]:
+    original = USearchEngine.delete
+    fired = {"done": False}
+
+    def boom(self: USearchEngine, memory_id: str) -> None:
+        original(self, memory_id)
+        if not fired["done"]:
+            fired["done"] = True
+            raise RuntimeError("crash after semantic delete")
+
+    with patch.object(USearchEngine, "delete", boom):
+        yield
 
 
 @contextmanager
@@ -189,14 +224,19 @@ async def _crash_and_reopen(
                     {NEW: [_replacement()]},
                 )
     finally:
-        first.close()
+        _abandon_without_persist(first)
 
     second, _ = create_memory_manager(config)
     try:
         _assert_converged(second)
-        _assert_converged(second)
     finally:
-        cleanup_manager(second)
+        second.close()
+
+    third, _ = create_memory_manager(config)
+    try:
+        _assert_converged(third)
+    finally:
+        cleanup_manager(third)
 
 
 @pytest.mark.integration
@@ -217,7 +257,7 @@ class TestReplacementRecoveryIntegration:
                 assert manager.get_all() == [OLD]
                 store = manager._semantic_engine.memory_store
                 assert isinstance(store, MemoryStore)
-                assert store.get_archived(manager.project_id) == []
+                assert store.get_archived(manager.workspace_id) == []
 
                 await _replace(manager)
                 _assert_converged(manager)
@@ -238,9 +278,13 @@ class TestReplacementRecoveryIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             await _crash_and_reopen(tmpdir, _crash_after_insert)
 
-    async def test_crash_after_commit(self) -> None:
+    async def test_crash_after_tantivy_add(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            await _crash_and_reopen(tmpdir, _crash_after_commit)
+            await _crash_and_reopen(tmpdir, _crash_after_tantivy_add)
+
+    async def test_crash_before_usearch_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            await _crash_and_reopen(tmpdir, _crash_before_usearch_save)
 
     async def test_crash_after_complete_then_repeat_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -250,6 +294,14 @@ class TestReplacementRecoveryIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             await _crash_and_reopen(tmpdir, _crash_after_transition, hybrid=False)
 
+    async def test_disabled_hybrid_crash_after_insert(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            await _crash_and_reopen(tmpdir, _crash_after_insert, hybrid=False)
+
+    async def test_disabled_hybrid_crash_before_usearch_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            await _crash_and_reopen(tmpdir, _crash_before_usearch_save, hybrid=False)
+
     async def test_disabled_hybrid_normal_replacement(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             with _manager(tmpdir, hybrid=False) as manager:
@@ -257,3 +309,60 @@ class TestReplacementRecoveryIntegration:
                 assert manager.add_memories([OLD]) == 1
                 await _replace(manager)
                 _assert_converged(manager)
+
+    async def test_live_reconcile_after_failed_delete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with _manager(tmpdir) as manager:
+                assert manager.add_memories([OLD]) == 1
+                with _crash_after_semantic_delete_once(manager):
+                    with pytest.raises((StorageError, RuntimeError)):
+                        _ = await manager._storage_phase.execute(
+                            [NEW],
+                            {NEW: [_replacement()]},
+                        )
+                _assert_converged(manager)
+
+    async def test_records_all_olds_before_first_delete(self) -> None:
+        old_a = "Convention A is stale"
+        old_b = "Convention B is stale"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = _config(tmpdir, True)
+            first, _ = create_memory_manager(config)
+            try:
+                assert first.add_memories([old_a, old_b]) == 2
+                with _crash_after_transition(first):
+                    with pytest.raises((StorageError, RuntimeError)):
+                        _ = await first._storage_phase.execute(
+                            [NEW],
+                            {
+                                NEW: [
+                                    ReplacementInfo(
+                                        old_memory=old_a,
+                                        new_memory=NEW,
+                                        confidence=0.9,
+                                        reason="updated",
+                                    ),
+                                    ReplacementInfo(
+                                        old_memory=old_b,
+                                        new_memory=NEW,
+                                        confidence=0.9,
+                                        reason="updated",
+                                    ),
+                                ]
+                            },
+                        )
+            finally:
+                _abandon_without_persist(first)
+
+            second, _ = create_memory_manager(config)
+            try:
+                memories = set(second.get_all())
+                assert NEW in memories
+                assert old_a not in memories
+                assert old_b not in memories
+                store = second._semantic_engine.memory_store
+                assert isinstance(store, MemoryStore)
+                assert store.list_pending_transitions() == []
+                assert len(store.get_archived(second.workspace_id)) == 2
+            finally:
+                cleanup_manager(second)
