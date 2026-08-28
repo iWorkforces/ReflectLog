@@ -11,8 +11,6 @@ from typing import (
     runtime_checkable,
 )
 
-from reflectlog.core.types import MemoryRecord
-
 # Timestamp handling protocol
 # All timestamps in ReflectLog use ISO 8601 format (UTC timezone)
 # Format: "YYYY-MM-DDTHH:MM:SS.ffffffZ" or "YYYY-MM-DDTHH:MM:SSZ"
@@ -29,7 +27,7 @@ from reflectlog.core.types import MemoryRecord
 
 
 # Memory search result types
-type SearchResult = dict[str, list[MemoryRecord]]
+# Pipeline output is search_strategies.SearchResult, not this alias.
 type MemoryList = list[str]
 
 # Tool result types

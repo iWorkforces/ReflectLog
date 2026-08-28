@@ -1,8 +1,9 @@
 """Search engine protocols for ReflectLog.
 
-This module defines protocols for search operations. The search abstraction
-enables different search backends—vector search, full-text search, hybrid
-approaches—while presenting a consistent interface to the search pipeline.
+Live production search is ``search_strategies.SearchPipeline`` over
+``ISemanticSearchEngine`` and Tantivy (sync tuple results) plus
+``FusionEngine``. Types here describe an unused staged-pipeline experiment
+and must not be treated as the MemoryManager search contract.
 """
 
 from dataclasses import dataclass, field
@@ -167,10 +168,11 @@ class IFusionAlgorithm(Protocol):
 
 @runtime_checkable
 class ISearchPipeline(Protocol):
-    """Protocol for search pipeline orchestration.
+    """Unused staged-pipeline protocol.
 
-    This protocol defines the interface for the search pipeline that
-    coordinates backends, fusion, and reranking.
+    Production search is ``search_strategies.SearchPipeline.execute``, which
+    takes ``search_strategies.SearchContext`` and returns a ``SearchResult``
+    dataclass, not ``list[str]``.
     """
 
     async def execute(

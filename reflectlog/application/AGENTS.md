@@ -27,7 +27,7 @@ Orchestration layer implementing 3-phase add pipeline and 4-step search pipeline
 
 **Lazy Reranker** - LLM reranker initialized on-demand with double-checked locking pattern.
 
-**Canonical Type Locations** - Core domain types (`MemoryRecord`, `Embeddings`, `ISemanticSearchEngine`) live in `core/types.py`. Application-layer types (`SearchResult`, `MemoryList`, `ToolResult`, `LogContext`) live in `application/types.py`. Don't mix them up.
+**Canonical Type Locations** - Core domain types (`MemoryRecord`, `Embeddings`, `ISemanticSearchEngine`) live in `core/types.py`. Pipeline `SearchContext` / `SearchResult` live in `memory/search_strategies.py`. Application-layer types (`MemoryList`, `ToolResult`, `LogContext`) live in `application/types.py`.
 
 **Tool Base Class** - All tools extend BaseTool with common logging and error handling.
 
