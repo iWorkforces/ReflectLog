@@ -33,7 +33,7 @@ type SearchResult = dict[str, list[MemoryRecord]]
 type MemoryList = list[str]
 
 # Tool result types
-type ToolResult = None | MemoryList
+type ToolResult = MemoryList | None
 
 
 # Extra logging context
