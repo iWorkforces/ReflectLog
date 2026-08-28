@@ -32,6 +32,8 @@ import threading
 import time
 from typing import Any, final
 
+from asyncer import asyncify
+
 from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
 from reflectlog.core.exceptions import InconsistentStateError, SearchError, StorageError
 from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
@@ -784,19 +786,18 @@ class MemoryManager:
             List of hybrid-ranked memories from both engines.
 
         Raises:
-            RuntimeError: If search operation fails.
+            SearchError: If search operation fails.
+
+        Note:
+            Cancelling this await does not abort native USearch or Tantivy
+            work already running in a worker thread.
         """
         # Use defaults from config if not provided
         if limit is None:
             limit = self.config.search_limit
 
-        # Calculate adaptive overfetch limit
-        try:
-            engine_index = getattr(self._semantic_engine, "index", None)
-            index_size = len(engine_index) if engine_index is not None else 0
-        except Exception:
-            index_size = 0
-
+        # Index restore / len() can block; keep it off the event loop.
+        index_size: int = await asyncify(self._semantic_index_size)()
         overfetch_limit = calculate_adaptive_overfetch(limit, index_size, self.config)
 
         # Create search context
@@ -814,6 +815,14 @@ class MemoryManager:
         result = await self._search_pipeline.execute(context)
 
         return result.memories
+
+    def _semantic_index_size(self) -> int:
+        """Return the semantic index size, or 0 if it cannot be read."""
+        try:
+            engine_index = getattr(self._semantic_engine, "index", None)
+            return len(engine_index) if engine_index is not None else 0
+        except Exception:
+            return 0
 
     def search_for_removal(
         self, query: str, limit: int | None = None

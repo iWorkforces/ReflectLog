@@ -141,6 +141,10 @@ class SearchPipeline:
 
         Raises:
             SearchError: If search operation fails.
+
+        Note:
+            Cancelling this await does not abort native USearch or Tantivy
+            work already running in a worker thread.
         """
         try:
             # Handle non-hybrid search (semantic only)
@@ -365,7 +369,9 @@ class SearchPipeline:
             extra={"step": "fusion", "mode": "rrf"},
         )
 
-        hybrid_results = self._fusion_engine.fuse(semantic_results, tantivy_results)
+        hybrid_results = await asyncify(self._fusion_engine.fuse)(
+            semantic_results, tantivy_results
+        )
 
         if hybrid_results:
             top_rrf = hybrid_results[0][1] if hybrid_results else 0.0
