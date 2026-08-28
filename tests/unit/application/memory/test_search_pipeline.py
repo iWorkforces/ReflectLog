@@ -123,6 +123,7 @@ class ControllableBackend:
         init_entered: threading.Event | None = None,
         init_barrier: threading.Barrier | None = None,
         init_thread_ids: list[int] | None = None,
+        init_release: threading.Event | None = None,
         block_on_init: bool = False,
         finished: threading.Event | None = None,
     ) -> None:
@@ -135,6 +136,7 @@ class ControllableBackend:
         self.init_entered = init_entered
         self.init_barrier = init_barrier
         self.init_thread_ids = init_thread_ids
+        self.init_release = init_release
         self.block_on_init = block_on_init
         self.finished = finished
         self.search_calls: list[tuple[str, str, int]] = []
@@ -146,9 +148,10 @@ class ControllableBackend:
             self.init_entered.set()
         if self.init_barrier is not None:
             _ = self.init_barrier.wait(timeout=_BACKEND_WAIT_TIMEOUT)
-        if self.block_on_init and not self.loop_progressed.wait(
-            timeout=_BACKEND_WAIT_TIMEOUT
-        ):
+        release = self.init_release if self.init_release is not None else (
+            self.loop_progressed if self.block_on_init else None
+        )
+        if release is not None and not release.wait(timeout=_BACKEND_WAIT_TIMEOUT):
             raise TimeoutError("event loop did not progress while init blocked")
 
     def search(self, query: str, project_id: str, limit: int) -> list[object]:
@@ -187,6 +190,26 @@ class TestCanonicalPipelineIdentity:
                 "reflectlog.application.memory.search_pipeline"
             )
 
+    def test_deleted_reexport_paths_are_gone(self) -> None:
+        """Old barrel imports must fail instead of silently returning."""
+        import reflectlog
+        import reflectlog.application.tools as tools_pkg
+        from reflectlog.utility import utility as utility_mod
+
+        with pytest.raises(AttributeError):
+            _ = getattr(reflectlog, "main")
+        with pytest.raises(ImportError):
+            from reflectlog.application.tools import SearchTool
+        assert not hasattr(tools_pkg, "SearchTool")
+        for name in (
+            "AssistantMessage",
+            "ClaudeAgentOptions",
+            "ResultMessage",
+            "TextBlock",
+        ):
+            assert name not in utility_mod.__all__
+            assert not hasattr(utility_mod, name)
+
     def test_manager_wires_strategies_pipeline(self) -> None:
         """MemoryManager._init_pipelines() uses search_strategies.SearchPipeline."""
         config = MagicMock()
@@ -214,6 +237,44 @@ class TestCanonicalPipelineIdentity:
             type(manager._search_pipeline).__module__
             == "reflectlog.application.memory.search_strategies"
         )
+
+    def test_search_engine_status_reports_pending_and_ready(self) -> None:
+        pending = MagicMock()
+        pending.is_ready.return_value = False
+        ready = MagicMock()
+        ready.is_ready.return_value = True
+        config = MagicMock()
+        config.project_id = "test_project"
+        config.enable_hybrid_search = True
+        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        manager._semantic_engine = pending
+        manager._tantivy_engine = None
+        assert manager.search_engine_status() == {
+            "semantic_engine": "pending",
+            "tantivy_engine": "disabled",
+        }
+        manager._semantic_engine = ready
+        manager._tantivy_engine = ready
+        assert manager.search_engine_status() == {
+            "semantic_engine": "initialized",
+            "tantivy_engine": "initialized",
+        }
 
     def test_logger_required(self) -> None:
         """Construction still requires a logger."""
@@ -770,32 +831,43 @@ class TestSearchResponsiveness:
         assert tantivy.search_calls[0][2] == 15
 
     @pytest.mark.asyncio
-    async def test_hybrid_init_off_loop_and_overlaps(self) -> None:
+    async def test_hybrid_init_and_search_hops_stay_off_loop(self) -> None:
         semantic_init = threading.Event()
         tantivy_init = threading.Event()
-        loop_progressed = threading.Event()
+        semantic_search = threading.Event()
+        tantivy_search = threading.Event()
+        init_release = threading.Event()
+        search_release = threading.Event()
         init_barrier = threading.Barrier(2, timeout=_BACKEND_WAIT_TIMEOUT)
+        search_barrier = threading.Barrier(2, timeout=_BACKEND_WAIT_TIMEOUT)
         loop_thread = threading.get_ident()
         semantic_init_threads: list[int] = []
         tantivy_init_threads: list[int] = []
-        ticks_after_init = 0
+        semantic_search_threads: list[int] = []
+        tantivy_search_threads: list[int] = []
 
         semantic = ControllableBackend(
             [("sem", 0.9, _TS)],
-            entered=threading.Event(),
-            loop_progressed=loop_progressed,
+            entered=semantic_search,
+            loop_progressed=search_release,
+            barrier=search_barrier,
+            thread_ids=semantic_search_threads,
             init_entered=semantic_init,
             init_barrier=init_barrier,
             init_thread_ids=semantic_init_threads,
+            init_release=init_release,
             block_on_init=True,
         )
         tantivy = ControllableBackend(
             [("tan", 0.8)],
-            entered=threading.Event(),
-            loop_progressed=loop_progressed,
+            entered=tantivy_search,
+            loop_progressed=search_release,
+            barrier=search_barrier,
+            thread_ids=tantivy_search_threads,
             init_entered=tantivy_init,
             init_barrier=init_barrier,
             init_thread_ids=tantivy_init_threads,
+            init_release=init_release,
             block_on_init=True,
         )
         fusion = MagicMock()
@@ -809,14 +881,13 @@ class TestSearchResponsiveness:
         )
 
         async def ticker() -> None:
-            nonlocal ticks_after_init
             while True:
                 if semantic_init.is_set() and tantivy_init.is_set():
-                    ticks_after_init += 1
-                    loop_progressed.set()
-                await asyncio.sleep(0)
-                if loop_progressed.is_set() and ticks_after_init >= 3:
+                    init_release.set()
+                if semantic_search.is_set() and tantivy_search.is_set():
+                    search_release.set()
                     break
+                await asyncio.sleep(0)
 
         ticker_task = asyncio.create_task(ticker())
         result = await asyncio.wait_for(
@@ -828,11 +899,68 @@ class TestSearchResponsiveness:
             await ticker_task
 
         assert result.memories == ["sem", "tan"]
-        assert ticks_after_init >= 1
-        assert semantic_init_threads and tantivy_init_threads
         assert semantic_init_threads[0] != loop_thread
         assert tantivy_init_threads[0] != loop_thread
         assert semantic_init_threads[0] != tantivy_init_threads[0]
+        assert semantic_search_threads[0] != loop_thread
+        assert tantivy_search_threads[0] != loop_thread
+        assert semantic_search_threads[0] != tantivy_search_threads[0]
+
+    @pytest.mark.asyncio
+    async def test_fusion_offload_keeps_loop_responsive(self) -> None:
+        entered = threading.Event()
+        loop_progressed = threading.Event()
+        loop_thread = threading.get_ident()
+        fuse_threads: list[int] = []
+        ticks_after_enter = 0
+
+        class SlowFusion:
+            method = "rrf"
+
+            def fuse(
+                self,
+                *_result_sets: list[tuple[str, float]],
+            ) -> list[tuple[str, float]]:
+                fuse_threads.append(threading.get_ident())
+                entered.set()
+                if not loop_progressed.wait(timeout=_BACKEND_WAIT_TIMEOUT):
+                    raise TimeoutError("event loop did not progress during fuse")
+                return [("mem", 0.4)]
+
+        semantic = MagicMock()
+        semantic.search.return_value = [("mem", 0.9, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("other", 0.8)]
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=SlowFusion(),
+            config=_make_config(fusion_ranking_threshold=0.0),
+        )
+
+        async def ticker() -> None:
+            nonlocal ticks_after_enter
+            while True:
+                if entered.is_set():
+                    ticks_after_enter += 1
+                    loop_progressed.set()
+                await asyncio.sleep(0)
+                if loop_progressed.is_set() and ticks_after_enter >= 3:
+                    break
+
+        ticker_task = asyncio.create_task(ticker())
+        result = await asyncio.wait_for(
+            pipeline.execute(_make_context(enable_hybrid_search=True)),
+            timeout=5,
+        )
+        ticker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker_task
+
+        assert result.memories == ["mem"]
+        assert ticks_after_enter >= 1
+        assert fuse_threads
+        assert fuse_threads[0] != loop_thread
 
     @pytest.mark.asyncio
     async def test_cancel_waits_for_worker_and_does_not_abort_it(self) -> None:
@@ -856,10 +984,59 @@ class TestSearchResponsiveness:
             await asyncio.sleep(0)
         assert entered.is_set()
         search_task.cancel()
+        assert not search_task.done()
+        assert not finished.is_set()
         loop_progressed.set()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(search_task, timeout=5)
         assert finished.wait(timeout=_BACKEND_WAIT_TIMEOUT)
+
+    @pytest.mark.asyncio
+    async def test_hybrid_cancel_waits_for_both_workers(self) -> None:
+        semantic_entered = threading.Event()
+        tantivy_entered = threading.Event()
+        loop_progressed = threading.Event()
+        semantic_finished = threading.Event()
+        tantivy_finished = threading.Event()
+        barrier = threading.Barrier(2, timeout=_BACKEND_WAIT_TIMEOUT)
+        semantic = ControllableBackend(
+            [("sem", 0.9, _TS)],
+            entered=semantic_entered,
+            loop_progressed=loop_progressed,
+            barrier=barrier,
+            finished=semantic_finished,
+        )
+        tantivy = ControllableBackend(
+            [("tan", 0.8)],
+            entered=tantivy_entered,
+            loop_progressed=loop_progressed,
+            barrier=barrier,
+            finished=tantivy_finished,
+        )
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=MagicMock(method="rrf", fuse=MagicMock(return_value=[("sem", 0.4)])),
+            config=_make_config(fusion_ranking_threshold=0.0),
+        )
+        search_task = asyncio.create_task(
+            pipeline.execute(_make_context(enable_hybrid_search=True))
+        )
+        deadline = asyncio.get_running_loop().time() + _BACKEND_WAIT_TIMEOUT
+        while not (semantic_entered.is_set() and tantivy_entered.is_set()):
+            if asyncio.get_running_loop().time() >= deadline:
+                break
+            await asyncio.sleep(0)
+        assert semantic_entered.is_set() and tantivy_entered.is_set()
+        search_task.cancel()
+        assert not search_task.done()
+        assert not semantic_finished.is_set()
+        assert not tantivy_finished.is_set()
+        loop_progressed.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(search_task, timeout=5)
+        assert semantic_finished.wait(timeout=_BACKEND_WAIT_TIMEOUT)
+        assert tantivy_finished.wait(timeout=_BACKEND_WAIT_TIMEOUT)
 
     @pytest.mark.asyncio
     async def test_manager_search_index_lookup_stays_off_loop(self) -> None:
@@ -868,14 +1045,20 @@ class TestSearchResponsiveness:
         loop_thread = threading.get_ident()
         index_threads: list[int] = []
         ticks_after_enter = 0
+        index_size = 10000
 
-        class SlowIndex:
-            def __len__(self) -> int:
+        class BlockingIndexEngine:
+            def __init__(self) -> None:
+                self.search = MagicMock(return_value=[("mem", 0.9, _TS)])
+                self.ensure_initialized = MagicMock()
+
+            @property
+            def index(self) -> range:
                 index_threads.append(threading.get_ident())
                 entered.set()
                 if not loop_progressed.wait(timeout=_BACKEND_WAIT_TIMEOUT):
-                    raise TimeoutError("event loop did not progress during index len")
-                return 50
+                    raise TimeoutError("event loop did not progress during index get")
+                return range(index_size)
 
         config = MagicMock()
         config.project_id = "test_project"
@@ -904,10 +1087,7 @@ class TestSearchResponsiveness:
         ):
             manager = MemoryManager(config, _make_logger())
 
-        semantic = MagicMock()
-        semantic.index = SlowIndex()
-        semantic.search.return_value = [("mem", 0.9, _TS)]
-        semantic.ensure_initialized = MagicMock()
+        semantic = BlockingIndexEngine()
         tantivy = MagicMock()
         tantivy.search.return_value = []
         tantivy.ensure_initialized = MagicMock()
@@ -942,7 +1122,9 @@ class TestSearchResponsiveness:
         with suppress(asyncio.CancelledError):
             await ticker_task
 
-        expected_overfetch = calculate_adaptive_overfetch(10, 50, config)
+        expected_overfetch = calculate_adaptive_overfetch(10, index_size, config)
+        zero_overfetch = calculate_adaptive_overfetch(10, 0, config)
+        assert expected_overfetch != zero_overfetch
         assert results == ["mem"]
         assert ticks_after_enter >= 1
         assert index_threads
