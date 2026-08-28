@@ -41,8 +41,8 @@ class HealthCheckTool(BaseTool):
                 Dictionary containing health status information with keys:
                 - status: Overall status string ("healthy")
                 - project_id: The configured project identifier
-                - semantic_engine: "initialized" if semantic engine is ready
-                - tantivy_engine: "initialized" or "disabled" based on hybrid search
+                - semantic_engine: "initialized", "pending", or "not_initialized"
+                - tantivy_engine: "initialized", "pending", or "disabled"
                 - reranker_engine: The configured reranker type
                 - hybrid_search_enabled: Whether full-text search is enabled
                 - rrf_fusion_enabled: Whether RRF fusion is enabled
@@ -67,21 +67,12 @@ class HealthCheckTool(BaseTool):
                     }
                 }
             """
-            semantic_engine = getattr(self.memory, "_semantic_engine", None)
-            tantivy_engine = getattr(self.memory, "_tantivy_engine", None)
-
             try:
                 self.log_invocation("health_check")
 
-                # Check semantic engine state
-                semantic_engine_status = (
-                    "initialized" if semantic_engine is not None else "not_initialized"
-                )
-
-                # Check Tantivy engine state
-                tantivy_engine_status = (
-                    "initialized" if tantivy_engine is not None else "disabled"
-                )
+                engine_status = self.memory.search_engine_status()
+                semantic_engine_status = engine_status["semantic_engine"]
+                tantivy_engine_status = engine_status["tantivy_engine"]
 
                 # Build health status response
                 health_status: dict[str, Any] = {
@@ -118,14 +109,7 @@ class HealthCheckTool(BaseTool):
                     "error_type": type(e).__name__,
                     # Provide component states even during error
                     "diagnostics": {
-                        "semantic_engine": (
-                            "initialized"
-                            if semantic_engine is not None
-                            else "not_initialized"
-                        ),
-                        "tantivy_engine": (
-                            "initialized" if tantivy_engine is not None else "disabled"
-                        ),
+                        **self.memory.search_engine_status(),
                         "reranker_engine": self.config.reranker_engine,
                         "hybrid_search_enabled": self.config.enable_hybrid_search,
                     },

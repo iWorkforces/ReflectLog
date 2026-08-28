@@ -807,6 +807,10 @@ class USearchEngine(BaseModel):
         _ = self.index
         self.memory_store.ensure_initialized()
 
+    def is_ready(self) -> bool:
+        """Return True if the USearch index has already been loaded."""
+        return self._index is not None
+
     def get_id_by_content(self, project_id: str, content: str) -> int | None:
         """Get the ID of a memory by its content.
 

@@ -824,6 +824,29 @@ class MemoryManager:
         except Exception:
             return 0
 
+    def search_engine_status(self) -> dict[str, str]:
+        """Return public readiness of search engines for health checks.
+
+        Values are ``initialized`` (warmed), ``pending`` (constructed but
+        not yet ``ensure_initialized``), ``not_initialized``, or ``disabled``.
+        """
+        return {
+            "semantic_engine": self._engine_readiness(
+                self._semantic_engine, absent="not_initialized"
+            ),
+            "tantivy_engine": self._engine_readiness(
+                self._tantivy_engine, absent="disabled"
+            ),
+        }
+
+    def _engine_readiness(self, engine: object | None, *, absent: str) -> str:
+        if engine is None:
+            return absent
+        is_ready = getattr(engine, "is_ready", None)
+        if callable(is_ready) and is_ready():
+            return "initialized"
+        return "pending"
+
     def search_for_removal(
         self, query: str, limit: int | None = None
     ) -> list[dict[str, Any]]:
@@ -843,7 +866,7 @@ class MemoryManager:
             Returns at most 1 candidate since exact match is unique.
 
         Raises:
-            RuntimeError: If search operation fails.
+            SearchError: If the lookup fails.
         """
         # Note: limit is kept for API compatibility but exact match returns at most 1
         _ = limit  # Unused, kept for API compatibility

@@ -146,6 +146,7 @@ class TestUSearchEngineAPI:
             "commit",
             "close",
             "ensure_initialized",
+            "is_ready",
         ):
             assert hasattr(USearchEngine, method_name), f"Missing {method_name}"
 
@@ -365,14 +366,32 @@ class TestProtocolConformance:
         """USearchEngine must have all ISearchBackend protocol methods."""
         from reflectlog.infrastructure.usearch_engine import USearchEngine
 
-        for attr in ("name", "search", "add", "delete", "commit", "close", "ensure_initialized"):
+        for attr in (
+            "name",
+            "search",
+            "add",
+            "delete",
+            "commit",
+            "close",
+            "ensure_initialized",
+            "is_ready",
+        ):
             assert hasattr(USearchEngine, attr), f"USearchEngine missing {attr}"
 
     def test_tantivy_engine_is_search_backend(self) -> None:
         """TantivyEngine must have all ISearchBackend protocol methods."""
         from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
-        for attr in ("name", "search", "add", "delete", "commit", "close", "ensure_initialized"):
+        for attr in (
+            "name",
+            "search",
+            "add",
+            "delete",
+            "commit",
+            "close",
+            "ensure_initialized",
+            "is_ready",
+        ):
             assert hasattr(TantivyEngine, attr), f"TantivyEngine missing {attr}"
 
     def test_llm_reranker_is_ireranker(self) -> None:
