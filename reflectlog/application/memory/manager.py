@@ -64,6 +64,7 @@ from .add_phases import (
 from .fusion import create_fusion_engine
 from .fusion.base import FusionEngine
 from .match_utils import has_exact_match
+from .replacement_recovery import reconcile_pending_replacements
 from .search_strategies import (
     SearchContext,
     SearchPipeline,
@@ -100,6 +101,7 @@ class MemoryManager:
         self._init_smart_replacer()
         self._init_pipelines()
         self._log_configuration()
+        self._reconcile_pending_replacements()
 
         if config.eager_initialization:
             self._eager_initialize_engines()
@@ -268,6 +270,16 @@ class MemoryManager:
             smart_replacement_phase=self._smart_replacement_phase,
             storage_phase=self._storage_phase,
             config=self.config,
+            logger=self.logger,
+        )
+
+    def _reconcile_pending_replacements(self) -> None:
+        """Finish replacements interrupted by a previous process stop."""
+        _ = reconcile_pending_replacements(
+            semantic_engine=self._semantic_engine,
+            tantivy_engine=self._tantivy_engine,
+            write_lock=self._write_lock,
+            lock=self._lock,
             logger=self.logger,
         )
 
