@@ -5,7 +5,7 @@ Covers uncovered lines: 128-137, 295, 365, 374-378, 451, 457, 475,
 """
 
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -80,7 +80,8 @@ def mock_fusion_engine() -> MagicMock:
 def mock_memory_manager() -> MagicMock:
     """Mock MemoryManager for lazy reranker fetching."""
     manager = MagicMock()
-    manager.get_reranker = MagicMock(return_value=None)
+    manager.llm_reranker = None
+    manager.cross_encoder_reranker = None
     return manager
 
 
@@ -227,7 +228,8 @@ class TestSearchPipelineExecute:
 class TestSearchTantivy:
     """Tests for _search_tantivy()."""
 
-    def test_returns_empty_when_tantivy_is_none(
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_tantivy_is_none(
         self,
         mock_config,
         mock_logger,
@@ -245,7 +247,7 @@ class TestSearchTantivy:
             memory_manager=mock_memory_manager,
         )
 
-        result = pipeline._search_tantivy("query", 10, "proj")
+        result = await pipeline._search_tantivy("query", 10, "proj")
         assert result == []
 
 
@@ -324,7 +326,7 @@ class TestGetReranker:
         """Returns ("llm", reranker) when config says llm and reranker exists."""
         mock_config.reranker_engine = "llm"
         mock_reranker = MagicMock()
-        mock_memory_manager.get_reranker.return_value = mock_reranker
+        mock_memory_manager.llm_reranker = mock_reranker
 
         rtype, rinstance = pipeline._get_reranker()
         assert rtype == "llm"
@@ -336,7 +338,7 @@ class TestGetReranker:
         """Returns ("cross_encoder", reranker) when configured (line 457)."""
         mock_config.reranker_engine = "cross_encoder"
         mock_reranker = MagicMock()
-        mock_memory_manager.get_reranker.return_value = mock_reranker
+        mock_memory_manager.cross_encoder_reranker = mock_reranker
 
         rtype, rinstance = pipeline._get_reranker()
         assert rtype == "cross_encoder"
@@ -345,9 +347,9 @@ class TestGetReranker:
     def test_returns_none_when_reranker_is_none(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
-        """Returns (None, None) when get_reranker() returns None."""
+        """Returns (None, None) when no lazy reranker instance is available."""
         mock_config.reranker_engine = "llm"
-        mock_memory_manager.get_reranker.return_value = None
+        mock_memory_manager.llm_reranker = None
 
         rtype, rinstance = pipeline._get_reranker()
         assert rtype is None
@@ -371,7 +373,7 @@ class TestStep4Reranking:
         mock_config.reranker_engine = "cross_encoder"
         mock_reranker = AsyncMock()
         mock_reranker.rerank_async = AsyncMock(return_value=[("msg1", 0.95)])
-        mock_memory_manager.get_reranker.return_value = mock_reranker
+        mock_memory_manager.cross_encoder_reranker = mock_reranker
 
         ctx = _make_context(reranker_engine="cross_encoder")
         results = [("msg1", 0.5), ("msg2", 0.3)]
@@ -387,7 +389,8 @@ class TestStep4Reranking:
     ) -> None:
         """When no reranker is configured, returns results unchanged."""
         mock_config.reranker_engine = "none"
-        mock_memory_manager.get_reranker.return_value = None
+        mock_memory_manager.llm_reranker = None
+        mock_memory_manager.cross_encoder_reranker = None
 
         ctx = _make_context(reranker_engine="none")
         results = [("msg1", 0.5), ("msg2", 0.3)]
@@ -411,7 +414,7 @@ class TestRerankLLM:
     ) -> None:
         """_rerank_llm() returns results unmodified when no reranker (lines 493-495)."""
         mock_config.reranker_engine = "none"
-        mock_memory_manager.get_reranker.return_value = None
+        mock_memory_manager.llm_reranker = None
 
         ctx = _make_context()
         results = [("msg1", 0.5), ("msg2", 0.3)]
@@ -455,7 +458,7 @@ class TestRerankCrossEncoder:
     ) -> None:
         """Returns results unmodified when cross_encoder_reranker is None (lines 538-541)."""
         mock_config.reranker_engine = "none"
-        mock_memory_manager.get_reranker.return_value = None
+        mock_memory_manager.cross_encoder_reranker = None
 
         ctx = _make_context()
         results = [("msg1", 0.5), ("msg2", 0.3)]
@@ -663,13 +666,14 @@ class TestHybridSearchIntegration:
 class TestSearchSemantic:
     """Tests for _search_semantic()."""
 
-    def test_fallback_on_error(
+    @pytest.mark.asyncio
+    async def test_fallback_on_error(
         self, pipeline, mock_semantic_engine, mock_logger
     ) -> None:
         """Returns empty list and logs warning on exception."""
         mock_semantic_engine.search.side_effect = RuntimeError("embed fail")
 
-        result = pipeline._search_semantic("query", 10, "proj")
+        result = await pipeline._search_semantic("query", 10, "proj")
 
         assert result == []
         mock_logger.warning.assert_called_once()

@@ -53,9 +53,10 @@ class SearchTool(BaseTool):
             This approach returns conceptually related content based on both
             semantic similarity and keyword matching.
 
-            Note: Calls async MemoryManager.search() directly, which internally
-            runs parallel searches using asyncio.gather(). This enables concurrent
-            tool calls without blocking the event loop.
+            Note: Calls async MemoryManager.search() directly. Backend USearch
+            and Tantivy work runs on worker threads so concurrent MCP calls are
+            not stalled by one slow search. Cancelling this tool call does not
+            abort native work already running in a worker thread.
 
             Args:
                 query: Non-empty search query string (min_length=1 enforced by Pydantic).

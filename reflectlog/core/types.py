@@ -270,6 +270,10 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
+    def is_ready(self) -> bool:
+        """Return True if lazy initialization has already completed."""
+        ...
+
     def get_id_by_content(self, project_id: str, content: str) -> int | None:
         """Get the ID of a memory by its content.
 

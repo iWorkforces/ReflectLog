@@ -1,1153 +1,1207 @@
-'''Unit tests for search_pipeline module.'''
+"""Canonical SearchPipeline tests: behavior plus event-loop responsiveness.
 
-from dataclasses import dataclass
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+These tests target ``search_strategies.SearchPipeline`` — the single
+production search path used by MemoryManager.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import threading
+from contextlib import suppress
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from reflectlog.application.memory.search_pipeline import (
-    ConcatenationFusionStage,
-    DefaultBackendExecutor,
-    NoopRerankerStage,
-    RRFFusionStage,
+from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.memory.search_strategies import (
+    SearchContext,
     SearchPipeline,
-    SearchPipelineConfig,
-    ThresholdFilterStage,
-    create_default_pipeline,
+    calculate_adaptive_overfetch,
 )
-from reflectlog.core.search import ISearchResult
+from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.exceptions import SearchError
+from reflectlog.core.logging import IStructuredLogger
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-
-def _result(content: str, score: float, memory_id: str = "") -> ISearchResult:
-    '''Create an ISearchResult with minimal boilerplate.'''
-    return ISearchResult(content=content, score=score, memory_id=memory_id)
+_BACKEND_WAIT_TIMEOUT = 1.0
+_TS = "2025-01-01T00:00:00Z"
 
 
-def _make_pipeline_config(
+def _make_config(
     *,
+    fusion_ranking_threshold: float = 0.1,
+    reranker_engine: str = "none",
+) -> Mock:
+    config = Mock(spec=Config)
+    config.project_id = "test_project"
+    config.fusion_ranking_threshold = fusion_ranking_threshold
+    config.reranker_engine = reranker_engine
+    config.search_score_threshold = 0.5
+    config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
+    config.overfetch_multiplier = 3
+    config.overfetch_adaptive = True
+    config.overfetch_min_multiplier = 1.5
+    config.overfetch_max_multiplier = 3.0
+    return config
+
+
+def _make_logger() -> IStructuredLogger:
+    return cast(IStructuredLogger, Mock(spec=StructuredLogger))
+
+
+def _make_context(
+    *,
+    query: str = "test query",
+    limit: int = 5,
+    overfetch_limit: int = 15,
     enable_hybrid_search: bool = True,
     enable_rrf_fusion: bool = True,
     reranker_engine: str = "none",
-    fusion_ranking_threshold: float = 0.01,
-    search_limit: int = 5,
-) -> SearchPipelineConfig:
-    '''Build a SearchPipelineConfig with sensible defaults.'''
-    return SearchPipelineConfig(
+    project_id: str = "test_project",
+) -> SearchContext:
+    return SearchContext(
+        query=query,
+        limit=limit,
+        overfetch_limit=overfetch_limit,
         enable_hybrid_search=enable_hybrid_search,
         enable_rrf_fusion=enable_rrf_fusion,
         reranker_engine=reranker_engine,
-        fusion_ranking_threshold=fusion_ranking_threshold,
-        search_limit=search_limit,
+        project_id=project_id,
     )
 
 
-# ---------------------------------------------------------------------------
-# SearchPipelineConfig
-# ---------------------------------------------------------------------------
+def _make_pipeline(
+    *,
+    semantic: Any,
+    tantivy: Any = None,
+    fusion: Any = None,
+    config: Mock | None = None,
+    logger: IStructuredLogger | None = None,
+    memory_manager: Any = None,
+) -> SearchPipeline:
+    if fusion is None:
+        fusion_engine = MagicMock()
+        fusion_engine.method = "rrf"
+        fusion_engine.fuse = MagicMock(return_value=[])
+    else:
+        fusion_engine = fusion
+    if memory_manager is None:
+        manager = MagicMock()
+        manager.llm_reranker = None
+        manager.cross_encoder_reranker = None
+    else:
+        manager = memory_manager
+    return SearchPipeline(
+        semantic_engine=semantic,
+        tantivy_engine=tantivy,
+        fusion_engine=fusion_engine,
+        config=config or _make_config(),
+        logger=logger or _make_logger(),
+        memory_manager=manager,
+    )
 
 
-@pytest.mark.unit
-class TestSearchPipelineConfig:
-    '''Tests for SearchPipelineConfig dataclass.'''
+class ControllableBackend:
+    """Synchronous backend that can block until the event loop progresses."""
 
-    def test_default_construction(self) -> None:
-        '''Config fields should be stored correctly.'''
-        cfg = SearchPipelineConfig(
-            enable_hybrid_search=True,
-            enable_rrf_fusion=False,
-            reranker_engine="llm",
-            fusion_ranking_threshold=0.5,
-            search_limit=10,
-        )
-        assert cfg.enable_hybrid_search is True
-        assert cfg.enable_rrf_fusion is False
-        assert cfg.reranker_engine == "llm"
-        assert cfg.fusion_ranking_threshold == 0.5
-        assert cfg.search_limit == 10
-
-
-# ---------------------------------------------------------------------------
-# DefaultBackendExecutor
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestDefaultBackendExecutor:
-    '''Tests for DefaultBackendExecutor.'''
-
-    @pytest.fixture
-    def semantic_backend(self) -> AsyncMock:
-        '''Mock semantic search backend.'''
-        backend = AsyncMock()
-        backend.search = AsyncMock(
-            return_value=[
-                _result("semantic hit 1", 0.95),
-                _result("semantic hit 2", 0.80),
-            ]
-        )
-        return backend
-
-    @pytest.fixture
-    def fulltext_backend(self) -> AsyncMock:
-        '''Mock full-text search backend.'''
-        backend = AsyncMock()
-        backend.search = AsyncMock(
-            return_value=[
-                _result("fulltext hit 1", 0.90),
-            ]
-        )
-        return backend
-
-    @pytest.mark.asyncio
-    async def test_semantic_only_when_no_fulltext(
+    def __init__(
         self,
-        semantic_backend: AsyncMock,
-    ) -> None:
-        '''Only semantic results when fulltext_backend is None.'''
-        executor = DefaultBackendExecutor(semantic_backend, None)
-        from reflectlog.core.search import SearchContext
-
-        ctx = SearchContext(
-            query="test",
-            limit=5,
-            overfetch_limit=15,
-            enable_hybrid_search=True,
-            enable_rrf_fusion=True,
-            reranker_engine="none",
-            project_id="proj",
-        )
-        results = await executor.execute(ctx)
-
-        assert "semantic" in results
-        assert "fulltext" not in results
-        assert len(results["semantic"]) == 2
-        semantic_backend.search.assert_awaited_once_with(
-            query="test",
-            project_id="proj",
-            limit=15,
-        )
-
-    @pytest.mark.asyncio
-    async def test_hybrid_search_both_backends(
-        self,
-        semantic_backend: AsyncMock,
-        fulltext_backend: AsyncMock,
-    ) -> None:
-        '''Both backends executed when hybrid search enabled.'''
-        executor = DefaultBackendExecutor(semantic_backend, fulltext_backend)
-        from reflectlog.core.search import SearchContext
-
-        ctx = SearchContext(
-            query="test",
-            limit=5,
-            overfetch_limit=15,
-            enable_hybrid_search=True,
-            enable_rrf_fusion=True,
-            reranker_engine="none",
-            project_id="proj",
-        )
-        results = await executor.execute(ctx)
-
-        assert "semantic" in results
-        assert "fulltext" in results
-        assert len(results["semantic"]) == 2
-        assert len(results["fulltext"]) == 1
-
-    @pytest.mark.asyncio
-    async def test_fulltext_skipped_when_hybrid_disabled(
-        self,
-        semantic_backend: AsyncMock,
-        fulltext_backend: AsyncMock,
-    ) -> None:
-        '''Fulltext backend skipped when enable_hybrid_search=False.'''
-        executor = DefaultBackendExecutor(semantic_backend, fulltext_backend)
-        from reflectlog.core.search import SearchContext
-
-        ctx = SearchContext(
-            query="test",
-            limit=5,
-            overfetch_limit=15,
-            enable_hybrid_search=False,
-            enable_rrf_fusion=True,
-            reranker_engine="none",
-            project_id="proj",
-        )
-        results = await executor.execute(ctx)
-
-        assert "semantic" in results
-        assert "fulltext" not in results
-        fulltext_backend.search.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# RRFFusionStage
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestRRFFusionStage:
-    '''Tests for RRFFusionStage.'''
-
-    @pytest.fixture
-    def fusion(self) -> RRFFusionStage:
-        '''RRFFusionStage with default k=60.'''
-        return RRFFusionStage(k=60.0)
-
-    def test_empty_results(self, fusion: RRFFusionStage) -> None:
-        '''Empty input should return empty list.'''
-        assert fusion.fuse({}, limit=10) == []
-
-    def test_single_backend(self, fusion: RRFFusionStage) -> None:
-        '''Single backend results returned with RRF scores.'''
-        results = {
-            "semantic": [
-                _result("A", 0.9),
-                _result("B", 0.8),
-            ],
-        }
-        fused = fusion.fuse(results, limit=10)
-
-        assert len(fused) == 2
-        # A was rank 1 → RRF = 1/(60+1), B was rank 2 → RRF = 1/(60+2)
-        assert fused[0].content == "A"
-        assert fused[1].content == "B"
-        assert fused[0].score > fused[1].score
-
-    def test_multiple_backends_aggregation(self, fusion: RRFFusionStage) -> None:
-        '''Results from multiple backends get aggregated RRF scores.'''
-        results = {
-            "semantic": [_result("A", 0.9), _result("B", 0.8)],
-            "fulltext": [_result("B", 0.95), _result("C", 0.7)],
-        }
-        fused = fusion.fuse(results, limit=10)
-
-        contents = [r.content for r in fused]
-        assert "A" in contents
-        assert "B" in contents
-        assert "C" in contents
-        # B appears in both backends → highest aggregated score
-        b_item = next(r for r in fused if r.content == "B")
-        a_item = next(r for r in fused if r.content == "A")
-        assert b_item.score > a_item.score
-
-    def test_limit_respected(self, fusion: RRFFusionStage) -> None:
-        '''Only limit number of results returned.'''
-        results = {
-            "semantic": [_result(f"item{i}", 0.9 - i * 0.1) for i in range(5)],
-        }
-        fused = fusion.fuse(results, limit=2)
-        assert len(fused) == 2
-
-    def test_custom_k_value(self) -> None:
-        '''Custom k changes RRF scores.'''
-        fusion_k10 = RRFFusionStage(k=10.0)
-        fusion_k100 = RRFFusionStage(k=100.0)
-
-        results = {"semantic": [_result("X", 0.9)]}
-
-        fused_k10 = fusion_k10.fuse(results, limit=1)
-        fused_k100 = fusion_k100.fuse(results, limit=1)
-
-        # Lower k → higher score for top rank: 1/(10+1) > 1/(100+1)
-        assert fused_k10[0].score > fused_k100[0].score
-
-    def test_rrf_score_correctness(self) -> None:
-        '''Verify RRF formula: score = sum(1/(k+rank)).'''
-        fusion = RRFFusionStage(k=60.0)
-        results = {
-            "semantic": [_result("A", 0.9)],
-            "fulltext": [_result("A", 0.85)],
-        }
-        fused = fusion.fuse(results, limit=10)
-
-        expected_score = 1.0 / (60 + 1) + 1.0 / (60 + 1)  # rank 1 in both
-        assert abs(fused[0].score - expected_score) < 1e-9
-
-    def test_original_score_in_metadata(self, fusion: RRFFusionStage) -> None:
-        '''Original score from first matching backend stored in metadata.'''
-        results = {
-            "semantic": [_result("A", 0.92)],
-        }
-        fused = fusion.fuse(results, limit=10)
-        assert fused[0].metadata["original_score"] == 0.92
-
-    def test_memory_id_empty_string(self, fusion: RRFFusionStage) -> None:
-        '''Fused results get empty memory_id.'''
-        results = {
-            "semantic": [_result("A", 0.9, memory_id="id1")],
-        }
-        fused = fusion.fuse(results, limit=10)
-        assert fused[0].memory_id == ""
-
-    def test_deduplication_by_content(self, fusion: RRFFusionStage) -> None:
-        '''Duplicate content from same backend is deduplicated.'''
-        results = {
-            "semantic": [_result("dup", 0.9), _result("dup", 0.8)],
-        }
-        fused = fusion.fuse(results, limit=10)
-        # Rankings dict uses content as key so second "dup" overwrites first
-        # But aggregated dict still only has one entry for "dup"
-        dup_items = [r for r in fused if r.content == "dup"]
-        assert len(dup_items) == 1
-
-
-# ---------------------------------------------------------------------------
-# ConcatenationFusionStage
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestConcatenationFusionStage:
-    '''Tests for ConcatenationFusionStage.'''
-
-    @pytest.fixture
-    def fusion(self) -> ConcatenationFusionStage:
-        '''ConcatenationFusionStage instance.'''
-        return ConcatenationFusionStage()
-
-    def test_empty_results(self, fusion: ConcatenationFusionStage) -> None:
-        '''Empty input should return empty list.'''
-        assert fusion.fuse({}, limit=10) == []
-
-    def test_single_backend(self, fusion: ConcatenationFusionStage) -> None:
-        '''Results from one backend returned sorted by score.'''
-        results = {
-            "semantic": [_result("B", 0.7), _result("A", 0.9)],
-        }
-        fused = fusion.fuse(results, limit=10)
-        assert fused[0].content == "A"
-        assert fused[1].content == "B"
-
-    def test_multiple_backends_combined(
-        self,
-        fusion: ConcatenationFusionStage,
-    ) -> None:
-        '''Results from multiple backends combined and sorted.'''
-        results = {
-            "semantic": [_result("A", 0.9)],
-            "fulltext": [_result("B", 0.95)],
-        }
-        fused = fusion.fuse(results, limit=10)
-        assert len(fused) == 2
-        assert fused[0].content == "B"  # higher score
-        assert fused[1].content == "A"
-
-    def test_deduplication(self, fusion: ConcatenationFusionStage) -> None:
-        '''Duplicate content deduplicated (first occurrence kept).'''
-        results = {
-            "semantic": [_result("same", 0.8)],
-            "fulltext": [_result("same", 0.95)],
-        }
-        fused = fusion.fuse(results, limit=10)
-        assert len(fused) == 1
-        # First occurrence wins → score from semantic
-        assert fused[0].score == 0.8
-
-    def test_limit_respected(self, fusion: ConcatenationFusionStage) -> None:
-        '''Only limit number of results returned.'''
-        results = {
-            "semantic": [_result(f"item{i}", 0.9 - i * 0.1) for i in range(5)],
-        }
-        fused = fusion.fuse(results, limit=2)
-        assert len(fused) == 2
-
-
-# ---------------------------------------------------------------------------
-# ThresholdFilterStage
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestThresholdFilterStage:
-    '''Tests for ThresholdFilterStage.'''
-
-    @pytest.fixture
-    def filter_stage(self) -> ThresholdFilterStage:
-        '''ThresholdFilterStage instance.'''
-        return ThresholdFilterStage()
-
-    def test_all_above_threshold(
-        self,
-        filter_stage: ThresholdFilterStage,
-    ) -> None:
-        '''All results kept when above threshold.'''
-        results = [_result("A", 0.9), _result("B", 0.8)]
-        filtered = filter_stage.filter(results, threshold=0.5)
-        assert len(filtered) == 2
-
-    def test_all_below_threshold(
-        self,
-        filter_stage: ThresholdFilterStage,
-    ) -> None:
-        '''All results removed when below threshold.'''
-        results = [_result("A", 0.3), _result("B", 0.2)]
-        filtered = filter_stage.filter(results, threshold=0.5)
-        assert len(filtered) == 0
-
-    def test_partial_filtering(
-        self,
-        filter_stage: ThresholdFilterStage,
-    ) -> None:
-        '''Only results above threshold kept.'''
-        results = [_result("A", 0.9), _result("B", 0.3)]
-        filtered = filter_stage.filter(results, threshold=0.5)
-        assert len(filtered) == 1
-        assert filtered[0].content == "A"
-
-    def test_exact_threshold_included(
-        self,
-        filter_stage: ThresholdFilterStage,
-    ) -> None:
-        '''Score exactly at threshold is included (>=).'''
-        results = [_result("A", 0.5)]
-        filtered = filter_stage.filter(results, threshold=0.5)
-        assert len(filtered) == 1
-
-    def test_empty_input(self, filter_stage: ThresholdFilterStage) -> None:
-        '''Empty list returns empty list.'''
-        filtered = filter_stage.filter([], threshold=0.5)
-        assert filtered == []
-
-    def test_zero_threshold_keeps_all(
-        self,
-        filter_stage: ThresholdFilterStage,
-    ) -> None:
-        '''Zero threshold keeps everything.'''
-        results = [_result("A", 0.01), _result("B", 0.0)]
-        filtered = filter_stage.filter(results, threshold=0.0)
-        assert len(filtered) == 2
-
-
-# ---------------------------------------------------------------------------
-# NoopRerankerStage
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestNoopRerankerStage:
-    '''Tests for NoopRerankerStage.'''
-
-    @pytest.mark.asyncio
-    async def test_passthrough(self) -> None:
-        '''Results returned unchanged.'''
-        stage = NoopRerankerStage()
-        results = [_result("A", 0.9), _result("B", 0.8)]
-        reranked = await stage.rerank("query", results)
-        assert reranked == results
-
-    @pytest.mark.asyncio
-    async def test_empty_input(self) -> None:
-        '''Empty list returns empty list.'''
-        stage = NoopRerankerStage()
-        reranked = await stage.rerank("query", [])
-        assert reranked == []
-
-
-# ---------------------------------------------------------------------------
-# SearchPipeline
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestSearchPipeline:
-    '''Tests for SearchPipeline orchestration.'''
-
-    @pytest.fixture
-    def mock_backend_executor(self) -> AsyncMock:
-        '''Mock backend executor.'''
-        executor = AsyncMock()
-        executor.execute = AsyncMock(
-            return_value={
-                "semantic": [
-                    _result("hit1", 0.9),
-                    _result("hit2", 0.8),
-                ],
-            }
-        )
-        return executor
-
-    @pytest.fixture
-    def mock_fusion(self) -> MagicMock:
-        '''Mock fusion stage.'''
-        fusion = MagicMock()
-        fusion.fuse.return_value = [
-            _result("hit1", 0.032),
-            _result("hit2", 0.016),
-        ]
-        return fusion
-
-    @pytest.fixture
-    def mock_filter(self) -> MagicMock:
-        '''Mock filter stage.'''
-        filter_stage = MagicMock()
-        filter_stage.filter.side_effect = lambda results, threshold: [
-            r for r in results if r.score >= threshold
-        ]
-        return filter_stage
-
-    @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Mock structured logger.'''
-        return MagicMock()
-
-    def _make_pipeline(
-        self,
-        executor: AsyncMock,
-        fusion: MagicMock,
-        filter_stage: MagicMock,
-        logger: MagicMock,
+        results: list[object],
         *,
-        reranker: Any = None,
-        config: SearchPipelineConfig | None = None,
-    ) -> SearchPipeline:
-        '''Build a SearchPipeline with provided or default config.'''
-        if config is None:
-            config = _make_pipeline_config()
-        return SearchPipeline(
-            backend_executor=executor,
-            fusion_stage=fusion,
-            filter_stage=filter_stage,
-            reranker_stage=reranker,
-            config=config,
-            logger=logger,
+        entered: threading.Event,
+        loop_progressed: threading.Event,
+        barrier: threading.Barrier | None = None,
+        thread_ids: list[int] | None = None,
+        fail: Exception | None = None,
+        init_entered: threading.Event | None = None,
+        init_barrier: threading.Barrier | None = None,
+        init_thread_ids: list[int] | None = None,
+        init_release: threading.Event | None = None,
+        block_on_init: bool = False,
+        finished: threading.Event | None = None,
+    ) -> None:
+        self.results = results
+        self.entered = entered
+        self.loop_progressed = loop_progressed
+        self.barrier = barrier
+        self.thread_ids = thread_ids
+        self.fail = fail
+        self.init_entered = init_entered
+        self.init_barrier = init_barrier
+        self.init_thread_ids = init_thread_ids
+        self.init_release = init_release
+        self.block_on_init = block_on_init
+        self.finished = finished
+        self.search_calls: list[tuple[str, str, int]] = []
+
+    def ensure_initialized(self) -> None:
+        if self.init_thread_ids is not None:
+            self.init_thread_ids.append(threading.get_ident())
+        if self.init_entered is not None:
+            self.init_entered.set()
+        if self.init_barrier is not None:
+            _ = self.init_barrier.wait(timeout=_BACKEND_WAIT_TIMEOUT)
+        release = self.init_release if self.init_release is not None else (
+            self.loop_progressed if self.block_on_init else None
         )
+        if release is not None and not release.wait(timeout=_BACKEND_WAIT_TIMEOUT):
+            raise TimeoutError("event loop did not progress while init blocked")
+
+    def search(self, query: str, project_id: str, limit: int) -> list[object]:
+        self.search_calls.append((query, project_id, limit))
+        if self.thread_ids is not None:
+            self.thread_ids.append(threading.get_ident())
+        self.entered.set()
+        try:
+            if self.barrier is not None:
+                _ = self.barrier.wait(timeout=_BACKEND_WAIT_TIMEOUT)
+            if not self.loop_progressed.wait(timeout=_BACKEND_WAIT_TIMEOUT):
+                raise TimeoutError("event loop did not progress while backend blocked")
+            if self.fail is not None:
+                raise self.fail
+            return list(self.results)
+        finally:
+            if self.finished is not None:
+                self.finished.set()
+
+
+# ---------------------------------------------------------------------------
+# Single canonical pipeline
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCanonicalPipelineIdentity:
+    """Guard against a second production search implementation."""
+
+    def test_search_pipeline_module_removed(self) -> None:
+        """Compatibility re-export module no longer exists."""
+        import importlib
+
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module(
+                "reflectlog.application.memory.search_pipeline"
+            )
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module("reflectlog.core.search")
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module(
+                "reflectlog.infrastructure.search.base"
+            )
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module(
+                "reflectlog.application.memory.protocols"
+            )
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module("reflectlog.application.types")
+
+    def test_deleted_reexport_paths_are_gone(self) -> None:
+        """Old barrel imports must fail instead of silently returning."""
+        import reflectlog
+        import reflectlog.application.tools as tools_pkg
+        from reflectlog.utility import utility as utility_mod
+
+        with pytest.raises(AttributeError):
+            _ = getattr(reflectlog, "main")
+        assert not hasattr(tools_pkg, "SearchTool")
+        for name in (
+            "AssistantMessage",
+            "ClaudeAgentOptions",
+            "ResultMessage",
+            "TextBlock",
+        ):
+            assert name not in utility_mod.__all__
+            assert not hasattr(utility_mod, name)
+
+    def test_manager_wires_strategies_pipeline(self) -> None:
+        """MemoryManager._init_pipelines() uses search_strategies.SearchPipeline."""
+        config = MagicMock()
+        config.project_id = "test_project"
+        config.enable_hybrid_search = True
+        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        assert isinstance(manager._search_pipeline, SearchPipeline)
+        assert (
+            type(manager._search_pipeline).__module__
+            == "reflectlog.application.memory.search_strategies"
+        )
+
+    def test_search_engine_status_reports_pending_and_ready(self) -> None:
+        pending = MagicMock()
+        pending.is_ready.return_value = False
+        ready = MagicMock()
+        ready.is_ready.return_value = True
+        config = MagicMock()
+        config.project_id = "test_project"
+        config.enable_hybrid_search = True
+        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        manager._semantic_engine = pending
+        manager._tantivy_engine = None
+        assert manager.search_engine_status() == {
+            "semantic_engine": "pending",
+            "tantivy_engine": "disabled",
+        }
+        manager._semantic_engine = ready
+        manager._tantivy_engine = ready
+        assert manager.search_engine_status() == {
+            "semantic_engine": "initialized",
+            "tantivy_engine": "initialized",
+        }
+
+    def test_search_engine_status_treats_is_ready_errors_as_pending(self) -> None:
+        broken = MagicMock()
+        broken.is_ready.side_effect = RuntimeError("peek failed")
+        missing = MagicMock()
+        missing.is_ready = None
+        config = MagicMock()
+        config.project_id = "test_project"
+        config.enable_hybrid_search = True
+        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        manager._semantic_engine = broken
+        manager._tantivy_engine = missing
+        assert manager.search_engine_status() == {
+            "semantic_engine": "pending",
+            "tantivy_engine": "pending",
+        }
+
+    def test_logger_required(self) -> None:
+        """Construction still requires a logger."""
+        with pytest.raises(ValueError, match="logger is required"):
+            _ = SearchPipeline(
+                semantic_engine=MagicMock(),
+                tantivy_engine=None,
+                fusion_engine=MagicMock(),
+                config=_make_config(),
+                logger=None,
+                memory_manager=None,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Semantic-only and hybrid behavior (migrated from old pipeline tests)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSemanticOnlyBehavior:
+    """Semantic-only path: empty, one result, exception, ordering."""
 
     @pytest.mark.asyncio
-    async def test_full_pipeline_no_reranker(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_fusion: MagicMock,
-        mock_filter: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Pipeline returns content strings without reranker.'''
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-        )
-        results = await pipeline.execute("test query", "proj-1")
+    async def test_empty_results(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = []
+        pipeline = _make_pipeline(semantic=semantic)
 
-        assert isinstance(results, list)
-        assert all(isinstance(r, str) for r in results)
-        mock_backend_executor.execute.assert_awaited_once()
-        mock_fusion.fuse.assert_called_once()
+        result = await pipeline.execute(_make_context(enable_hybrid_search=False))
+
+        assert result.memories == []
+        assert result.timestamp_map == {}
+        assert result.semantic_results == []
+        assert result.tantivy_results == []
 
     @pytest.mark.asyncio
-    async def test_limit_defaults_from_config(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_fusion: MagicMock,
-        mock_filter: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''When limit=None, uses config.search_limit.'''
-        cfg = _make_pipeline_config(search_limit=3)
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-            config=cfg,
-        )
-        results = await pipeline.execute("query", "proj")
+    async def test_single_result_preserves_order_and_timestamp(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("only", 0.9, _TS)]
+        pipeline = _make_pipeline(semantic=semantic)
 
-        # Fusion receives config limit
-        _, call_kwargs = mock_fusion.fuse.call_args
-        assert call_kwargs.get("limit", mock_fusion.fuse.call_args[0][1]) == 3
+        result = await pipeline.execute(_make_context(enable_hybrid_search=False))
+
+        assert result.memories == ["only"]
+        assert result.timestamp_map == {"only": _TS}
+        semantic.search.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_explicit_limit_overrides_config(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_fusion: MagicMock,
-        mock_filter: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Explicit limit overrides config default.'''
-        cfg = _make_pipeline_config(search_limit=10)
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-            config=cfg,
-        )
-        await pipeline.execute("query", "proj", limit=2)
-
-        call_args = mock_fusion.fuse.call_args
-        assert call_args[0][1] == 2  # limit positional arg
-
-    @pytest.mark.asyncio
-    async def test_filter_applied_when_rrf_enabled(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_fusion: MagicMock,
-        mock_filter: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Filter stage called when enable_rrf_fusion=True.'''
-        cfg = _make_pipeline_config(
-            enable_rrf_fusion=True,
-            fusion_ranking_threshold=0.02,
-        )
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-            config=cfg,
-        )
-        await pipeline.execute("query", "proj")
-
-        mock_filter.filter.assert_called_once()
-        filter_args = mock_filter.filter.call_args
-        assert filter_args[0][1] == 0.02  # threshold
-
-    @pytest.mark.asyncio
-    async def test_filter_skipped_when_rrf_disabled(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_fusion: MagicMock,
-        mock_filter: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Filter stage NOT called when enable_rrf_fusion=False.'''
-        cfg = _make_pipeline_config(enable_rrf_fusion=False)
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-            config=cfg,
-        )
-        await pipeline.execute("query", "proj")
-
-        mock_filter.filter.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_reranker_applied_when_present(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_fusion: MagicMock,
-        mock_filter: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Reranker transforms results when provided.'''
-        mock_reranker = AsyncMock()
-
-        @dataclass(frozen=True)
-        class FakeRankingResult:
-            content: str
-            score: float
-            metadata: dict[str, Any]
-
-        mock_reranker.rerank = AsyncMock(
-            return_value=[
-                FakeRankingResult(content="hit1", score=0.99, metadata={}),
-            ]
-        )
-
-        cfg = _make_pipeline_config(
-            enable_rrf_fusion=True, fusion_ranking_threshold=0.0
-        )
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-            reranker=mock_reranker,
-            config=cfg,
-        )
-        results = await pipeline.execute("test query", "proj")
-
-        mock_reranker.rerank.assert_awaited_once()
-        assert "hit1" in results
-
-    @pytest.mark.asyncio
-    async def test_reranker_skipped_for_empty_memories(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Reranker not called when filtered results are empty.'''
-        mock_fusion = MagicMock()
-        mock_fusion.fuse.return_value = []
-
-        mock_filter = MagicMock()
-        mock_filter.filter.return_value = []
-
-        mock_reranker = AsyncMock()
-        mock_reranker.rerank = AsyncMock()
-
-        cfg = _make_pipeline_config(
-            enable_rrf_fusion=True, fusion_ranking_threshold=0.0
-        )
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-            reranker=mock_reranker,
-            config=cfg,
-        )
-        results = await pipeline.execute("query", "proj")
-
-        mock_reranker.rerank.assert_not_awaited()
-        assert results == []
-
-    @pytest.mark.asyncio
-    async def test_results_truncated_to_limit(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_filter: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Final results truncated to limit.'''
-        mock_fusion = MagicMock()
-        mock_fusion.fuse.return_value = [
-            _result(f"hit{i}", 0.9 - i * 0.01) for i in range(10)
+    async def test_multiple_results_keep_backend_order(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [
+            ("alpha", 0.9, _TS),
+            ("beta", 0.7, "2025-02-01T00:00:00Z"),
         ]
+        pipeline = _make_pipeline(semantic=semantic)
 
-        cfg = _make_pipeline_config(
-            enable_rrf_fusion=False,
-            search_limit=3,
+        result = await pipeline.execute(
+            _make_context(enable_hybrid_search=False, limit=5)
         )
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-            config=cfg,
-        )
-        results = await pipeline.execute("query", "proj")
 
-        assert len(results) <= 3
+        assert result.memories == ["alpha", "beta"]
 
     @pytest.mark.asyncio
-    async def test_search_context_constructed_correctly(
-        self,
-        mock_backend_executor: AsyncMock,
-        mock_fusion: MagicMock,
-        mock_filter: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''SearchContext passed to executor has correct fields.'''
-        cfg = _make_pipeline_config(
-            enable_hybrid_search=True,
-            enable_rrf_fusion=False,
-            reranker_engine="llm",
-            search_limit=7,
-        )
-        pipeline = self._make_pipeline(
-            mock_backend_executor,
-            mock_fusion,
-            mock_filter,
-            mock_logger,
-            config=cfg,
-        )
-        await pipeline.execute("my query", "my-proj", limit=7)
+    async def test_engine_failure_raises_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.search.side_effect = RuntimeError("engine boom")
+        pipeline = _make_pipeline(semantic=semantic)
 
-        ctx = mock_backend_executor.execute.call_args[0][0]
-        assert ctx.query == "my query"
-        assert ctx.project_id == "my-proj"
-        assert ctx.limit == 7
-        assert ctx.enable_hybrid_search is True
-        assert ctx.enable_rrf_fusion is False
-        assert ctx.reranker_engine == "llm"
+        with pytest.raises(SearchError, match="Failed to execute search"):
+            await pipeline.execute(_make_context(enable_hybrid_search=False))
+
+    @pytest.mark.asyncio
+    async def test_does_not_query_tantivy(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("hit", 0.8, _TS)]
+        tantivy = MagicMock()
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        await pipeline.execute(_make_context(enable_hybrid_search=False))
+
+        tantivy.search.assert_not_called()
+
+
+@pytest.mark.unit
+class TestHybridFusionAndFilter:
+    """RRF vs concatenation, thresholds, limits — migrated orchestration tests."""
+
+    @pytest.mark.asyncio
+    async def test_rrf_calls_fusion_engine_and_respects_limit(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [
+            ("hit1", 0.9, _TS),
+            ("hit2", 0.8, _TS),
+            ("hit3", 0.7, _TS),
+        ]
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("hit2", 0.95), ("hit4", 0.6)]
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [
+            ("hit2", 0.5),
+            ("hit1", 0.4),
+            ("hit4", 0.3),
+            ("hit3", 0.2),
+        ]
+        config = _make_config(fusion_ranking_threshold=0.0)
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
+        )
+
+        result = await pipeline.execute(
+            _make_context(enable_rrf_fusion=True, limit=2, overfetch_limit=10)
+        )
+
+        fusion.fuse.assert_called_once_with(
+            [("hit1", 0.9), ("hit2", 0.8), ("hit3", 0.7)],
+            [("hit2", 0.95), ("hit4", 0.6)],
+        )
+        assert result.memories == ["hit2", "hit1"]
+
+    @pytest.mark.asyncio
+    async def test_concatenation_semantic_first_not_score_sort(self) -> None:
+        """Canonical concat keeps semantic hits first, even if Tantivy scores higher."""
+        semantic = MagicMock()
+        semantic.search.return_value = [("semantic-low", 0.2, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("tantivy-high", 0.99)]
+        fusion = MagicMock()
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
+
+        result = await pipeline.execute(
+            _make_context(enable_rrf_fusion=False, limit=5, overfetch_limit=10)
+        )
+
+        fusion.fuse.assert_not_called()
+        assert result.memories == ["semantic-low", "tantivy-high"]
+
+    @pytest.mark.asyncio
+    async def test_concatenation_deduplicates_and_respects_limit(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("shared", 0.8, _TS), ("s2", 0.7, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("shared", 0.99), ("t2", 0.5)]
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        result = await pipeline.execute(
+            _make_context(enable_rrf_fusion=False, limit=2, overfetch_limit=2)
+        )
+
+        assert result.memories == ["shared", "s2"]
+
+    @pytest.mark.asyncio
+    async def test_empty_backends_return_empty(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = []
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = []
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
+
+        result = await pipeline.execute(_make_context(enable_rrf_fusion=True))
+
+        assert result.memories == []
+
+    @pytest.mark.asyncio
+    async def test_fusion_threshold_keeps_scores_at_or_above(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("keep", 0.9, _TS), ("drop", 0.8, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("keep", 0.5), ("drop", 0.3)]
+        config = _make_config(fusion_ranking_threshold=0.5)
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
+        )
+
+        result = await pipeline.execute(_make_context(enable_rrf_fusion=True))
+
+        assert result.memories == ["keep"]
+
+    @pytest.mark.asyncio
+    async def test_fusion_threshold_filters_all_returns_empty(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("low", 0.9, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("low", 0.01)]
+        config = _make_config(fusion_ranking_threshold=0.5)
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
+        )
+
+        result = await pipeline.execute(_make_context(enable_rrf_fusion=True))
+
+        assert result.memories == []
+        assert result.semantic_results == [("low", 0.9, _TS)]
+
+    @pytest.mark.asyncio
+    async def test_concatenation_skips_threshold_filter(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("low", 0.01, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        config = _make_config(fusion_ranking_threshold=0.9)
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, config=config)
+
+        result = await pipeline.execute(_make_context(enable_rrf_fusion=False))
+
+        assert result.memories == ["low"]
+
+    def test_filter_stage_empty_and_zero_threshold(self) -> None:
+        pipeline = _make_pipeline(semantic=MagicMock())
+        assert pipeline._filter_by_fusion_threshold([], 0.5, "q") == []
+        kept = pipeline._filter_by_fusion_threshold(
+            [("a", 0.0), ("b", 0.01)], 0.0, "q"
+        )
+        assert kept == [("a", 0.0), ("b", 0.01)]
+
+
+@pytest.mark.unit
+class TestBackendFailureContracts:
+    """Hybrid fallback and exception contracts stay unchanged."""
+
+    @pytest.mark.asyncio
+    async def test_semantic_search_failure_falls_back_to_tantivy(self) -> None:
+        semantic = MagicMock()
+        semantic.search.side_effect = RuntimeError("embed fail")
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("from-tantivy", 0.8)]
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("from-tantivy", 0.4)]
+        config = _make_config(fusion_ranking_threshold=0.0)
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
+        )
+
+        result = await pipeline.execute(_make_context(enable_rrf_fusion=True))
+
+        assert result.memories == ["from-tantivy"]
+        assert result.semantic_results == []
+        fusion.fuse.assert_called_once_with([], [("from-tantivy", 0.8)])
+
+    @pytest.mark.asyncio
+    async def test_semantic_init_failure_raises_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.ensure_initialized.side_effect = RuntimeError("init fail")
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("from-tantivy", 0.8)]
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        with pytest.raises(SearchError, match="Failed to execute search"):
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+    @pytest.mark.asyncio
+    async def test_tantivy_search_failure_raises_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("ok", 0.9, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.side_effect = RuntimeError("tantivy boom")
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        with pytest.raises(SearchError, match="Failed to execute search"):
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+    @pytest.mark.asyncio
+    async def test_tantivy_init_failure_raises_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("ok", 0.9, _TS)]
+        tantivy = MagicMock()
+        tantivy.ensure_initialized.side_effect = RuntimeError("tantivy init fail")
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        with pytest.raises(SearchError, match="Failed to execute search"):
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+    @pytest.mark.asyncio
+    async def test_tantivy_none_returns_empty(self) -> None:
+        pipeline = _make_pipeline(semantic=MagicMock(), tantivy=None)
+        assert await pipeline._search_tantivy("q", 10, "proj") == []
+
+
+@pytest.mark.unit
+class TestRerankerSettings:
+    """Lazy LLM, cross-encoder, none, and skip-on-single-result contracts."""
+
+    @pytest.mark.asyncio
+    async def test_none_passthrough(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("a", 0.9, _TS), ("b", 0.8, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("a", 0.4), ("b", 0.3)]
+        config = _make_config(fusion_ranking_threshold=0.0, reranker_engine="none")
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
+        )
+
+        result = await pipeline.execute(
+            _make_context(enable_rrf_fusion=True, reranker_engine="none")
+        )
+
+        assert result.memories == ["a", "b"]
+
+    @pytest.mark.asyncio
+    async def test_llm_reranker_receives_timestamp_map(self) -> None:
+        semantic = MagicMock()
+        older = "2024-01-01T00:00:00Z"
+        semantic.search.return_value = [("a", 0.9, _TS), ("b", 0.8, older)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("a", 0.4), ("b", 0.3)]
+        config = _make_config(fusion_ranking_threshold=0.0, reranker_engine="llm")
+        llm = AsyncMock()
+        llm.rerank = AsyncMock(return_value=[("b", 0.99), ("a", 0.1)])
+        manager = MagicMock()
+        manager.llm_reranker = llm
+        manager.cross_encoder_reranker = None
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=fusion,
+            config=config,
+            memory_manager=manager,
+        )
+
+        result = await pipeline.execute(
+            _make_context(enable_rrf_fusion=True, reranker_engine="llm")
+        )
+
+        llm.rerank.assert_awaited_once()
+        args = llm.rerank.await_args
+        assert args is not None
+        assert args.args[0] == "test query"
+        assert args.args[1] == [("a", 0.4), ("b", 0.3)]
+        assert args.args[2] == {"a": _TS, "b": older}
+        assert result.memories == ["b", "a"]
+
+    @pytest.mark.asyncio
+    async def test_cross_encoder_reranker_applied(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("a", 0.9, _TS), ("b", 0.8, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("a", 0.4), ("b", 0.3)]
+        config = _make_config(
+            fusion_ranking_threshold=0.0, reranker_engine="cross_encoder"
+        )
+        encoder = AsyncMock()
+        encoder.rerank_async = AsyncMock(return_value=[("b", 0.95), ("a", 0.2)])
+        manager = MagicMock()
+        manager.llm_reranker = None
+        manager.cross_encoder_reranker = encoder
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=fusion,
+            config=config,
+            memory_manager=manager,
+        )
+
+        result = await pipeline.execute(
+            _make_context(enable_rrf_fusion=True, reranker_engine="cross_encoder")
+        )
+
+        encoder.rerank_async.assert_awaited_once_with(
+            "test query", [("a", 0.4), ("b", 0.3)]
+        )
+        assert result.memories == ["b", "a"]
+
+    @pytest.mark.asyncio
+    async def test_single_result_skips_reranker(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("only", 0.9, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("only", 0.4)]
+        config = _make_config(fusion_ranking_threshold=0.0, reranker_engine="llm")
+        llm = AsyncMock()
+        llm.rerank = AsyncMock(return_value=[("only", 0.99)])
+        manager = MagicMock()
+        manager.llm_reranker = llm
+        manager.cross_encoder_reranker = None
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=fusion,
+            config=config,
+            memory_manager=manager,
+        )
+
+        result = await pipeline.execute(
+            _make_context(enable_rrf_fusion=True, reranker_engine="llm")
+        )
+
+        llm.rerank.assert_not_awaited()
+        assert result.memories == ["only"]
+
+    @pytest.mark.asyncio
+    async def test_empty_after_filter_skips_reranker(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("low", 0.9, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("low", 0.01)]
+        config = _make_config(fusion_ranking_threshold=0.5, reranker_engine="llm")
+        llm = AsyncMock()
+        manager = MagicMock()
+        manager.llm_reranker = llm
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=fusion,
+            config=config,
+            memory_manager=manager,
+        )
+
+        result = await pipeline.execute(
+            _make_context(enable_rrf_fusion=True, reranker_engine="llm")
+        )
+
+        llm.rerank.assert_not_awaited()
+        assert result.memories == []
 
 
 # ---------------------------------------------------------------------------
-# SearchPipeline._calculate_overfetch
+# Responsiveness: event-loop ticker + overlapping hybrid backends
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestCalculateOverfetch:
-    '''Tests for SearchPipeline._calculate_overfetch.'''
+class TestSearchResponsiveness:
+    """Slow sync fakes must not stall the AnyIO/asyncio event loop."""
 
-    @pytest.fixture
-    def pipeline(self) -> SearchPipeline:
-        '''Minimal pipeline for overfetch tests.'''
-        return SearchPipeline(
-            backend_executor=AsyncMock(),
-            fusion_stage=MagicMock(),
-            filter_stage=MagicMock(),
-            reranker_stage=None,
-            config=_make_pipeline_config(),
-            logger=MagicMock(),
+    @pytest.mark.asyncio
+    async def test_semantic_only_ticker_advances(self) -> None:
+        entered = threading.Event()
+        loop_progressed = threading.Event()
+        loop_thread = threading.get_ident()
+        worker_threads: list[int] = []
+        ticks_after_enter = 0
+
+        backend = ControllableBackend(
+            [("mem", 0.9, _TS)],
+            entered=entered,
+            loop_progressed=loop_progressed,
+            thread_ids=worker_threads,
+        )
+        pipeline = _make_pipeline(semantic=backend)
+
+        async def ticker() -> None:
+            nonlocal ticks_after_enter
+            while True:
+                if entered.is_set():
+                    ticks_after_enter += 1
+                    loop_progressed.set()
+                await asyncio.sleep(0)
+                if loop_progressed.is_set() and ticks_after_enter >= 3:
+                    break
+
+        ticker_task = asyncio.create_task(ticker())
+        search_task = asyncio.create_task(
+            pipeline.execute(_make_context(enable_hybrid_search=False))
+        )
+        result = await asyncio.wait_for(search_task, timeout=5)
+        ticker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker_task
+
+        assert result.memories == ["mem"]
+        assert entered.is_set()
+        assert ticks_after_enter >= 1
+        assert worker_threads
+        assert worker_threads[0] != loop_thread
+
+    @pytest.mark.asyncio
+    async def test_hybrid_backends_overlap_and_ticker_advances(self) -> None:
+        semantic_entered = threading.Event()
+        tantivy_entered = threading.Event()
+        loop_progressed = threading.Event()
+        barrier = threading.Barrier(2, timeout=_BACKEND_WAIT_TIMEOUT)
+        loop_thread = threading.get_ident()
+        semantic_threads: list[int] = []
+        tantivy_threads: list[int] = []
+        ticks_after_both = 0
+
+        semantic = ControllableBackend(
+            [("sem", 0.9, _TS)],
+            entered=semantic_entered,
+            loop_progressed=loop_progressed,
+            barrier=barrier,
+            thread_ids=semantic_threads,
+        )
+        tantivy = ControllableBackend(
+            [("tan", 0.8)],
+            entered=tantivy_entered,
+            loop_progressed=loop_progressed,
+            barrier=barrier,
+            thread_ids=tantivy_threads,
+        )
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("sem", 0.4), ("tan", 0.3)]
+        config = _make_config(fusion_ranking_threshold=0.0)
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
         )
 
-    @pytest.mark.parametrize(
-        "limit,expected",
-        [
-            (1, 3),  # 1*3 = 3, min(3, 50) = 3
-            (5, 15),  # 5*3 = 15, min(15, 50) = 15
-            (10, 30),  # 10*3 = 30, min(30, 50) = 30
-            (20, 40),  # limit>10: 20*2 = 40, min(40, 100) = 40
-            (50, 100),  # 50*2 = 100, min(100, 100) = 100
-            (51, 76),  # limit>50: int(51*1.5) = 76
-            (100, 150),  # int(100*1.5) = 150
-        ],
-    )
-    def test_overfetch_ranges(
-        self,
-        pipeline: SearchPipeline,
-        limit: int,
-        expected: int,
-    ) -> None:
-        '''Overfetch multiplier adapts to limit size.'''
-        assert pipeline._calculate_overfetch(limit) == expected
+        async def ticker() -> None:
+            nonlocal ticks_after_both
+            while True:
+                if semantic_entered.is_set() and tantivy_entered.is_set():
+                    ticks_after_both += 1
+                    loop_progressed.set()
+                await asyncio.sleep(0)
+                if loop_progressed.is_set() and ticks_after_both >= 3:
+                    break
 
-    def test_overfetch_small_limit_capped(self, pipeline: SearchPipeline) -> None:
-        '''Small limits capped at 50.'''
-        result = pipeline._calculate_overfetch(10)
-        assert result <= 50
+        ticker_task = asyncio.create_task(ticker())
+        result = await asyncio.wait_for(
+            pipeline.execute(_make_context(enable_hybrid_search=True)),
+            timeout=5,
+        )
+        ticker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker_task
 
-    def test_overfetch_medium_limit_capped(self, pipeline: SearchPipeline) -> None:
-        '''Medium limits capped at 100.'''
-        result = pipeline._calculate_overfetch(50)
-        assert result <= 100
+        assert result.memories == ["sem", "tan"]
+        assert semantic_entered.is_set()
+        assert tantivy_entered.is_set()
+        assert ticks_after_both >= 1
+        assert semantic_threads and tantivy_threads
+        assert semantic_threads[0] != loop_thread
+        assert tantivy_threads[0] != loop_thread
+        assert semantic_threads[0] != tantivy_threads[0]
+        assert semantic.search_calls[0][2] == 15
+        assert tantivy.search_calls[0][2] == 15
+
+    @pytest.mark.asyncio
+    async def test_hybrid_init_and_search_hops_stay_off_loop(self) -> None:
+        semantic_init = threading.Event()
+        tantivy_init = threading.Event()
+        semantic_search = threading.Event()
+        tantivy_search = threading.Event()
+        init_release = threading.Event()
+        search_release = threading.Event()
+        init_barrier = threading.Barrier(2, timeout=_BACKEND_WAIT_TIMEOUT)
+        search_barrier = threading.Barrier(2, timeout=_BACKEND_WAIT_TIMEOUT)
+        loop_thread = threading.get_ident()
+        semantic_init_threads: list[int] = []
+        tantivy_init_threads: list[int] = []
+        semantic_search_threads: list[int] = []
+        tantivy_search_threads: list[int] = []
+
+        semantic = ControllableBackend(
+            [("sem", 0.9, _TS)],
+            entered=semantic_search,
+            loop_progressed=search_release,
+            barrier=search_barrier,
+            thread_ids=semantic_search_threads,
+            init_entered=semantic_init,
+            init_barrier=init_barrier,
+            init_thread_ids=semantic_init_threads,
+            init_release=init_release,
+            block_on_init=True,
+        )
+        tantivy = ControllableBackend(
+            [("tan", 0.8)],
+            entered=tantivy_search,
+            loop_progressed=search_release,
+            barrier=search_barrier,
+            thread_ids=tantivy_search_threads,
+            init_entered=tantivy_init,
+            init_barrier=init_barrier,
+            init_thread_ids=tantivy_init_threads,
+            init_release=init_release,
+            block_on_init=True,
+        )
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("sem", 0.4), ("tan", 0.3)]
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=fusion,
+            config=_make_config(fusion_ranking_threshold=0.0),
+        )
+
+        async def ticker() -> None:
+            while True:
+                if semantic_init.is_set() and tantivy_init.is_set():
+                    init_release.set()
+                if semantic_search.is_set() and tantivy_search.is_set():
+                    search_release.set()
+                    break
+                await asyncio.sleep(0)
+
+        ticker_task = asyncio.create_task(ticker())
+        result = await asyncio.wait_for(
+            pipeline.execute(_make_context(enable_hybrid_search=True)),
+            timeout=5,
+        )
+        ticker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker_task
+
+        assert result.memories == ["sem", "tan"]
+        assert semantic_init_threads[0] != loop_thread
+        assert tantivy_init_threads[0] != loop_thread
+        assert semantic_init_threads[0] != tantivy_init_threads[0]
+        assert semantic_search_threads[0] != loop_thread
+        assert tantivy_search_threads[0] != loop_thread
+        assert semantic_search_threads[0] != tantivy_search_threads[0]
+
+    @pytest.mark.asyncio
+    async def test_fusion_offload_keeps_loop_responsive(self) -> None:
+        entered = threading.Event()
+        loop_progressed = threading.Event()
+        loop_thread = threading.get_ident()
+        fuse_threads: list[int] = []
+        ticks_after_enter = 0
+
+        class SlowFusion:
+            method = "rrf"
+
+            def fuse(
+                self,
+                *_result_sets: list[tuple[str, float]],
+            ) -> list[tuple[str, float]]:
+                fuse_threads.append(threading.get_ident())
+                entered.set()
+                if not loop_progressed.wait(timeout=_BACKEND_WAIT_TIMEOUT):
+                    raise TimeoutError("event loop did not progress during fuse")
+                return [("mem", 0.4)]
+
+        semantic = MagicMock()
+        semantic.search.return_value = [("mem", 0.9, _TS)]
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("other", 0.8)]
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=SlowFusion(),
+            config=_make_config(fusion_ranking_threshold=0.0),
+        )
+
+        async def ticker() -> None:
+            nonlocal ticks_after_enter
+            while True:
+                if entered.is_set():
+                    ticks_after_enter += 1
+                    loop_progressed.set()
+                await asyncio.sleep(0)
+                if loop_progressed.is_set() and ticks_after_enter >= 3:
+                    break
+
+        ticker_task = asyncio.create_task(ticker())
+        result = await asyncio.wait_for(
+            pipeline.execute(_make_context(enable_hybrid_search=True)),
+            timeout=5,
+        )
+        ticker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker_task
+
+        assert result.memories == ["mem"]
+        assert ticks_after_enter >= 1
+        assert fuse_threads
+        assert fuse_threads[0] != loop_thread
+
+    @pytest.mark.asyncio
+    async def test_cancel_waits_for_worker_and_does_not_abort_it(self) -> None:
+        entered = threading.Event()
+        loop_progressed = threading.Event()
+        finished = threading.Event()
+        backend = ControllableBackend(
+            [("mem", 0.9, _TS)],
+            entered=entered,
+            loop_progressed=loop_progressed,
+            finished=finished,
+        )
+        pipeline = _make_pipeline(semantic=backend)
+        search_task = asyncio.create_task(
+            pipeline.execute(_make_context(enable_hybrid_search=False))
+        )
+        deadline = asyncio.get_running_loop().time() + _BACKEND_WAIT_TIMEOUT
+        while not entered.is_set():
+            if asyncio.get_running_loop().time() >= deadline:
+                break
+            await asyncio.sleep(0)
+        assert entered.is_set()
+        search_task.cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not search_task.done()
+        assert not finished.is_set()
+        loop_progressed.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(search_task, timeout=5)
+        assert finished.wait(timeout=_BACKEND_WAIT_TIMEOUT)
+
+    @pytest.mark.asyncio
+    async def test_hybrid_cancel_waits_for_both_workers(self) -> None:
+        semantic_entered = threading.Event()
+        tantivy_entered = threading.Event()
+        loop_progressed = threading.Event()
+        semantic_finished = threading.Event()
+        tantivy_finished = threading.Event()
+        barrier = threading.Barrier(2, timeout=_BACKEND_WAIT_TIMEOUT)
+        semantic = ControllableBackend(
+            [("sem", 0.9, _TS)],
+            entered=semantic_entered,
+            loop_progressed=loop_progressed,
+            barrier=barrier,
+            finished=semantic_finished,
+        )
+        tantivy = ControllableBackend(
+            [("tan", 0.8)],
+            entered=tantivy_entered,
+            loop_progressed=loop_progressed,
+            barrier=barrier,
+            finished=tantivy_finished,
+        )
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=MagicMock(method="rrf", fuse=MagicMock(return_value=[("sem", 0.4)])),
+            config=_make_config(fusion_ranking_threshold=0.0),
+        )
+        search_task = asyncio.create_task(
+            pipeline.execute(_make_context(enable_hybrid_search=True))
+        )
+        deadline = asyncio.get_running_loop().time() + _BACKEND_WAIT_TIMEOUT
+        while not (semantic_entered.is_set() and tantivy_entered.is_set()):
+            if asyncio.get_running_loop().time() >= deadline:
+                break
+            await asyncio.sleep(0)
+        assert semantic_entered.is_set() and tantivy_entered.is_set()
+        search_task.cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not search_task.done()
+        assert not semantic_finished.is_set()
+        assert not tantivy_finished.is_set()
+        loop_progressed.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(search_task, timeout=5)
+        assert semantic_finished.wait(timeout=_BACKEND_WAIT_TIMEOUT)
+        assert tantivy_finished.wait(timeout=_BACKEND_WAIT_TIMEOUT)
+
+    @pytest.mark.asyncio
+    async def test_manager_search_index_lookup_stays_off_loop(self) -> None:
+        entered = threading.Event()
+        loop_progressed = threading.Event()
+        loop_thread = threading.get_ident()
+        index_threads: list[int] = []
+        ticks_after_enter = 0
+        index_size = 10000
+
+        class BlockingIndexEngine:
+            def __init__(self) -> None:
+                self.search = MagicMock(return_value=[("mem", 0.9, _TS)])
+                self.ensure_initialized = MagicMock()
+
+            @property
+            def index(self) -> range:
+                index_threads.append(threading.get_ident())
+                entered.set()
+                if not loop_progressed.wait(timeout=_BACKEND_WAIT_TIMEOUT):
+                    raise TimeoutError("event loop did not progress during index get")
+                return range(index_size)
+
+        config = MagicMock()
+        config.project_id = "test_project"
+        config.enable_hybrid_search = True
+        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.enable_rrf_fusion = True
+        config.fusion_ranking_threshold = 0.0
+        config.search_limit = 10
+        config.overfetch_adaptive = True
+        config.overfetch_max_multiplier = 3.0
+        config.overfetch_min_multiplier = 1.5
+        config.overfetch_multiplier = 3
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        semantic = BlockingIndexEngine()
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        tantivy.ensure_initialized = MagicMock()
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("mem", 0.4)]
+        manager._semantic_engine = semantic
+        manager._tantivy_engine = tantivy
+        manager.is_hybrid_search = True
+        manager._search_pipeline = SearchPipeline(
+            semantic_engine=semantic,
+            tantivy_engine=tantivy,
+            fusion_engine=fusion,
+            config=config,
+            logger=manager.logger,
+            memory_manager=manager,
+        )
+
+        async def ticker() -> None:
+            nonlocal ticks_after_enter
+            while True:
+                if entered.is_set():
+                    ticks_after_enter += 1
+                    loop_progressed.set()
+                await asyncio.sleep(0)
+                if loop_progressed.is_set() and ticks_after_enter >= 3:
+                    break
+
+        ticker_task = asyncio.create_task(ticker())
+        results = await asyncio.wait_for(manager.search("q", limit=10), timeout=5)
+        ticker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker_task
+
+        expected_overfetch = calculate_adaptive_overfetch(10, index_size, config)
+        zero_overfetch = calculate_adaptive_overfetch(10, 0, config)
+        assert expected_overfetch != zero_overfetch
+        assert results == ["mem"]
+        assert ticks_after_enter >= 1
+        assert index_threads
+        assert index_threads[0] != loop_thread
+        semantic.search.assert_called_once_with(
+            query="q", project_id="test_project", limit=expected_overfetch
+        )
+        tantivy.search.assert_called_once_with("q", "test_project", expected_overfetch)
 
 
 # ---------------------------------------------------------------------------
-# create_default_pipeline factory
+# Adaptive overfetch remains the canonical policy
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestCreateDefaultPipeline:
-    '''Tests for create_default_pipeline factory function.'''
+class TestCanonicalOverfetch:
+    """Old limit-tier overfetch is gone; adaptive policy is the only one."""
 
-    @pytest.fixture
-    def mock_config(self) -> MagicMock:
-        '''Mock Config with required attributes.'''
-        cfg = MagicMock()
-        cfg.enable_hybrid_search = True
-        cfg.enable_rrf_fusion = True
-        cfg.fusion_rrf_k = 60
-        cfg.fusion_ranking_threshold = 0.8
-        cfg.search_limit = 5
-        cfg.reranker_engine = "llm"
-        return cfg
+    def test_adaptive_policy_used_not_limit_tiers(self) -> None:
+        config = _make_config()
+        config.overfetch_adaptive = True
+        config.overfetch_max_multiplier = 3.0
+        # Competing pipeline used min(limit*3, 50) for limit<=10 → 30 for limit=10.
+        # Canonical adaptive uses max multiplier for small indexes: 10*3=30, then
+        # the same number happens to match — check a large-index case instead.
+        large = calculate_adaptive_overfetch(10, 10000, config)
+        assert large == 20  # 10 * min_multiplier 1.5, above MIN_OVERFETCH_LIMIT
 
-    @pytest.fixture
-    def mock_semantic(self) -> AsyncMock:
-        '''Mock semantic backend.'''
-        return AsyncMock()
-
-    @pytest.fixture
-    def mock_fulltext(self) -> AsyncMock:
-        '''Mock fulltext backend.'''
-        return AsyncMock()
-
-    @pytest.fixture
-    def mock_logger(self) -> MagicMock:
-        '''Mock structured logger.'''
-        return MagicMock()
-
-    def test_creates_pipeline_with_rrf_fusion(
-        self,
-        mock_semantic: AsyncMock,
-        mock_fulltext: AsyncMock,
-        mock_config: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''With enable_rrf_fusion=True, uses RRFFusionStage.'''
-        mock_config.enable_rrf_fusion = True
-        pipeline = create_default_pipeline(
-            mock_semantic,
-            mock_fulltext,
-            None,
-            mock_config,
-            mock_logger,
-        )
-        assert isinstance(pipeline, SearchPipeline)
-        assert isinstance(pipeline._fusion_stage, RRFFusionStage)
-
-    def test_creates_pipeline_with_concatenation_fusion(
-        self,
-        mock_semantic: AsyncMock,
-        mock_fulltext: AsyncMock,
-        mock_config: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''With enable_rrf_fusion=False, uses ConcatenationFusionStage.'''
-        mock_config.enable_rrf_fusion = False
-        pipeline = create_default_pipeline(
-            mock_semantic,
-            mock_fulltext,
-            None,
-            mock_config,
-            mock_logger,
-        )
-        assert isinstance(pipeline._fusion_stage, ConcatenationFusionStage)
-
-    def test_reranker_passed_through(
-        self,
-        mock_semantic: AsyncMock,
-        mock_config: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Reranker instance passed to pipeline.'''
-        mock_reranker = AsyncMock()
-        pipeline = create_default_pipeline(
-            mock_semantic,
-            None,
-            mock_reranker,
-            mock_config,
-            mock_logger,
-        )
-        assert pipeline._reranker is mock_reranker
-
-    def test_no_reranker_is_none(
-        self,
-        mock_semantic: AsyncMock,
-        mock_config: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''None reranker stored as None.'''
-        pipeline = create_default_pipeline(
-            mock_semantic,
-            None,
-            None,
-            mock_config,
-            mock_logger,
-        )
-        assert pipeline._reranker is None
-
-    def test_pipeline_config_populated(
-        self,
-        mock_semantic: AsyncMock,
-        mock_config: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Pipeline config fields match source config.'''
-        mock_config.enable_hybrid_search = True
-        mock_config.enable_rrf_fusion = True
-        mock_config.reranker_engine = "cross_encoder"
-        mock_config.fusion_ranking_threshold = 0.75
-        mock_config.search_limit = 8
-        pipeline = create_default_pipeline(
-            mock_semantic,
-            None,
-            None,
-            mock_config,
-            mock_logger,
-        )
-        assert pipeline._config.enable_hybrid_search is True
-        assert pipeline._config.enable_rrf_fusion is True
-        assert pipeline._config.reranker_engine == "cross_encoder"
-        assert pipeline._config.fusion_ranking_threshold == 0.75
-        assert pipeline._config.search_limit == 8
-
-    def test_rrf_k_passed_to_fusion_stage(
-        self,
-        mock_semantic: AsyncMock,
-        mock_config: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Custom fusion_rrf_k propagated to RRFFusionStage.'''
-        mock_config.enable_rrf_fusion = True
-        mock_config.fusion_rrf_k = 42
-        pipeline = create_default_pipeline(
-            mock_semantic,
-            None,
-            None,
-            mock_config,
-            mock_logger,
-        )
-        assert isinstance(pipeline._fusion_stage, RRFFusionStage)
-        assert pipeline._fusion_stage._k == 42
-
-    def test_fulltext_none_allowed(
-        self,
-        mock_semantic: AsyncMock,
-        mock_config: MagicMock,
-        mock_logger: MagicMock,
-    ) -> None:
-        '''Pipeline can be created with fulltext_backend=None.'''
-        pipeline = create_default_pipeline(
-            mock_semantic,
-            None,
-            None,
-            mock_config,
-            mock_logger,
-        )
-        assert isinstance(pipeline, SearchPipeline)
-
-
-# ---------------------------------------------------------------------------
-# Integration-style tests (all real stages, no mocks for stages)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestSearchPipelineIntegration:
-    '''Integration tests using real stage implementations.'''
-
-    @pytest.mark.asyncio
-    async def test_end_to_end_with_rrf(self) -> None:
-        '''Full pipeline with real RRF fusion and threshold filter.'''
-        semantic = AsyncMock()
-        semantic.search = AsyncMock(
-            return_value=[
-                _result("Python is great", 0.95),
-                _result("Java is fine", 0.80),
-            ]
-        )
-        fulltext = AsyncMock()
-        fulltext.search = AsyncMock(
-            return_value=[
-                _result("Python is great", 0.90),
-                _result("Go is fast", 0.85),
-            ]
-        )
-
-        executor = DefaultBackendExecutor(semantic, fulltext)
-        fusion = RRFFusionStage(k=60)
-        filter_stage = ThresholdFilterStage()
-        cfg = _make_pipeline_config(
-            enable_hybrid_search=True,
-            enable_rrf_fusion=True,
-            fusion_ranking_threshold=0.0,
-            search_limit=10,
-        )
-
-        pipeline = SearchPipeline(
-            backend_executor=executor,
-            fusion_stage=fusion,
-            filter_stage=filter_stage,
-            reranker_stage=None,
-            config=cfg,
-            logger=MagicMock(),
-        )
-
-        results = await pipeline.execute("Python", "proj")
-
-        assert isinstance(results, list)
-        assert len(results) > 0
-        # "Python is great" appears in both → should be top
-        assert results[0] == "Python is great"
-
-    @pytest.mark.asyncio
-    async def test_end_to_end_with_concatenation(self) -> None:
-        '''Full pipeline with concatenation fusion (no RRF).'''
-        semantic = AsyncMock()
-        semantic.search = AsyncMock(
-            return_value=[
-                _result("alpha", 0.9),
-                _result("beta", 0.7),
-            ]
-        )
-
-        executor = DefaultBackendExecutor(semantic, None)
-        fusion = ConcatenationFusionStage()
-        filter_stage = ThresholdFilterStage()
-        cfg = _make_pipeline_config(
-            enable_hybrid_search=False,
-            enable_rrf_fusion=False,
-            search_limit=5,
-        )
-
-        pipeline = SearchPipeline(
-            backend_executor=executor,
-            fusion_stage=fusion,
-            filter_stage=filter_stage,
-            reranker_stage=None,
-            config=cfg,
-            logger=MagicMock(),
-        )
-
-        results = await pipeline.execute("test", "proj")
-
-        assert results == ["alpha", "beta"]
-
-    @pytest.mark.asyncio
-    async def test_end_to_end_with_mock_reranker(self) -> None:
-        '''Full pipeline with a reranker returning IRankingResult objects.'''
-        semantic = AsyncMock()
-        semantic.search = AsyncMock(
-            return_value=[
-                _result("item1", 0.9),
-            ]
-        )
-
-        @dataclass(frozen=True)
-        class FakeRanking:
-            content: str
-            score: float
-            metadata: dict[str, Any]
-
-        mock_reranker = AsyncMock()
-        mock_reranker.rerank = AsyncMock(
-            return_value=[
-                FakeRanking(content="item1", score=0.95, metadata={}),
-            ]
-        )
-
-        executor = DefaultBackendExecutor(semantic, None)
-        fusion = ConcatenationFusionStage()
-        filter_stage = ThresholdFilterStage()
-        cfg = _make_pipeline_config(
-            enable_hybrid_search=False,
-            enable_rrf_fusion=False,
-            search_limit=5,
-        )
-
-        pipeline = SearchPipeline(
-            backend_executor=executor,
-            fusion_stage=fusion,
-            filter_stage=filter_stage,
-            reranker_stage=mock_reranker,
-            config=cfg,
-            logger=MagicMock(),
-        )
-
-        results = await pipeline.execute("q", "proj")
-
-        assert results == ["item1"]
-        mock_reranker.rerank.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_threshold_filters_low_rrf_scores(self) -> None:
-        '''High threshold filters out low RRF scores.'''
-        semantic = AsyncMock()
-        semantic.search = AsyncMock(
-            return_value=[
-                _result("good", 0.95),
-                _result("bad", 0.1),
-            ]
-        )
-
-        executor = DefaultBackendExecutor(semantic, None)
-        fusion = RRFFusionStage(k=60)
-        filter_stage = ThresholdFilterStage()
-        # RRF scores are very small (1/(60+rank)), so 0.5 threshold filters all
-        cfg = _make_pipeline_config(
-            enable_hybrid_search=False,
-            enable_rrf_fusion=True,
-            fusion_ranking_threshold=0.5,
-            search_limit=10,
-        )
-
-        pipeline = SearchPipeline(
-            backend_executor=executor,
-            fusion_stage=fusion,
-            filter_stage=filter_stage,
-            reranker_stage=None,
-            config=cfg,
-            logger=MagicMock(),
-        )
-
-        results = await pipeline.execute("test", "proj")
-
-        # RRF score for rank 1 = 1/61 ≈ 0.016 < 0.5, all filtered
-        assert results == []
+    def test_minimum_overfetch_floor(self) -> None:
+        config = _make_config()
+        config.overfetch_adaptive = False
+        config.overfetch_multiplier = 1
+        assert calculate_adaptive_overfetch(1, 0, config) >= 20

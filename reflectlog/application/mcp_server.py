@@ -7,15 +7,13 @@ from reflectlog.application import config
 from reflectlog.application.config.settings import Config, get_config
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.tools.add import AddTool
+from reflectlog.application.tools.base import BaseTool
+from reflectlog.application.tools.get_all import GetAllTool
+from reflectlog.application.tools.health_check import HealthCheckTool
+from reflectlog.application.tools.remove import RemoveTool
+from reflectlog.application.tools.search import SearchTool
 from reflectlog.core.prompts import build_instructions
 
-from .tools import (
-    BaseTool,
-    GetAllTool,
-    HealthCheckTool,
-    RemoveTool,
-    SearchTool,
-)
 from .utils.logging import create_logger
 
 # Canonical registry of available MCP tool implementations.

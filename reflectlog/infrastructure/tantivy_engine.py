@@ -766,6 +766,10 @@ class TantivyEngine(BaseModel):
         # Access the searcher property to trigger thread-safe lazy initialization
         _ = self.searcher
 
+    def is_ready(self) -> bool:
+        """Return True if the Tantivy searcher has already been created."""
+        return self._searcher is not None
+
     def close(self) -> None:
         """Close the engine and release resources (thread-safe).
 

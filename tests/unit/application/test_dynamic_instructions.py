@@ -113,7 +113,7 @@ class TestToolInstructionSnippets:
 
     def test_add_tool_snippet_format(self, mock_memory_class, set_env_vars):
         """Test AddTool provides properly formatted snippet."""
-        from reflectlog.application.tools import AddTool
+        from reflectlog.application.tools.add import AddTool
 
         mock_memory_manager = cast(MemoryManager, MagicMock())
         mock_logger = MagicMock()
@@ -130,7 +130,7 @@ class TestToolInstructionSnippets:
 
     def test_get_all_tool_snippet_format(self, mock_memory_class, set_env_vars):
         """Test GetAllTool provides properly formatted snippet."""
-        from reflectlog.application.tools import GetAllTool
+        from reflectlog.application.tools.get_all import GetAllTool
 
         mock_memory_manager = cast(MemoryManager, MagicMock())
         mock_logger = MagicMock()
@@ -145,7 +145,7 @@ class TestToolInstructionSnippets:
 
     def test_search_tool_snippet_format(self, mock_memory_class, set_env_vars):
         """Test SearchTool provides properly formatted snippet."""
-        from reflectlog.application.tools import SearchTool
+        from reflectlog.application.tools.search import SearchTool
 
         mock_memory_manager = cast(MemoryManager, MagicMock())
         mock_logger = MagicMock()
@@ -160,7 +160,7 @@ class TestToolInstructionSnippets:
 
     def test_remove_tool_snippet_format(self, mock_memory_class, set_env_vars):
         """Test RemoveTool provides properly formatted snippet."""
-        from reflectlog.application.tools import RemoveTool
+        from reflectlog.application.tools.remove import RemoveTool
 
         mock_memory_manager = cast(MemoryManager, MagicMock())
         mock_logger = MagicMock()

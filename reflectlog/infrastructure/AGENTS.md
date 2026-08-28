@@ -16,7 +16,7 @@ infrastructure/
 ├── cached_embeddings.py  # LRU query cache (100 entries)
 ├── qwen3_embedding.py    # Qwen3 Langchain embeddings
 ├── llm_provider_base.py  # Base OpenAI provider protocol
-├── search/              # SearchEngineBase + re-exports
+├── search/              # Package marker only (live engines are in this directory)
 ├── reranker_post_processor.py  # Post-search reranking composition (LLM + cross-encoder + temporal)
 └── embeddings/          # Re-exports (future expansion)
 
@@ -49,7 +49,7 @@ infrastructure/
 
 ## CONVENTIONS
 
-**Protocol Wrappers** - All external libs wrapped in classes implementing core protocols (ISearchBackend, IReranker, IRerankerProvider).
+**Protocol Wrappers** - All external libs wrapped in classes implementing core protocols (ISemanticSearchEngine, IReranker, IRerankerProvider).
 
 **Lazy Initialization** - Expensive resources (embedders, rerankers, LLM providers) initialized on-demand with thread-safe patterns.
 

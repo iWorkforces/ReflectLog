@@ -1856,8 +1856,10 @@ class TestEnsureInitialized:
             engine = TantivyEngine(config)
 
             assert engine._searcher is None
+            assert engine.is_ready() is False
             engine.ensure_initialized()
             assert engine._searcher is not None
+            assert engine.is_ready() is True
 
 
 @pytest.mark.unit

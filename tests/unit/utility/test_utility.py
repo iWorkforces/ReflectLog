@@ -342,17 +342,15 @@ class TestInitCredentials:
 class TestGenerateContent:
     '''Tests for generate_content() async function.'''
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_returns_text_from_assistant_message(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
         '''Should return concatenated text from TextBlock content.'''
-        from reflectlog.utility.utility import (
-            AssistantMessage,
-            TextBlock,
-            generate_content,
-        )
+        from claude_agent_sdk import AssistantMessage, TextBlock
+
+        from reflectlog.utility.utility import generate_content
 
         # Create mock TextBlock
         mock_block = MagicMock(spec=TextBlock)
@@ -372,17 +370,15 @@ class TestGenerateContent:
 
         assert result == "Hello, world!"
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_concatenates_multiple_text_blocks(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
         '''Should concatenate text from multiple TextBlocks.'''
-        from reflectlog.utility.utility import (
-            AssistantMessage,
-            TextBlock,
-            generate_content,
-        )
+        from claude_agent_sdk import AssistantMessage, TextBlock
+
+        from reflectlog.utility.utility import generate_content
 
         mock_block1 = MagicMock(spec=TextBlock)
         mock_block1.text = "Hello, "
@@ -401,13 +397,15 @@ class TestGenerateContent:
 
         assert result == "Hello, world!"
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_raises_runtime_error_on_error_message(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
         '''Should raise RuntimeError when ResultMessage is an error.'''
-        from reflectlog.utility.utility import ResultMessage, generate_content
+        from claude_agent_sdk import ResultMessage
+
+        from reflectlog.utility.utility import generate_content
 
         mock_error = MagicMock(spec=ResultMessage)
         mock_error.is_error = True
@@ -421,18 +419,15 @@ class TestGenerateContent:
         with pytest.raises(RuntimeError, match="Query failed: api_error"):
             _ = await generate_content("Will fail")
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_ignores_non_error_result_message(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
         '''Should ignore ResultMessage that is not an error.'''
-        from reflectlog.utility.utility import (
-            AssistantMessage,
-            ResultMessage,
-            TextBlock,
-            generate_content,
-        )
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+        from reflectlog.utility.utility import generate_content
 
         mock_block = MagicMock(spec=TextBlock)
         mock_block.text = "Content"
@@ -453,17 +448,15 @@ class TestGenerateContent:
 
         assert result == "Content"
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_ignores_non_text_blocks(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
         '''Should skip content blocks that are not TextBlock instances.'''
-        from reflectlog.utility.utility import (
-            AssistantMessage,
-            TextBlock,
-            generate_content,
-        )
+        from claude_agent_sdk import AssistantMessage, TextBlock
+
+        from reflectlog.utility.utility import generate_content
 
         mock_text_block = MagicMock(spec=TextBlock)
         mock_text_block.text = "Valid text"
@@ -483,17 +476,15 @@ class TestGenerateContent:
 
         assert result == "Valid text"
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_strips_result_text(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
         '''Should strip leading/trailing whitespace from result.'''
-        from reflectlog.utility.utility import (
-            AssistantMessage,
-            TextBlock,
-            generate_content,
-        )
+        from claude_agent_sdk import AssistantMessage, TextBlock
+
+        from reflectlog.utility.utility import generate_content
 
         mock_block = MagicMock(spec=TextBlock)
         mock_block.text = "  Padded content  "
@@ -510,8 +501,8 @@ class TestGenerateContent:
 
         assert result == "Padded content"
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_empty_response_returns_empty_string(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
@@ -528,8 +519,8 @@ class TestGenerateContent:
 
         assert result == ""
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_passes_options_correctly(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
@@ -556,8 +547,8 @@ class TestGenerateContent:
             permission_mode="bypassPermissions",
         )
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_default_options_empty_tools(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
@@ -579,17 +570,15 @@ class TestGenerateContent:
             permission_mode="bypassPermissions",
         )
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_multiple_assistant_messages(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
         '''Should concatenate text across multiple AssistantMessages.'''
-        from reflectlog.utility.utility import (
-            AssistantMessage,
-            TextBlock,
-            generate_content,
-        )
+        from claude_agent_sdk import AssistantMessage, TextBlock
+
+        from reflectlog.utility.utility import generate_content
 
         mock_block1 = MagicMock(spec=TextBlock)
         mock_block1.text = "Part 1. "
@@ -613,8 +602,8 @@ class TestGenerateContent:
 
         assert result == "Part 1. Part 2."
 
-    @patch("reflectlog.utility.utility.query")
-    @patch("reflectlog.utility.utility.ClaudeAgentOptions")
+    @patch("reflectlog.utility.utility._claude.query")
+    @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_passes_prompt_to_query(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:

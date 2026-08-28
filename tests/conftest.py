@@ -60,6 +60,8 @@ def mock_usearch_engine():
     engine.delete = MagicMock(return_value=None)
     engine.commit = MagicMock(return_value=None)
     engine.ensure_initialized = MagicMock(return_value=None)
+    # Default constructed engines are not warmed; a bare MagicMock is truthy.
+    engine.is_ready = MagicMock(return_value=False)
     return engine
 
 
@@ -154,6 +156,7 @@ def mcp_server(set_env_vars, mock_usearch_engine):
         mock_tantivy = MagicMock()
         mock_tantivy.ensure_initialized = MagicMock(return_value=None)
         mock_tantivy.search = MagicMock(return_value=[])
+        mock_tantivy.is_ready = MagicMock(return_value=False)
         mock_tantivy_cls.return_value = mock_tantivy
 
         # Configure embedder mock

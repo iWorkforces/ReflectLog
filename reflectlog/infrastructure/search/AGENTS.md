@@ -9,20 +9,18 @@ Search engine base classes and abstractions. Actual implementations (USearch, Ta
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Base class | search/base.py | SearchEngineBase with default ISearchBackend implementations |
-| Protocol | core/search.py | ISearchBackend, ISearchResult |
+| Live engines | infrastructure/usearch_engine.py, tantivy_engine.py | Sync tuple search used by SearchPipeline |
+| Live pipeline | application/memory/search_strategies.py | SearchPipeline + SearchContext + SearchResult |
 
 ## CONVENTIONS
 
-**Default Implementations** - SearchEngineBase provides empty defaults for ISearchBackend methods. Subclasses override.
+**Lifecycle Management** - ensure_initialized() for lazy init, is_ready() for health, commit() to persist, close() to release.
 
-**Lifecycle Management** - ensure_initialized() for lazy init, commit() to persist, close() to release.
-
-**Protocol Compliance** - All engines must satisfy ISearchBackend from core/search.py.
+**Live search contract** - USearch/Tantivy expose sync ``search()`` returning tuples.
 
 ## ANTI-PATTERNS
 
-- Never return raw backend results; always wrap in ISearchResult
+- Never treat deleted staged-search protocols as the MemoryManager search API
 - Never skip ensure_initialized() before index operations
 - Never ignore commit() errors
 - Never use triple single quotes; use """ only

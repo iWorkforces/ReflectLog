@@ -9,7 +9,7 @@ MCP server providing persistent, project-based semantic memory storage. Combines
 
 ```
 reflectlog/
-├── core/              # Protocols + canonical types (ISearchBackend, IReranker, IMemoryStore)
+├── core/              # Protocols + canonical types (ISemanticSearchEngine, IReranker, IMemoryStore)
 │                      # types.py: ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore
 ├── application/       # Business logic
 │   ├── memory/        # MemoryManager, search/add pipelines, fusion
@@ -29,14 +29,14 @@ reflectlog/
 | Search pipeline | `application/memory/search_strategies.py` | 4-step hybrid search with RRF |
 | Add pipeline | `application/memory/add_phases.py` | 3-phase parallel add with smart replacement |
 | Config | `application/config/settings.py` | 60+ env vars, dataclass |
-| Protocol interfaces | `core/` | ISearchBackend, IReranker, IMemoryStore, types.py |
+| Protocol interfaces | `core/` | ISemanticSearchEngine, IReranker, IMemoryStore, types.py |
 | Infrastructure | `infrastructure/` | USearch, Tantivy, LLM providers |
 
 ## CONVENTIONS
 
 **Factory Pattern** - Use `from_config()` class methods (not `from_app_config()`). Applied throughout for engine, reranker, and fusion creation.
 
-**Canonical Type Locations** - Core domain types live in `core/types.py` (MemoryRecord, Embeddings, ISemanticSearchEngine, IArchiveMemoryStore). Application-layer types in `application/types.py`. Don't mix them up.
+**Canonical Type Locations** - Core domain types live in `core/types.py` (MemoryRecord, Embeddings, ISemanticSearchEngine, IArchiveMemoryStore). Pipeline `SearchContext` / `SearchResult` live in `application/memory/search_strategies.py`.
 
 **Triple Double Quotes** - Docstrings use `"""` not `'''`. Enforced by ruff.
 

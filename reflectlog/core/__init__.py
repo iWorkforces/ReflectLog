@@ -12,7 +12,7 @@ these protocols rather than concrete implementations, enabling:
 Modules:
     config: Configuration protocols
     memory: Memory operation protocols
-    search: Search engine protocols
+    types: Canonical search/memory types (ISemanticSearchEngine)
     reranking: Reranker protocols
     tools: Tool registration protocols
     logging: Logging protocols

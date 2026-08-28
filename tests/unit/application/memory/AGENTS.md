@@ -46,13 +46,19 @@ async def test_duplicate_detection_phase():
     assert result.new_messages == expected_new
 ```
 
-### Pipeline Stage Verification
+### Pipeline Verification
 ```python
-def test_search_pipeline_calls_all_stages(mock_stages):
-    pipeline = SearchPipeline(stages=mock_stages)
-    pipeline.execute("query")
-    for stage in mock_stages:
-        stage.execute.assert_called_once()
+async def test_search_pipeline_returns_fused_memories():
+    pipeline = SearchPipeline(
+        semantic_engine=semantic,
+        tantivy_engine=tantivy,
+        fusion_engine=fusion,
+        config=config,
+        logger=logger,
+        memory_manager=manager,
+    )
+    result = await pipeline.execute(SearchContext(...))
+    assert result.memories == expected
 ```
 
 ## ANTI-PATTERNS

@@ -8,22 +8,12 @@ import os
 import platform
 import sys
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ResultMessage,
-    TextBlock,
-    query,
-)
+import claude_agent_sdk as _claude
 
 from .platforms import get_platform_retriever
 from .types import OAUTH_TOKEN_PREFIX, ApiKeyResult
 
 __all__ = [
-    "AssistantMessage",
-    "ClaudeAgentOptions",
-    "ResultMessage",
-    "TextBlock",
     "generate_content",
     "get_anthropic_api_key",
     "get_claude_code_api_key",
@@ -176,7 +166,7 @@ async def generate_content(
         >>> result = asyncio.run(generate_content("Say hello"))
         >>> print(result)
     """
-    options = ClaudeAgentOptions(
+    options = _claude.ClaudeAgentOptions(
         model=model,
         system_prompt=system_prompt,
         allowed_tools=allowed_tools or [],
@@ -185,10 +175,10 @@ async def generate_content(
 
     result_text = ""
 
-    async for message in query(prompt=prompt, options=options):
-        if isinstance(message, AssistantMessage):
+    async for message in _claude.query(prompt=prompt, options=options):
+        if isinstance(message, _claude.AssistantMessage):
             for block in message.content:
-                if isinstance(block, TextBlock):
+                if isinstance(block, _claude.TextBlock):
                     result_text += block.text
         elif message.is_error:
             raise RuntimeError(f"Query failed: {message.subtype}")

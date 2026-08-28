@@ -32,8 +32,20 @@ import threading
 import time
 from typing import Any, final
 
+from asyncer import asyncify
+
 from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
 from reflectlog.core.exceptions import InconsistentStateError, SearchError, StorageError
+from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+from reflectlog.infrastructure.cross_encoder_reranker import (
+    CrossEncoderConfig,
+    CrossEncoderReranker,
+)
+from reflectlog.infrastructure.llm_reranker import LLMReranker, LLMRerankerConfig
+from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
+from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
+from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
+from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 from ...core.config_adapters import ConfigAdapter
 from ...core.logging import IStructuredLogger
@@ -48,20 +60,6 @@ from .add_phases import (
     DuplicateDetectionPhase,
     SmartReplacementPhase,
     StoragePhase,
-)
-from .engine_factory import (
-    CachedEmbeddings,
-    CrossEncoderConfig,
-    CrossEncoderReranker,
-    LangchainQwenEmbeddings,
-    LLMReranker,
-    LLMRerankerConfig,
-    SmartReplacer,
-    SmartReplacerConfig,
-    TantivyConfig,
-    TantivyEngine,
-    USearchConfig,
-    USearchEngine,
 )
 from .fusion import create_fusion_engine
 from .fusion.base import FusionEngine
@@ -788,19 +786,18 @@ class MemoryManager:
             List of hybrid-ranked memories from both engines.
 
         Raises:
-            RuntimeError: If search operation fails.
+            SearchError: If search operation fails.
+
+        Note:
+            Cancelling this await does not abort native USearch or Tantivy
+            work already running in a worker thread.
         """
         # Use defaults from config if not provided
         if limit is None:
             limit = self.config.search_limit
 
-        # Calculate adaptive overfetch limit
-        try:
-            engine_index = getattr(self._semantic_engine, "index", None)
-            index_size = len(engine_index) if engine_index is not None else 0
-        except Exception:
-            index_size = 0
-
+        # Index restore / len() can block; keep it off the event loop.
+        index_size: int = await asyncify(self._semantic_index_size)()
         overfetch_limit = calculate_adaptive_overfetch(limit, index_size, self.config)
 
         # Create search context
@@ -818,6 +815,40 @@ class MemoryManager:
         result = await self._search_pipeline.execute(context)
 
         return result.memories
+
+    def _semantic_index_size(self) -> int:
+        """Return the semantic index size, or 0 if it cannot be read."""
+        try:
+            engine_index = getattr(self._semantic_engine, "index", None)
+            return len(engine_index) if engine_index is not None else 0
+        except Exception:
+            return 0
+
+    def search_engine_status(self) -> dict[str, str]:
+        """Return public readiness of search engines for health checks.
+
+        Values are ``initialized`` (warmed), ``pending`` (constructed but
+        not yet ``ensure_initialized``), ``not_initialized``, or ``disabled``.
+        """
+        return {
+            "semantic_engine": self._engine_readiness(
+                self._semantic_engine, absent="not_initialized"
+            ),
+            "tantivy_engine": self._engine_readiness(
+                self._tantivy_engine, absent="disabled"
+            ),
+        }
+
+    def _engine_readiness(self, engine: object | None, *, absent: str) -> str:
+        if engine is None:
+            return absent
+        is_ready = getattr(engine, "is_ready", None)
+        try:
+            if callable(is_ready) and is_ready():
+                return "initialized"
+        except Exception:
+            return "pending"
+        return "pending"
 
     def search_for_removal(
         self, query: str, limit: int | None = None
@@ -838,7 +869,7 @@ class MemoryManager:
             Returns at most 1 candidate since exact match is unique.
 
         Raises:
-            RuntimeError: If search operation fails.
+            SearchError: If the lookup fails.
         """
         # Note: limit is kept for API compatibility but exact match returns at most 1
         _ = limit  # Unused, kept for API compatibility
