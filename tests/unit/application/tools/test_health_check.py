@@ -24,8 +24,9 @@ class TestHealthCheckToolStatus:
         assert result["semantic_engine"] == "pending"
         assert result["tantivy_engine"] == "disabled"
         mock_memory_manager.search_engine_status.assert_called_once()
+        mock_memory_manager.reconcile_pending_replacements.assert_called_once()
 
-    async def test_degraded_when_replacements_are_pending(
+    async def test_degraded_when_replacements_remain_after_reconcile(
         self, mock_config, mock_memory_manager, mock_tool_logger
     ) -> None:
         mock_memory_manager.search_engine_status.return_value = {
@@ -39,6 +40,24 @@ class TestHealthCheckToolStatus:
 
         assert result["status"] == "degraded"
         assert result["pending_replacement_transitions"] == 2
+        mock_memory_manager.reconcile_pending_replacements.assert_called_once()
+        mock_memory_manager.pending_replacement_count.assert_called_once()
+
+    async def test_healthy_when_reconcile_clears_pending(
+        self, mock_config, mock_memory_manager, mock_tool_logger
+    ) -> None:
+        mock_memory_manager.search_engine_status.return_value = {
+            "semantic_engine": "initialized",
+            "tantivy_engine": "initialized",
+        }
+        mock_memory_manager.pending_replacement_count.return_value = 0
+        mock_memory_manager.startup_metrics = None
+        tool = HealthCheckTool(mock_config, mock_memory_manager, mock_tool_logger)
+        result = await tool.get_handler()()
+
+        assert result["status"] == "healthy"
+        assert result["pending_replacement_transitions"] == 0
+        mock_memory_manager.reconcile_pending_replacements.assert_called_once()
 
     async def test_unhealthy_does_not_reenter_status(
         self, mock_config, mock_memory_manager, mock_tool_logger
