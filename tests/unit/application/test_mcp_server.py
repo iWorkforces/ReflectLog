@@ -1151,8 +1151,10 @@ class TestHealthCheckTool:
     async def test_health_check_returns_healthy_status(self, mcp_server):
         '''Test health check returns healthy status with all components.'''
         # Mock semantic and tantivy engines as initialized
-        mcp_server.memory_manager._semantic_engine = MagicMock()
-        mcp_server.memory_manager._tantivy_engine = MagicMock()
+        ready = MagicMock()
+        ready.is_ready.return_value = True
+        mcp_server.memory_manager._semantic_engine = ready
+        mcp_server.memory_manager._tantivy_engine = ready
 
         health_check_func = None
         for tool in mcp_server.mcp._tool_manager._tools.values():
@@ -1175,7 +1177,9 @@ class TestHealthCheckTool:
     async def test_health_check_with_tantivy_disabled(self, mcp_server):
         '''Test health check when Tantivy is disabled.'''
         # Mock semantic engine as initialized, tantivy as None
-        mcp_server.memory_manager._semantic_engine = MagicMock()
+        ready = MagicMock()
+        ready.is_ready.return_value = True
+        mcp_server.memory_manager._semantic_engine = ready
         mcp_server.memory_manager._tantivy_engine = None
 
         health_check_func = None
@@ -1211,8 +1215,10 @@ class TestHealthCheckTool:
     async def test_health_check_with_different_reranker(self, mcp_server):
         '''Test health check reports configured reranker engine.'''
         # The default reranker is "llm" - verify it's reported correctly
-        mcp_server._memory_manager._semantic_engine = MagicMock()
-        mcp_server._memory_manager._tantivy_engine = MagicMock()
+        ready = MagicMock()
+        ready.is_ready.return_value = True
+        mcp_server.memory_manager._semantic_engine = ready
+        mcp_server.memory_manager._tantivy_engine = ready
 
         health_check_func = None
         for tool in mcp_server.mcp._tool_manager._tools.values():

@@ -150,6 +150,20 @@ class TestUSearchEngineInitialization:
         finally:
             engine.close()
 
+    def test_is_ready_false_until_initialized(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """is_ready must not restore the index."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        try:
+            assert engine.is_ready() is False
+            assert engine._index is None
+            engine.ensure_initialized()
+            assert engine.is_ready() is True
+        finally:
+            engine.close()
+
 
 class TestUSearchEngineAdd:
     '''Tests for USearchEngine.add method.'''

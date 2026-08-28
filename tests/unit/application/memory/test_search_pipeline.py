@@ -189,6 +189,18 @@ class TestCanonicalPipelineIdentity:
             _ = importlib.import_module(
                 "reflectlog.application.memory.search_pipeline"
             )
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module("reflectlog.core.search")
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module(
+                "reflectlog.infrastructure.search.base"
+            )
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module(
+                "reflectlog.application.memory.protocols"
+            )
+        with pytest.raises(ModuleNotFoundError):
+            _ = importlib.import_module("reflectlog.application.types")
 
     def test_deleted_reexport_paths_are_gone(self) -> None:
         """Old barrel imports must fail instead of silently returning."""
@@ -198,8 +210,6 @@ class TestCanonicalPipelineIdentity:
 
         with pytest.raises(AttributeError):
             _ = getattr(reflectlog, "main")
-        with pytest.raises(ImportError):
-            from reflectlog.application.tools import SearchTool
         assert not hasattr(tools_pkg, "SearchTool")
         for name in (
             "AssistantMessage",
@@ -274,6 +284,38 @@ class TestCanonicalPipelineIdentity:
         assert manager.search_engine_status() == {
             "semantic_engine": "initialized",
             "tantivy_engine": "initialized",
+        }
+
+    def test_search_engine_status_treats_is_ready_errors_as_pending(self) -> None:
+        broken = MagicMock()
+        broken.is_ready.side_effect = RuntimeError("peek failed")
+        missing = MagicMock()
+        missing.is_ready = None
+        config = MagicMock()
+        config.project_id = "test_project"
+        config.enable_hybrid_search = True
+        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        manager._semantic_engine = broken
+        manager._tantivy_engine = missing
+        assert manager.search_engine_status() == {
+            "semantic_engine": "pending",
+            "tantivy_engine": "pending",
         }
 
     def test_logger_required(self) -> None:
@@ -984,6 +1026,8 @@ class TestSearchResponsiveness:
             await asyncio.sleep(0)
         assert entered.is_set()
         search_task.cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
         assert not search_task.done()
         assert not finished.is_set()
         loop_progressed.set()
@@ -1029,6 +1073,8 @@ class TestSearchResponsiveness:
             await asyncio.sleep(0)
         assert semantic_entered.is_set() and tantivy_entered.is_set()
         search_task.cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
         assert not search_task.done()
         assert not semantic_finished.is_set()
         assert not tantivy_finished.is_set()

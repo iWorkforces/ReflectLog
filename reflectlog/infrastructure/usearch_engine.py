@@ -6,7 +6,7 @@ the ISemanticSearchEngine protocol for compatibility with MemoryManager.
 
 Clean Architecture Compliance:
     This module implements the ISemanticSearchEngine protocol defined in
-    the application layer (reflectlog.application.types), following the
+    ``reflectlog.core.types.ISemanticSearchEngine``, following the
     Dependency Inversion Principle from SOLID.
 """
 

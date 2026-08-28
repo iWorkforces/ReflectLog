@@ -93,12 +93,14 @@ class TestInfrastructureDoesNotImportApplication:
         )
 
     def test_all_infra_files_scanned(self, infra_files: list[pathlib.Path]) -> None:
-        """Confirm we scan subdirectories too (search/, embeddings/, etc.)."""
-        subdirs = {
-            p.parent.name for p in infra_files if p.parent != _INFRASTRUCTURE_DIR
+        """Confirm rglob still walks marker subpackages such as search/."""
+        walked_packages = {
+            p.parent.name
+            for p in _INFRASTRUCTURE_DIR.rglob("__init__.py")
+            if p.parent != _INFRASTRUCTURE_DIR
         }
-        # At minimum, search/base.py lives in a subdirectory
-        assert "search" in subdirs, "search/ subdirectory not scanned"
+        assert {"search", "embeddings", "reranking", "memory"} <= walked_packages
+        assert infra_files, "No Python files found in infrastructure/"
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +171,9 @@ class TestCoreDoesNotImportApplication:
 
 
 class TestProtocolConformanceUSearch:
-    """USearchEngine satisfies ISearchBackend via structural subtyping."""
+    """USearchEngine satisfies ISemanticSearchEngine via structural subtyping."""
 
-    def test_has_all_search_backend_methods(self) -> None:
+    def test_has_all_semantic_engine_methods(self) -> None:
         from reflectlog.infrastructure.usearch_engine import USearchEngine
 
         for attr in (
@@ -182,24 +184,17 @@ class TestProtocolConformanceUSearch:
             "commit",
             "close",
             "ensure_initialized",
+            "is_ready",
         ):
             assert hasattr(USearchEngine, attr), (
-                f"USearchEngine missing ISearchBackend.{attr}"
+                f"USearchEngine missing ISemanticSearchEngine.{attr}"
             )
-
-    def test_search_engine_base_satisfies_backend(self) -> None:
-        """SearchEngineBase provides defaults for all ISearchBackend methods."""
-        from reflectlog.core.search import ISearchBackend
-        from reflectlog.infrastructure.search.base import SearchEngineBase
-
-        instance = SearchEngineBase()
-        assert isinstance(instance, ISearchBackend)
 
 
 class TestProtocolConformanceTantivy:
-    """TantivyEngine satisfies ISearchBackend."""
+    """TantivyEngine exposes the live sync full-text search API."""
 
-    def test_has_all_search_backend_methods(self) -> None:
+    def test_has_all_fulltext_engine_methods(self) -> None:
         from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
         for attr in (
@@ -210,9 +205,10 @@ class TestProtocolConformanceTantivy:
             "commit",
             "close",
             "ensure_initialized",
+            "is_ready",
         ):
             assert hasattr(TantivyEngine, attr), (
-                f"TantivyEngine missing ISearchBackend.{attr}"
+                f"TantivyEngine missing {attr}"
             )
 
 
@@ -408,7 +404,6 @@ class TestSubpackageImportability:
         "module_path",
         [
             "reflectlog.infrastructure.search",
-            "reflectlog.infrastructure.search.base",
             "reflectlog.infrastructure.embeddings",
             "reflectlog.infrastructure.reranking",
             "reflectlog.infrastructure.memory",
@@ -421,12 +416,6 @@ class TestSubpackageImportability:
 
         mod = importlib.import_module(module_path)
         assert mod is not None
-
-    def test_search_engine_base_importable_from_subpackage(self) -> None:
-        """SearchEngineBase is accessible via infrastructure.search.base."""
-        from reflectlog.infrastructure.search.base import SearchEngineBase
-
-        assert SearchEngineBase is not None
 
     def test_top_level_infrastructure_importable(self) -> None:
         """The infrastructure package itself is importable."""

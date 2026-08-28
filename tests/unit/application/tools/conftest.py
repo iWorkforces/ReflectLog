@@ -32,6 +32,13 @@ def mock_memory_manager() -> MagicMock:
     mm.search_for_removal = MagicMock(return_value=[])
     mm.delete_by_memory = MagicMock(return_value=True)
     mm.delete_by_message = MagicMock(return_value=True)
+    mm.search_engine_status = MagicMock(
+        return_value={
+            "semantic_engine": "pending",
+            "tantivy_engine": "disabled",
+        }
+    )
+    mm.startup_metrics = None
     return mm
 
 

@@ -12,7 +12,6 @@ Protocol definitions layer defining all abstractions for protocol-based dependen
 core/
 ├── config.py            # Configuration protocols (IServerConfig, ISearchConfig, IStorageConfig, IRerankerConfig, IEmbedderConfig, IReplacementConfig, IAppConfig)
 ├── config_adapters.py   # Protocol adapters wrapping Config dataclass (ConfigAdapter + 6 fine-grained adapters)
-├── search.py            # Legacy staged-search protocols (unused by live SearchPipeline)
 ├── memory.py            # Memory protocols (IMemoryStore, IMemoryBackend, IMemoryManager)
 ├── reranking.py         # Reranking protocols (IReranker, IRerankerProvider, IRankingResult, IRerankerConfig)
 ├── tools.py             # Tool protocols (ITool, IToolRegistry, IToolLoader, ToolParameter, ToolDefinition)
@@ -26,7 +25,7 @@ core/
 |------|------|---------------|
 | Server configuration | config.py | IServerConfig, IAppConfig |
 | Live search | application/memory/search_strategies.py | SearchPipeline, SearchContext, SearchResult |
-| Semantic engine | types.py | ISemanticSearchEngine |
+| Semantic engine | types.py | ISemanticSearchEngine (sync tuple search) |
 | Fusion | application/memory/fusion/base.py | FusionEngine |
 | Memory operations | memory.py | IMemoryStore, IMemoryManager |
 | Reranking interfaces | reranking.py | IReranker, IRerankerProvider |
