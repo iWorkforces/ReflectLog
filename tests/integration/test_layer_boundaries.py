@@ -260,6 +260,7 @@ class TestProtocolConformanceMemoryStore:
             "begin_replacement_transition",
             "begin_replacement_transitions",
             "list_pending_transitions",
+            "get_transition_for_old_memory",
             "complete_replacement_transition",
             "close",
         ):

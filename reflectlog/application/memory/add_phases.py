@@ -741,12 +741,9 @@ class StoragePhase:
         list[ReplacementInfo],
     ]:
         """Keep the highest-confidence successor for each old id."""
-        candidates = self._replacement_candidates(
-            memories, replacement_map, dry_run=dry_run
-        )
+        candidates = self._replacement_candidates(memories, replacement_map)
         winners = _highest_confidence_by_old_id(candidates)
         planned: list[tuple[ReplacementInfo, str, int]] = []
-        replacements: list[ReplacementInfo] = []
         for info, memory, old_id in candidates:
             winner = winners[old_id]
             if winner is not info:
@@ -761,6 +758,20 @@ class StoragePhase:
                 )
                 continue
             planned.append((info, memory, old_id))
+        planned = self._drop_conflicting_successors(planned, dry_run=dry_run)
+        replacements: list[ReplacementInfo] = []
+        for info, memory, _old_id in planned:
+            self.logger.info(
+                "Replacing old memory with new one",
+                extra={
+                    "action": "replace",
+                    "old_preview": truncate_memory(info.old_memory, max_length=60),
+                    "new_preview": truncate_memory(memory, max_length=60),
+                    "confidence": info.confidence,
+                    "similarity": info.similarity_score,
+                    "dry_run": dry_run,
+                },
+            )
             replacements.append(info)
         return planned, replacements
 
@@ -768,25 +779,11 @@ class StoragePhase:
         self,
         memories: list[str],
         replacement_map: dict[str, list[ReplacementInfo]],
-        *,
-        dry_run: bool,
     ) -> list[tuple[ReplacementInfo, str, int]]:
         """Resolve live old ids for every intended replacement."""
         candidates: list[tuple[ReplacementInfo, str, int]] = []
         for idx, memory in enumerate(memories):
             for info in replacement_map.get(memory, []):
-                self.logger.info(
-                    "Replacing old memory with new one",
-                    extra={
-                        "memory_index": idx + 1,
-                        "action": "replace",
-                        "old_preview": truncate_memory(info.old_memory, max_length=60),
-                        "new_preview": truncate_memory(memory, max_length=60),
-                        "confidence": info.confidence,
-                        "similarity": info.similarity_score,
-                        "dry_run": dry_run,
-                    },
-                )
                 old_id = self._semantic_engine.get_id_by_content(
                     self._workspace_id, info.old_memory
                 )
@@ -798,6 +795,40 @@ class StoragePhase:
                     continue
                 candidates.append((info, memory, old_id))
         return candidates
+
+    def _drop_conflicting_successors(
+        self,
+        planned: list[tuple[ReplacementInfo, str, int]],
+        *,
+        dry_run: bool,
+    ) -> list[tuple[ReplacementInfo, str, int]]:
+        """Omit successors that would collide with an exclusive leftover row."""
+        store = self._semantic_engine.memory_store
+        getter = getattr(store, "get_transition_for_old_memory", None)
+        if not callable(getter):
+            return planned
+
+        kept: list[tuple[ReplacementInfo, str, int]] = []
+        for info, memory, old_id in planned:
+            existing = getter(self._workspace_id, old_id)
+            if (
+                isinstance(existing, ReplacementTransition)
+                and existing.new_content != memory
+            ):
+                self.logger.info(
+                    "Skipping successor that conflicts with an existing transition",
+                    extra={
+                        "old_memory_id": old_id,
+                        "existing_new_content": truncate_memory(
+                            existing.new_content, max_length=60
+                        ),
+                        "skipped_new_content": truncate_memory(memory, max_length=60),
+                        "dry_run": dry_run,
+                    },
+                )
+                continue
+            kept.append((info, memory, old_id))
+        return kept
 
     def _record_planned_transitions(
         self, planned: list[tuple[ReplacementInfo, str, int]]

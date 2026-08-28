@@ -404,9 +404,57 @@ class TestReplacementRecoveryIntegration:
                 memories = set(manager.get_all())
                 assert memories == {loser, winner}
                 assert manager.get_id_by_content(OLD) is None
+                loser_id = manager.get_id_by_content(loser)
+                winner_id = manager.get_id_by_content(winner)
+                index = getattr(manager._semantic_engine, "index", None)
+                assert loser_id is not None
+                assert winner_id is not None
+                assert index is not None
+                assert loser_id in index
+                assert winner_id in index
                 store = manager._semantic_engine.memory_store
                 assert isinstance(store, MemoryStore)
                 archives = store.get_archived(manager.workspace_id)
                 assert len(archives) == 1
                 assert archives[0].replaced_by == winner
+                assert store.list_pending_transitions() == []
+
+    async def test_leftover_exclusive_heals_then_stores_unrelated(self) -> None:
+        leftover_new = "Prefer two spaces for indentation in this repository"
+        unrelated = "Prefer 100-character lines in this repository"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with _manager(tmpdir) as manager:
+                assert manager.add_memories([OLD]) == 1
+                old_id = manager.get_id_by_content(OLD)
+                assert old_id is not None
+                store = manager._semantic_engine.memory_store
+                assert isinstance(store, MemoryStore)
+                _ = store.begin_replacement_transition(
+                    old_memory_id=old_id,
+                    workspace_id=manager.workspace_id,
+                    old_content=OLD,
+                    new_content=leftover_new,
+                    reason="first intent",
+                    confidence=0.8,
+                )
+                result = await manager._storage_phase.execute(
+                    [NEW, unrelated],
+                    {
+                        NEW: [
+                            ReplacementInfo(
+                                old_memory=OLD,
+                                new_memory=NEW,
+                                confidence=0.95,
+                                reason="second intent",
+                            )
+                        ]
+                    },
+                )
+                assert result.stored_count == 2
+                assert result.replaced_count == 0
+                memories = set(manager.get_all())
+                assert leftover_new in memories
+                assert NEW in memories
+                assert unrelated in memories
+                assert OLD not in memories
                 assert store.list_pending_transitions() == []

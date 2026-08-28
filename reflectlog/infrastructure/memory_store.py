@@ -911,6 +911,30 @@ class MemoryStore(BaseModel):
             finally:
                 cursor.close()
 
+    def get_transition_for_old_memory(
+        self, workspace_id: str, old_memory_id: int
+    ) -> ReplacementTransition | None:
+        """Return the exclusive transition for an old memory, if any."""
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                return self._existing_transition(cursor, workspace_id, old_memory_id)
+            except sqlite3.Error as e:
+                if self.logger:
+                    self.logger.error(
+                        "Failed to look up replacement transition",
+                        extra={
+                            "workspace_id": workspace_id,
+                            "old_memory_id": old_memory_id,
+                            "error": str(e),
+                        },
+                    )
+                raise StorageError(
+                    f"Failed to look up replacement transition: {e}"
+                ) from e
+            finally:
+                cursor.close()
+
     def complete_replacement_transition(self, transition_id: int) -> None:
         """Mark a replacement transition completed (idempotent).
 

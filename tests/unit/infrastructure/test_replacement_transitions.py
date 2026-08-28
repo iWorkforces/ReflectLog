@@ -182,6 +182,16 @@ class TestPendingTransitionLifecycle:
             assert row[0] == TRANSITION_COMPLETED
             store.close()
 
+    def test_lookup_by_old_memory_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            transition = _begin(store)
+            found = store.get_transition_for_old_memory("proj1", 11)
+            assert found is not None
+            assert found.id == transition.id
+            assert store.get_transition_for_old_memory("proj1", 99) is None
+            store.close()
+
     def test_complete_missing_id_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))

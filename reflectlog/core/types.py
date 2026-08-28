@@ -91,6 +91,10 @@ class IArchiveMemoryStore(Protocol):
 
     def list_pending_transitions(self) -> list[ReplacementTransition]: ...
 
+    def get_transition_for_old_memory(
+        self, workspace_id: str, old_memory_id: int
+    ) -> ReplacementTransition | None: ...
+
     def complete_replacement_transition(self, transition_id: int) -> None: ...
 
 

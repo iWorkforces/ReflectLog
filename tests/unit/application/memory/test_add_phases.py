@@ -1301,6 +1301,11 @@ class TestStoragePhase:
             reason="strong",
             confidence=0.95,
         )
+        mock_semantic_engine.add_batch.assert_called_once_with(
+            workspace_id="test_project",
+            contents=["low", "high"],
+            infer=False,
+        )
 
     async def test_dry_run_collapses_two_successors(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
@@ -1337,6 +1342,95 @@ class TestStoragePhase:
         assert result.replacements[0].confidence == 0.95
         mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
         mock_semantic_engine.delete.assert_not_called()
+
+    async def test_skips_successor_that_conflicts_with_existing_transition(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """A leftover exclusive row must not abort unrelated memories."""
+        replacement_info = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+        )
+        mock_semantic_engine.get_id_by_content.return_value = 42
+        mock_semantic_engine.add_batch.side_effect = None
+        mock_semantic_engine.add_batch.return_value = ["new msg", "other"]
+        mock_semantic_engine.memory_store.get_transition_for_old_memory.return_value = (
+            ReplacementTransition(
+                id=1,
+                workspace_id="test_project",
+                old_memory_id=42,
+                old_content="old msg",
+                new_content="already recorded",
+                archive_id=1,
+                reason="first intent",
+                confidence=0.8,
+                status="pending",
+            )
+        )
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["new msg", "other"],
+            {"new msg": [replacement_info]},
+        )
+
+        assert result.stored_count == 2
+        assert result.replaced_count == 0
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.delete.assert_not_called()
+        mock_semantic_engine.add_batch.assert_called_once_with(
+            workspace_id="test_project",
+            contents=["new msg", "other"],
+            infer=False,
+        )
+
+    async def test_reconcile_runs_at_persist_start_when_write_lock_set(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Start-of-persist reconcile is invoked when a write lock is present."""
+        lock = threading.Lock()
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=lock,
+        )
+        with patch(
+            "reflectlog.application.memory.add_phases.reconcile_pending_replacements",
+            return_value=0,
+        ) as reconcile:
+            result = await phase.execute([], {})
+
+        assert result.stored_count == 0
+        reconcile.assert_called_once()
+
+    async def test_reconcile_skipped_without_write_lock(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """No write lock means start-of-persist reconcile is a no-op."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=None,
+        )
+        with patch(
+            "reflectlog.application.memory.add_phases.reconcile_pending_replacements",
+            return_value=0,
+        ) as reconcile:
+            result = await phase.execute(["msg1"], {})
+
+        assert result.stored_count == 1
+        reconcile.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
