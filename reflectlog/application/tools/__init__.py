@@ -1,17 +1,6 @@
-"""MCP Tools for ReflectLog Server."""
+"""MCP Tools for ReflectLog Server.
 
-from .add import AddTool
-from .base import BaseTool
-from .get_all import GetAllTool
-from .health_check import HealthCheckTool
-from .remove import RemoveTool
-from .search import SearchTool
+Import tools from their defining modules, for example
+``reflectlog.application.tools.search.SearchTool``.
+"""
 
-__all__ = [
-    "AddTool",
-    "BaseTool",
-    "GetAllTool",
-    "HealthCheckTool",
-    "RemoveTool",
-    "SearchTool",
-]

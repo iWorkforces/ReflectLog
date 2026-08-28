@@ -397,12 +397,12 @@ class TestProtocolConformanceConfigAdapter:
                 )
 
 # ---------------------------------------------------------------------------
-# 4. Backward-compatible re-exports (subpackage __init__ importability)
+# 4. Subpackage importability
 # ---------------------------------------------------------------------------
 
 
-class TestBackwardCompatReExports:
-    """Infrastructure subpackages remain importable for backward compat."""
+class TestSubpackageImportability:
+    """Infrastructure subpackages remain importable."""
 
     @pytest.mark.parametrize(
         "module_path",
