@@ -168,7 +168,11 @@ class SearchPipeline:
             extra={"mode": "semantic"},
         )
 
-        results = self._semantic_engine.search(
+        # Offload the blocking USearch call so semantic-only search
+        # does not stall unrelated AnyIO/MCP work on the event loop.
+        results: list[tuple[str, float, str]] = await asyncify(
+            self._semantic_engine.search
+        )(
             query=context.query,
             project_id=context.project_id,
             limit=context.limit,
@@ -254,19 +258,15 @@ class SearchPipeline:
             extra={"step": "parallel_search"},
         )
 
-        # Pre-initialize engines to prevent race conditions
-        self._semantic_engine.ensure_initialized()
-        if self._tantivy_engine is not None:
-            self._tantivy_engine.ensure_initialized()
-
-        # asyncer task group required: soonify captures SoonValue results from parallel USearch + Tantivy searches
+        # asyncer task group required: soonify captures SoonValue results
+        # from parallel USearch + Tantivy searches on worker threads.
         soon_semantic = None
         soon_tantivy = None
         async with create_task_group() as tg:
-            soon_semantic = tg.soonify(asyncify(self._search_semantic))(
+            soon_semantic = tg.soonify(self._search_semantic)(
                 context.query, context.overfetch_limit, context.project_id
             )
-            soon_tantivy = tg.soonify(asyncify(self._search_tantivy))(
+            soon_tantivy = tg.soonify(self._search_tantivy)(
                 context.query, context.overfetch_limit, context.project_id
             )
 
@@ -288,15 +288,20 @@ class SearchPipeline:
 
         return semantic_results, tantivy_results
 
-    def _search_semantic(
+    async def _search_semantic(
         self, query: str, limit: int, project_id: str
     ) -> list[tuple[str, float, str]]:
         """Execute semantic search on USearchEngine.
 
         Falls back to empty list on error, relying on Tantivy results.
         """
+        # Init stays outside the search fallback: a failed ensure_initialized
+        # still raises SearchError from execute(), matching the prior contract.
+        await asyncify(self._semantic_engine.ensure_initialized)()
         try:
-            results = self._semantic_engine.search(
+            results: list[tuple[str, float, str]] = await asyncify(
+                self._semantic_engine.search
+            )(
                 query=query,
                 project_id=project_id,
                 limit=limit,
@@ -317,13 +322,17 @@ class SearchPipeline:
             )
             return []
 
-    def _search_tantivy(
+    async def _search_tantivy(
         self, query: str, limit: int, project_id: str
     ) -> list[tuple[str, float]]:
         """Execute full-text search on Tantivy engine."""
         if self._tantivy_engine is None:
             return []
-        return self._tantivy_engine.search(query, project_id, limit)
+        await asyncify(self._tantivy_engine.ensure_initialized)()
+        tantivy_results: list[tuple[str, float]] = await asyncify(
+            self._tantivy_engine.search
+        )(query, project_id, limit)
+        return tantivy_results
 
     async def _step2_fusion_or_concatenate(
         self,
