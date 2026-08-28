@@ -67,9 +67,12 @@ class HealthCheckTool(BaseTool):
                     }
                 }
             """
+            engine_status = {
+                "semantic_engine": "unknown",
+                "tantivy_engine": "unknown",
+            }
             try:
                 self.log_invocation("health_check")
-
                 engine_status = self.memory.search_engine_status()
                 semantic_engine_status = engine_status["semantic_engine"]
                 tantivy_engine_status = engine_status["tantivy_engine"]
@@ -109,7 +112,7 @@ class HealthCheckTool(BaseTool):
                     "error_type": type(e).__name__,
                     # Provide component states even during error
                     "diagnostics": {
-                        **self.memory.search_engine_status(),
+                        **engine_status,
                         "reranker_engine": self.config.reranker_engine,
                         "hybrid_search_enabled": self.config.enable_hybrid_search,
                     },

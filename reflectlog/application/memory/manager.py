@@ -843,8 +843,11 @@ class MemoryManager:
         if engine is None:
             return absent
         is_ready = getattr(engine, "is_ready", None)
-        if callable(is_ready) and is_ready():
-            return "initialized"
+        try:
+            if callable(is_ready) and is_ready():
+                return "initialized"
+        except Exception:
+            return "pending"
         return "pending"
 
     def search_for_removal(

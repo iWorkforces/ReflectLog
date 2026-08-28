@@ -174,13 +174,15 @@ class SearchPipeline:
 
         # Offload the blocking USearch call so semantic-only search
         # does not stall unrelated AnyIO/MCP work on the event loop.
-        results: list[tuple[str, float, str]] = await asyncify(
-            self._semantic_engine.search
-        )(
-            query=context.query,
-            project_id=context.project_id,
-            limit=context.limit,
-        )
+        # A task group waits for that worker if the caller cancels,
+        # matching hybrid search (asyncify alone does not).
+        async with create_task_group() as tg:
+            soon_results = tg.soonify(asyncify(self._semantic_engine.search))(
+                query=context.query,
+                project_id=context.project_id,
+                limit=context.limit,
+            )
+        results: list[tuple[str, float, str]] = soon_results.value or []
 
         # Build timestamp map and memory list
         timestamp_map = {msg: created_at for msg, _, created_at in results}
