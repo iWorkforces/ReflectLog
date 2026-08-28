@@ -138,7 +138,7 @@ class StructuredLogger(IStructuredLogger):
 
 
 def create_logger(
-    name: str, project_id: str, log_level: str = "INFO"
+    name: str, workspace_id: str, log_level: str = "INFO"
 ) -> StructuredLogger:
     """Create a structured logger with default configuration.
 
@@ -147,7 +147,7 @@ def create_logger(
 
     Args:
         name: Logger name (usually __name__).
-        project_id: Project identifier to include in all logs.
+        workspace_id: Workspace identifier to include in all logs.
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
 
     Returns:
@@ -168,7 +168,7 @@ def create_logger(
     # We set it here to ensure our configuration is respected
     logger.setLevel(getattr(logging, log_level.upper()))
 
-    return StructuredLogger(logger, default_extra={"project_id": project_id})
+    return StructuredLogger(logger, default_extra={"workspace_id": workspace_id})
 
 
 def format_fusion_score_status(score: float, threshold: float) -> tuple[str, str]:

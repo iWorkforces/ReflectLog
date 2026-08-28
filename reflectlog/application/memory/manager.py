@@ -49,7 +49,7 @@ from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngin
 
 from ...core.config_adapters import ConfigAdapter
 from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine
+from ...core.types import ISemanticSearchEngine, ReplacementTransition
 from ..config.settings import Config
 from ..utils.validation import (
     truncate_memory,
@@ -64,6 +64,9 @@ from .add_phases import (
 from .fusion import create_fusion_engine
 from .fusion.base import FusionEngine
 from .match_utils import has_exact_match
+from .replacement_recovery import (
+    reconcile_pending_replacements as apply_pending_replacements,
+)
 from .search_strategies import (
     SearchContext,
     SearchPipeline,
@@ -89,7 +92,7 @@ class MemoryManager:
 
         self.config = config
         self.logger: IStructuredLogger = logger
-        self.project_id = config.project_id
+        self.workspace_id = config.workspace_id
 
         self._init_locks()
         self.is_hybrid_search = self.config.enable_hybrid_search
@@ -100,6 +103,7 @@ class MemoryManager:
         self._init_smart_replacer()
         self._init_pipelines()
         self._log_configuration()
+        _ = self.reconcile_pending_replacements()
 
         if config.eager_initialization:
             self._eager_initialize_engines()
@@ -160,9 +164,9 @@ class MemoryManager:
         self._tantivy_engine: TantivyEngine | None = None
         if self.is_hybrid_search:
             tantivy_config = TantivyConfig(
-                project_id=self.project_id,
+                workspace_id=self.workspace_id,
                 index_path=self.config.tantivy_index_path_template.format(
-                    project_id=self.project_id
+                    workspace_id=self.workspace_id
                 ).lower(),
                 normalize_scores=self.config.tantivy_normalize_scores,
             )
@@ -262,6 +266,7 @@ class MemoryManager:
             config=self.config,
             logger=self.logger,
             write_lock=self._write_lock,
+            lock=self._lock,
         )
         self._add_pipeline = AddPipeline(
             duplicate_detection_phase=self._duplicate_detection_phase,
@@ -271,16 +276,43 @@ class MemoryManager:
             logger=self.logger,
         )
 
+    def reconcile_pending_replacements(self) -> int:
+        """Finish replacements interrupted by a previous process stop.
+
+        Safe to call from health checks and later persists. Acquires
+        ``_write_lock`` then ``_lock``.
+        """
+        return apply_pending_replacements(
+            semantic_engine=self._semantic_engine,
+            tantivy_engine=self._tantivy_engine,
+            write_lock=self._write_lock,
+            lock=self._lock,
+            logger=self.logger,
+        )
+
+    def pending_replacement_count(self) -> int:
+        """Return how many replacement transitions are still pending."""
+        store = getattr(self._semantic_engine, "memory_store", None)
+        list_pending = getattr(store, "list_pending_transitions", None)
+        if store is None or not callable(list_pending):
+            return 0
+        pending = list_pending()
+        if not isinstance(pending, list):
+            return 0
+        return sum(
+            1 for row in pending if isinstance(row, ReplacementTransition)
+        )
+
     def _log_configuration(self) -> None:
         """Log the final configuration state after initialization."""
         self.logger.info(
-            f"Initialized Hybrid MemoryManager [project_id={self.project_id}, "
+            f"Initialized Hybrid MemoryManager [workspace_id={self.workspace_id}, "
             f"semantic_backend=usearch, "
             f"hybrid_search={self.is_hybrid_search}, "
             f"embedding_model={self.config.embedding_model}, "
         )
         self.logger.info(
-            f"tantivy_index={self.config.tantivy_index_path_template.format(project_id=self.project_id)}, "
+            f"tantivy_index={self.config.tantivy_index_path_template.format(workspace_id=self.workspace_id)}, "
             f"embedder={self.config.embedder_provider}]",
         )
 
@@ -328,7 +360,7 @@ class MemoryManager:
         if should_init_search:
             self.logger.info(
                 "Starting eager search engine initialization...",
-                extra={"project_id": self.project_id},
+                extra={"workspace_id": self.workspace_id},
             )
 
             # Pre-warm USearch semantic engine
@@ -354,7 +386,7 @@ class MemoryManager:
             self.logger.info(
                 "Starting eager reranker initialization...",
                 extra={
-                    "project_id": self.project_id,
+                    "workspace_id": self.workspace_id,
                     "reranker_engine": self.config.reranker_engine,
                 },
             )
@@ -365,7 +397,7 @@ class MemoryManager:
                 self.logger.warning(
                     "Eager reranker initialization requested but no reranker configured",
                     extra={
-                        "project_id": self.project_id,
+                        "workspace_id": self.workspace_id,
                         "reranker_engine": self.config.reranker_engine,
                     },
                 )
@@ -382,7 +414,7 @@ class MemoryManager:
 
             self.logger.info(
                 "Starting eager SmartReplacer initialization...",
-                extra={"project_id": self.project_id},
+                extra={"workspace_id": self.workspace_id},
             )
             _ = self.smart_replacer
             engines_initialized.append("smart_replacer")
@@ -393,7 +425,7 @@ class MemoryManager:
             self.logger.info(
                 f"Eager initialization complete [{elapsed_ms:.1f}ms]",
                 extra={
-                    "project_id": self.project_id,
+                    "workspace_id": self.workspace_id,
                     "elapsed_ms": elapsed_ms,
                     "engines_initialized": engines_initialized,
                 },
@@ -401,7 +433,7 @@ class MemoryManager:
         else:
             self.logger.info(
                 "Eager initialization skipped (all components set to lazy loading)",
-                extra={"project_id": self.project_id},
+                extra={"workspace_id": self.workspace_id},
             )
 
     @property
@@ -542,7 +574,7 @@ class MemoryManager:
             self.logger.info(
                 "Duplicate memory detected, skipping storage",
                 extra={
-                    "project_id": self.project_id,
+                    "workspace_id": self.workspace_id,
                     "memory_preview": memory[:200],
                 },
             )
@@ -551,19 +583,19 @@ class MemoryManager:
         try:
             # 1. Add to USearch semantic engine
             self._semantic_engine.add(
-                project_id=self.project_id,
+                workspace_id=self.workspace_id,
                 content=memory,
                 infer=self.config.enable_llm_infer,
             )
 
             # 2. Add to Tantivy full-text search engine
             if self._tantivy_engine is not None:
-                self._tantivy_engine.add(self.project_id, memory)
+                self._tantivy_engine.add(self.workspace_id, memory)
 
             self.logger.debug(
                 "Memory added to hybrid storage",
                 extra={
-                    "project_id": self.project_id,
+                    "workspace_id": self.workspace_id,
                     "memory_length": len(memory),
                     "engines": ["semantic", "tantivy"],
                 },
@@ -639,14 +671,14 @@ class MemoryManager:
 
             if memories_to_add:
                 inserted_memories = self._semantic_engine.add_batch(
-                    project_id=self.project_id,
+                    workspace_id=self.workspace_id,
                     contents=memories_to_add,
                     infer=self.config.enable_llm_infer,
                 )
 
                 if self._tantivy_engine is not None:
                     for memory in inserted_memories:
-                        self._tantivy_engine.add(self.project_id, memory)
+                        self._tantivy_engine.add(self.workspace_id, memory)
 
                 stored_count = len(inserted_memories)
                 inserted_set = set(inserted_memories)
@@ -750,12 +782,12 @@ class MemoryManager:
         """
         with self._lock:
             try:
-                memories = self._semantic_engine.get_all(project_id=self.project_id)
+                memories = self._semantic_engine.get_all(workspace_id=self.workspace_id)
 
                 self.logger.info(
                     f"Retrieved {len(memories)} memories (USearchEngine={len(memories)})",
                     extra={
-                        "project_id": self.project_id,
+                        "workspace_id": self.workspace_id,
                         "count": len(memories),
                     },
                 )
@@ -808,7 +840,7 @@ class MemoryManager:
             enable_hybrid_search=self.is_hybrid_search,
             enable_rrf_fusion=self.config.enable_rrf_fusion,
             reranker_engine=self.config.reranker_engine,
-            project_id=self.project_id,
+            workspace_id=self.workspace_id,
         )
 
         # Execute search pipeline
@@ -892,7 +924,7 @@ class MemoryManager:
 
             self.logger.debug(
                 f"Direct lookup removal candidates: {len(candidates)}",
-                extra={"project_id": self.project_id, "query": query[:50]},
+                extra={"workspace_id": self.workspace_id, "query": query[:50]},
             )
             return candidates
 
@@ -942,7 +974,7 @@ class MemoryManager:
                     self.logger.debug(
                         "Memory not found for deletion",
                         extra={
-                            "project_id": self.project_id,
+                            "workspace_id": self.workspace_id,
                             "memory_preview": memory[:50],
                         },
                     )
@@ -956,13 +988,13 @@ class MemoryManager:
                 if self._tantivy_engine is not None:
                     try:
                         # delete() commits internally for both soft-delete and rebuild modes
-                        _ = self._tantivy_engine.delete(self.project_id, memory)
+                        _ = self._tantivy_engine.delete(self.workspace_id, memory)
                     except Exception as tantivy_error:
                         # Log critical error - state is now inconsistent
                         self.logger.error(
                             "Tantivy deletion failed after USearch deletion - INCONSISTENT STATE",
                             extra={
-                                "project_id": self.project_id,
+                                "workspace_id": self.workspace_id,
                                 "memory_id": mem_id,
                                 "error": str(tantivy_error),
                             },
@@ -975,7 +1007,7 @@ class MemoryManager:
                 self.logger.debug(
                     "Memory deleted from hybrid storage",
                     extra={
-                        "project_id": self.project_id,
+                        "workspace_id": self.workspace_id,
                         "memory_id": mem_id,
                         "engines": ["usearch", "tantivy"]
                         if self._tantivy_engine
@@ -999,7 +1031,7 @@ class MemoryManager:
         Uses get_id_by_content() when available, with fallback to a
         legacy ID lookup API for compatibility.
         """
-        return self._semantic_engine.get_id_by_content(self.project_id, content)
+        return self._semantic_engine.get_id_by_content(self.workspace_id, content)
 
     def get_id_by_message(self, message: str) -> int | None:
         return self.get_id_by_content(message)
@@ -1017,7 +1049,7 @@ class MemoryManager:
         return has_exact_match(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
-            project_id=self.project_id,
+            workspace_id=self.workspace_id,
             content=content,
             logger=self.logger,
         )
@@ -1037,7 +1069,7 @@ class MemoryManager:
         with self._write_lock, self._lock:
             self.logger.info(
                 "Closing MemoryManager - persisting data to disk...",
-                extra={"project_id": self.project_id},
+                extra={"workspace_id": self.workspace_id},
             )
 
             # 1. Close Tantivy engine first (if enabled)
@@ -1048,13 +1080,13 @@ class MemoryManager:
                     self._tantivy_engine.close()
                     self.logger.info(
                         "Tantivy engine closed successfully",
-                        extra={"project_id": self.project_id, "engine": "tantivy"},
+                        extra={"workspace_id": self.workspace_id, "engine": "tantivy"},
                     )
                 except Exception as e:
                     self.logger.error(
                         f"Error closing Tantivy engine: {e}",
                         extra={
-                            "project_id": self.project_id,
+                            "workspace_id": self.workspace_id,
                             "engine": "tantivy",
                             "error": str(e),
                         },
@@ -1067,13 +1099,13 @@ class MemoryManager:
                 self._semantic_engine.close()
                 self.logger.info(
                     "USearch engine closed successfully",
-                    extra={"project_id": self.project_id, "engine": "usearch"},
+                    extra={"workspace_id": self.workspace_id, "engine": "usearch"},
                 )
             except Exception as e:
                 self.logger.error(
                     f"Error closing USearch engine: {e}",
                     extra={
-                        "project_id": self.project_id,
+                        "workspace_id": self.workspace_id,
                         "engine": "usearch",
                         "error": str(e),
                     },
@@ -1081,5 +1113,5 @@ class MemoryManager:
 
             self.logger.info(
                 "MemoryManager closed - all data persisted",
-                extra={"project_id": self.project_id},
+                extra={"workspace_id": self.workspace_id},
             )

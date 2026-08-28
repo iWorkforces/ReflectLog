@@ -114,7 +114,7 @@ Examples:
   reflectlog --transport sse --port 8080 --host 0.0.0.0
 
 Environment Variables:
-  PROJECT_ID    The unique project name
+  WORKSPACE_ID    The unique workspace name
   MCP_TRANSPORT   Override transport mode (stdio, http, sse, streamable-http)
   MCP_PORT        Override server port
   MCP_HOST        Override server host

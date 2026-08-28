@@ -29,7 +29,7 @@ def has_exact_match(
     *,
     semantic_engine: ISemanticSearchEngine,
     tantivy_engine: TantivyEngine | None,
-    project_id: str,
+    workspace_id: str,
     content: str,
     logger: IStructuredLogger | None,
 ) -> bool:
@@ -43,30 +43,30 @@ def has_exact_match(
             escaped_query = escape_tantivy_query(content)
             results = tantivy_engine.search(
                 f'"{escaped_query}"',
-                project_id,
+                workspace_id,
                 limit=5,
             )
             has_match = any(msg == content for msg, _ in results)
             if has_match and logger:
                 logger.debug(
                     "Tantivy found exact duplicate",
-                    extra={"project_id": project_id},
+                    extra={"workspace_id": workspace_id},
                 )
             return has_match
         except Exception as e:
             if logger:
                 logger.warning(
                     "Tantivy duplicate check failed; falling back to database lookup",
-                    extra={"project_id": project_id, "error": str(e)},
+                    extra={"workspace_id": workspace_id, "error": str(e)},
                 )
 
     try:
-        msg_id = semantic_engine.get_id_by_content(project_id, content)
+        msg_id = semantic_engine.get_id_by_content(workspace_id, content)
         if msg_id is not None:
             if logger:
                 logger.debug(
                     "Database lookup found exact duplicate",
-                    extra={"project_id": project_id, "msg_id": msg_id},
+                    extra={"workspace_id": workspace_id, "msg_id": msg_id},
                 )
             return True
         return False
@@ -75,7 +75,7 @@ def has_exact_match(
             logger.warning(
                 "Duplicate detection failed; proceeding without deduplication",
                 extra={
-                    "project_id": project_id,
+                    "workspace_id": workspace_id,
                     "error": str(e),
                 },
             )

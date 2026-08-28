@@ -7,7 +7,7 @@ Example scenarios:
 - SQL injection attempts in search queries
 - Command injection via path traversal
 - XSS attempts in memory content
-- Path traversal in project_id parameter
+- Path traversal in workspace_id parameter
 - Authentication bypass attempts
 - Privilege escalation attempts
 
@@ -30,7 +30,7 @@ from reflectlog.application.config.settings import Config
 @pytest.fixture
 def manager(monkeypatch):
     '''Provide a MemoryManager instance for testing.'''
-    monkeypatch.setenv("PROJECT_ID", "test-security-project")
+    monkeypatch.setenv("WORKSPACE_ID", "test-security-project")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
 
     mock_semantic_engine = MagicMock()
@@ -49,7 +49,7 @@ def manager(monkeypatch):
     mgr._embedder = mock_embedder
     mgr._llm_reranker = None
     mgr.config = config
-    mgr.project_id = config.project_id
+    mgr.workspace_id = config.workspace_id
     mgr.is_hybrid_search = True
     mgr._lock = MagicMock()
     mgr._write_lock = MagicMock()
@@ -133,8 +133,8 @@ class TestInputSanitization:
             assert result is not None
 
     @pytest.mark.asyncio
-    async def test_path_traversal_project_id(self, manager: MemoryManager):
-        '''Test path traversal in project_id is handled safely.
+    async def test_path_traversal_workspace_id(self, manager: MemoryManager):
+        '''Test path traversal in workspace_id is handled safely.
 
         The system should either sanitize or handle gracefully.
         '''
@@ -155,7 +155,7 @@ class TestInputSanitization:
     async def test_auth_bypass_attempt(self, manager: MemoryManager):
         '''Test authentication bypass patterns are handled safely.
 
-        The mock manager uses the configured project_id - this test verifies
+        The mock manager uses the configured workspace_id - this test verifies
         the system handles various inputs without crashing.
         '''
         # These would need real validation to reject - mock just processes them

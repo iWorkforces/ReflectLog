@@ -257,6 +257,11 @@ class TestProtocolConformanceMemoryStore:
             "exists",
             "get_id_by_content",
             "archive",
+            "begin_replacement_transition",
+            "begin_replacement_transitions",
+            "list_pending_transitions",
+            "get_transition_for_old_memory",
+            "complete_replacement_transition",
             "close",
         ):
             assert hasattr(MemoryStore, attr), (
@@ -312,7 +317,7 @@ class TestProtocolConformanceConfigAdapter:
         # IStorageConfig + IRerankerConfig + IEmbedderConfig + IReplacementConfig
         required_properties = [
             # IServerConfig
-            "transport", "host", "port", "path", "log_level", "project_id",
+            "transport", "host", "port", "path", "log_level", "workspace_id",
             # ISearchConfig
             "search_limit", "enable_hybrid_search", "enable_rrf_fusion",
             "fusion_rrf_k", "fusion_threshold", "reranker_engine",
@@ -354,7 +359,7 @@ class TestProtocolConformanceConfigAdapter:
 
         pairs: list[tuple[type, list[str]]] = [
             (ServerConfigAdapter, [
-                "transport", "host", "port", "path", "log_level", "project_id",
+                "transport", "host", "port", "path", "log_level", "workspace_id",
             ]),
             (SearchConfigAdapter, [
                 "search_limit", "enable_hybrid_search", "enable_rrf_fusion",

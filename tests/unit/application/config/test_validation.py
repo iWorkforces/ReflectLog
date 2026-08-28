@@ -100,65 +100,65 @@ class TestValidatorLifecycle:
 
 
 # ---------------------------------------------------------------------------
-# validate_project_id
+# validate_workspace_id
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestValidateProjectId:
-    '''Tests for ConfigurationValidator.validate_project_id.'''
+class TestValidateWorkspaceId:
+    '''Tests for ConfigurationValidator.validate_workspace_id.'''
 
     def test_valid_alphanumeric(self):
         '''Simple alphanumeric ID is valid.'''
         v = ConfigurationValidator()
-        assert v.validate_project_id("my_project123") is True
+        assert v.validate_workspace_id("my_project123") is True
         assert not v.has_errors()
 
     def test_valid_with_dots_and_dashes(self):
         '''Dots and dashes are allowed characters.'''
         v = ConfigurationValidator()
-        assert v.validate_project_id("my-project.v1") is True
+        assert v.validate_workspace_id("my-project.v1") is True
 
     def test_empty_string_invalid(self):
-        '''Empty project ID is rejected.'''
+        '''Empty workspace ID is rejected.'''
         v = ConfigurationValidator()
-        assert v.validate_project_id("") is False
+        assert v.validate_workspace_id("") is False
         assert v.has_errors()
         assert "Cannot be empty" in v.errors[0].message
 
     def test_invalid_characters(self):
         '''Characters outside [A-Za-z0-9_.-] are rejected.'''
         v = ConfigurationValidator()
-        assert v.validate_project_id("bad@chars!") is False
+        assert v.validate_workspace_id("bad@chars!") is False
         assert "Must contain only" in v.errors[0].message
 
     def test_too_long(self):
         '''ID longer than 64 characters is rejected.'''
         v = ConfigurationValidator()
-        assert v.validate_project_id("a" * 65) is False
+        assert v.validate_workspace_id("a" * 65) is False
 
     def test_exactly_64_chars_valid(self):
         '''ID of exactly 64 characters is valid.'''
         v = ConfigurationValidator()
-        assert v.validate_project_id("a" * 64) is True
+        assert v.validate_workspace_id("a" * 64) is True
 
     def test_path_traversal_double_dot(self):
         '''Double-dot path traversal is rejected.'''
         v = ConfigurationValidator()
-        assert v.validate_project_id("a..b") is False
+        assert v.validate_workspace_id("a..b") is False
         assert "Path traversal" in v.errors[0].message
 
     def test_path_traversal_leading_slash(self):
         '''Leading slash path traversal is rejected.'''
         v = ConfigurationValidator()
         # Leading slash also fails the regex first, so just test it returns False
-        assert v.validate_project_id("/etc") is False
+        assert v.validate_workspace_id("/etc") is False
         assert v.has_errors()
 
     def test_single_char_valid(self):
         '''Single character ID is valid.'''
         v = ConfigurationValidator()
-        assert v.validate_project_id("x") is True
+        assert v.validate_workspace_id("x") is True
 
 
 # ---------------------------------------------------------------------------
@@ -969,7 +969,7 @@ class TestValidateConfig:
     def _make_config(self, **overrides):
         '''Create a mock config object with default valid values.'''
         defaults = {
-            "project_id": "my-project",
+            "workspace_id": "my-project",
             "transport": "stdio",
             "port": 9103,
             "search_score_threshold": 0.5,
@@ -1021,11 +1021,11 @@ class TestValidateConfig:
         errors = validate_config(cfg)
         assert errors == []
 
-    def test_invalid_project_id(self):
-        '''Invalid project_id produces error.'''
-        cfg = self._make_config(project_id="bad@id!")
+    def test_invalid_workspace_id(self):
+        '''Invalid workspace_id produces error.'''
+        cfg = self._make_config(workspace_id="bad@id!")
         errors = validate_config(cfg)
-        assert any(e.field == "PROJECT_ID" for e in errors)
+        assert any(e.field == "WORKSPACE_ID" for e in errors)
 
     def test_invalid_transport(self):
         '''Invalid transport produces error.'''
@@ -1084,7 +1084,7 @@ class TestValidateConfig:
     def test_none_attributes_skipped(self):
         '''None attributes are safely skipped (no crash).'''
         cfg = self._make_config(
-            project_id=None,
+            workspace_id=None,
             transport=None,
             port=None,
             search_score_threshold=None,

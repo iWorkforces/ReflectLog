@@ -7,7 +7,7 @@ from reflectlog.application.utils.security import (
     SecretString,
     redact_dict_secrets,
     sanitize_for_logging,
-    validate_project_id,
+    validate_workspace_id,
 )
 
 
@@ -236,55 +236,55 @@ class TestRedactDictSecrets:
         assert result["level1"]["level2"]["level3"]["api_key"] == "[REDACTED]"
 
 
-class TestValidateProjectId:
-    '''Tests for validate_project_id() function.'''
+class TestValidateWorkspaceId:
+    '''Tests for validate_workspace_id() function.'''
 
-    def test_valid_alphanumeric_project_id(self) -> None:
-        '''Test valid alphanumeric project_id passes validation.'''
-        result = validate_project_id("my-project-123")
+    def test_valid_alphanumeric_workspace_id(self) -> None:
+        '''Test valid alphanumeric workspace_id passes validation.'''
+        result = validate_workspace_id("my-project-123")
         assert result == "my-project-123"
 
-    def test_valid_with_dots_project_id(self) -> None:
-        '''Test valid project_id with dots passes validation.'''
-        result = validate_project_id("my.project.name")
+    def test_valid_with_dots_workspace_id(self) -> None:
+        '''Test valid workspace_id with dots passes validation.'''
+        result = validate_workspace_id("my.project.name")
         assert result == "my.project.name"
 
     def test_lowercase_conversion(self) -> None:
-        '''Test project_id is lowercased.'''
-        result = validate_project_id("My-Project-123")
+        '''Test workspace_id is lowercased.'''
+        result = validate_workspace_id("My-Project-123")
         assert result == "my-project-123"
 
-    def test_empty_project_id_raises_error(self) -> None:
-        '''Test empty project_id raises ValidationError.'''
-        with pytest.raises(ValidationError, match="project_id cannot be empty"):
-            validate_project_id("")
+    def test_empty_workspace_id_raises_error(self) -> None:
+        '''Test empty workspace_id raises ValidationError.'''
+        with pytest.raises(ValidationError, match="workspace_id cannot be empty"):
+            validate_workspace_id("")
 
     def test_path_traversal_double_dot_raises_error(self) -> None:
         '''Test path traversal pattern (..) raises ValidationError.'''
-        with pytest.raises(ValidationError, match="Invalid project_id"):
-            validate_project_id("../../../etc")
+        with pytest.raises(ValidationError, match="Invalid workspace_id"):
+            validate_workspace_id("../../../etc")
 
     def test_path_traversal_leading_slash_raises_error(self) -> None:
         '''Test leading slash raises ValidationError.'''
-        with pytest.raises(ValidationError, match="Invalid project_id"):
-            validate_project_id("/etc/passwd")
+        with pytest.raises(ValidationError, match="Invalid workspace_id"):
+            validate_workspace_id("/etc/passwd")
 
     def test_invalid_characters_raises_error(self) -> None:
         '''Test invalid characters raise ValidationError.'''
         with pytest.raises(ValidationError, match="contains invalid characters"):
-            validate_project_id("project@id")
+            validate_workspace_id("project@id")
 
     def test_max_length_enforced(self) -> None:
         '''Test maximum length constraint (128 characters).'''
         with pytest.raises(ValidationError, match="too long"):
-            validate_project_id("a" * 129)
+            validate_workspace_id("a" * 129)
 
     def test_max_length_boundary(self) -> None:
-        '''Test 128 character project_id passes validation.'''
-        result = validate_project_id("a" * 128)
+        '''Test 128 character workspace_id passes validation.'''
+        result = validate_workspace_id("a" * 128)
         assert result == "a" * 128
 
     def test_special_characters_not_allowed(self) -> None:
         '''Test special characters are not allowed.'''
         with pytest.raises(ValidationError, match="contains invalid characters"):
-            validate_project_id("project$id")
+            validate_workspace_id("project$id")

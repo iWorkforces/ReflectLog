@@ -146,7 +146,7 @@ class Config:
     """
 
     # Core settings (required)
-    project_id: str
+    workspace_id: str
     openrouter_api_key: SecretString  # Wrapped for security - use .get_secret_value()
 
     # Transport settings
@@ -176,7 +176,7 @@ class Config:
 
     # Hybrid search settings
     enable_hybrid_search: bool = True
-    tantivy_index_path_template: str = "indexes/{project_id}/tantivy"
+    tantivy_index_path_template: str = "indexes/{workspace_id}/tantivy"
     overfetch_multiplier: int = 3  # Base multiplier (Fetch N * search_limit)
     overfetch_adaptive: bool = True  # Enable adaptive overfetch based on index size
     overfetch_min_multiplier: float = 1.5  # Min multiplier (for large indexes)
@@ -350,7 +350,7 @@ class Config:
                 "ENABLE_HYBRID_SEARCH", "true"
             ).lower()
             == "true",
-            "tantivy_index_path_template": "indexes/{project_id}/tantivy",
+            "tantivy_index_path_template": "indexes/{workspace_id}/tantivy",
             "overfetch_multiplier": max(
                 1, int(os.environ.get("OVERFETCH_MULTIPLIER", "3"))
             ),
@@ -631,23 +631,23 @@ class Config:
             ConfigurationError: If required environment variables are missing or invalid.
         """
         # Validate required environment variables
-        project_id = os.environ.get("PROJECT_ID")
-        if not project_id:
+        workspace_id = os.environ.get("WORKSPACE_ID")
+        if not workspace_id:
             raise ConfigurationError(
-                "The PROJECT_ID environment variable has not been configured."
+                "The WORKSPACE_ID environment variable has not been configured."
             )
 
-        # Enforce a safe PROJECT_ID format to avoid path traversal and
+        # Enforce a safe WORKSPACE_ID format to avoid path traversal and
         # filesystem issues. Keep the rule intentionally strict.
-        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", project_id):
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", workspace_id):
             raise ConfigurationError(
-                "Invalid PROJECT_ID: only A-Za-z0-9_.- allowed, max length 64."
+                "Invalid WORKSPACE_ID: only A-Za-z0-9_.- allowed, max length 64."
             )
 
         # Check for path traversal patterns (not caught by regex)
-        if ".." in project_id or project_id.startswith("/"):
+        if ".." in workspace_id or workspace_id.startswith("/"):
             raise ConfigurationError(
-                f"Invalid PROJECT_ID: path traversal patterns not allowed: {project_id}"
+                f"Invalid WORKSPACE_ID: path traversal patterns not allowed: {workspace_id}"
             )
 
         preset = get_active_preset()
@@ -677,7 +677,7 @@ class Config:
         # Create Config instance with all parsed settings
         config = cls(
             # Required settings
-            project_id=project_id,
+            workspace_id=workspace_id,
             openrouter_api_key=openrouter_api_key,
             # Parsed configuration sections
             **transport_config,

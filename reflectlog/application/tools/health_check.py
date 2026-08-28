@@ -2,6 +2,8 @@
 
 from typing import Any, override
 
+from asyncer import asyncify
+
 from .base import BaseTool
 
 
@@ -30,7 +32,7 @@ class HealthCheckTool(BaseTool):
 
             Returns a health status dictionary with information about:
             - Overall server status
-            - Project ID
+            - Workspace ID
             - Semantic engine initialization state
             - Tantivy full-text engine state
             - Configured reranker engine
@@ -39,21 +41,24 @@ class HealthCheckTool(BaseTool):
 
             Returns:
                 Dictionary containing health status information with keys:
-                - status: Overall status string ("healthy")
-                - project_id: The configured project identifier
+                - status: Overall status string ("healthy", "degraded", or
+                  "unhealthy"). Degraded means leftover replacement transitions
+                  remain after this check attempted to finish them.
+                - workspace_id: The configured workspace identifier
                 - semantic_engine: "initialized", "pending", or "not_initialized"
                 - tantivy_engine: "initialized", "pending", or "disabled"
                 - reranker_engine: The configured reranker type
                 - hybrid_search_enabled: Whether full-text search is enabled
                 - rrf_fusion_enabled: Whether RRF fusion is enabled
                 - recency_boost_enabled: Whether recency boost is enabled
+                - pending_replacement_transitions: Leftover replacement rows
                 - startup_metrics: Optional dict with startup timing data (milliseconds)
 
             Examples:
                 >>> health_check()
                 {
                     "status": "healthy",
-                    "project_id": "my-project",
+                    "workspace_id": "my-project",
                     "semantic_engine": "initialized",
                     "tantivy_engine": "initialized",
                     "reranker_engine": "llm",
@@ -77,16 +82,27 @@ class HealthCheckTool(BaseTool):
                 semantic_engine_status = engine_status["semantic_engine"]
                 tantivy_engine_status = engine_status["tantivy_engine"]
 
-                # Build health status response
+                reconcile_fn = getattr(
+                    self.memory, "reconcile_pending_replacements", None
+                )
+                if callable(reconcile_fn):
+                    _ = await asyncify(reconcile_fn)()
+
+                pending_count_fn = getattr(
+                    self.memory, "pending_replacement_count", None
+                )
+                pending_raw = pending_count_fn() if callable(pending_count_fn) else 0
+                pending_count = pending_raw if isinstance(pending_raw, int) else 0
                 health_status: dict[str, Any] = {
-                    "status": "healthy",
-                    "project_id": self.config.project_id,
+                    "status": "degraded" if pending_count > 0 else "healthy",
+                    "workspace_id": self.config.workspace_id,
                     "semantic_engine": semantic_engine_status,
                     "tantivy_engine": tantivy_engine_status,
                     "reranker_engine": self.config.reranker_engine,
                     "hybrid_search_enabled": self.config.enable_hybrid_search,
                     "rrf_fusion_enabled": self.config.enable_rrf_fusion,
                     "recency_boost_enabled": self.config.enable_recency_boost,
+                    "pending_replacement_transitions": pending_count,
                 }
 
                 # Add startup metrics if available
@@ -107,7 +123,7 @@ class HealthCheckTool(BaseTool):
                 # Return unhealthy status with diagnostic information
                 return {
                     "status": "unhealthy",
-                    "project_id": self.config.project_id,
+                    "workspace_id": self.config.workspace_id,
                     "error": str(e),
                     "error_type": type(e).__name__,
                     # Provide component states even during error

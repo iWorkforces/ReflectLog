@@ -77,7 +77,7 @@ def temp_engine() -> Generator[tuple[USearchConfig, MockEmbedder, str], None, No
     '''Create a temporary engine configuration and embedder.'''
     with tempfile.TemporaryDirectory() as tmpdir:
         config = USearchConfig(
-            project_id="test",
+            workspace_id="test",
             index_path=os.path.join(tmpdir, "index.usearch"),
             db_path=os.path.join(tmpdir, "messages.db"),
             embedding_dims=128,
@@ -92,7 +92,7 @@ class TestUSearchConfigFromAppConfig:
     def test_creates_config_from_app_config(self) -> None:
         '''Factory should create config from application Config.'''
         mock_config = MagicMock()
-        mock_config.project_id = "test-project"
+        mock_config.workspace_id = "test-project"
         mock_config.embedder_provider = "openai"
         mock_config.embedding_dims = 3072
         mock_config.qwen_embedding_dims = 4096
@@ -100,7 +100,7 @@ class TestUSearchConfigFromAppConfig:
         with patch("os.getcwd", return_value="/tmp"):
             config = USearchConfig.from_config(mock_config)
 
-        assert config.project_id == "test-project"
+        assert config.workspace_id == "test-project"
         assert config.embedding_dims == 3072
         assert "test-project" in config.index_path
         assert "test-project" in config.db_path
@@ -108,7 +108,7 @@ class TestUSearchConfigFromAppConfig:
     def test_uses_qwen_dims_for_langchain_provider(self) -> None:
         '''Factory should use qwen_embedding_dims for langchain provider.'''
         mock_config = MagicMock()
-        mock_config.project_id = "test-project"
+        mock_config.workspace_id = "test-project"
         mock_config.embedder_provider = "langchain"
         mock_config.embedding_dims = 3072
         mock_config.qwen_embedding_dims = 4096
@@ -262,7 +262,7 @@ class TestUSearchEngineSearch:
         finally:
             engine.close()
 
-    def test_search_filters_by_project_id(
+    def test_search_filters_by_workspace_id(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
         '''Search should only return contents for the specified project.'''
@@ -453,7 +453,7 @@ class TestUSearchEngineExactSearch:
         # Note: temp_engine uses explicit config, so we test with default config
         # The default USearchConfig has exact_search=True
         default_config = USearchConfig(
-            project_id=config.project_id,
+            workspace_id=config.workspace_id,
             index_path=config.index_path,
             db_path=config.db_path,
             embedding_dims=config.embedding_dims,
@@ -475,7 +475,7 @@ class TestUSearchEngineExactSearch:
         '''Should use exact search when exact_search=True.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
-            project_id="test",
+            workspace_id="test",
             index_path=os.path.join(tmpdir, "index.usearch"),
             db_path=os.path.join(tmpdir, "messages.db"),
             embedding_dims=128,
@@ -494,7 +494,7 @@ class TestUSearchEngineExactSearch:
         '''Should auto-switch to exact search when index size < threshold.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
-            project_id="test",
+            workspace_id="test",
             index_path=os.path.join(tmpdir, "index.usearch"),
             db_path=os.path.join(tmpdir, "messages.db"),
             embedding_dims=128,
@@ -520,7 +520,7 @@ class TestUSearchEngineExactSearch:
         '''Should use approximate search when index size >= threshold.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
-            project_id="test",
+            workspace_id="test",
             index_path=os.path.join(tmpdir, "index.usearch"),
             db_path=os.path.join(tmpdir, "messages.db"),
             embedding_dims=128,
@@ -546,7 +546,7 @@ class TestUSearchEngineExactSearch:
         '''Exact search should return valid search results.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
-            project_id="test",
+            workspace_id="test",
             index_path=os.path.join(tmpdir, "index.usearch"),
             db_path=os.path.join(tmpdir, "messages.db"),
             embedding_dims=128,
@@ -572,7 +572,7 @@ class TestUSearchEngineExactSearch:
         '''Search should log the search mode being used.'''
         _, embedder, tmpdir = temp_engine
         config = USearchConfig(
-            project_id="test",
+            workspace_id="test",
             index_path=os.path.join(tmpdir, "index.usearch"),
             db_path=os.path.join(tmpdir, "messages.db"),
             embedding_dims=128,
@@ -598,7 +598,7 @@ class TestUSearchEngineExactSearch:
     def test_config_from_app_config_includes_exact_search(self) -> None:
         '''USearchConfig.from_app_config should include exact search settings.'''
         mock_config = MagicMock()
-        mock_config.project_id = "test-project"
+        mock_config.workspace_id = "test-project"
         mock_config.embedder_provider = "openai"
         mock_config.embedding_dims = 3072
         mock_config.qwen_embedding_dims = 4096
@@ -618,7 +618,7 @@ class TestUSearchConfigFromDict:
     def test_from_dict_with_full_data(self) -> None:
         '''from_dict should create config from a complete dictionary.'''
         data = {
-            "project_id": "my-proj",
+            "workspace_id": "my-proj",
             "index_path": "/tmp/index.usearch",
             "db_path": "/tmp/messages.db",
             "embedding_dims": 256,
@@ -631,7 +631,7 @@ class TestUSearchConfigFromDict:
         }
         config = USearchConfig.from_dict(data)
 
-        assert config.project_id == "my-proj"
+        assert config.workspace_id == "my-proj"
         assert config.index_path == "/tmp/index.usearch"
         assert config.db_path == "/tmp/messages.db"
         assert config.embedding_dims == 256
@@ -646,7 +646,7 @@ class TestUSearchConfigFromDict:
         '''from_dict should use defaults for missing keys.'''
         config = USearchConfig.from_dict({})
 
-        assert config.project_id == ""
+        assert config.workspace_id == ""
         assert config.index_path == ""
         assert config.db_path == ""
         assert config.embedding_dims == 3072
@@ -665,7 +665,7 @@ class TestUSearchEngineInitWithDict:
         '''Engine should accept a dict and convert to USearchConfig.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dict = {
-                "project_id": "test",
+                "workspace_id": "test",
                 "index_path": os.path.join(tmpdir, "index.usearch"),
                 "db_path": os.path.join(tmpdir, "messages.db"),
                 "embedding_dims": 128,
@@ -675,7 +675,7 @@ class TestUSearchEngineInitWithDict:
 
             try:
                 assert isinstance(engine.config, USearchConfig)
-                assert engine.config.project_id == "test"
+                assert engine.config.workspace_id == "test"
             finally:
                 engine.close()
 
@@ -932,6 +932,33 @@ class TestUSearchEngineAddBatch:
         finally:
             engine.close()
 
+    def test_add_batch_index_failure_rolls_back_sqlite(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        '''A mid-batch index.add failure must not leave SQLite rows behind.'''
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        try:
+            engine.ensure_initialized()
+            original_add = engine.index.add
+            calls = {"n": 0}
+
+            def boom(key: object, vector: object) -> None:
+                calls["n"] += 1
+                if calls["n"] > 1:
+                    raise RuntimeError("index full")
+                original_add(key, vector)
+
+            engine.index.add = boom
+            with pytest.raises(RuntimeError, match="Failed to add memory batch"):
+                _ = engine.add_batch("user1", ["idx1", "idx2"], infer=False)
+            assert engine.get_all("user1") == []
+            assert len(engine.index) == 0
+            assert 1 not in engine.index
+            assert 2 not in engine.index
+        finally:
+            engine.close()
+
     def test_add_batch_embedding_size_mismatch(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
@@ -998,7 +1025,7 @@ class TestUSearchEngineDistanceScoring:
         '''L2 metric should use 1/(1+d) conversion.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = USearchConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=os.path.join(tmpdir, "index.usearch"),
                 db_path=os.path.join(tmpdir, "messages.db"),
                 embedding_dims=128,
@@ -1021,7 +1048,7 @@ class TestUSearchEngineDistanceScoring:
         '''Unknown metric should fall back to rank-based scores.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = USearchConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=os.path.join(tmpdir, "index.usearch"),
                 db_path=os.path.join(tmpdir, "messages.db"),
                 embedding_dims=128,
@@ -1064,10 +1091,10 @@ class TestUSearchEngineSearchErrorPaths:
         finally:
             engine.close()
 
-    def test_search_no_matching_project_returns_empty(
+    def test_search_no_matching_workspace_returns_empty(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        '''Search where no results match project_id should return empty.'''
+        '''Search where no results match workspace_id should return empty.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
 

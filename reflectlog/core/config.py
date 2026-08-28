@@ -51,8 +51,8 @@ class IServerConfig(Protocol):
         ...
 
     @property
-    def project_id(self) -> str:
-        """Unique project identifier."""
+    def workspace_id(self) -> str:
+        """Unique workspace identifier."""
         ...
 
 

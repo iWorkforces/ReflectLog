@@ -35,7 +35,7 @@ uv sync
 Create a `.env` file:
 
 ```bash
-PROJECT_ID=my-project
+WORKSPACE_ID=my-workspace_id
 OPENROUTER_API_KEY=sk-or-your-key-here
 ```
 
@@ -85,7 +85,7 @@ await remove(["I use FastAPI for APIs"])
 
 | Variable | Description |
 |----------|-------------|
-| `PROJECT_ID` | Unique project identifier |
+| `WORKSPACE_ID` | Unique workspace identifier |
 | `OPENROUTER_API_KEY` | OpenRouter API key for LLM/embeddings |
 
 ### Optional Configuration
@@ -131,8 +131,8 @@ ReflectLog/
 
 ### Data Persistence
 
-- **USearch**: `indexes/{project_id}/usearch/` - Vector index + SQLite messages
-- **Tantivy**: `indexes/{project_id}/tantivy/` - Full-text index
+- **USearch**: `indexes/{workspace_id}/usearch/` - Vector index + SQLite messages
+- **Tantivy**: `indexes/{workspace_id}/tantivy/` - Full-text index
 
 ## Development
 
@@ -150,7 +150,7 @@ ReflectLog/
 ./start-unittest.sh --coverage
 
 # Run server
-./start-reflectlog-mcp-server.sh --project_id my-project
+./start-reflectlog-mcp-server.sh --workspace_id my-workspace_id
 ```
 
 ### Testing

@@ -25,10 +25,18 @@ from asyncer import asyncify, create_task_group
 from reflectlog.core.exceptions import StorageError
 
 from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine
+from ...core.types import (
+    ISemanticSearchEngine,
+    ReplacementTransition,
+    ReplacementTransitionRequest,
+)
 from ..config.settings import Config
 from ..utils.validation import truncate_memory
 from .match_utils import has_exact_match
+from .replacement_recovery import (
+    reconcile_pending_replacements,
+    replacement_converged,
+)
 
 
 @dataclass
@@ -155,7 +163,7 @@ class DuplicateDetectionPhase:
         self._tantivy_engine = tantivy_engine
         self.config = config
         self.logger: IStructuredLogger = logger
-        self._project_id = config.project_id
+        self._workspace_id = config.workspace_id
 
     async def execute(self, memories: list[str]) -> Phase1Result:
         """Execute Phase 1: Parallel duplicate detection.
@@ -258,7 +266,7 @@ class DuplicateDetectionPhase:
         return has_exact_match(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
-            project_id=self._project_id,
+            workspace_id=self._workspace_id,
             content=content,
             logger=self.logger,
         )
@@ -295,7 +303,7 @@ class SmartReplacementPhase:
         self._semantic_engine = semantic_engine
         self.config = config
         self.logger: IStructuredLogger = logger
-        self._project_id = config.project_id
+        self._workspace_id = config.workspace_id
         self._memory_manager = memory_manager
 
     def _get_smart_replacer(self) -> SmartReplacer | None:
@@ -396,7 +404,7 @@ class SmartReplacementPhase:
         candidate_limit = self.config.smart_replace_candidate_limit
         similar_results = await asyncify(self._semantic_engine.search)(
             query=new_memory,
-            project_id=self._project_id,
+            workspace_id=self._workspace_id,
             limit=candidate_limit,
         )
 
@@ -404,7 +412,7 @@ class SmartReplacementPhase:
             self.logger.debug(
                 "No similar memories found for replacement check",
                 extra={
-                    "project_id": self._project_id,
+                    "workspace_id": self._workspace_id,
                     "new_memory_preview": new_memory[:100],
                 },
             )
@@ -435,7 +443,7 @@ class SmartReplacementPhase:
             self.logger.debug(
                 f"All candidates below similarity threshold ({min_similarity})",
                 extra={
-                    "project_id": self._project_id,
+                    "workspace_id": self._workspace_id,
                     "candidate_count": len(similar_results),
                     "min_similarity": min_similarity,
                 },
@@ -444,7 +452,7 @@ class SmartReplacementPhase:
             self.logger.debug(
                 f"Found {len(filtered_candidates)} candidates above similarity threshold",
                 extra={
-                    "project_id": self._project_id,
+                    "workspace_id": self._workspace_id,
                     "candidate_count": len(filtered_candidates),
                     "min_similarity": min_similarity,
                     "top_similarity": filtered_candidates[0][1]
@@ -492,7 +500,7 @@ class SmartReplacementPhase:
                         self.logger.info(
                             f"Smart replacement triggered (confidence={confidence:.2f})",
                             extra={
-                                "project_id": self._project_id,
+                                "workspace_id": self._workspace_id,
                                 "should_replace": True,
                                 "confidence": confidence,
                                 "similarity_score": similarity_score,
@@ -516,7 +524,7 @@ class SmartReplacementPhase:
                         self.logger.debug(
                             f"No replacement needed (confidence={confidence:.2f}): {reason}",
                             extra={
-                                "project_id": self._project_id,
+                                "workspace_id": self._workspace_id,
                                 "should_replace": False,
                                 "confidence": confidence,
                                 "reason": reason,
@@ -528,7 +536,7 @@ class SmartReplacementPhase:
                     self.logger.warning(
                         f"LLM check failed for candidate: {candidate_error}",
                         extra={
-                            "project_id": self._project_id,
+                            "workspace_id": self._workspace_id,
                             "error": str(candidate_error),
                             "existing_preview": existing_memory[:100],
                         },
@@ -587,7 +595,7 @@ class SmartReplacementPhase:
             self.logger.warning(
                 f"Smart replacement check failed: {e}",
                 extra={
-                    "project_id": self._project_id,
+                    "workspace_id": self._workspace_id,
                     "error": str(e),
                     "new_memory_preview": new_memory[:100],
                 },
@@ -599,9 +607,14 @@ class StoragePhase:
     """Phase 3: Sequential storage with replacement handling.
 
     This phase:
-    1. Processes replacements (archives and deletes old memories)
-    2. Adds new memories to storage
-    3. Commits changes to both engines
+    1. Records a durable SQLite replacement transition (archive + intent)
+    2. Deletes old memories from the active indexes
+    3. Adds new memories to storage
+    4. Commits each engine independently, then marks transitions complete
+
+    SQLite archive + transition is one local transaction. USearch and
+    Tantivy commits are not claimed as one atomic unit; unfinished
+    transitions are reconciled on startup and at the start of the next persist.
     """
 
     def __init__(
@@ -611,6 +624,7 @@ class StoragePhase:
         config: Config,
         logger: IStructuredLogger | None,
         write_lock: threading.Lock | None = None,
+        lock: threading.RLock | None = None,
     ):
         """Initialize storage phase.
 
@@ -619,6 +633,8 @@ class StoragePhase:
             tantivy_engine: TantivyEngine for full-text storage.
             config: Application configuration.
             logger: Structured logger instance.
+            write_lock: Exclusive write lock shared with MemoryManager.
+            lock: Inner read lock; acquired after ``write_lock`` during reconcile.
         """
         if logger is None:
             raise ValueError("logger is required")
@@ -627,8 +643,9 @@ class StoragePhase:
         self._tantivy_engine = tantivy_engine
         self.config = config
         self.logger: IStructuredLogger = logger
-        self._project_id = config.project_id
+        self._workspace_id = config.workspace_id
         self._write_lock = write_lock
+        self._lock = lock
 
     async def execute(
         self,
@@ -647,160 +664,247 @@ class StoragePhase:
             Phase3Result with storage information.
         """
         phase_start = time.perf_counter()
-
-        replaced_count = 0
-        replacements: list[ReplacementInfo] = []
-        memories_to_add: list[str] = []
-
-        # Process each memory sequentially
-        for idx, memory in enumerate(memories):
-            replacement_infos = replacement_map.get(memory, [])
-
-            # Process replacements (delete old memories)
-            for replacement_info in replacement_infos:
-                self.logger.info(
-                    "Replacing old memory with new one",
-                    extra={
-                        "memory_index": idx + 1,
-                        "action": "replace",
-                        "old_preview": truncate_memory(
-                            replacement_info.old_memory, max_length=60
-                        ),
-                        "new_preview": truncate_memory(memory, max_length=60),
-                        "confidence": replacement_info.confidence,
-                        "similarity": replacement_info.similarity_score,
-                        "dry_run": dry_run,
-                    },
-                )
-
-                success = await self._process_replacement(
-                    idx, memory, replacement_info, dry_run
-                )
-                if success:
-                    replaced_count += 1
-                    replacements.append(replacement_info)
-
-            # Add the new memory (unless dry_run)
-            if not dry_run:
-                memories_to_add.append(memory)
-            else:
-                pass  # dry_run stored_count handled below
-
-        stored_count = self._store_and_commit(memories_to_add, dry_run)
         if dry_run:
-            stored_count = len(memories)
+            return self._dry_run_result(memories, replacement_map, phase_start)
+
+        await asyncify(self._reconcile_pending)()
+        stored_count, replacements = await asyncify(self._persist_replacements)(
+            memories, replacement_map
+        )
 
         duration = time.perf_counter() - phase_start
-
         self.logger.info(
             f"Phase 3 complete: {stored_count} stored ({duration:.3f}s)",
             extra={
                 "phase": 3,
                 "duration_ms": int(duration * 1000),
                 "stored_count": stored_count,
-                "replaced_count": replaced_count,
+                "replaced_count": len(replacements),
             },
         )
-
         return Phase3Result(
             stored_count=stored_count,
-            replaced_count=replaced_count,
+            replaced_count=len(replacements),
             replacements=replacements,
             duration=duration,
         )
 
-    async def _process_replacement(
+    def _dry_run_result(
         self,
-        idx: int,
-        memory: str,
-        replacement_info: ReplacementInfo,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+        phase_start: float,
+    ) -> Phase3Result:
+        """Count planned replacements without touching storage."""
+        _planned, replacements = self._plan_replacements(
+            memories, replacement_map, dry_run=True
+        )
+        return Phase3Result(
+            stored_count=len(memories),
+            replaced_count=len(replacements),
+            replacements=replacements,
+            duration=time.perf_counter() - phase_start,
+        )
+
+    def _persist_replacements(
+        self,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+    ) -> tuple[int, list[ReplacementInfo]]:
+        """Record every transition, then delete, add, commit, and complete."""
+        if self._write_lock is None:
+            return self._persist_replacements_unlocked(memories, replacement_map)
+        with self._write_lock:
+            return self._persist_replacements_unlocked(memories, replacement_map)
+
+    def _persist_replacements_unlocked(
+        self,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+    ) -> tuple[int, list[ReplacementInfo]]:
+        """Mutate indexes while the caller already holds ``_write_lock``."""
+        planned, replacements = self._plan_replacements(memories, replacement_map)
+        transitions = self._record_planned_transitions(planned)
+        self._delete_recorded_olds(transitions)
+        stored_count = self._store_and_commit(memories, dry_run=False, locked=True)
+        self._complete_if_converged(transitions)
+        return stored_count, replacements
+
+    def _plan_replacements(
+        self,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+        *,
+        dry_run: bool = False,
+    ) -> tuple[
+        list[tuple[ReplacementInfo, str, int]],
+        list[ReplacementInfo],
+    ]:
+        """Keep the highest-confidence successor for each old id."""
+        candidates = self._replacement_candidates(memories, replacement_map)
+        winners = _highest_confidence_by_old_id(candidates)
+        planned: list[tuple[ReplacementInfo, str, int]] = []
+        for info, memory, old_id in candidates:
+            winner = winners[old_id]
+            if winner is not info:
+                self.logger.info(
+                    "Keeping highest-confidence successor for old memory",
+                    extra={
+                        "old_memory_id": old_id,
+                        "kept_confidence": winner.confidence,
+                        "skipped_confidence": info.confidence,
+                        "dry_run": dry_run,
+                    },
+                )
+                continue
+            planned.append((info, memory, old_id))
+        planned = self._drop_conflicting_successors(planned, dry_run=dry_run)
+        replacements: list[ReplacementInfo] = []
+        for info, memory, _old_id in planned:
+            self.logger.info(
+                "Replacing old memory with new one",
+                extra={
+                    "action": "replace",
+                    "old_preview": truncate_memory(info.old_memory, max_length=60),
+                    "new_preview": truncate_memory(memory, max_length=60),
+                    "confidence": info.confidence,
+                    "similarity": info.similarity_score,
+                    "dry_run": dry_run,
+                },
+            )
+            replacements.append(info)
+        return planned, replacements
+
+    def _replacement_candidates(
+        self,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+    ) -> list[tuple[ReplacementInfo, str, int]]:
+        """Resolve live old ids for every intended replacement."""
+        candidates: list[tuple[ReplacementInfo, str, int]] = []
+        for idx, memory in enumerate(memories):
+            for info in replacement_map.get(memory, []):
+                old_id = self._semantic_engine.get_id_by_content(
+                    self._workspace_id, info.old_memory
+                )
+                if old_id is None:
+                    self.logger.warning(
+                        "Old memory not found for replacement delete",
+                        extra={"memory_index": idx + 1, "action": "delete_missing"},
+                    )
+                    continue
+                candidates.append((info, memory, old_id))
+        return candidates
+
+    def _drop_conflicting_successors(
+        self,
+        planned: list[tuple[ReplacementInfo, str, int]],
+        *,
         dry_run: bool,
-    ) -> bool:
-        """Process a single replacement: archive and delete the old memory.
+    ) -> list[tuple[ReplacementInfo, str, int]]:
+        """Omit successors that would collide with an exclusive leftover row."""
+        store = self._semantic_engine.memory_store
+        getter = getattr(store, "get_transition_for_old_memory", None)
+        if not callable(getter):
+            return planned
 
-        Args:
-            idx: Memory index (for logging).
-            memory: The new memory content.
-            replacement_info: Replacement details from LLM check.
-            dry_run: If True, only record what would be replaced.
+        kept: list[tuple[ReplacementInfo, str, int]] = []
+        for info, memory, old_id in planned:
+            existing = getter(self._workspace_id, old_id)
+            if (
+                isinstance(existing, ReplacementTransition)
+                and existing.new_content != memory
+            ):
+                self.logger.info(
+                    "Skipping successor that conflicts with an existing transition",
+                    extra={
+                        "old_memory_id": old_id,
+                        "existing_new_content": truncate_memory(
+                            existing.new_content, max_length=60
+                        ),
+                        "skipped_new_content": truncate_memory(memory, max_length=60),
+                        "dry_run": dry_run,
+                    },
+                )
+                continue
+            kept.append((info, memory, old_id))
+        return kept
 
-        Returns:
-            True if the replacement was processed (or recorded in dry_run).
-        """
-        if dry_run:
-            return True
-
+    def _record_planned_transitions(
+        self, planned: list[tuple[ReplacementInfo, str, int]]
+    ) -> list[ReplacementTransition]:
+        """Persist every archive + pending row before the first delete."""
+        if not planned:
+            return []
+        requests = [
+            ReplacementTransitionRequest(
+                old_memory_id=old_id,
+                workspace_id=self._workspace_id,
+                old_content=info.old_memory,
+                new_content=new_memory,
+                reason=info.reason,
+                confidence=info.confidence,
+            )
+            for info, new_memory, old_id in planned
+        ]
+        store = self._semantic_engine.memory_store
+        batch = getattr(store, "begin_replacement_transitions", None)
         try:
-            # Archive the old memory before deletion (for recovery)
-            archived = await asyncify(self._archive_for_replacement)(
-                old_memory=replacement_info.old_memory,
-                new_memory=memory,
-                confidence=replacement_info.confidence,
-                reason=replacement_info.reason,
-            )
-            if archived:
-                self.logger.debug(
-                    "Old memory archived for recovery",
-                    extra={
-                        "memory_index": idx + 1,
-                        "action": "archive_success",
-                    },
+            if callable(batch):
+                recorded = batch(requests)
+                if isinstance(recorded, list):
+                    return recorded
+            return [
+                store.begin_replacement_transition(
+                    old_memory_id=request.old_memory_id,
+                    workspace_id=request.workspace_id,
+                    old_content=request.old_content,
+                    new_content=request.new_content,
+                    reason=request.reason,
+                    confidence=request.confidence,
                 )
+                for request in requests
+            ]
+        except Exception as e:
+            raise StorageError(
+                f"Failed to record replacement transition: {e}"
+            ) from e
 
-            # Delete the old memory
-            msg_id = self._semantic_engine.get_id_by_content(
-                self._project_id, replacement_info.old_memory
-            )
-            if msg_id is None:
+    def _delete_recorded_olds(self, transitions: list[ReplacementTransition]) -> None:
+        """Delete each recorded old memory after transitions are durable."""
+        for transition in transitions:
+            try:
+                self._delete_memory(
+                    memory_id=str(transition.old_memory_id),
+                    content=transition.old_content,
+                    locked=True,
+                )
+            except Exception as delete_error:
                 self.logger.warning(
-                    "Old memory not found for replacement delete",
+                    f"Failed to delete old memory: {delete_error}",
                     extra={
-                        "memory_index": idx + 1,
-                        "action": "delete_missing",
+                        "action": "delete_failed",
+                        "transition_id": transition.id,
+                        "error": str(delete_error),
                     },
                 )
-                return False
+                raise StorageError(
+                    f"Failed to delete old memory after recording transition "
+                    f"{transition.id}: {delete_error}"
+                ) from delete_error
 
-            self._delete_memory(
-                memory_id=str(msg_id),
-                content=replacement_info.old_memory,
-            )
-
-            self.logger.debug(
-                "Old memory removed successfully",
-                extra={
-                    "memory_index": idx + 1,
-                    "action": "delete_success",
-                    "archived": archived,
-                },
-            )
-            return True
-        except Exception as delete_error:
-            # Graceful degradation: log warning and continue
-            self.logger.warning(
-                f"Failed to delete old memory: {delete_error}",
-                extra={
-                    "memory_index": idx + 1,
-                    "action": "delete_failed",
-                    "error": str(delete_error),
-                },
-            )
-            return False
-
-    def _store_and_commit(self, memories_to_add: list[str], dry_run: bool) -> int:
-        """Batch-add new memories and commit changes to engines.
-
-        Args:
-            memories_to_add: Memories collected for storage.
-            dry_run: If True, skip actual storage and commit.
-
-        Returns:
-            Number of memories actually stored.
-        """
+    def _store_and_commit(
+        self,
+        memories_to_add: list[str],
+        dry_run: bool,
+        *,
+        locked: bool = False,
+    ) -> int:
+        """Batch-add new memories and commit changes to engines."""
         if dry_run or not memories_to_add:
             return 0
 
-        stored_memories = self._add_memories_batch(memories_to_add)
+        stored_memories = self._add_memories_batch(memories_to_add, locked=locked)
         stored_count = len(stored_memories)
         if stored_count != len(memories_to_add):
             self.logger.warning(
@@ -811,73 +915,61 @@ class StoragePhase:
                 },
             )
 
-        # Commit changes
         if self._tantivy_engine is not None:
             self._tantivy_engine.commit()
         self._semantic_engine.commit()
-
         return stored_count
 
-    def _add_memories_batch(self, memories: list[str]) -> list[str]:
-        """Add multiple memories to both semantic and full-text engines.
-
-        Args:
-            memories: List of memories to store.
-
-        Returns:
-            List of memories actually stored (duplicates skipped).
-        """
+    def _add_memories_batch(
+        self, memories: list[str], *, locked: bool = False
+    ) -> list[str]:
+        """Add multiple memories to both semantic and full-text engines."""
         if not memories:
             return []
 
         try:
-            if self._write_lock is None:
-                inserted_memories = self._semantic_engine.add_batch(
-                    project_id=self._project_id,
-                    contents=memories,
-                    infer=self.config.enable_llm_infer,
-                )
-
-                if self._tantivy_engine is not None:
-                    for memory in inserted_memories:
-                        self._tantivy_engine.add(self._project_id, memory)
-            else:
+            if self._write_lock is not None and not locked:
                 with self._write_lock:
-                    inserted_memories = self._semantic_engine.add_batch(
-                        project_id=self._project_id,
-                        contents=memories,
-                        infer=self.config.enable_llm_infer,
-                    )
-
-                    if self._tantivy_engine is not None:
-                        for memory in inserted_memories:
-                            self._tantivy_engine.add(self._project_id, memory)
-
-            self.logger.debug(
-                "Batch added memories to hybrid storage",
-                extra={
-                    "project_id": self._project_id,
-                    "memory_count": len(inserted_memories),
-                    "engines": ["semantic", "tantivy"],
-                },
-            )
-            return inserted_memories
-
+                    return self._add_memories_unlocked(memories)
+            return self._add_memories_unlocked(memories)
         except Exception as e:
             raise StorageError(f"Failed to add memory batch: {e}") from e
 
-    def _delete_memory(self, memory_id: str, content: str) -> None:
-        """Delete a memory from semantic and full-text engines with write locking."""
-        if self._write_lock is None:
-            self._semantic_engine.delete(memory_id=memory_id)
-            if self._tantivy_engine is not None:
-                _ = self._tantivy_engine.delete(self._project_id, content)
-            return
+    def _add_memories_unlocked(self, memories: list[str]) -> list[str]:
+        """Add memories assuming the caller already serialized writes."""
+        inserted_memories = self._semantic_engine.add_batch(
+            workspace_id=self._workspace_id,
+            contents=memories,
+            infer=self.config.enable_llm_infer,
+        )
+        if self._tantivy_engine is not None:
+            for memory in inserted_memories:
+                self._tantivy_engine.add(self._workspace_id, memory)
+        self.logger.debug(
+            "Batch added memories to hybrid storage",
+            extra={
+                "workspace_id": self._workspace_id,
+                "memory_count": len(inserted_memories),
+                "engines": ["semantic", "tantivy"],
+            },
+        )
+        return inserted_memories
 
-        with self._write_lock:
-            self._semantic_engine.delete(memory_id=memory_id)
-            if self._tantivy_engine is not None:
-                _ = self._tantivy_engine.delete(self._project_id, content)
+    def _delete_memory(
+        self, memory_id: str, content: str, *, locked: bool = False
+    ) -> None:
+        """Delete a memory from semantic and full-text engines with write locking."""
+        if self._write_lock is not None and not locked:
+            with self._write_lock:
+                self._delete_memory_unlocked(memory_id, content)
+            return
+        self._delete_memory_unlocked(memory_id, content)
+
+    def _delete_memory_unlocked(self, memory_id: str, content: str) -> None:
+        """Delete from both engines without acquiring ``_write_lock``."""
+        self._semantic_engine.delete(memory_id=memory_id)
+        if self._tantivy_engine is not None:
+            _ = self._tantivy_engine.delete(self._workspace_id, content)
 
     def _add_memory(self, content: str) -> bool:
         """Add a single memory to BOTH USearch semantic and Tantivy full-text engines.
@@ -895,7 +987,7 @@ class StoragePhase:
             self.logger.info(
                 "Duplicate memory detected, skipping storage",
                 extra={
-                    "project_id": self._project_id,
+                    "workspace_id": self._workspace_id,
                     "memory_preview": content[:200],
                 },
             )
@@ -903,19 +995,19 @@ class StoragePhase:
 
         try:
             self._semantic_engine.add(
-                project_id=self._project_id,
+                workspace_id=self._workspace_id,
                 content=content,
                 infer=self.config.enable_llm_infer,
             )
 
             # 2. Add to Tantivy full-text search engine
             if self._tantivy_engine is not None:
-                self._tantivy_engine.add(self._project_id, content)
+                self._tantivy_engine.add(self._workspace_id, content)
 
             self.logger.debug(
                 "Memory added to hybrid storage",
                 extra={
-                    "project_id": self._project_id,
+                    "workspace_id": self._workspace_id,
                     "memory_length": len(content),
                     "engines": ["semantic", "tantivy"],
                 },
@@ -935,78 +1027,62 @@ class StoragePhase:
         return has_exact_match(
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
-            project_id=self._project_id,
+            workspace_id=self._workspace_id,
             content=content,
             logger=self.logger,
         )
 
-    def _archive_for_replacement(
-        self, old_memory: str, new_memory: str, confidence: float, reason: str
-    ) -> bool:
-        """Archive a memory before replacement (for recovery).
+    def _record_replacement_transition(
+        self, replacement_info: ReplacementInfo, new_memory: str
+    ) -> ReplacementTransition | None:
+        """Persist archive + pending transition before any index change."""
+        planned, _replacements = self._plan_replacements(
+            [new_memory], {new_memory: [replacement_info]}
+        )
+        if not planned:
+            return None
+        recorded = self._record_planned_transitions(planned)
+        return recorded[0] if recorded else None
 
-        This method archives a memory to the archived_messages table before
-        it gets deleted during smart replacement. This enables recovery if
-        the LLM made a mistake in determining the replacement.
-
-        Args:
-            old_memory: The memory being replaced and archived.
-            new_memory: The new memory that replaces it.
-            confidence: LLM confidence score for the replacement decision.
-            reason: LLM's explanation for why replacement was appropriate.
-
-        Returns:
-            True if archiving succeeded, False otherwise.
-        """
-        try:
-            msg_id = self._semantic_engine.get_id_by_content(
-                self._project_id, old_memory
-            )
-
-            if msg_id is None:
+    def _complete_if_converged(self, transitions: list[ReplacementTransition]) -> None:
+        """Mark a transition complete only when both indexes agree."""
+        store = self._semantic_engine.memory_store
+        for transition in transitions:
+            if not replacement_converged(
+                transition,
+                semantic_engine=self._semantic_engine,
+                tantivy_engine=self._tantivy_engine,
+            ):
                 self.logger.warning(
-                    "Cannot archive - memory not found",
-                    extra={
-                        "project_id": self._project_id,
-                        "old_memory_preview": old_memory[:50],
-                    },
+                    "Leaving replacement transition pending; indexes disagree",
+                    extra={"transition_id": transition.id},
                 )
-                return False
+                continue
+            store.complete_replacement_transition(transition.id)
 
-            memory_store = self._semantic_engine.memory_store
-            archive_id = memory_store.archive(
-                memory_id=msg_id,
-                project_id=self._project_id,
-                content=old_memory,
-                replaced_by=new_memory,
-                reason=reason,
-                confidence=confidence,
-            )
+    def _reconcile_pending(self) -> None:
+        """Apply leftover transitions from an earlier failed persist."""
+        if self._write_lock is None:
+            return
+        _ = reconcile_pending_replacements(
+            semantic_engine=self._semantic_engine,
+            tantivy_engine=self._tantivy_engine,
+            write_lock=self._write_lock,
+            lock=self._lock,
+            logger=self.logger,
+        )
 
-            if archive_id is not None:
-                self.logger.info(
-                    "Memory archived before replacement",
-                    extra={
-                        "project_id": self._project_id,
-                        "archive_id": archive_id,
-                        "original_id": msg_id,
-                        "confidence": confidence,
-                    },
-                )
-                return True
 
-            return False
-
-        except Exception as e:
-            # Graceful degradation - log warning but don't block the replacement
-            self.logger.warning(
-                f"Failed to archive memory for replacement: {e}",
-                extra={
-                    "project_id": self._project_id,
-                    "error": str(e),
-                },
-            )
-            return False
+def _highest_confidence_by_old_id(
+    candidates: list[tuple[ReplacementInfo, str, int]],
+) -> dict[int, ReplacementInfo]:
+    """Pick one successor per old id; ties keep the first candidate."""
+    winners: dict[int, ReplacementInfo] = {}
+    for info, _memory, old_id in candidates:
+        current = winners.get(old_id)
+        if current is None or info.confidence > current.confidence:
+            winners[old_id] = info
+    return winners
 
 
 class AddPipeline:

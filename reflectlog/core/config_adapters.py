@@ -124,9 +124,9 @@ class ConfigAdapter(IAppConfig):
         return self._config.log_level
 
     @property
-    def project_id(self) -> str:
-        """Unique project identifier."""
-        return self._config.project_id
+    def workspace_id(self) -> str:
+        """Unique workspace identifier."""
+        return self._config.workspace_id
 
     # ISearchConfig properties
     @property
@@ -183,12 +183,12 @@ class ConfigAdapter(IAppConfig):
     @property
     def usearch_index_path(self) -> str:
         """Path to USearch index files."""
-        return f"indexes/{self._config.project_id}/usearch"
+        return f"indexes/{self._config.workspace_id}/usearch"
 
     @property
     def tantivy_index_path(self) -> str:
         """Path to Tantivy index files."""
-        return f"indexes/{self._config.project_id}/tantivy"
+        return f"indexes/{self._config.workspace_id}/tantivy"
 
     @property
     def embedding_dims(self) -> int:
@@ -385,8 +385,8 @@ class ServerConfigAdapter(IServerConfig):
         return self._config.log_level
 
     @property
-    def project_id(self) -> str:
-        return self._config.project_id
+    def workspace_id(self) -> str:
+        return self._config.workspace_id
 
 
 @final
@@ -458,11 +458,11 @@ class StorageConfigAdapter(IStorageConfig):
 
     @property
     def usearch_index_path(self) -> str:
-        return f"indexes/{self._config.project_id}/usearch"
+        return f"indexes/{self._config.workspace_id}/usearch"
 
     @property
     def tantivy_index_path(self) -> str:
-        return f"indexes/{self._config.project_id}/tantivy"
+        return f"indexes/{self._config.workspace_id}/tantivy"
 
     @property
     def embedding_dims(self) -> int:

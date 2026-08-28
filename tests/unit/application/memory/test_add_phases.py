@@ -13,6 +13,7 @@ import pytest
 
 from reflectlog.application.config.settings import Config
 from reflectlog.core.exceptions import StorageError
+from reflectlog.core.types import ReplacementTransition
 from reflectlog.application.memory.add_phases import (
     AddPipeline,
     AddResult,
@@ -37,7 +38,7 @@ from reflectlog.core.logging import IStructuredLogger
 def mock_config() -> Config:
     """Minimal mock Config for add_phases tests."""
     config = Mock(spec=Config)
-    config.project_id = "test_project"
+    config.workspace_id = "test_project"
     config.add_max_concurrency = 4
     config.rerank_max_concurrency = 5
     config.smart_replace_candidate_limit = 3
@@ -59,12 +60,12 @@ def mock_semantic_engine():
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.add_batch = MagicMock(
-        side_effect=lambda project_id, memories, infer: memories
+        side_effect=lambda workspace_id, contents, infer: contents
     )
     engine.search = MagicMock(return_value=[])
     engine.delete = MagicMock(return_value=None)
     engine.commit = MagicMock(return_value=None)
-    engine.get_id_by_memory = MagicMock(return_value=None)
+    engine.get_id_by_content = MagicMock(return_value=None)
     engine.memory_store = MagicMock()
     return engine
 
@@ -162,7 +163,7 @@ class TestDuplicateDetectionPhase:
         )
 
         # No exact match found
-        mock_semantic_engine.get_id_by_memory.return_value = None
+        mock_semantic_engine.get_id_by_content.return_value = None
         mock_tantivy_engine.search.return_value = []
 
         result = await phase.execute(["msg1", "msg2"])
@@ -201,7 +202,7 @@ class TestDuplicateDetectionPhase:
         )
 
         # Tantivy finds exact match for "existing"
-        def tantivy_search(query, project_id, limit):
+        def tantivy_search(query, workspace_id, limit):
             if "existing" in query:
                 return [("existing", 1.0)]
             return []
@@ -560,6 +561,7 @@ class TestStoragePhase:
             reason="updated",
             similarity_score=0.85,
         )
+        mock_semantic_engine.get_id_by_content.return_value = 42
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -575,8 +577,10 @@ class TestStoragePhase:
         assert result.replaced_count == 1
         assert len(result.replacements) == 1
         assert result.stored_count == 1
-        # No actual deletes in dry_run
+        # No actual deletes or durable records in dry_run
         mock_semantic_engine.delete.assert_not_called()
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.memory_store.archive.assert_not_called()
 
     async def test_execute_with_replacement_success(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
@@ -589,8 +593,34 @@ class TestStoragePhase:
             reason="updated",
             similarity_score=0.85,
         )
-        mock_semantic_engine.get_id_by_memory.return_value = 42
-        mock_semantic_engine.memory_store.archive.return_value = 100
+        live_ids = {"old msg": 42, "new msg": 99}
+
+        def get_id(_ws: str, content: str) -> int | None:
+            return live_ids.get(content)
+
+        def delete(*, memory_id: str) -> None:
+            if memory_id == "42":
+                live_ids.pop("old msg", None)
+
+        mock_semantic_engine.get_id_by_content.side_effect = get_id
+        mock_semantic_engine.delete.side_effect = delete
+        mock_semantic_engine.index = {99}
+        mock_tantivy_engine.find_by_exact_match.side_effect = (
+            lambda _ws, content: [content] if content == "new msg" else []
+        )
+        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+            ReplacementTransition(
+                id=9,
+                workspace_id="test_project",
+                old_memory_id=42,
+                old_content="old msg",
+                new_content="new msg",
+                archive_id=100,
+                reason="updated",
+                confidence=0.9,
+                status="pending",
+            )
+        )
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -604,9 +634,14 @@ class TestStoragePhase:
         )
 
         assert result.replaced_count == 1
+        assert result.stored_count == 1
         assert len(result.replacements) == 1
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once()
         mock_semantic_engine.delete.assert_called_once_with(memory_id="42")
         mock_tantivy_engine.delete.assert_called_once_with("test_project", "old msg")
+        mock_semantic_engine.memory_store.complete_replacement_transition.assert_called_once_with(
+            9
+        )
 
     async def test_execute_replacement_old_memory_not_found(
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
@@ -618,7 +653,7 @@ class TestStoragePhase:
             confidence=0.9,
             reason="updated",
         )
-        mock_semantic_engine.get_id_by_memory.return_value = None
+        mock_semantic_engine.get_id_by_content.return_value = None
         mock_semantic_engine.memory_store.archive.return_value = 100
 
         phase = StoragePhase(
@@ -635,6 +670,7 @@ class TestStoragePhase:
         # Replacement skipped because msg_id was None
         assert result.replaced_count == 0
         mock_semantic_engine.delete.assert_not_called()
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
         mock_logger.warning.assert_called()
 
     async def test_execute_replacement_delete_error(
@@ -647,8 +683,21 @@ class TestStoragePhase:
             confidence=0.9,
             reason="updated",
         )
-        mock_semantic_engine.get_id_by_memory.return_value = 42
-        mock_semantic_engine.memory_store.archive.return_value = 100
+        mock_semantic_engine.get_id_by_content.return_value = 42
+        mock_semantic_engine.index = set()
+        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+            ReplacementTransition(
+                id=9,
+                workspace_id="test_project",
+                old_memory_id=42,
+                old_content="old msg",
+                new_content="new msg",
+                archive_id=100,
+                reason="updated",
+                confidence=0.9,
+                status="pending",
+            )
+        )
         mock_semantic_engine.delete.side_effect = RuntimeError("Delete failed")
 
         phase = StoragePhase(
@@ -657,13 +706,13 @@ class TestStoragePhase:
             config=mock_config,
             logger=mock_logger,
         )
-        result = await phase.execute(
-            ["new msg"],
-            replacement_map={"new msg": [replacement_info]},
-        )
+        with pytest.raises(StorageError, match="Failed to delete old memory"):
+            await phase.execute(
+                ["new msg"],
+                replacement_map={"new msg": [replacement_info]},
+            )
 
-        # Graceful degradation - replacement count stays 0
-        assert result.replaced_count == 0
+        mock_semantic_engine.memory_store.complete_replacement_transition.assert_not_called()
         mock_logger.warning.assert_called()
 
     async def test_execute_batch_stored_fewer_than_expected(
@@ -734,8 +783,8 @@ class TestStoragePhase:
 
         assert result == ["msg1", "msg2"]
         mock_semantic_engine.add_batch.assert_called_once_with(
-            project_id="test_project",
-            memories=["msg1", "msg2"],
+            workspace_id="test_project",
+            contents=["msg1", "msg2"],
             infer=False,
         )
         assert mock_tantivy_engine.add.call_count == 2
@@ -895,7 +944,7 @@ class TestStoragePhase:
 
         assert result is True
         mock_semantic_engine.add.assert_called_once_with(
-            project_id="test_project",
+            workspace_id="test_project",
             content="new msg",
             infer=False,
         )
@@ -993,7 +1042,7 @@ class TestStoragePhase:
     ):
         """_has_exact_match returns False when no match found."""
         mock_tantivy_engine.search.return_value = []
-        mock_semantic_engine.get_id_by_memory.return_value = None
+        mock_semantic_engine.get_id_by_content.return_value = None
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -1006,15 +1055,28 @@ class TestStoragePhase:
         assert result is False
 
     # -----------------------------------------------------------------------
-    # _archive_for_replacement Tests (lines 832-900)
+    # _record_replacement_transition Tests
     # -----------------------------------------------------------------------
 
-    def test_archive_for_replacement_success(
+    def test_record_replacement_transition_success(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        """Successful archive returns True (lines 850-887)."""
-        mock_semantic_engine.get_id_by_memory.return_value = 42
-        mock_semantic_engine.memory_store.archive.return_value = 100
+        """Successful transition record returns the stored row."""
+        transition = ReplacementTransition(
+            id=9,
+            workspace_id="test_project",
+            old_memory_id=42,
+            old_content="old msg",
+            new_content="new msg",
+            archive_id=100,
+            reason="updated",
+            confidence=0.9,
+            status="pending",
+        )
+        mock_semantic_engine.get_id_by_content.return_value = 42
+        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+            transition
+        )
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -1022,29 +1084,30 @@ class TestStoragePhase:
             config=mock_config,
             logger=mock_logger,
         )
-        result = phase._archive_for_replacement(
+        info = ReplacementInfo(
             old_memory="old msg",
             new_memory="new msg",
             confidence=0.9,
             reason="updated",
         )
+        result = phase._record_replacement_transition(info, "new msg")
 
-        assert result is True
-        mock_semantic_engine.memory_store.archive.assert_called_once_with(
-            message_id=42,
-            project_id="test_project",
-            message="old msg",
-            replaced_by="new msg",
+        assert result is transition
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once_with(
+            old_memory_id=42,
+            workspace_id="test_project",
+            old_content="old msg",
+            new_content="new msg",
             reason="updated",
             confidence=0.9,
         )
         mock_logger.info.assert_called()
 
-    def test_archive_for_replacement_mem_not_found(
+    def test_record_replacement_transition_mem_not_found(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        """Archive returns False when memory not found (lines 856-864)."""
-        mock_semantic_engine.get_id_by_memory.return_value = None
+        """Recording returns None when the old memory is missing."""
+        mock_semantic_engine.get_id_by_content.return_value = None
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -1052,22 +1115,26 @@ class TestStoragePhase:
             config=mock_config,
             logger=mock_logger,
         )
-        result = phase._archive_for_replacement(
+        info = ReplacementInfo(
             old_memory="missing msg",
             new_memory="new msg",
             confidence=0.9,
             reason="updated",
         )
+        result = phase._record_replacement_transition(info, "new msg")
 
-        assert result is False
+        assert result is None
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
         mock_logger.warning.assert_called()
 
-    def test_archive_for_replacement_archive_returns_none(
+    def test_record_replacement_transition_exception(
         self, mock_semantic_engine, mock_config, mock_logger
     ):
-        """Archive returns False when archive() returns None (line 889)."""
-        mock_semantic_engine.get_id_by_memory.return_value = 42
-        mock_semantic_engine.memory_store.archive.return_value = None
+        """Store failure raises StorageError and does not get swallowed."""
+        mock_semantic_engine.get_id_by_content.return_value = 42
+        mock_semantic_engine.memory_store.begin_replacement_transition.side_effect = (
+            StorageError("archive failed")
+        )
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -1075,36 +1142,295 @@ class TestStoragePhase:
             config=mock_config,
             logger=mock_logger,
         )
-        result = phase._archive_for_replacement(
+        info = ReplacementInfo(
             old_memory="old msg",
             new_memory="new msg",
             confidence=0.9,
             reason="updated",
         )
+        with pytest.raises(StorageError, match="Failed to record replacement"):
+            phase._record_replacement_transition(info, "new msg")
 
-        assert result is False
-
-    def test_archive_for_replacement_exception(
-        self, mock_semantic_engine, mock_config, mock_logger
+    async def test_records_all_transitions_before_any_delete(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
-        """Exception during archive returns False (lines 891-900)."""
-        mock_semantic_engine.get_id_by_memory.side_effect = RuntimeError("DB error")
+        """Every intended old is recorded before the first index delete."""
+        order: list[str] = []
+        mock_semantic_engine.get_id_by_content.side_effect = (
+            lambda _ws, content: {"old-a": 11, "old-b": 12, "new msg": 99}.get(
+                content
+            )
+        )
+        mock_semantic_engine.index = {99}
+        mock_tantivy_engine.find_by_exact_match.side_effect = (
+            lambda _ws, content: [content] if content == "new msg" else []
+        )
+
+        def record(*_args: object, **_kwargs: object) -> ReplacementTransition:
+            order.append("record")
+            return ReplacementTransition(
+                id=len(order),
+                workspace_id="test_project",
+                old_memory_id=10 + len(order),
+                old_content="old",
+                new_content="new msg",
+                archive_id=100,
+                reason="updated",
+                confidence=0.9,
+                status="pending",
+            )
+
+        def delete(*, memory_id: str) -> None:
+            order.append(f"delete:{memory_id}")
+
+        mock_semantic_engine.memory_store.begin_replacement_transition.side_effect = (
+            record
+        )
+        mock_semantic_engine.delete.side_effect = delete
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
-            tantivy_engine=None,
+            tantivy_engine=mock_tantivy_engine,
             config=mock_config,
             logger=mock_logger,
         )
-        result = phase._archive_for_replacement(
+        infos = [
+            ReplacementInfo(old_memory="old-a", new_memory="new msg", confidence=0.9, reason="a"),
+            ReplacementInfo(old_memory="old-b", new_memory="new msg", confidence=0.9, reason="b"),
+        ]
+        result = await phase.execute(
+            ["new msg"], replacement_map={"new msg": infos}
+        )
+        assert result.replaced_count == 2
+        assert order[:2] == ["record", "record"]
+        assert order[2].startswith("delete:")
+
+    async def test_archive_failure_prevents_delete(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """An archive/transition failure must not delete the old memory."""
+        replacement_info = ReplacementInfo(
             old_memory="old msg",
             new_memory="new msg",
             confidence=0.9,
             reason="updated",
         )
+        mock_semantic_engine.get_id_by_content.return_value = 42
+        mock_semantic_engine.memory_store.begin_replacement_transition.side_effect = (
+            StorageError("archive failed")
+        )
 
-        assert result is False
-        mock_logger.warning.assert_called()
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        with pytest.raises(StorageError, match="Failed to record replacement"):
+            await phase.execute(
+                ["new msg"],
+                replacement_map={"new msg": [replacement_info]},
+            )
+
+        mock_semantic_engine.delete.assert_not_called()
+        mock_tantivy_engine.delete.assert_not_called()
+
+    async def test_keeps_one_successor_per_old_id(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Two successors for one old id keep the highest-confidence winner."""
+        loser = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="low",
+            confidence=0.4,
+            reason="weak",
+        )
+        winner = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="high",
+            confidence=0.95,
+            reason="strong",
+        )
+        live_ids = {"old msg": 42}
+
+        def get_id(_ws: str, content: str) -> int | None:
+            return live_ids.get(content)
+
+        def delete(*, memory_id: str) -> None:
+            if memory_id == "42":
+                live_ids.pop("old msg", None)
+
+        mock_semantic_engine.get_id_by_content.side_effect = get_id
+        mock_semantic_engine.delete.side_effect = delete
+        mock_semantic_engine.index = set()
+        mock_semantic_engine.add_batch.side_effect = None
+        mock_semantic_engine.add_batch.return_value = ["low", "high"]
+        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+            ReplacementTransition(
+                id=1,
+                workspace_id="test_project",
+                old_memory_id=42,
+                old_content="old msg",
+                new_content="high",
+                archive_id=1,
+                reason="strong",
+                confidence=0.95,
+                status="pending",
+            )
+        )
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["low", "high"],
+            {"low": [loser], "high": [winner]},
+        )
+
+        assert result.stored_count == 2
+        assert result.replaced_count == 1
+        assert result.replacements[0].new_memory == "high"
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once_with(
+            old_memory_id=42,
+            workspace_id="test_project",
+            old_content="old msg",
+            new_content="high",
+            reason="strong",
+            confidence=0.95,
+        )
+        mock_semantic_engine.add_batch.assert_called_once_with(
+            workspace_id="test_project",
+            contents=["low", "high"],
+            infer=False,
+        )
+
+    async def test_dry_run_collapses_two_successors(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Dry-run replaced_count matches the one-successor plan."""
+        loser = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="low",
+            confidence=0.4,
+            reason="weak",
+        )
+        winner = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="high",
+            confidence=0.95,
+            reason="strong",
+        )
+        mock_semantic_engine.get_id_by_content.return_value = 42
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["low", "high"],
+            {"low": [loser], "high": [winner]},
+            dry_run=True,
+        )
+
+        assert result.stored_count == 2
+        assert result.replaced_count == 1
+        assert result.replacements[0].confidence == 0.95
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.delete.assert_not_called()
+
+    async def test_skips_successor_that_conflicts_with_existing_transition(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """A leftover exclusive row must not abort unrelated memories."""
+        replacement_info = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="new msg",
+            confidence=0.9,
+            reason="updated",
+        )
+        mock_semantic_engine.get_id_by_content.return_value = 42
+        mock_semantic_engine.add_batch.side_effect = None
+        mock_semantic_engine.add_batch.return_value = ["new msg", "other"]
+        mock_semantic_engine.memory_store.get_transition_for_old_memory.return_value = (
+            ReplacementTransition(
+                id=1,
+                workspace_id="test_project",
+                old_memory_id=42,
+                old_content="old msg",
+                new_content="already recorded",
+                archive_id=1,
+                reason="first intent",
+                confidence=0.8,
+                status="pending",
+            )
+        )
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["new msg", "other"],
+            {"new msg": [replacement_info]},
+        )
+
+        assert result.stored_count == 2
+        assert result.replaced_count == 0
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.delete.assert_not_called()
+        mock_semantic_engine.add_batch.assert_called_once_with(
+            workspace_id="test_project",
+            contents=["new msg", "other"],
+            infer=False,
+        )
+
+    async def test_reconcile_runs_at_persist_start_when_write_lock_set(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Start-of-persist reconcile is invoked when a write lock is present."""
+        lock = threading.Lock()
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=lock,
+        )
+        with patch(
+            "reflectlog.application.memory.add_phases.reconcile_pending_replacements",
+            return_value=0,
+        ) as reconcile:
+            result = await phase.execute([], {})
+
+        assert result.stored_count == 0
+        reconcile.assert_called_once()
+
+    async def test_reconcile_skipped_without_write_lock(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """No write lock means start-of-persist reconcile is a no-op."""
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=None,
+        )
+        with patch(
+            "reflectlog.application.memory.add_phases.reconcile_pending_replacements",
+            return_value=0,
+        ) as reconcile:
+            result = await phase.execute(["msg1"], {})
+
+        assert result.stored_count == 1
+        reconcile.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

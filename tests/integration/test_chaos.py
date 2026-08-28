@@ -35,7 +35,7 @@ def manager(monkeypatch):
         MemoryManager: Mocked manager instance.
     '''
     # Set required environment variables before creating config
-    monkeypatch.setenv("PROJECT_ID", "test-chaos-project")
+    monkeypatch.setenv("WORKSPACE_ID", "test-chaos-project")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setenv("SEARCH_LIMIT", "10")
     monkeypatch.setenv("EMBEDDING_DIMS", "1536")
@@ -56,7 +56,7 @@ def manager(monkeypatch):
     mgr._embedder = mock_embedder
     mgr._llm_reranker = None
     mgr.config = config
-    mgr.project_id = config.project_id
+    mgr.workspace_id = config.workspace_id
     mgr.is_hybrid_search = True
     mgr._lock = MagicMock()
     mgr._write_lock = MagicMock()

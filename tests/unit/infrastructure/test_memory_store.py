@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from reflectlog.core.exceptions import StorageError
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.memory_store import (
     ArchivedMemoryRecord,
     MemoryRecord,
@@ -128,7 +129,7 @@ class TestMemoryStoreGet:
 
             assert record is not None
             assert record.id == memory_id
-            assert record.project_id == "user1"
+            assert record.workspace_id == "user1"
             assert record.content == "Hello world"
             store.close()
 
@@ -243,8 +244,8 @@ class TestMemoryStoreExists:
             assert store.exists("user1", "Hello world") is False
             store.close()
 
-    def test_exists_checks_project_id(self) -> None:
-        '''Exists should check project_id, not just memory.'''
+    def test_exists_checks_workspace_id(self) -> None:
+        '''Exists should check workspace_id, not just memory.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -450,7 +451,7 @@ class TestMemoryStoreLogging:
             cursor = store.connection.cursor()
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, confidence) "
+                "(original_id, workspace_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj", "old msg", "new msg", "updated", 0.9),
             )
@@ -469,7 +470,7 @@ class TestMemoryStoreLogging:
             cursor = store.connection.cursor()
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, confidence) "
+                "(original_id, workspace_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj", "old msg", "new msg", "updated", 0.9),
             )
@@ -495,7 +496,7 @@ class TestMemoryStoreLogging:
             cursor = store.connection.cursor()
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, "
+                "(original_id, workspace_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-100 days'))",
                 (1, "proj", "old msg", "new msg", "outdated", 0.9),
@@ -712,7 +713,7 @@ class TestMemoryStoreGetBatch:
             record = result[id1]
             assert isinstance(record, MemoryRecord)
             assert record.id == id1
-            assert record.project_id == "proj1"
+            assert record.workspace_id == "proj1"
             assert record.content == "hello"
             assert record.created_at != ""
             store.close()
@@ -853,18 +854,61 @@ class TestMemoryStoreDeleteBatch:
 class TestMemoryStoreArchive:
     '''Tests for MemoryStore.archive method.'''
 
-    def test_archive_raises_on_sql_error(self) -> None:
-        '''archive should raise StorageError due to SQL mismatch.'''
+    def test_archive_persists_all_six_values(self) -> None:
+        '''archive should persist original_id, project, content, replacement, reason, confidence.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
 
-            # The archive method has a SQL bug: 6 columns but 5 placeholders
-            # This should raise StorageError wrapping the sqlite3 error
+            archive_id = store.archive(
+                memory_id=7,
+                workspace_id="proj1",
+                content="old memory",
+                replaced_by="new memory",
+                reason="updated info",
+                confidence=0.91,
+            )
+
+            assert archive_id == 1
+            records = store.get_archived("proj1")
+            assert len(records) == 1
+            record = records[0]
+            assert record.id == 1
+            assert record.original_id == 7
+            assert record.workspace_id == "proj1"
+            assert record.content == "old memory"
+            assert record.replaced_by == "new memory"
+            assert record.reason == "updated info"
+            assert record.confidence == 0.91
+            store.close()
+
+    def test_archive_is_idempotent(self) -> None:
+        '''Retrying archive for the same pair must not create a duplicate row.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test.db")
+            store = MemoryStore(db_path=db_path)
+
+            first = store.archive(1, "proj1", "old", "new", "reason", 0.9)
+            second = store.archive(1, "proj1", "old", "new", "reason", 0.9)
+
+            assert first == second
+            assert len(store.get_archived("proj1")) == 1
+            store.close()
+
+    def test_archive_raises_on_sql_error(self) -> None:
+        '''archive should raise StorageError when the archive table is missing.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test.db")
+            store = MemoryStore(db_path=db_path)
+            cursor = store.connection.cursor()
+            _ = cursor.execute("DROP TABLE archived_memories")
+            store.connection.commit()
+            cursor.close()
+
             with pytest.raises(StorageError, match="Failed to archive memory"):
                 _ = store.archive(
                     memory_id=1,
-                    project_id="proj1",
+                    workspace_id="proj1",
                     content="old memory",
                     replaced_by="new memory",
                     reason="updated info",
@@ -876,13 +920,17 @@ class TestMemoryStoreArchive:
         '''archive should log on database failure.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = MagicMock(spec=IStructuredLogger)
             store = MemoryStore(db_path=db_path, logger=logger)
+            cursor = store.connection.cursor()
+            _ = cursor.execute("DROP TABLE archived_memories")
+            store.connection.commit()
+            cursor.close()
 
             with pytest.raises(StorageError):
                 _ = store.archive(
                     memory_id=1,
-                    project_id="proj1",
+                    workspace_id="proj1",
                     content="old",
                     replaced_by="new",
                     reason="reason",
@@ -917,7 +965,7 @@ class TestMemoryStoreGetArchived:
             cursor = store.connection.cursor()
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, confidence) "
+                "(original_id, workspace_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj1", "old msg", "new msg", "updated", 0.85),
             )
@@ -930,7 +978,7 @@ class TestMemoryStoreGetArchived:
             record = result[0]
             assert isinstance(record, ArchivedMemoryRecord)
             assert record.original_id == 1
-            assert record.project_id == "proj1"
+            assert record.workspace_id == "proj1"
             assert record.content == "old msg"
             assert record.replaced_by == "new msg"
             assert record.reason == "updated"
@@ -938,7 +986,7 @@ class TestMemoryStoreGetArchived:
             assert record.archived_at != ""
             store.close()
 
-    def test_get_archived_filters_by_project(self) -> None:
+    def test_get_archived_filters_by_workspace(self) -> None:
         '''get_archived should only return records for specified project.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
@@ -947,13 +995,13 @@ class TestMemoryStoreGetArchived:
             cursor = store.connection.cursor()
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, confidence) "
+                "(original_id, workspace_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj1", "msg1", "new1", "reason1", 0.9),
             )
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, confidence) "
+                "(original_id, workspace_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (2, "proj2", "msg2", "new2", "reason2", 0.8),
             )
@@ -963,7 +1011,7 @@ class TestMemoryStoreGetArchived:
             result = store.get_archived("proj1")
 
             assert len(result) == 1
-            assert result[0].project_id == "proj1"
+            assert result[0].workspace_id == "proj1"
             store.close()
 
     def test_get_archived_respects_limit(self) -> None:
@@ -976,7 +1024,7 @@ class TestMemoryStoreGetArchived:
             for i in range(5):
                 _ = cursor.execute(
                     "INSERT INTO archived_memories "
-                    "(original_id, project_id, content, replaced_by, "
+                    "(original_id, workspace_id, content, replaced_by, "
                     "reason, confidence) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
                     (i, "proj1", f"msg{i}", f"new{i}", "reason", 0.9),
@@ -998,14 +1046,14 @@ class TestMemoryStoreGetArchived:
             cursor = store.connection.cursor()
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, "
+                "(original_id, workspace_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, '2025-01-01 00:00:00')",
                 (1, "proj1", "old", "new_old", "reason", 0.9),
             )
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, "
+                "(original_id, workspace_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, '2025-06-01 00:00:00')",
                 (2, "proj1", "newer", "new_newer", "reason", 0.8),
@@ -1072,7 +1120,7 @@ class TestMemoryStoreRestoreFromArchive:
             cursor = store.connection.cursor()
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, confidence) "
+                "(original_id, workspace_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj1", "restored msg", "replacement", "reason", 0.9),
             )
@@ -1088,7 +1136,7 @@ class TestMemoryStoreRestoreFromArchive:
             record = store.get(new_id)
             assert record is not None
             assert record.content == "restored msg"
-            assert record.project_id == "proj1"
+            assert record.workspace_id == "proj1"
 
             # Archive record should be removed
             archived = store.get_archived("proj1")
@@ -1193,7 +1241,7 @@ class TestMemoryStoreCleanupExpiredArchive:
             # Insert old record (100 days ago)
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, "
+                "(original_id, workspace_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-100 days'))",
                 (1, "proj1", "old msg", "new msg", "reason", 0.9),
@@ -1201,7 +1249,7 @@ class TestMemoryStoreCleanupExpiredArchive:
             # Insert recent record (1 day ago)
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, "
+                "(original_id, workspace_id, content, replaced_by, reason, "
                 "confidence, archived_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-1 day'))",
                 (2, "proj1", "recent msg", "new msg", "reason", 0.8),
@@ -1227,7 +1275,7 @@ class TestMemoryStoreCleanupExpiredArchive:
             cursor = store.connection.cursor()
             _ = cursor.execute(
                 "INSERT INTO archived_memories "
-                "(original_id, project_id, content, replaced_by, reason, confidence) "
+                "(original_id, workspace_id, content, replaced_by, reason, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (1, "proj1", "recent", "new", "reason", 0.9),
             )
@@ -1569,21 +1617,21 @@ class TestMemoryRecordDataclass:
     def test_memory_record_fields(self) -> None:
         '''MemoryRecord should store all fields correctly.'''
         record = MemoryRecord(
-            id=1, project_id="proj1", content="hello", created_at="2025-01-01"
+            id=1, workspace_id="proj1", content="hello", created_at="2025-01-01"
         )
         assert record.id == 1
-        assert record.project_id == "proj1"
+        assert record.workspace_id == "proj1"
         assert record.content == "hello"
         assert record.created_at == "2025-01-01"
 
     def test_memory_record_default_created_at(self) -> None:
         '''MemoryRecord should default created_at to empty string.'''
-        record = MemoryRecord(id=1, project_id="proj1", content="hello")
+        record = MemoryRecord(id=1, workspace_id="proj1", content="hello")
         assert record.created_at == ""
 
     def test_memory_record_frozen(self) -> None:
         '''MemoryRecord should be immutable (frozen dataclass).'''
-        record = MemoryRecord(id=1, project_id="proj1", content="hello")
+        record = MemoryRecord(id=1, workspace_id="proj1", content="hello")
         with pytest.raises(AttributeError):
             record.content = "changed"  # type: ignore
 
@@ -1596,7 +1644,7 @@ class TestArchivedMemoryRecordDataclass:
         record = ArchivedMemoryRecord(
             id=1,
             original_id=10,
-            project_id="proj1",
+            workspace_id="proj1",
             content="old msg",
             replaced_by="new msg",
             reason="updated",
@@ -1605,7 +1653,7 @@ class TestArchivedMemoryRecordDataclass:
         )
         assert record.id == 1
         assert record.original_id == 10
-        assert record.project_id == "proj1"
+        assert record.workspace_id == "proj1"
         assert record.content == "old msg"
         assert record.replaced_by == "new msg"
         assert record.reason == "updated"
@@ -1617,7 +1665,7 @@ class TestArchivedMemoryRecordDataclass:
         record = ArchivedMemoryRecord(
             id=1,
             original_id=10,
-            project_id="proj1",
+            workspace_id="proj1",
             content="old",
             replaced_by="new",
             reason="reason",

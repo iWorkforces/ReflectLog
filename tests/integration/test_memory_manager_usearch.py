@@ -45,16 +45,16 @@ def create_usearch_config(temp_dir: str, project_suffix: str = "") -> Config:
 
     Args:
         temp_dir: Temporary directory for index files.
-        project_suffix: Unique suffix to append to project_id for test isolation.
+        project_suffix: Unique suffix to append to workspace_id for test isolation.
     """
     import uuid
 
-    # Create unique project_id to ensure test isolation
+    # Create unique workspace_id to ensure test isolation
     unique_id = project_suffix or uuid.uuid4().hex[:8]
-    project_id = f"test-usearch-{unique_id}"
+    workspace_id = f"test-usearch-{unique_id}"
 
     return Config(
-        project_id=project_id,
+        workspace_id=workspace_id,
         openrouter_api_key=SecretString("test-key"),
         embedder_provider="langchain",
         embedding_model="mock-model",
@@ -62,7 +62,7 @@ def create_usearch_config(temp_dir: str, project_suffix: str = "") -> Config:
         qwen_embedding_dims=128,
         enable_hybrid_search=True,
         reranker_engine="none",
-        tantivy_index_path_template=os.path.join(temp_dir, "{project_id}", "tantivy"),
+        tantivy_index_path_template=os.path.join(temp_dir, "{workspace_id}", "tantivy"),
         search_limit=5,
         fusion_ranking_threshold=0.0,  # Allow all results
         deduplicate_memories=True,
@@ -94,14 +94,14 @@ def cleanup_manager(manager: MemoryManager) -> None:
     elif hasattr(manager._semantic_engine, "close"):
         manager._semantic_engine.close()
 
-    # Clean up USearch index directory (created at cwd/indexes/{project_id}/usearch/)
-    project_id = manager.config.project_id.lower()
-    usearch_dir = os.path.join(os.getcwd(), "indexes", project_id, "usearch")
+    # Clean up USearch index directory (created at cwd/indexes/{workspace_id}/usearch/)
+    workspace_id = manager.config.workspace_id.lower()
+    usearch_dir = os.path.join(os.getcwd(), "indexes", workspace_id, "usearch")
     if os.path.exists(usearch_dir):
         shutil.rmtree(usearch_dir, ignore_errors=True)
 
     # Also clean up parent directory if empty
-    project_dir = os.path.join(os.getcwd(), "indexes", project_id)
+    project_dir = os.path.join(os.getcwd(), "indexes", workspace_id)
     if os.path.exists(project_dir) and not os.listdir(project_dir):
         shutil.rmtree(project_dir, ignore_errors=True)
 

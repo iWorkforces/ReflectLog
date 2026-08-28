@@ -182,7 +182,7 @@ class TestDynamicInstructionsIntegration:
         self, monkeypatch, allowed_value: str | None
     ):
         """Helper to create a FastMCPServer and capture the instructions."""
-        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
         if allowed_value is None:

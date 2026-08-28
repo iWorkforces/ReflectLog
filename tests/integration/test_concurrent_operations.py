@@ -46,10 +46,10 @@ class MockEmbedder(Embeddings):
         return [self.embed_query(text) for text in texts]
 
 
-def create_test_config(project_id: str = "test-concurrent") -> Config:
+def create_test_config(workspace_id: str = "test-concurrent") -> Config:
     """Create a Config instance for testing."""
     return Config(
-        project_id=project_id,
+        workspace_id=workspace_id,
         openrouter_api_key=SecretString("test-key"),
         embedder_provider="langchain",
         embedding_model="mock-model",

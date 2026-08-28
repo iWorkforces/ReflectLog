@@ -27,27 +27,27 @@ class TestFastMCPServerInitialization:
         # Memory manager should have a mock semantic engine
         assert mcp_server.memory_manager.memory is not None
 
-    def test_server_initialization_missing_project_id(self):
-        '''Test Config.from_environment fails without PROJECT_ID.
+    def test_server_initialization_missing_workspace_id(self):
+        '''Test Config.from_environment fails without WORKSPACE_ID.
 
         Note: FastMCPServer uses a module-level config singleton, so we test
-        the Config class directly to verify PROJECT_ID validation.
+        the Config class directly to verify WORKSPACE_ID validation.
         '''
         import os
 
         from reflectlog.application.config.settings import Config
 
-        # Save original and clear PROJECT_ID
-        original = os.environ.pop("PROJECT_ID", None)
+        # Save original and clear WORKSPACE_ID
+        original = os.environ.pop("WORKSPACE_ID", None)
         try:
             with pytest.raises(
-                ConfigurationError, match="PROJECT_ID environment variable"
+                ConfigurationError, match="WORKSPACE_ID environment variable"
             ):
                 Config.from_environment()
         finally:
             # Restore original
             if original is not None:
-                os.environ["PROJECT_ID"] = original
+                os.environ["WORKSPACE_ID"] = original
 
     def test_memory_config_structure(self, set_env_vars):
         '''Test USearchEngine is initialized with correct config.'''
@@ -73,8 +73,8 @@ class TestFastMCPServerInitialization:
                     # First positional arg should be USearchConfig
                     usearch_config = call_args[0][0]
 
-                    # Verify config attributes (USearchConfig uses project_id)
-                    assert usearch_config.project_id == "test_project"
+                    # Verify config attributes (USearchConfig uses workspace_id)
+                    assert usearch_config.workspace_id == "test_project"
 
 
 @pytest.mark.unit
@@ -103,7 +103,7 @@ class TestAddTool:
         # USearchEngine.add_batch is called with keyword arguments
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
         assert call_kwargs["memories"] == memories
-        assert call_kwargs["project_id"] == mcp_server.config.project_id
+        assert call_kwargs["workspace_id"] == mcp_server.config.workspace_id
 
     async def test_add_multiple_memories_success(self, mcp_server, sample_memories):
         '''Test adding multiple valid memories.'''
@@ -1069,7 +1069,7 @@ class TestToolRegistrationConfiguration:
 
     def _build_server(self, monkeypatch, allowed_value: str | None):
         '''Helper to create a FastMCPServer with patched dependencies.'''
-        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
         if allowed_value is None:
@@ -1166,7 +1166,7 @@ class TestHealthCheckTool:
         result = await health_check_func()
 
         assert result["status"] == "healthy"
-        assert result["project_id"] == "test_project"
+        assert result["workspace_id"] == "test_project"
         assert result["semantic_engine"] == "initialized"
         assert result["tantivy_engine"] == "initialized"
         assert result["reranker_engine"] == "llm"
@@ -1274,7 +1274,7 @@ class TestServerClose:
 
     def _build_server(self, monkeypatch):
         '''Helper to create a FastMCPServer with fully mocked dependencies.'''
-        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
         monkeypatch.delenv("ALLOWED_TOOLS", raising=False)
 
@@ -1331,7 +1331,7 @@ class TestMainFunction:
 
     def test_main_runtime_error_is_reraised(self, monkeypatch):
         '''main() re-raises RuntimeError after logging (lines 286-288).'''
-        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
         with (
@@ -1347,7 +1347,7 @@ class TestMainFunction:
 
     def test_main_keyboard_interrupt_calls_close(self, monkeypatch):
         '''main() calls server.close() on KeyboardInterrupt (lines 289-292).'''
-        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
         with (
@@ -1366,7 +1366,7 @@ class TestMainFunction:
 
     def test_main_unexpected_exception_calls_close_and_reraises(self, monkeypatch):
         '''main() calls server.close() then re-raises on unexpected Exception (lines 293-297).'''
-        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
         with (
@@ -1386,7 +1386,7 @@ class TestMainFunction:
 
     def test_main_keyboard_interrupt_before_server_created(self, monkeypatch):
         '''main() handles KeyboardInterrupt when server is None (line 291 branch).'''
-        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
         with (
@@ -1401,7 +1401,7 @@ class TestMainFunction:
 
     def test_main_unexpected_exception_before_server_created(self, monkeypatch):
         '''main() re-raises unexpected Exception when server is None (line 295 branch).'''
-        monkeypatch.setenv("PROJECT_ID", "test_project")
+        monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
 
         with (

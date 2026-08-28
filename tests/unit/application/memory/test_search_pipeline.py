@@ -40,7 +40,7 @@ def _make_config(
     reranker_engine: str = "none",
 ) -> Mock:
     config = Mock(spec=Config)
-    config.project_id = "test_project"
+    config.workspace_id = "test_project"
     config.fusion_ranking_threshold = fusion_ranking_threshold
     config.reranker_engine = reranker_engine
     config.search_score_threshold = 0.5
@@ -64,7 +64,7 @@ def _make_context(
     enable_hybrid_search: bool = True,
     enable_rrf_fusion: bool = True,
     reranker_engine: str = "none",
-    project_id: str = "test_project",
+    workspace_id: str = "test_project",
 ) -> SearchContext:
     return SearchContext(
         query=query,
@@ -73,7 +73,7 @@ def _make_context(
         enable_hybrid_search=enable_hybrid_search,
         enable_rrf_fusion=enable_rrf_fusion,
         reranker_engine=reranker_engine,
-        project_id=project_id,
+        workspace_id=workspace_id,
     )
 
 
@@ -154,8 +154,8 @@ class ControllableBackend:
         if release is not None and not release.wait(timeout=_BACKEND_WAIT_TIMEOUT):
             raise TimeoutError("event loop did not progress while init blocked")
 
-    def search(self, query: str, project_id: str, limit: int) -> list[object]:
-        self.search_calls.append((query, project_id, limit))
+    def search(self, query: str, workspace_id: str, limit: int) -> list[object]:
+        self.search_calls.append((query, workspace_id, limit))
         if self.thread_ids is not None:
             self.thread_ids.append(threading.get_ident())
         self.entered.set()
@@ -223,9 +223,9 @@ class TestCanonicalPipelineIdentity:
     def test_manager_wires_strategies_pipeline(self) -> None:
         """MemoryManager._init_pipelines() uses search_strategies.SearchPipeline."""
         config = MagicMock()
-        config.project_id = "test_project"
+        config.workspace_id = "test_project"
         config.enable_hybrid_search = True
-        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
         config.enable_smart_replace = False
         config.reranker_engine = "none"
         config.embedding_cache_enabled = False
@@ -254,9 +254,9 @@ class TestCanonicalPipelineIdentity:
         ready = MagicMock()
         ready.is_ready.return_value = True
         config = MagicMock()
-        config.project_id = "test_project"
+        config.workspace_id = "test_project"
         config.enable_hybrid_search = True
-        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
         config.enable_smart_replace = False
         config.reranker_engine = "none"
         config.embedding_cache_enabled = False
@@ -292,9 +292,9 @@ class TestCanonicalPipelineIdentity:
         missing = MagicMock()
         missing.is_ready = None
         config = MagicMock()
-        config.project_id = "test_project"
+        config.workspace_id = "test_project"
         config.enable_hybrid_search = True
-        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
         config.enable_smart_replace = False
         config.reranker_engine = "none"
         config.embedding_cache_enabled = False
@@ -1107,9 +1107,9 @@ class TestSearchResponsiveness:
                 return range(index_size)
 
         config = MagicMock()
-        config.project_id = "test_project"
+        config.workspace_id = "test_project"
         config.enable_hybrid_search = True
-        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
         config.enable_smart_replace = False
         config.reranker_engine = "none"
         config.embedding_cache_enabled = False
@@ -1176,7 +1176,7 @@ class TestSearchResponsiveness:
         assert index_threads
         assert index_threads[0] != loop_thread
         semantic.search.assert_called_once_with(
-            query="q", project_id="test_project", limit=expected_overfetch
+            query="q", workspace_id="test_project", limit=expected_overfetch
         )
         tantivy.search.assert_called_once_with("q", "test_project", expected_overfetch)
 

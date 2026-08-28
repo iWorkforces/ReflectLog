@@ -271,7 +271,7 @@ MCP_INSTRUCTIONS = build_instructions(
             "health_check",
             "    • health_check() -> HealthCheckResult\n"
             "      Returns server health status and configuration. No parameters required.\n"
-            "      Provides overall_status, project_id, engine states, and feature flags.",
+            "      Provides overall_status, workspace_id, engine states, and feature flags.",
         ),
     ]
 )

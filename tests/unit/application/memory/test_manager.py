@@ -36,9 +36,9 @@ MODULE = "reflectlog.application.memory.manager"
 def mock_config() -> Config:
     """Minimal mock Config for MemoryManager tests."""
     config = Mock(spec=Config)
-    config.project_id = "test_project"
+    config.workspace_id = "test_project"
     config.enable_hybrid_search = True
-    config.tantivy_index_path_template = "{project_id}_tantivy_test"
+    config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
     config.index_base_path = "/tmp/test_indexes"
     config.search_limit = 5
     config.search_score_threshold = 0.8
@@ -125,7 +125,7 @@ def _make_manager(config, logger):
     ):
         mock_usearch = MagicMock()
         mock_usearch.add_batch.side_effect = (
-            lambda project_id, memories, infer: memories
+            lambda workspace_id, memories, infer: memories
         )
         usearch_cls.return_value = mock_usearch
 
@@ -471,7 +471,7 @@ class TestAddMemory:
         result = manager._add_memory("new memory")
         assert result is True
         mock_usearch.add.assert_called_once_with(
-            project_id="test_project",
+            workspace_id="test_project",
             content="new memory",
             infer=False,
         )
@@ -527,7 +527,7 @@ class TestAddMemoriesBatchLogging:
         """Duplicate within batch should be skipped (lines 593-602)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.add_batch.side_effect = (
-            lambda project_id, memories, infer: memories
+            lambda workspace_id, memories, infer: memories
         )
 
         result = manager.add_memories(["mem1", "mem1", "mem2"])
@@ -797,7 +797,7 @@ class TestGetAll:
 
         result = manager.get_all()
         assert result == ["mem1", "mem2"]
-        mock_usearch.get_all.assert_called_once_with(project_id="test_project")
+        mock_usearch.get_all.assert_called_once_with(workspace_id="test_project")
 
     def test_get_all_exception_raises_storage_error(self, mock_config, mock_logger):
         """get_all wraps exceptions in StorageError."""

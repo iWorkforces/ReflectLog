@@ -18,7 +18,7 @@ class TestRRFFusionToggleConfig:
         with patch.dict(
             os.environ,
             {
-                "PROJECT_ID": "test",
+                "WORKSPACE_ID": "test",
                 "OPENROUTER_API_KEY": "test-key",
             },
             clear=True,
@@ -31,7 +31,7 @@ class TestRRFFusionToggleConfig:
         with patch.dict(
             os.environ,
             {
-                "PROJECT_ID": "test",
+                "WORKSPACE_ID": "test",
                 "OPENROUTER_API_KEY": "test-key",
                 "ENABLE_RRF_FUSION": "true",
             },
@@ -45,7 +45,7 @@ class TestRRFFusionToggleConfig:
         with patch.dict(
             os.environ,
             {
-                "PROJECT_ID": "test",
+                "WORKSPACE_ID": "test",
                 "OPENROUTER_API_KEY": "test-key",
                 "ENABLE_RRF_FUSION": "false",
             },
@@ -69,7 +69,7 @@ class TestRRFFusionToggleConfig:
             with patch.dict(
                 os.environ,
                 {
-                    "PROJECT_ID": "test",
+                    "WORKSPACE_ID": "test",
                     "OPENROUTER_API_KEY": "test-key",
                     "ENABLE_RRF_FUSION": value,
                 },
@@ -88,7 +88,7 @@ class TestRRFFusionToggleConfig:
             with patch.dict(
                 os.environ,
                 {
-                    "PROJECT_ID": "test",
+                    "WORKSPACE_ID": "test",
                     "OPENROUTER_API_KEY": "test-key",
                     "ENABLE_RRF_FUSION": value,
                 },
@@ -109,10 +109,10 @@ class TestSearchPipelineWithRRFToggle:
     def mock_config_rrf_enabled(self):
         """Mock configuration with RRF fusion enabled."""
         config = Mock(spec=Config)
-        config.project_id = "test_project"
+        config.workspace_id = "test_project"
         config.enable_hybrid_search = True
         config.enable_rrf_fusion = True  # RRF enabled
-        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
         config.index_base_path = "/tmp/test_indexes"
         config.search_limit = 5
         config.search_score_threshold = 0.8
@@ -156,10 +156,10 @@ class TestSearchPipelineWithRRFToggle:
     def mock_config_rrf_disabled(self):
         """Mock configuration with RRF fusion disabled."""
         config = Mock(spec=Config)
-        config.project_id = "test_project"
+        config.workspace_id = "test_project"
         config.enable_hybrid_search = True
         config.enable_rrf_fusion = False  # RRF disabled
-        config.tantivy_index_path_template = "{project_id}_tantivy_test"
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
         config.index_base_path = "/tmp/test_indexes"
         config.search_limit = 5
         config.search_score_threshold = 0.8

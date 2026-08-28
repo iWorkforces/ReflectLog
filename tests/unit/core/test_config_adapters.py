@@ -46,7 +46,7 @@ from reflectlog.core.config_adapters import (
 def minimal_config() -> Config:
     """Config with only required fields, all others at defaults."""
     return Config(
-        project_id="test-project",
+        workspace_id="test-project",
         openrouter_api_key=SecretString("sk-test-key-12345"),
     )
 
@@ -55,7 +55,7 @@ def minimal_config() -> Config:
 def custom_config() -> Config:
     """Config with all adapter-relevant fields set to non-default values."""
     return Config(
-        project_id="custom-proj",
+        workspace_id="custom-proj",
         openrouter_api_key=SecretString("sk-custom-key-99999"),
         transport="http",
         host="0.0.0.0",
@@ -170,10 +170,10 @@ class TestConfigAdapter:
         adapter = ConfigAdapter(minimal_config)
         assert adapter.log_level == "INFO"
 
-    def test_project_id(self, minimal_config: Config) -> None:
-        """project_id delegates to Config."""
+    def test_workspace_id(self, minimal_config: Config) -> None:
+        """workspace_id delegates to Config."""
         adapter = ConfigAdapter(minimal_config)
-        assert adapter.project_id == "test-project"
+        assert adapter.workspace_id == "test-project"
 
     # -- ISearchConfig properties --
 
@@ -237,12 +237,12 @@ class TestConfigAdapter:
         assert adapter.storage_path == "indexes"
 
     def test_usearch_index_path(self, minimal_config: Config) -> None:
-        """usearch_index_path includes project_id."""
+        """usearch_index_path includes workspace_id."""
         adapter = ConfigAdapter(minimal_config)
         assert adapter.usearch_index_path == "indexes/test-project/usearch"
 
     def test_tantivy_index_path(self, minimal_config: Config) -> None:
-        """tantivy_index_path includes project_id."""
+        """tantivy_index_path includes workspace_id."""
         adapter = ConfigAdapter(minimal_config)
         assert adapter.tantivy_index_path == "indexes/test-project/tantivy"
 
@@ -360,7 +360,7 @@ class TestConfigAdapter:
         assert adapter.port == 8080
         assert adapter.path == "/custom-mcp"
         assert adapter.log_level == "DEBUG"
-        assert adapter.project_id == "custom-proj"
+        assert adapter.workspace_id == "custom-proj"
 
         # ISearchConfig
         assert adapter.search_limit == 20
@@ -451,10 +451,10 @@ class TestServerConfigAdapter:
         adapter = ServerConfigAdapter(custom_config)
         assert adapter.log_level == "DEBUG"
 
-    def test_project_id(self, custom_config: Config) -> None:
-        """project_id delegates to Config.project_id."""
+    def test_workspace_id(self, custom_config: Config) -> None:
+        """workspace_id delegates to Config.workspace_id."""
         adapter = ServerConfigAdapter(custom_config)
-        assert adapter.project_id == "custom-proj"
+        assert adapter.workspace_id == "custom-proj"
 
     def test_defaults(self, minimal_config: Config) -> None:
         """All defaults match Config defaults."""
@@ -464,7 +464,7 @@ class TestServerConfigAdapter:
         assert adapter.port == 9103
         assert adapter.path == "/mcp"
         assert adapter.log_level == "INFO"
-        assert adapter.project_id == "test-project"
+        assert adapter.workspace_id == "test-project"
 
 
 # ---------------------------------------------------------------------------
@@ -523,7 +523,7 @@ class TestSearchConfigAdapter:
     def test_reranker_engine_coercion_invalid(self) -> None:
         """Invalid reranker_engine in Config coerces to 'none'."""
         config = Config(
-            project_id="test",
+            workspace_id="test",
             openrouter_api_key=SecretString("sk-key"),
             reranker_engine="invalid_engine",
         )
@@ -588,12 +588,12 @@ class TestStorageConfigAdapter:
         assert adapter.storage_path == "indexes"
 
     def test_usearch_index_path(self, custom_config: Config) -> None:
-        """usearch_index_path includes project_id from Config."""
+        """usearch_index_path includes workspace_id from Config."""
         adapter = StorageConfigAdapter(custom_config)
         assert adapter.usearch_index_path == "indexes/custom-proj/usearch"
 
     def test_tantivy_index_path(self, custom_config: Config) -> None:
-        """tantivy_index_path includes project_id from Config."""
+        """tantivy_index_path includes workspace_id from Config."""
         adapter = StorageConfigAdapter(custom_config)
         assert adapter.tantivy_index_path == "indexes/custom-proj/tantivy"
 
@@ -858,10 +858,10 @@ class TestFactoryFunctions:
 class TestEdgeCases:
     """Edge case tests for config adapters."""
 
-    def test_storage_paths_with_special_project_id(self) -> None:
-        """Storage paths handle project_id with dots and hyphens."""
+    def test_storage_paths_with_special_workspace_id(self) -> None:
+        """Storage paths handle workspace_id with dots and hyphens."""
         config = Config(
-            project_id="my-project.v2",
+            workspace_id="my-project.v2",
             openrouter_api_key=SecretString("sk-key"),
         )
         adapter = ConfigAdapter(config)
@@ -871,7 +871,7 @@ class TestEdgeCases:
     def test_reranker_engine_none_string(self) -> None:
         """Config with reranker_engine='none' coerces correctly."""
         config = Config(
-            project_id="test",
+            workspace_id="test",
             openrouter_api_key=SecretString("sk-key"),
             reranker_engine="none",
         )
@@ -882,7 +882,7 @@ class TestEdgeCases:
         """All transport literal values are supported."""
         for transport in ("stdio", "http", "sse", "streamable-http"):
             config = Config(
-                project_id="test",
+                workspace_id="test",
                 openrouter_api_key=SecretString("sk-key"),
                 transport=transport,  # type: ignore[arg-type]
             )
@@ -901,9 +901,9 @@ class TestEdgeCases:
         replacement = ReplacementConfigAdapter(minimal_config)
         full = ConfigAdapter(minimal_config)
 
-        # All share the same project_id source
-        assert server.project_id == "test-project"
-        assert full.project_id == "test-project"
+        # All share the same workspace_id source
+        assert server.workspace_id == "test-project"
+        assert full.workspace_id == "test-project"
 
         # Verify they each satisfy only their own protocol
         assert isinstance(server, IServerConfig)
@@ -922,7 +922,7 @@ class TestEdgeCases:
     def test_zero_fusion_threshold(self) -> None:
         """Config with zero fusion_ranking_threshold works."""
         config = Config(
-            project_id="test",
+            workspace_id="test",
             openrouter_api_key=SecretString("sk-key"),
             fusion_ranking_threshold=0.0,
         )
@@ -932,7 +932,7 @@ class TestEdgeCases:
     def test_extreme_search_limit(self) -> None:
         """Config with high search_limit delegates correctly."""
         config = Config(
-            project_id="test",
+            workspace_id="test",
             openrouter_api_key=SecretString("sk-key"),
             search_limit=1000,
         )
@@ -942,7 +942,7 @@ class TestEdgeCases:
     def test_metric_always_cosine_regardless_of_config(self) -> None:
         """metric is hardcoded to 'cosine', not from Config."""
         config = Config(
-            project_id="test",
+            workspace_id="test",
             openrouter_api_key=SecretString("sk-key"),
         )
         # StorageConfigAdapter hardcodes "cosine"
@@ -955,7 +955,7 @@ class TestEdgeCases:
     def test_storage_path_always_indexes(self) -> None:
         """storage_path is hardcoded to 'indexes', not from Config."""
         config = Config(
-            project_id="any-id",
+            workspace_id="any-id",
             openrouter_api_key=SecretString("sk-key"),
         )
         adapter = StorageConfigAdapter(config)

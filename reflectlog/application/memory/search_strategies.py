@@ -49,7 +49,7 @@ class SearchContext:
         enable_hybrid_search: Whether Tantivy full-text search is enabled.
         enable_rrf_fusion: Whether RRF fusion is enabled (vs concatenation).
         reranker_engine: The reranker engine to use ("llm", "cross_encoder", or "none").
-        project_id: Project identifier for logging.
+        workspace_id: Workspace identifier for logging.
     """
 
     query: str
@@ -58,7 +58,7 @@ class SearchContext:
     enable_hybrid_search: bool
     enable_rrf_fusion: bool
     reranker_engine: str
-    project_id: str
+    workspace_id: str
 
 
 @dataclass
@@ -158,7 +158,7 @@ class SearchPipeline:
             self.logger.error(
                 "Search pipeline failed",
                 extra={
-                    "project_id": context.project_id,
+                    "workspace_id": context.workspace_id,
                     "query": context.query,
                     "error": str(e),
                 },
@@ -179,7 +179,7 @@ class SearchPipeline:
         async with create_task_group() as tg:
             soon_results = tg.soonify(asyncify(self._semantic_engine.search))(
                 query=context.query,
-                project_id=context.project_id,
+                workspace_id=context.workspace_id,
                 limit=context.limit,
             )
         results: list[tuple[str, float, str]] = soon_results.value or []
@@ -241,7 +241,7 @@ class SearchPipeline:
         self.logger.info(
             f"SEARCH COMPLETE: {len(memories)} result(s) returned",
             extra={
-                "project_id": context.project_id,
+                "workspace_id": context.workspace_id,
                 "query": context.query,
                 "result_count": len(memories),
                 "top_score": hybrid_results[0][1] if hybrid_results else 0.0,
@@ -270,10 +270,10 @@ class SearchPipeline:
         soon_tantivy = None
         async with create_task_group() as tg:
             soon_semantic = tg.soonify(self._search_semantic)(
-                context.query, context.overfetch_limit, context.project_id
+                context.query, context.overfetch_limit, context.workspace_id
             )
             soon_tantivy = tg.soonify(self._search_tantivy)(
-                context.query, context.overfetch_limit, context.project_id
+                context.query, context.overfetch_limit, context.workspace_id
             )
 
         assert soon_semantic is not None
@@ -285,7 +285,7 @@ class SearchPipeline:
         self.logger.info(
             f"Both engines completed (semantic: {len(semantic_results)}, tantivy: {len(tantivy_results)})",
             extra={
-                "project_id": context.project_id,
+                "workspace_id": context.workspace_id,
                 "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
                 "semantic_count": len(semantic_results),
                 "tantivy_count": len(tantivy_results),
@@ -295,7 +295,7 @@ class SearchPipeline:
         return semantic_results, tantivy_results
 
     async def _search_semantic(
-        self, query: str, limit: int, project_id: str
+        self, query: str, limit: int, workspace_id: str
     ) -> list[tuple[str, float, str]]:
         """Execute semantic search on USearchEngine.
 
@@ -309,7 +309,7 @@ class SearchPipeline:
                 self._semantic_engine.search
             )(
                 query=query,
-                project_id=project_id,
+                workspace_id=workspace_id,
                 limit=limit,
             )
             return results
@@ -318,7 +318,7 @@ class SearchPipeline:
             self.logger.warning(
                 "Semantic search failed - falling back to Tantivy full-text only",
                 extra={
-                    "project_id": project_id,
+                    "workspace_id": workspace_id,
                     "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
                     "error_type": type(e).__name__,
                     "error": str(e),
@@ -329,7 +329,7 @@ class SearchPipeline:
             return []
 
     async def _search_tantivy(
-        self, query: str, limit: int, project_id: str
+        self, query: str, limit: int, workspace_id: str
     ) -> list[tuple[str, float]]:
         """Execute full-text search on Tantivy engine."""
         if self._tantivy_engine is None:
@@ -337,7 +337,7 @@ class SearchPipeline:
         await asyncify(self._tantivy_engine.ensure_initialized)()
         tantivy_results: list[tuple[str, float]] = await asyncify(
             self._tantivy_engine.search
-        )(query, project_id, limit)
+        )(query, workspace_id, limit)
         return tantivy_results
 
     async def _step2_fusion_or_concatenate(
@@ -380,7 +380,7 @@ class SearchPipeline:
             self.logger.info(
                 f"Combined {len(hybrid_results)} unique result(s) using {self._fusion_engine.method.upper()} algorithm",
                 extra={
-                    "project_id": context.project_id,
+                    "workspace_id": context.workspace_id,
                     "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
                     "engine": "fusion",
                     "result_count": len(hybrid_results),
