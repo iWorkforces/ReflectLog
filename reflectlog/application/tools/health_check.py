@@ -39,7 +39,7 @@ class HealthCheckTool(BaseTool):
 
             Returns:
                 Dictionary containing health status information with keys:
-                - status: Overall status string ("healthy")
+                - status: Overall status string ("healthy" or "degraded")
                 - workspace_id: The configured workspace identifier
                 - semantic_engine: "initialized", "pending", or "not_initialized"
                 - tantivy_engine: "initialized", "pending", or "disabled"
@@ -84,7 +84,7 @@ class HealthCheckTool(BaseTool):
                 pending_raw = pending_count_fn() if callable(pending_count_fn) else 0
                 pending_count = pending_raw if isinstance(pending_raw, int) else 0
                 health_status: dict[str, Any] = {
-                    "status": "healthy",
+                    "status": "degraded" if pending_count > 0 else "healthy",
                     "workspace_id": self.config.workspace_id,
                     "semantic_engine": semantic_engine_status,
                     "tantivy_engine": tantivy_engine_status,

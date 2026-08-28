@@ -561,6 +561,7 @@ class TestStoragePhase:
             reason="updated",
             similarity_score=0.85,
         )
+        mock_semantic_engine.get_id_by_content.return_value = 42
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
             tantivy_engine=mock_tantivy_engine,
@@ -592,12 +593,20 @@ class TestStoragePhase:
             reason="updated",
             similarity_score=0.85,
         )
-        mock_semantic_engine.get_id_by_content.side_effect = (
-            lambda _pid, content: 42 if content == "old msg" else 99
-        )
+        live_ids = {"old msg": 42, "new msg": 99}
+
+        def get_id(_ws: str, content: str) -> int | None:
+            return live_ids.get(content)
+
+        def delete(*, memory_id: str) -> None:
+            if memory_id == "42":
+                live_ids.pop("old msg", None)
+
+        mock_semantic_engine.get_id_by_content.side_effect = get_id
+        mock_semantic_engine.delete.side_effect = delete
         mock_semantic_engine.index = {99}
         mock_tantivy_engine.find_by_exact_match.side_effect = (
-            lambda _pid, content: [content] if content == "new msg" else []
+            lambda _ws, content: [content] if content == "new msg" else []
         )
         mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
             ReplacementTransition(
@@ -1147,10 +1156,14 @@ class TestStoragePhase:
     ):
         """Every intended old is recorded before the first index delete."""
         order: list[str] = []
-        mock_semantic_engine.get_id_by_content.side_effect = [11, 12, 99, 99]
+        mock_semantic_engine.get_id_by_content.side_effect = (
+            lambda _ws, content: {"old-a": 11, "old-b": 12, "new msg": 99}.get(
+                content
+            )
+        )
         mock_semantic_engine.index = {99}
         mock_tantivy_engine.find_by_exact_match.side_effect = (
-            lambda _pid, content: [content] if content == "new msg" else []
+            lambda _ws, content: [content] if content == "new msg" else []
         )
 
         def record(*_args: object, **_kwargs: object) -> ReplacementTransition:
@@ -1221,6 +1234,109 @@ class TestStoragePhase:
 
         mock_semantic_engine.delete.assert_not_called()
         mock_tantivy_engine.delete.assert_not_called()
+
+    async def test_keeps_one_successor_per_old_id(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Two successors for one old id keep the highest-confidence winner."""
+        loser = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="low",
+            confidence=0.4,
+            reason="weak",
+        )
+        winner = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="high",
+            confidence=0.95,
+            reason="strong",
+        )
+        live_ids = {"old msg": 42}
+
+        def get_id(_ws: str, content: str) -> int | None:
+            return live_ids.get(content)
+
+        def delete(*, memory_id: str) -> None:
+            if memory_id == "42":
+                live_ids.pop("old msg", None)
+
+        mock_semantic_engine.get_id_by_content.side_effect = get_id
+        mock_semantic_engine.delete.side_effect = delete
+        mock_semantic_engine.index = set()
+        mock_semantic_engine.add_batch.side_effect = None
+        mock_semantic_engine.add_batch.return_value = ["low", "high"]
+        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+            ReplacementTransition(
+                id=1,
+                workspace_id="test_project",
+                old_memory_id=42,
+                old_content="old msg",
+                new_content="high",
+                archive_id=1,
+                reason="strong",
+                confidence=0.95,
+                status="pending",
+            )
+        )
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["low", "high"],
+            {"low": [loser], "high": [winner]},
+        )
+
+        assert result.stored_count == 2
+        assert result.replaced_count == 1
+        assert result.replacements[0].new_memory == "high"
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once_with(
+            old_memory_id=42,
+            workspace_id="test_project",
+            old_content="old msg",
+            new_content="high",
+            reason="strong",
+            confidence=0.95,
+        )
+
+    async def test_dry_run_collapses_two_successors(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Dry-run replaced_count matches the one-successor plan."""
+        loser = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="low",
+            confidence=0.4,
+            reason="weak",
+        )
+        winner = ReplacementInfo(
+            old_memory="old msg",
+            new_memory="high",
+            confidence=0.95,
+            reason="strong",
+        )
+        mock_semantic_engine.get_id_by_content.return_value = 42
+
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(
+            ["low", "high"],
+            {"low": [loser], "high": [winner]},
+            dry_run=True,
+        )
+
+        assert result.stored_count == 2
+        assert result.replaced_count == 1
+        assert result.replacements[0].confidence == 0.95
+        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.delete.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

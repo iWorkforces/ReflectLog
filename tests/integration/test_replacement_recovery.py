@@ -320,6 +320,8 @@ class TestReplacementRecoveryIntegration:
                             [NEW],
                             {NEW: [_replacement()]},
                         )
+                retry = await manager._storage_phase.execute([], {})
+                assert retry.stored_count == 0
                 _assert_converged(manager)
 
     async def test_records_all_olds_before_first_delete(self) -> None:
@@ -366,3 +368,45 @@ class TestReplacementRecoveryIntegration:
                 assert len(store.get_archived(second.workspace_id)) == 2
             finally:
                 cleanup_manager(second)
+
+    async def test_two_successors_keep_highest_confidence(self) -> None:
+        loser = "Prefer two spaces for indentation in this repository"
+        winner = NEW
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with _manager(tmpdir) as manager:
+                assert manager.add_memories([OLD]) == 1
+                result = await manager._storage_phase.execute(
+                    [loser, winner],
+                    {
+                        loser: [
+                            ReplacementInfo(
+                                old_memory=OLD,
+                                new_memory=loser,
+                                confidence=0.4,
+                                reason="weaker convention",
+                                similarity_score=0.7,
+                            )
+                        ],
+                        winner: [
+                            ReplacementInfo(
+                                old_memory=OLD,
+                                new_memory=winner,
+                                confidence=0.95,
+                                reason="updated convention",
+                                similarity_score=0.88,
+                            )
+                        ],
+                    },
+                )
+                assert result.stored_count == 2
+                assert result.replaced_count == 1
+                assert result.replacements[0].new_memory == winner
+                memories = set(manager.get_all())
+                assert memories == {loser, winner}
+                assert manager.get_id_by_content(OLD) is None
+                store = manager._semantic_engine.memory_store
+                assert isinstance(store, MemoryStore)
+                archives = store.get_archived(manager.workspace_id)
+                assert len(archives) == 1
+                assert archives[0].replaced_by == winner
+                assert store.list_pending_transitions() == []

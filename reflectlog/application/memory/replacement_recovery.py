@@ -54,13 +54,13 @@ def reconcile_pending_replacements(
     inner_lock = lock if lock is not None else nullcontext()
     with write_lock, inner_lock:
         for transition in _pending_rows(store.list_pending_transitions()):
-            apply_pending_transition(
+            if apply_pending_transition(
                 transition,
                 semantic_engine=semantic_engine,
                 tantivy_engine=tantivy_engine,
                 logger=logger,
-            )
-            completed += 1
+            ):
+                completed += 1
 
     if completed:
         logger.info(
@@ -76,8 +76,12 @@ def apply_pending_transition(
     semantic_engine: ISemanticSearchEngine,
     tantivy_engine: TantivyEngine | None,
     logger: IStructuredLogger,
-) -> None:
-    """Converge both indexes to the replacement recorded in ``transition``."""
+) -> bool:
+    """Converge both indexes to the replacement recorded in ``transition``.
+
+    Returns:
+        True when the transition was marked complete.
+    """
     _remove_recorded_old(transition, semantic_engine, tantivy_engine)
     _ensure_replacement_present(
         transition,
@@ -100,7 +104,7 @@ def apply_pending_transition(
                 "workspace_id": transition.workspace_id,
             },
         )
-        return
+        return False
 
     semantic_engine.memory_store.complete_replacement_transition(transition.id)
     logger.info(
@@ -112,6 +116,7 @@ def apply_pending_transition(
             "workspace_id": transition.workspace_id,
         },
     )
+    return True
 
 
 def replacement_converged(
@@ -120,13 +125,15 @@ def replacement_converged(
     semantic_engine: ISemanticSearchEngine,
     tantivy_engine: TantivyEngine | None,
 ) -> bool:
-    """Return True when SQLite has the replacement and hybrid Tantivy agrees."""
+    """Return True when NEW is live, the recorded OLD id is gone, and Tantivy agrees."""
     new_id = semantic_engine.get_id_by_content(
         transition.workspace_id, transition.new_content
     )
     if new_id is None:
         return False
     if not _vector_present(semantic_engine, new_id):
+        return False
+    if not _old_id_gone(transition, semantic_engine):
         return False
 
     if tantivy_engine is None:
@@ -136,6 +143,18 @@ def replacement_converged(
     return not _tantivy_has(
         tantivy_engine, transition.workspace_id, transition.old_content
     )
+
+
+def _old_id_gone(
+    transition: ReplacementTransition, semantic_engine: ISemanticSearchEngine
+) -> bool:
+    """Return True when the recorded old id is gone from SQLite and USearch."""
+    current_id = semantic_engine.get_id_by_content(
+        transition.workspace_id, transition.old_content
+    )
+    if current_id == transition.old_memory_id:
+        return False
+    return _vector_absent(semantic_engine, transition.old_memory_id)
 
 
 def _remove_recorded_old(
@@ -219,14 +238,26 @@ def _reindex_if_vector_missing(
 
 
 def _vector_present(semantic_engine: ISemanticSearchEngine, memory_id: int) -> bool:
-    """Return False only when a real index is missing the id."""
+    """Return True only when a real index contains ``memory_id``."""
+    return _index_contains(semantic_engine, memory_id) is True
+
+
+def _vector_absent(semantic_engine: ISemanticSearchEngine, memory_id: int) -> bool:
+    """Return True only when a real index is missing ``memory_id``."""
+    return _index_contains(semantic_engine, memory_id) is False
+
+
+def _index_contains(
+    semantic_engine: ISemanticSearchEngine, memory_id: int
+) -> bool | None:
+    """Return membership, or None when the index cannot be inspected."""
     index = getattr(semantic_engine, "index", None)
     if index is None:
-        return True
+        return None
     try:
         return memory_id in index
     except TypeError:
-        return False
+        return None
 
 
 def _pending_rows(raw: object) -> list[ReplacementTransition]:

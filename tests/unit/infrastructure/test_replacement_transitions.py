@@ -181,3 +181,11 @@ class TestPendingTransitionLifecycle:
             assert row is not None
             assert row[0] == TRANSITION_COMPLETED
             store.close()
+
+    def test_complete_missing_id_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            _ = store.connection
+            with pytest.raises(StorageError, match="was not pending"):
+                store.complete_replacement_transition(999)
+            store.close()

@@ -953,6 +953,9 @@ class TestUSearchEngineAddBatch:
             with pytest.raises(RuntimeError, match="Failed to add memory batch"):
                 _ = engine.add_batch("user1", ["idx1", "idx2"], infer=False)
             assert engine.get_all("user1") == []
+            assert len(engine.index) == 0
+            assert 1 not in engine.index
+            assert 2 not in engine.index
         finally:
             engine.close()
 

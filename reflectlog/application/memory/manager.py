@@ -264,6 +264,7 @@ class MemoryManager:
             config=self.config,
             logger=self.logger,
             write_lock=self._write_lock,
+            lock=self._lock,
         )
         self._add_pipeline = AddPipeline(
             duplicate_detection_phase=self._duplicate_detection_phase,

@@ -25,6 +25,21 @@ class TestHealthCheckToolStatus:
         assert result["tantivy_engine"] == "disabled"
         mock_memory_manager.search_engine_status.assert_called_once()
 
+    async def test_degraded_when_replacements_are_pending(
+        self, mock_config, mock_memory_manager, mock_tool_logger
+    ) -> None:
+        mock_memory_manager.search_engine_status.return_value = {
+            "semantic_engine": "initialized",
+            "tantivy_engine": "initialized",
+        }
+        mock_memory_manager.pending_replacement_count.return_value = 2
+        mock_memory_manager.startup_metrics = None
+        tool = HealthCheckTool(mock_config, mock_memory_manager, mock_tool_logger)
+        result = await tool.get_handler()()
+
+        assert result["status"] == "degraded"
+        assert result["pending_replacement_transitions"] == 2
+
     async def test_unhealthy_does_not_reenter_status(
         self, mock_config, mock_memory_manager, mock_tool_logger
     ) -> None:

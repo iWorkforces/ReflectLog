@@ -614,7 +614,7 @@ class StoragePhase:
 
     SQLite archive + transition is one local transaction. USearch and
     Tantivy commits are not claimed as one atomic unit; unfinished
-    transitions are reconciled on startup and after a failed persist.
+    transitions are reconciled on startup and at the start of the next persist.
     """
 
     def __init__(
@@ -624,6 +624,7 @@ class StoragePhase:
         config: Config,
         logger: IStructuredLogger | None,
         write_lock: threading.Lock | None = None,
+        lock: threading.RLock | None = None,
     ):
         """Initialize storage phase.
 
@@ -632,6 +633,8 @@ class StoragePhase:
             tantivy_engine: TantivyEngine for full-text storage.
             config: Application configuration.
             logger: Structured logger instance.
+            write_lock: Exclusive write lock shared with MemoryManager.
+            lock: Inner read lock; acquired after ``write_lock`` during reconcile.
         """
         if logger is None:
             raise ValueError("logger is required")
@@ -642,6 +645,7 @@ class StoragePhase:
         self.logger: IStructuredLogger = logger
         self._workspace_id = config.workspace_id
         self._write_lock = write_lock
+        self._lock = lock
 
     async def execute(
         self,
@@ -663,14 +667,10 @@ class StoragePhase:
         if dry_run:
             return self._dry_run_result(memories, replacement_map, phase_start)
 
-        self._reconcile_pending()
-        try:
-            stored_count, replacements = await asyncify(self._persist_replacements)(
-                memories, replacement_map
-            )
-        except Exception:
-            self._reconcile_pending()
-            raise
+        await asyncify(self._reconcile_pending)()
+        stored_count, replacements = await asyncify(self._persist_replacements)(
+            memories, replacement_map
+        )
 
         duration = time.perf_counter() - phase_start
         self.logger.info(
@@ -696,22 +696,9 @@ class StoragePhase:
         phase_start: float,
     ) -> Phase3Result:
         """Count planned replacements without touching storage."""
-        replacements: list[ReplacementInfo] = []
-        for idx, memory in enumerate(memories):
-            for info in replacement_map.get(memory, []):
-                self.logger.info(
-                    "Replacing old memory with new one",
-                    extra={
-                        "memory_index": idx + 1,
-                        "action": "replace",
-                        "old_preview": truncate_memory(info.old_memory, max_length=60),
-                        "new_preview": truncate_memory(memory, max_length=60),
-                        "confidence": info.confidence,
-                        "similarity": info.similarity_score,
-                        "dry_run": True,
-                    },
-                )
-                replacements.append(info)
+        _planned, replacements = self._plan_replacements(
+            memories, replacement_map, dry_run=True
+        )
         return Phase3Result(
             stored_count=len(memories),
             replaced_count=len(replacements),
@@ -747,13 +734,45 @@ class StoragePhase:
         self,
         memories: list[str],
         replacement_map: dict[str, list[ReplacementInfo]],
+        *,
+        dry_run: bool = False,
     ) -> tuple[
         list[tuple[ReplacementInfo, str, int]],
         list[ReplacementInfo],
     ]:
-        """Resolve old ids for every intended replacement before recording."""
+        """Keep the highest-confidence successor for each old id."""
+        candidates = self._replacement_candidates(
+            memories, replacement_map, dry_run=dry_run
+        )
+        winners = _highest_confidence_by_old_id(candidates)
         planned: list[tuple[ReplacementInfo, str, int]] = []
         replacements: list[ReplacementInfo] = []
+        for info, memory, old_id in candidates:
+            winner = winners[old_id]
+            if winner is not info:
+                self.logger.info(
+                    "Keeping highest-confidence successor for old memory",
+                    extra={
+                        "old_memory_id": old_id,
+                        "kept_confidence": winner.confidence,
+                        "skipped_confidence": info.confidence,
+                        "dry_run": dry_run,
+                    },
+                )
+                continue
+            planned.append((info, memory, old_id))
+            replacements.append(info)
+        return planned, replacements
+
+    def _replacement_candidates(
+        self,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+        *,
+        dry_run: bool,
+    ) -> list[tuple[ReplacementInfo, str, int]]:
+        """Resolve live old ids for every intended replacement."""
+        candidates: list[tuple[ReplacementInfo, str, int]] = []
         for idx, memory in enumerate(memories):
             for info in replacement_map.get(memory, []):
                 self.logger.info(
@@ -765,7 +784,7 @@ class StoragePhase:
                         "new_preview": truncate_memory(memory, max_length=60),
                         "confidence": info.confidence,
                         "similarity": info.similarity_score,
-                        "dry_run": False,
+                        "dry_run": dry_run,
                     },
                 )
                 old_id = self._semantic_engine.get_id_by_content(
@@ -777,9 +796,8 @@ class StoragePhase:
                         extra={"memory_index": idx + 1, "action": "delete_missing"},
                     )
                     continue
-                planned.append((info, memory, old_id))
-                replacements.append(info)
-        return planned, replacements
+                candidates.append((info, memory, old_id))
+        return candidates
 
     def _record_planned_transitions(
         self, planned: list[tuple[ReplacementInfo, str, int]]
@@ -1019,9 +1037,21 @@ class StoragePhase:
             semantic_engine=self._semantic_engine,
             tantivy_engine=self._tantivy_engine,
             write_lock=self._write_lock,
-            lock=None,
+            lock=self._lock,
             logger=self.logger,
         )
+
+
+def _highest_confidence_by_old_id(
+    candidates: list[tuple[ReplacementInfo, str, int]],
+) -> dict[int, ReplacementInfo]:
+    """Pick one successor per old id; ties keep the first candidate."""
+    winners: dict[int, ReplacementInfo] = {}
+    for info, _memory, old_id in candidates:
+        current = winners.get(old_id)
+        if current is None or info.confidence > current.confidence:
+            winners[old_id] = info
+    return winners
 
 
 class AddPipeline:
