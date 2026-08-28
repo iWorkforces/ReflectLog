@@ -251,7 +251,7 @@ class TestEnvironmentConfiguration:
 class TestServerInitialization:
     '''Test server initialization and startup.'''
 
-    @patch.dict(os.environ, {"PROJECT_ID": "test_project"}, clear=True)
+    @patch.dict(os.environ, {"WORKSPACE_ID": "test_project"}, clear=True)
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
@@ -271,7 +271,7 @@ class TestServerInitialization:
             # Verify server was created
             mock_server_class.assert_called_once()
 
-    @patch.dict(os.environ, {"PROJECT_ID": "test_project"}, clear=True)
+    @patch.dict(os.environ, {"WORKSPACE_ID": "test_project"}, clear=True)
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
@@ -296,7 +296,7 @@ class TestServerInitialization:
 class TestOutputStreams:
     '''Test output stream configuration.'''
 
-    @patch.dict(os.environ, {"PROJECT_ID": "test_project"}, clear=True)
+    @patch.dict(os.environ, {"WORKSPACE_ID": "test_project"}, clear=True)
     @patch("sys.stderr")
     @patch("sys.stdout")
     @patch("reflectlog.server.signal.signal")
@@ -321,7 +321,7 @@ class TestOutputStreams:
             # (This tests the logging configuration)
             assert os.environ.get("MCP_TRANSPORT") == "stdio"
 
-    @patch.dict(os.environ, {"PROJECT_ID": "test_project"}, clear=True)
+    @patch.dict(os.environ, {"WORKSPACE_ID": "test_project"}, clear=True)
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")

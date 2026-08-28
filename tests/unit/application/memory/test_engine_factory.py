@@ -36,9 +36,9 @@ from reflectlog.infrastructure.usearch_engine import USearchEngine
 def mock_config() -> Mock:
     """Mock configuration with typical settings."""
     config = Mock(spec=Config)
-    config.project_id = "test_project"
+    config.workspace_id = "test_project"
     config.enable_hybrid_search = True
-    config.tantivy_index_path_template = "indexes/{project_id}/tantivy"
+    config.tantivy_index_path_template = "indexes/{workspace_id}/tantivy"
     config.tantivy_normalize_scores = True
     config.reranker_engine = "llm"
 
@@ -414,14 +414,14 @@ class TestCreateTantivyEngine:
     ) -> None:
         """Tantivy engine should be created when hybrid search is enabled."""
         mock_config.enable_hybrid_search = True
-        mock_config.project_id = "my_project"
-        mock_config.tantivy_index_path_template = "indexes/{project_id}/tantivy"
+        mock_config.workspace_id = "my_project"
+        mock_config.tantivy_index_path_template = "indexes/{workspace_id}/tantivy"
         mock_config.tantivy_normalize_scores = True
 
         result = factory._create_tantivy_engine(mock_config, mock_logger)
 
         mock_tantivy_config_cls.assert_called_once_with(
-            project_id="my_project",
+            workspace_id="my_project",
             index_path="indexes/my_project/tantivy",
             normalize_scores=True,
         )
@@ -456,8 +456,8 @@ class TestCreateTantivyEngine:
     ) -> None:
         """Tantivy index path should be lowercased."""
         mock_config.enable_hybrid_search = True
-        mock_config.project_id = "MyProject"
-        mock_config.tantivy_index_path_template = "indexes/{project_id}/tantivy"
+        mock_config.workspace_id = "MyProject"
+        mock_config.tantivy_index_path_template = "indexes/{workspace_id}/tantivy"
         mock_config.tantivy_normalize_scores = False
 
         factory._create_tantivy_engine(mock_config, mock_logger)

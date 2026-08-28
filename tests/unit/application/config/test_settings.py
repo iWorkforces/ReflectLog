@@ -21,7 +21,7 @@ from reflectlog.core.exceptions import ConfigurationError
 # ---------------------------------------------------------------------------
 
 REQUIRED_ENV = {
-    "PROJECT_ID": "test-project",
+    "WORKSPACE_ID": "test-project",
     "OPENROUTER_API_KEY": "sk-test-key-12345",
 }
 
@@ -81,7 +81,7 @@ class TestConfigDefaults:
 
     def _make_config(self, **overrides: Any) -> Config:
         defaults: dict[str, Any] = {
-            "project_id": "proj",
+            "workspace_id": "proj",
             "openrouter_api_key": SecretString("key"),
         }
         defaults.update(overrides)
@@ -201,44 +201,44 @@ class TestConfigDefaults:
 class TestFromEnvironmentRequired:
     """Config.from_environment() raises on missing/invalid required vars."""
 
-    def test_missing_project_id(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("PROJECT_ID", raising=False)
+    def test_missing_workspace_id(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.delenv("WORKSPACE_ID", raising=False)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
-        with pytest.raises(ConfigurationError, match="PROJECT_ID"):
+        with pytest.raises(ConfigurationError, match="WORKSPACE_ID"):
             Config.from_environment()
 
-    def test_empty_project_id(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("PROJECT_ID", "")
+    def test_empty_workspace_id(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("WORKSPACE_ID", "")
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
-        with pytest.raises(ConfigurationError, match="PROJECT_ID"):
+        with pytest.raises(ConfigurationError, match="WORKSPACE_ID"):
             Config.from_environment()
 
-    def test_invalid_project_id_characters(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("PROJECT_ID", "bad/project!")
+    def test_invalid_workspace_id_characters(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("WORKSPACE_ID", "bad/project!")
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
-        with pytest.raises(ConfigurationError, match="Invalid PROJECT_ID"):
+        with pytest.raises(ConfigurationError, match="Invalid WORKSPACE_ID"):
             Config.from_environment()
 
-    def test_project_id_too_long(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("PROJECT_ID", "a" * 65)
+    def test_workspace_id_too_long(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("WORKSPACE_ID", "a" * 65)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
-        with pytest.raises(ConfigurationError, match="Invalid PROJECT_ID"):
+        with pytest.raises(ConfigurationError, match="Invalid WORKSPACE_ID"):
             Config.from_environment()
 
-    def test_project_id_path_traversal(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("PROJECT_ID", "a..b")
+    def test_workspace_id_path_traversal(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("WORKSPACE_ID", "a..b")
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
         with pytest.raises(ConfigurationError, match="path traversal"):
             Config.from_environment()
 
     def test_missing_openrouter_api_key(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("PROJECT_ID", "valid-project")
+        monkeypatch.setenv("WORKSPACE_ID", "valid-project")
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY"):
             Config.from_environment()
 
     def test_empty_openrouter_api_key(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("PROJECT_ID", "valid-project")
+        monkeypatch.setenv("WORKSPACE_ID", "valid-project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "")
         with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY"):
             Config.from_environment()
@@ -257,20 +257,20 @@ class TestFromEnvironmentDefaults:
         for k, v in REQUIRED_ENV.items():
             monkeypatch.setenv(k, v)
         cfg = Config.from_environment()
-        assert cfg.project_id == "test-project"
+        assert cfg.workspace_id == "test-project"
         assert isinstance(cfg.openrouter_api_key, SecretString)
         assert cfg.openrouter_api_key.get_secret_value() == "sk-test-key-12345"
         assert cfg.transport == "stdio"
         assert cfg.port == 9103
         assert cfg.embedding_dims == 3072
 
-    def test_project_id_with_dots_and_underscores(
+    def test_workspace_id_with_dots_and_underscores(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        monkeypatch.setenv("PROJECT_ID", "my_project.v2")
+        monkeypatch.setenv("WORKSPACE_ID", "my_project.v2")
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
         cfg = Config.from_environment()
-        assert cfg.project_id == "my_project.v2"
+        assert cfg.workspace_id == "my_project.v2"
 
 
 # ---------------------------------------------------------------------------
@@ -744,10 +744,10 @@ class TestSingleton:
         cfg2 = get_config()
         assert cfg1 is cfg2
 
-    def test_get_config_raises_without_project_id(
+    def test_get_config_raises_without_workspace_id(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        monkeypatch.delenv("PROJECT_ID", raising=False)
+        monkeypatch.delenv("WORKSPACE_ID", raising=False)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
         with pytest.raises(ConfigurationError):
             get_config()
@@ -789,7 +789,7 @@ class TestSingleton:
         for k, v in REQUIRED_ENV.items():
             monkeypatch.setenv(k, v)
         proxy = _LazyConfig()
-        assert proxy.project_id == "test-project"
+        assert proxy.workspace_id == "test-project"
 
 
 # ---------------------------------------------------------------------------
@@ -954,7 +954,7 @@ class TestSetupConfigReload:
 
             cfg = setup_config_reload()
             assert isinstance(cfg, Config)
-            assert cfg.project_id == "test-project"
+            assert cfg.workspace_id == "test-project"
 
 
 # ---------------------------------------------------------------------------

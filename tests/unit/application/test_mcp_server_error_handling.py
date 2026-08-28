@@ -41,22 +41,22 @@ def mock_cached_embedder():
 class TestServerInitializationErrors:
     '''Test error handling in server initialization.'''
 
-    def test_init_without_project_id_raises_error(self):
-        '''Test server initialization fails without PROJECT_ID.'''
-        # Clear both PROJECT_ID and OPENROUTER_API_KEY to trigger config error
+    def test_init_without_workspace_id_raises_error(self):
+        '''Test server initialization fails without WORKSPACE_ID.'''
+        # Clear both WORKSPACE_ID and OPENROUTER_API_KEY to trigger config error
         # Reset config singleton first
         import reflectlog.application.config.settings as settings_module
 
         settings_module._config = None
 
         with patch.dict(os.environ, {}, clear=True):
-            # The config validation requires PROJECT_ID
+            # The config validation requires WORKSPACE_ID
             with pytest.raises(ConfigurationError) as exc_info:
                 from reflectlog.application.config.settings import Config
 
                 Config.from_environment()
 
-            assert "PROJECT_ID" in str(exc_info.value)
+            assert "WORKSPACE_ID" in str(exc_info.value)
 
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
     @patch("reflectlog.application.memory.manager.USearchEngine")

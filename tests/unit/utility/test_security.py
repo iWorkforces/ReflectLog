@@ -1,7 +1,7 @@
 """Characterization tests for security module equivalence.
 
-Proves that reflectlog.utility.security.validate_project_id and
-reflectlog.application.utils.security.validate_project_id have identical
+Proves that reflectlog.utility.security.validate_workspace_id and
+reflectlog.application.utils.security.validate_workspace_id have identical
 behavior before module consolidation.
 """
 
@@ -13,14 +13,14 @@ from reflectlog.application.utils.security import (
     SecretString,
     redact_dict_secrets,
     sanitize_for_logging,
-    validate_project_id as app_validate,
+    validate_workspace_id as app_validate,
 )
 from reflectlog.core.exceptions import ValidationError
-from reflectlog.utility.security import validate_project_id as util_validate
+from reflectlog.utility.security import validate_workspace_id as util_validate
 
 
-class TestValidateProjectIdEquivalence:
-    """Prove both validate_project_id implementations are identical."""
+class TestValidateWorkspaceIdEquivalence:
+    """Prove both validate_workspace_id implementations are identical."""
 
     def test_function_signature_matches(self) -> None:
         """Both functions have the same signature."""
@@ -29,7 +29,7 @@ class TestValidateProjectIdEquivalence:
         assert list(util_sig.parameters.keys()) == list(app_sig.parameters.keys())
 
     @pytest.mark.parametrize(
-        "project_id,expected",
+        "workspace_id,expected",
         [
             ("my-project", "my-project"),
             ("test_project", "test_project"),
@@ -57,18 +57,18 @@ class TestValidateProjectIdEquivalence:
             "all-allowed-chars",
         ],
     )
-    def test_valid_ids_both_paths(self, project_id: str, expected: str) -> None:
+    def test_valid_ids_both_paths(self, workspace_id: str, expected: str) -> None:
         """Both functions accept valid IDs and return the same lowercased result."""
-        assert util_validate(project_id) == expected
-        assert app_validate(project_id) == expected
+        assert util_validate(workspace_id) == expected
+        assert app_validate(workspace_id) == expected
 
     @pytest.mark.parametrize(
-        "project_id,error_match",
+        "workspace_id,error_match",
         [
             ("", "cannot be empty"),
-            ("../etc", "Invalid project_id"),
-            ("../../passwd", "Invalid project_id"),
-            ("/absolute/path", "Invalid project_id"),
+            ("../etc", "Invalid workspace_id"),
+            ("../../passwd", "Invalid workspace_id"),
+            ("/absolute/path", "Invalid workspace_id"),
             ("has space", "invalid characters"),
             ("has@symbol", "invalid characters"),
             ("has!bang", "invalid characters"),
@@ -95,13 +95,13 @@ class TestValidateProjectIdEquivalence:
             "tab",
         ],
     )
-    def test_invalid_ids_both_paths(self, project_id: str, error_match: str) -> None:
+    def test_invalid_ids_both_paths(self, workspace_id: str, error_match: str) -> None:
         """Both functions reject invalid IDs with the same error type."""
         with pytest.raises(ValidationError, match=error_match):
-            util_validate(project_id)
+            util_validate(workspace_id)
 
         with pytest.raises(ValidationError, match=error_match):
-            app_validate(project_id)
+            app_validate(workspace_id)
 
     def test_raises_validation_error_type(self) -> None:
         """Both raise reflectlog.core.exceptions.ValidationError, not built-in."""
@@ -113,13 +113,13 @@ class TestValidateProjectIdEquivalence:
     def test_path_traversal_after_lowercase(self) -> None:
         """Path traversal check happens after lowercasing."""
         for fn in (util_validate, app_validate):
-            with pytest.raises(ValidationError, match="Invalid project_id"):
+            with pytest.raises(ValidationError, match="Invalid workspace_id"):
                 fn("test..hidden")
 
     def test_double_dot_anywhere_rejected(self) -> None:
         """'..' anywhere in the string is rejected, not just at start."""
         for fn in (util_validate, app_validate):
-            with pytest.raises(ValidationError, match="Invalid project_id"):
+            with pytest.raises(ValidationError, match="Invalid workspace_id"):
                 fn("safe..notreally")
 
 

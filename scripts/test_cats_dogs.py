@@ -18,15 +18,15 @@ load_dotenv(os.path.join(project_root, ".env"))
 
 async def main():
     '''Test the cats -> dogs replacement case.'''
-    project_id = "test-cats-dogs"
-    index_path = f"indexes/{project_id}"
+    workspace_id = "test-cats-dogs"
+    index_path = f"indexes/{workspace_id}"
 
     # Clean up any existing index
     if os.path.exists(index_path):
         shutil.rmtree(index_path)
 
     # Set environment variables
-    os.environ["PROJECT_ID"] = project_id
+    os.environ["WORKSPACE_ID"] = workspace_id
     os.environ["LLM_PROVIDER"] = "anthropic"
     os.environ["LLM_MODEL"] = "claude-sonnet-4-5"
     os.environ["ENABLE_SMART_REPLACE"] = "true"
@@ -43,7 +43,7 @@ async def main():
     from reflectlog.application.utils.logging import create_logger
 
     config = Config.from_environment()
-    logger = create_logger(config.project_id, config.log_level)
+    logger = create_logger(config.workspace_id, config.log_level)
 
     print(f"llm_provider: {config.llm_provider}")
     print(f"smart_replace_threshold: {config.smart_replace_threshold}")

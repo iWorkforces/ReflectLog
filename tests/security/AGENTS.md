@@ -18,7 +18,7 @@ tests/security/
 | Test | Purpose |
 |------|---------|
 | test_sql_injection_* | SQL injection pattern detection |
-| test_path_traversal_* | PROJECT_ID path traversal prevention |
+| test_path_traversal_* | WORKSPACE_ID path traversal prevention |
 | test_malicious_input | Edge cases, unicode attacks |
 
 ## KEY PATTERNS
@@ -60,4 +60,4 @@ def test_sql_injection_blocked(malicious):
 ## NOTES
 
 - **Critical**: These tests must pass 100%
-- **Regex patterns**: `PROJECT_ID_PATTERN = r"^[A-Za-z0-9_.-]{1,64}$"`
+- **Regex patterns**: `WORKSPACE_ID_PATTERN = r"^[A-Za-z0-9_.-]{1,64}$"`

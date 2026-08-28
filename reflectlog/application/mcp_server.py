@@ -49,12 +49,12 @@ class FastMCPServer:
 
         # Initialize structured logger
         self.logger = create_logger(
-            __name__, self.config.project_id, self.config.log_level
+            __name__, self.config.workspace_id, self.config.log_level
         )
 
         # Log initialization
         init_msg = (
-            f"Initializing reflectlog MCP server [project_id={self.config.project_id}]"
+            f"Initializing reflectlog MCP server [workspace_id={self.config.workspace_id}]"
         )
         self.logger.info(init_msg)
 

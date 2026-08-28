@@ -157,7 +157,7 @@ Key Insights:
         print("\nDetailed error:")
         traceback.print_exc()
         print("\nMake sure the server is running:")
-        print("  ./start-reflectlog-mcp-server.sh --project_id ReflectLog")
+        print("  ./start-reflectlog-mcp-server.sh --workspace_id ReflectLog")
         raise
 
 

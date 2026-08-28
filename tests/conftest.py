@@ -51,7 +51,7 @@ def mock_usearch_engine():
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.add_batch = MagicMock(
-        side_effect=lambda project_id, messages, infer: messages
+        side_effect=lambda workspace_id, messages, infer: messages
     )
     # USearchEngine.get_all returns List[str] directly
     engine.get_all = MagicMock(return_value=[])
@@ -88,7 +88,7 @@ def set_env_vars(monkeypatch):
         Dictionary of set environment variables
     '''
     env_vars = {
-        "PROJECT_ID": "test_project",
+        "WORKSPACE_ID": "test_project",
         "OPENROUTER_API_KEY": "test_key",
         "MCP_TRANSPORT": "stdio",
         "MCP_PORT": "9103",
@@ -115,13 +115,13 @@ def set_env_vars(monkeypatch):
 
 
 @pytest.fixture
-def unset_project_id(monkeypatch):
-    '''Remove PROJECT_ID from environment for testing missing config.
+def unset_workspace_id(monkeypatch):
+    '''Remove WORKSPACE_ID from environment for testing missing config.
 
     Args:
         monkeypatch: pytest monkeypatch fixture
     '''
-    monkeypatch.delenv("PROJECT_ID", raising=False)
+    monkeypatch.delenv("WORKSPACE_ID", raising=False)
 
 
 @pytest.fixture

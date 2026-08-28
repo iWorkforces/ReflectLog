@@ -38,7 +38,7 @@ class ConfigurationValidator:
     """
 
     # Regex patterns
-    PROJECT_ID_PATTERN: ClassVar = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+    WORKSPACE_ID_PATTERN: ClassVar = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
     # Valid values for enums
     VALID_TRANSPORTS: ClassVar = {"stdio", "http", "sse", "streamable-http"}
@@ -66,31 +66,31 @@ class ConfigurationValidator:
         """
         self.errors.append(ValidationError(field=field, value=value, message=message))
 
-    def validate_project_id(self, project_id: str) -> bool:
-        """Validate PROJECT_ID format.
+    def validate_workspace_id(self, workspace_id: str) -> bool:
+        """Validate WORKSPACE_ID format.
 
         Args:
-            project_id: The project ID to validate
+            workspace_id: The workspace ID to validate
 
         Returns:
             True if valid, False otherwise
         """
-        if not project_id:
-            self.add_error("PROJECT_ID", project_id, "Cannot be empty")
+        if not workspace_id:
+            self.add_error("WORKSPACE_ID", workspace_id, "Cannot be empty")
             return False
 
-        if not self.PROJECT_ID_PATTERN.match(project_id):
+        if not self.WORKSPACE_ID_PATTERN.match(workspace_id):
             self.add_error(
-                "PROJECT_ID",
-                project_id,
+                "WORKSPACE_ID",
+                workspace_id,
                 "Must contain only A-Za-z0-9_.- and be 1-64 characters",
             )
             return False
 
-        if ".." in project_id or project_id.startswith("/"):
+        if ".." in workspace_id or workspace_id.startswith("/"):
             self.add_error(
-                "PROJECT_ID",
-                project_id,
+                "WORKSPACE_ID",
+                workspace_id,
                 "Path traversal patterns not allowed",
             )
             return False
@@ -659,10 +659,10 @@ def _validate_server_config(
     validator: ConfigurationValidator,
     config: object,
 ) -> None:
-    """Validate server transport, port, and project ID."""
-    project_id = _get_attr(config, "project_id")
-    if isinstance(project_id, str) and project_id:
-        _ = validator.validate_project_id(project_id)
+    """Validate server transport, port, and workspace ID."""
+    workspace_id = _get_attr(config, "workspace_id")
+    if isinstance(workspace_id, str) and workspace_id:
+        _ = validator.validate_workspace_id(workspace_id)
 
     transport = _get_attr(config, "transport")
     if isinstance(transport, str) and transport:

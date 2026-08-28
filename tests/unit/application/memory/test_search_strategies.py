@@ -31,7 +31,7 @@ from reflectlog.core.logging import IStructuredLogger
 def mock_config() -> Mock:
     """Minimal mock Config for search_strategies tests."""
     config = Mock(spec=Config)
-    config.project_id = "test_project"
+    config.workspace_id = "test_project"
     config.fusion_ranking_threshold = 0.1
     config.reranker_engine = "none"
     config.search_score_threshold = 0.5
@@ -113,7 +113,7 @@ def _make_context(
     enable_hybrid_search: bool = True,
     enable_rrf_fusion: bool = True,
     reranker_engine: str = "none",
-    project_id: str = "test_project",
+    workspace_id: str = "test_project",
 ) -> SearchContext:
     """Build a SearchContext with sensible defaults."""
     return SearchContext(
@@ -123,7 +123,7 @@ def _make_context(
         enable_hybrid_search=enable_hybrid_search,
         enable_rrf_fusion=enable_rrf_fusion,
         reranker_engine=reranker_engine,
-        project_id=project_id,
+        workspace_id=workspace_id,
     )
 
 
@@ -138,10 +138,10 @@ class TestSearchContext:
 
     def test_construction(self) -> None:
         """Fields should be stored correctly."""
-        ctx = _make_context(query="hello", limit=10, project_id="proj")
+        ctx = _make_context(query="hello", limit=10, workspace_id="proj")
         assert ctx.query == "hello"
         assert ctx.limit == 10
-        assert ctx.project_id == "proj"
+        assert ctx.workspace_id == "proj"
 
 
 @pytest.mark.unit

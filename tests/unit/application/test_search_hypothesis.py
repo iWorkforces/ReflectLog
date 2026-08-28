@@ -36,10 +36,10 @@ def test_query_edge_cases(query: str):
     Hypothesis generates: Unicode, empty, very long, etc.
     '''
     config = Config(
-        project_id="hypothesis_test",
+        workspace_id="hypothesis_test",
         openrouter_api_key=SecretString("test-key-not-real"),
     )
-    logger = create_logger(__name__, config.project_id, "INFO")
+    logger = create_logger(__name__, config.workspace_id, "INFO")
 
     manager = MemoryManager(config, logger)
     results = manager.search(query)
@@ -58,10 +58,10 @@ def test_add_memories_varied_count(count: int):
     Hypothesis will test: 1, 100, 999, etc.
     '''
     config = Config(
-        project_id="hypothesis_test",
+        workspace_id="hypothesis_test",
         openrouter_api_key=SecretString("test-key-not-real"),
     )
-    logger = create_logger(__name__, config.project_id, "INFO")
+    logger = create_logger(__name__, config.workspace_id, "INFO")
 
     manager = MemoryManager(config, logger)
     added = manager.add_memories([f"Memory {i}" for i in range(count)])
@@ -79,10 +79,10 @@ def test_add_empty_memories(count: int):
     Boundary case: should handle gracefully.
     '''
     config = Config(
-        project_id="hypothesis_test",
+        workspace_id="hypothesis_test",
         openrouter_api_key=SecretString("test-key-not-real"),
     )
-    logger = create_logger(__name__, config.project_id, "INFO")
+    logger = create_logger(__name__, config.workspace_id, "INFO")
 
     manager = MemoryManager(config, logger)
 
@@ -105,10 +105,10 @@ def test_add_injection_attempt(query: str):
     Hypothesis will generate: Various text patterns including potential injections.
     '''
     config = Config(
-        project_id="hypothesis_test",
+        workspace_id="hypothesis_test",
         openrouter_api_key=SecretString("test-key-not-real"),
     )
-    logger = create_logger(__name__, config.project_id, "INFO")
+    logger = create_logger(__name__, config.workspace_id, "INFO")
 
     manager = MemoryManager(config, logger)
 
@@ -128,10 +128,10 @@ def test_max_memory_length(length: int):
     Boundary case: Should reject or accept.
     '''
     config = Config(
-        project_id="hypothesis_test",
+        workspace_id="hypothesis_test",
         openrouter_api_key=SecretString("test-key-not-real"),
     )
-    logger = create_logger(__name__, config.project_id, "INFO")
+    logger = create_logger(__name__, config.workspace_id, "INFO")
 
     manager = MemoryManager(config, logger)
 

@@ -40,8 +40,8 @@ class ConfigurationError(ReflectLogError):
     invalid configuration values, and configuration validation failures.
 
     Example:
-        if not project_id:
-            raise ConfigurationError("PROJECT_ID environment variable is required")
+        if not workspace_id:
+            raise ConfigurationError("WORKSPACE_ID environment variable is required")
     """
 
     pass
@@ -83,7 +83,7 @@ class StorageError(ReflectLogError):
 
     Example:
         try:
-            self.message_store.insert(project_id, memory)
+            self.message_store.insert(workspace_id, memory)
         except Exception as e:
             raise StorageError(f"Failed to store memory: {e}") from e
     """
@@ -98,7 +98,7 @@ class DuplicateError(StorageError):
     exists in the storage (when deduplication is enabled).
 
     Example:
-        if self.message_store.exists(project_id, memory):
+        if self.message_store.exists(workspace_id, memory):
             raise DuplicateError(f"Memory already exists: {memory[:50]}...")
     """
 
@@ -131,7 +131,7 @@ class SearchError(ReflectLogError):
 
     Example:
         try:
-            results = self._semantic_engine.search(query, project_id, limit)
+            results = self._semantic_engine.search(query, workspace_id, limit)
         except Exception as e:
             raise SearchError(f"Semantic search failed: {e}") from e
     """

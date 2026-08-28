@@ -30,14 +30,14 @@ async def test_with_infer_enabled():
             "MCP_TRANSPORT": "http",
             "MCP_PORT": "9103",  # Different port to avoid conflicts
             "LOG_LEVEL": "INFO",
-            "PROJECT_ID": "TestLLMInfer",
+            "WORKSPACE_ID": "TestLLMInfer",
         }
     )
 
     server = subprocess.Popen(
         [
             "./start-reflectlog-mcp-server.sh",
-            "--project_id",
+            "--workspace_id",
             "TestLLMInfer",
             "--transport",
             "http",
@@ -120,14 +120,14 @@ async def test_with_infer_disabled():
             "MCP_TRANSPORT": "http",
             "MCP_PORT": "9105",  # Different port
             "LOG_LEVEL": "INFO",
-            "PROJECT_ID": "TestNoInfer",
+            "WORKSPACE_ID": "TestNoInfer",
         }
     )
 
     server = subprocess.Popen(
         [
             "./start-reflectlog-mcp-server.sh",
-            "--project_id",
+            "--workspace_id",
             "TestNoInfer",
             "--transport",
             "http",

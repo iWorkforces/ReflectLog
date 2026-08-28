@@ -11,7 +11,7 @@ utils/
 ├── metrics.py           # MetricsRegistry (counters/gauges/histograms), Prometheus export
 ├── retry.py            # async_retry_with_backoff (exponential + jitter)
 ├── circuit_breaker.py   # CircuitBreaker (CLOSED/OPEN/HALF_OPEN states)
-├── security.py         # SecretString, redact_dict_secrets, validate_project_id
+├── security.py         # SecretString, redact_dict_secrets, validate_workspace_id
 ├── http_client.py       # HttpClientFactory (pooled httpx/aiohttp)
 ├── validation.py       # validate_messages, truncate_message, SQL injection detection
 ├── config_reload.py    # ConfigReloadManager (SIGHUP-based runtime reload)
@@ -39,7 +39,7 @@ utils/
 
 **Secret Handling**: Store secrets in `SecretString`. Use `redact_dict_secrets()` before logging configs. Auto-redacts API keys, passwords, tokens via regex patterns.
 
-**Input Validation**: Use `validate_messages()` for user input. Checks length, type, SQL injection patterns, control characters. `validate_project_id()` prevents path traversal.
+**Input Validation**: Use `validate_messages()` for user input. Checks length, type, SQL injection patterns, control characters. `validate_workspace_id()` prevents path traversal.
 
 **Numba JIT**: Functions now live in `reflectlog/utility/scoring.py`. Call `warmup_numba_functions()` at startup. First-call latency 50-200ms otherwise.
 
@@ -54,7 +54,7 @@ utils/
 - Never skip Numba warmup (`reflectlog/utility/scoring.py`) - first calls pay compilation cost
 - Never create new HTTP clients per request - use factory singleton
 - Never use bare `except:` in retry/circuit breaker - catch specific exceptions
-- Never validate project_id without `validate_project_id()` - path traversal risk
+- Never validate workspace_id without `validate_workspace_id()` - path traversal risk
 - Never allow SQL injection patterns - `validate_messages()` checks them
 - Never acquire locks out of order - `_write_lock` before `_lock` (root-level, relevant here)
 - Never use circuit breaker for local operations - only external services

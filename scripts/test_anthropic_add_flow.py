@@ -8,7 +8,7 @@ This script tests the full smart replacement flow by:
 4. Verifying the second message replaced the first
 
 Usage:
-    PROJECT_ID=test-anthropic-add uv run python scripts/test_anthropic_add_flow.py
+    WORKSPACE_ID=test-anthropic-add uv run python scripts/test_anthropic_add_flow.py
 '''
 
 import asyncio
@@ -28,9 +28,9 @@ load_dotenv(os.path.join(project_root, ".env"))
 
 async def main():
     '''Test the add flow with AnthropicReplacementProvider.'''
-    # Use a unique project ID to avoid conflicts
-    project_id = "test-anthropic-add"
-    index_path = f"indexes/{project_id}"
+    # Use a unique workspace ID to avoid conflicts
+    workspace_id = "test-anthropic-add"
+    index_path = f"indexes/{workspace_id}"
 
     # Clean up any existing index
     if os.path.exists(index_path):
@@ -38,7 +38,7 @@ async def main():
         shutil.rmtree(index_path)
 
     # Set environment variables for the test
-    os.environ["PROJECT_ID"] = project_id
+    os.environ["WORKSPACE_ID"] = workspace_id
     os.environ["LLM_PROVIDER"] = "anthropic"
     os.environ["LLM_MODEL"] = "claude-sonnet-4-5"
     os.environ["ENABLE_SMART_REPLACE"] = "true"
@@ -52,7 +52,7 @@ async def main():
     print("=" * 70)
     print("Testing AnthropicReplacementProvider - Add Tool Flow")
     print("=" * 70)
-    print(f"Project ID: {project_id}")
+    print(f"Workspace ID: {workspace_id}")
     print(f"Provider: {os.environ.get('LLM_PROVIDER')}")
     print(f"Model: {os.environ.get('LLM_MODEL')}")
     print()
@@ -64,7 +64,7 @@ async def main():
 
     # Create config and logger
     config = Config.from_environment()
-    logger = create_logger(config.project_id, config.log_level)
+    logger = create_logger(config.workspace_id, config.log_level)
 
     print(f"Config llm_provider: {config.llm_provider}")
     print()

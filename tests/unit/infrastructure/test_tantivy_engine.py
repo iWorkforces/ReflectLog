@@ -21,15 +21,15 @@ class TestTantivyConfig:
 
     def test_config_creation(self) -> None:
         '''Test creating TantivyConfig with required fields.'''
-        config = TantivyConfig(project_id="test-project", index_path="/tmp/test-index")
-        assert config.project_id == "test-project"
+        config = TantivyConfig(workspace_id="test-project", index_path="/tmp/test-index")
+        assert config.workspace_id == "test-project"
         assert config.index_path == "/tmp/test-index"
 
     def test_config_immutability(self) -> None:
         '''Test that TantivyConfig is frozen/immutable.'''
-        config = TantivyConfig(project_id="test", index_path="/tmp/test")
+        config = TantivyConfig(workspace_id="test", index_path="/tmp/test")
         with pytest.raises(AttributeError):
-            config.project_id = "new-project"  # type: ignore
+            config.workspace_id = "new-project"  # type: ignore
 
 
 @pytest.mark.unit
@@ -39,23 +39,23 @@ class TestTantivyEngineInitialization:
     def test_init_with_config_object(self) -> None:
         '''Test initialization with TantivyConfig object.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test-project", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
             engine = TantivyEngine(config)
-            assert engine.config.project_id == "test-project"
+            assert engine.config.workspace_id == "test-project"
             assert engine.name == "tantivy"
 
     def test_init_with_dict_config(self) -> None:
         '''Test initialization with dict config.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config_dict = {"project_id": "test-project", "index_path": tmpdir}
+            config_dict = {"workspace_id": "test-project", "index_path": tmpdir}
             engine = TantivyEngine(config_dict)
-            assert engine.config.project_id == "test-project"
+            assert engine.config.workspace_id == "test-project"
 
     def test_init_creates_index_directory(self) -> None:
         '''Test that initialization creates the index directory.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             index_path = os.path.join(tmpdir, "new_index")
-            config = TantivyConfig(project_id="test", index_path=index_path)
+            config = TantivyConfig(workspace_id="test", index_path=index_path)
             TantivyEngine(config)
             assert os.path.isdir(index_path)
 
@@ -63,7 +63,7 @@ class TestTantivyEngineInitialization:
         '''Test initialization with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
             assert engine.logger is mock_logger
             # Logger should have been called during initialization
@@ -78,7 +78,7 @@ class TestTantivyEngineOperations:
     def engine(self) -> TantivyEngine:
         '''Create a TantivyEngine with temporary directory.'''
         tmpdir = tempfile.mkdtemp()
-        config = TantivyConfig(project_id="test-project", index_path=tmpdir)
+        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
         return TantivyEngine(config)
 
     def test_add_document(self, engine: TantivyEngine) -> None:
@@ -108,8 +108,8 @@ class TestTantivyEngineOperations:
         # First result should contain "Python"
         assert "Python" in results[0][0]
 
-    def test_search_filters_by_project_id(self, engine: TantivyEngine) -> None:
-        '''Test that search filters by project_id.'''
+    def test_search_filters_by_workspace_id(self, engine: TantivyEngine) -> None:
+        '''Test that search filters by workspace_id.'''
         engine.add("user-1", "Message for user 1")
         engine.add("user-2", "Message for user 2")
         engine.commit()
@@ -136,7 +136,7 @@ class TestTantivyEngineLazyInitialization:
     def test_writer_lazy_init(self) -> None:
         '''Test that writer is lazily initialized.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             # Writer should not be initialized yet
@@ -150,7 +150,7 @@ class TestTantivyEngineLazyInitialization:
     def test_searcher_lazy_init(self) -> None:
         '''Test that searcher is lazily initialized.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             # Searcher should not be initialized yet
@@ -170,7 +170,7 @@ class TestTantivyEngineErrorHandling:
         '''Test that search errors are handled gracefully.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             # Force an error by making index None
@@ -187,7 +187,7 @@ class TestTantivyEnginePersistence:
     def test_index_persists_across_instances(self) -> None:
         '''Test that data persists when creating new engine instance.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
 
             # First instance: add data
             engine1 = TantivyEngine(config)
@@ -210,7 +210,7 @@ class TestTantivyEngineDelete:
     def engine(self) -> TantivyEngine:
         '''Create a TantivyEngine with temporary directory.'''
         tmpdir = tempfile.mkdtemp()
-        config = TantivyConfig(project_id="test-project", index_path=tmpdir)
+        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
         return TantivyEngine(config)
 
     def test_delete_existing_document(self, engine: TantivyEngine) -> None:
@@ -304,7 +304,7 @@ class TestTantivyEngineDelete:
         results = engine.search("Unique", "test-project", limit=10)
         assert len(results) == 1
 
-    def test_delete_respects_project_id(self, engine: TantivyEngine) -> None:
+    def test_delete_respects_workspace_id(self, engine: TantivyEngine) -> None:
         '''Test that delete only affects the specified project.'''
         engine.add("project-a", "Same message")
         engine.add("project-b", "Same message")
@@ -327,7 +327,7 @@ class TestTantivyEngineDelete:
         '''Test that delete logs appropriately.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.add("test", "Test message")
@@ -347,7 +347,7 @@ class TestTantivyEngineHelperMethods:
     def engine(self) -> TantivyEngine:
         '''Create a TantivyEngine with temporary directory.'''
         tmpdir = tempfile.mkdtemp()
-        config = TantivyConfig(project_id="test-project", index_path=tmpdir)
+        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
         return TantivyEngine(config)
 
     def test_get_all_docs_empty_index(self, engine: TantivyEngine) -> None:
@@ -368,7 +368,7 @@ class TestTantivyEngineHelperMethods:
         assert "Doc 2" in docs
         assert "Doc 3" in docs
 
-    def test_get_all_docs_filters_by_project(self, engine: TantivyEngine) -> None:
+    def test_get_all_docs_filters_by_workspace(self, engine: TantivyEngine) -> None:
         '''Test _get_all_docs only returns docs for specified project.'''
         engine.add("project-a", "A's doc")
         engine.add("project-b", "B's doc")
@@ -416,7 +416,7 @@ class TestTantivyEngineWriterReuse:
     def test_writer_reused_after_commit(self) -> None:
         '''Test that writer is reused after commit (not recreated).'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             # First add - creates writer
@@ -440,7 +440,7 @@ class TestTantivyEngineWriterReuse:
     def test_multiple_commit_cycles_reuse_writer(self) -> None:
         '''Test writer reused across multiple add-commit cycles.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("test", "Message 1")
@@ -456,7 +456,7 @@ class TestTantivyEngineWriterReuse:
     def test_flush_invalidates_writer(self) -> None:
         '''Test that flush() invalidates the writer.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("test", "Message 1")
@@ -474,7 +474,7 @@ class TestTantivyEngineWriterReuse:
     def test_flush_commits_and_refreshes_searcher(self) -> None:
         '''Test that flush() commits data and refreshes searcher.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("test", "Flushable message")
@@ -490,7 +490,7 @@ class TestTantivyEngineWriterReuse:
     def test_close_waits_for_merging_threads(self) -> None:
         '''Test that close() properly waits for merging.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             # Add many documents to trigger potential merging
@@ -506,7 +506,7 @@ class TestTantivyEngineWriterReuse:
     def test_data_integrity_across_commit_cycles(self) -> None:
         '''Test that data is correctly persisted across multiple commit cycles.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             # Add and commit in multiple cycles
@@ -534,7 +534,7 @@ class TestTantivyEngineWriterReuse:
     def test_flush_then_add_creates_new_writer(self) -> None:
         '''Test that adding after flush creates a new writer instance.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("test", "Message 1")
@@ -556,7 +556,7 @@ class TestTantivyEngineWriterReuse:
         '''Test that commit logs 'writer reusable' message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.add("test", "Test message")
@@ -573,7 +573,7 @@ class TestTantivyEngineWriterReuse:
         '''Test that flush logs 'writer invalidated' message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.add("test", "Test message")
@@ -589,7 +589,7 @@ class TestTantivyEngineWriterReuse:
     def test_flush_on_empty_writer(self) -> None:
         '''Test that flush() handles no-writer case gracefully.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             # Writer not initialized yet
@@ -612,7 +612,7 @@ class TestTantivySoftDelete:
         '''Test that soft_delete adds a tombstone document.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -641,7 +641,7 @@ class TestTantivySoftDelete:
         '''Test that soft_delete returns False for non-existent message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -660,7 +660,7 @@ class TestTantivySoftDelete:
         '''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=False,  # This affects delete(), not soft_delete()
             )
@@ -684,7 +684,7 @@ class TestTantivySoftDelete:
         '''Test that search excludes tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -717,7 +717,7 @@ class TestTantivySoftDelete:
         '''Test that _get_all_docs excludes tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -745,7 +745,7 @@ class TestTantivySoftDelete:
         '''Test that delete() uses soft-delete when enabled.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -773,7 +773,7 @@ class TestTantivyCompaction:
         '''Test tombstone stats on empty index.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -790,7 +790,7 @@ class TestTantivyCompaction:
         '''Test tombstone stats after soft-deletes.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -819,7 +819,7 @@ class TestTantivyCompaction:
         '''Test needs_compaction returns False when below thresholds.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
                 compaction_threshold_ratio=0.5,
@@ -841,7 +841,7 @@ class TestTantivyCompaction:
         '''Test needs_compaction returns True when ratio exceeded.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
                 compaction_threshold_ratio=0.2,  # 20% threshold
@@ -867,7 +867,7 @@ class TestTantivyCompaction:
         '''Test needs_compaction returns True when max tombstones exceeded.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
                 compaction_threshold_ratio=0.99,  # Very high ratio threshold
@@ -893,7 +893,7 @@ class TestTantivyCompaction:
         '''Test that compact() removes tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
                 compaction_threshold_ratio=0.1,
@@ -935,7 +935,7 @@ class TestTantivyCompaction:
         '''Test that compact() returns early when not needed.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
                 compaction_threshold_ratio=0.5,
@@ -957,7 +957,7 @@ class TestTantivyCompaction:
         '''Test that compact(force=True) ignores thresholds.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
                 compaction_threshold_ratio=0.99,  # Very high
@@ -985,7 +985,7 @@ class TestTantivyTombstoneHelpers:
         '''Test _get_tombstoned_memories on empty index.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -1000,7 +1000,7 @@ class TestTantivyTombstoneHelpers:
         '''Test _get_tombstoned_memories returns soft-deleted messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -1022,7 +1022,7 @@ class TestTantivyTombstoneHelpers:
         '''Test that multiple soft-deletes of same message work correctly.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -1046,7 +1046,7 @@ class TestTantivyTombstoneHelpers:
         '''Test that find_by_exact_match returns empty list for tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=True,
             )
@@ -1146,7 +1146,7 @@ class TestTantivyScoreNormalization:
         '''Test the TantivyEngine._normalize_scores() method directly.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 normalize_scores=True,
             )
@@ -1172,7 +1172,7 @@ class TestTantivyScoreNormalization:
         '''Test _normalize_scores with single result returns 1.0.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 normalize_scores=True,
             )
@@ -1191,7 +1191,7 @@ class TestTantivyScoreNormalization:
         '''Test _normalize_scores with empty results returns empty list.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 normalize_scores=True,
             )
@@ -1208,7 +1208,7 @@ class TestTantivyScoreNormalization:
         '''Test that search returns normalized scores when enabled.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 normalize_scores=True,
             )
@@ -1237,7 +1237,7 @@ class TestTantivyScoreNormalization:
         '''Test that search returns raw BM25 scores when normalization is disabled.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 normalize_scores=False,
             )
@@ -1264,7 +1264,7 @@ class TestTantivyScoreNormalization:
     def test_config_normalize_scores_default(self) -> None:
         '''Test that normalize_scores defaults to True in TantivyConfig.'''
         config = TantivyConfig(
-            project_id="test",
+            workspace_id="test",
             index_path="/tmp/test",
         )
         assert config.normalize_scores is True
@@ -1272,7 +1272,7 @@ class TestTantivyScoreNormalization:
     def test_config_normalize_scores_explicit_false(self) -> None:
         '''Test that normalize_scores can be set to False.'''
         config = TantivyConfig(
-            project_id="test",
+            workspace_id="test",
             index_path="/tmp/test",
             normalize_scores=False,
         )
@@ -1295,7 +1295,7 @@ class TestIsDictConfig:
 
     def test_tantivy_config_returns_false(self) -> None:
         '''Test that a TantivyConfig returns False.'''
-        config = TantivyConfig(project_id="test", index_path="/tmp/test")
+        config = TantivyConfig(workspace_id="test", index_path="/tmp/test")
         assert _is_dict_config(config) is False
 
 
@@ -1306,7 +1306,7 @@ class TestTantivyConfigFromDict:
     def test_from_dict_with_all_fields(self) -> None:
         '''Test from_dict with all fields specified.'''
         data = {
-            "project_id": "proj-1",
+            "workspace_id": "proj-1",
             "index_path": "/tmp/idx",
             "soft_delete_enabled": False,
             "compaction_threshold_ratio": 0.3,
@@ -1316,7 +1316,7 @@ class TestTantivyConfigFromDict:
             "normalize_scores": False,
         }
         config = TantivyConfig.from_dict(data)
-        assert config.project_id == "proj-1"
+        assert config.workspace_id == "proj-1"
         assert config.index_path == "/tmp/idx"
         assert config.soft_delete_enabled is False
         assert config.compaction_threshold_ratio == 0.3
@@ -1329,17 +1329,17 @@ class TestTantivyConfigFromDict:
         '''Test from_dict with missing fields uses defaults.'''
         data: dict[str, str] = {}
         config = TantivyConfig.from_dict(data)
-        assert config.project_id == ""
+        assert config.workspace_id == ""
         assert config.index_path == ""
         assert config.soft_delete_enabled is True
         assert config.compaction_threshold_ratio == 0.2
         assert config.compaction_max_tombstones == 10000
 
     def test_from_dict_with_none_values(self) -> None:
-        '''Test from_dict handles None values for project_id and index_path.'''
-        data = {"project_id": None, "index_path": None}
+        '''Test from_dict handles None values for workspace_id and index_path.'''
+        data = {"workspace_id": None, "index_path": None}
         config = TantivyConfig.from_dict(data)
-        assert config.project_id == ""
+        assert config.workspace_id == ""
         assert config.index_path == ""
 
 
@@ -1350,7 +1350,7 @@ class TestTantivyEngineWriterSearcherErrors:
     def test_writer_raises_runtime_error_when_index_none(self) -> None:
         '''Test that accessing writer raises RuntimeError when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine._index = None
             engine._writer = None
@@ -1361,7 +1361,7 @@ class TestTantivyEngineWriterSearcherErrors:
     def test_searcher_raises_runtime_error_when_index_none(self) -> None:
         '''Test that accessing searcher raises RuntimeError when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine._index = None
             engine._searcher = None
@@ -1378,7 +1378,7 @@ class TestTantivyEngineInitWithLogger:
         '''Test that loading existing index logs loaded message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             # First engine creates the index
             engine1 = TantivyEngine(config)
             engine1.add("test", "seed")
@@ -1396,7 +1396,7 @@ class TestTantivyEngineInitWithLogger:
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             index_path = os.path.join(tmpdir, "brand_new_index")
-            config = TantivyConfig(project_id="test", index_path=index_path)
+            config = TantivyConfig(workspace_id="test", index_path=index_path)
             engine = TantivyEngine(config, logger=mock_logger)
             calls = [str(c) for c in mock_logger.info.call_args_list]
             assert any("Created new Tantivy index" in c for c in calls)
@@ -1410,7 +1410,7 @@ class TestGetAllDocsErrorHandling:
     def test_get_all_docs_index_none_returns_empty(self) -> None:
         '''Test _get_all_docs returns [] when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine._index = None
             result = engine._get_all_docs("test")
@@ -1420,7 +1420,7 @@ class TestGetAllDocsErrorHandling:
         '''Test _get_all_docs logs warning on exception.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             # Force exception by making searcher raise
@@ -1441,7 +1441,7 @@ class TestGetAllDocsErrorHandling:
     def test_get_all_docs_exception_without_logger(self) -> None:
         '''Test _get_all_docs returns [] on exception even without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             with patch.object(
@@ -1457,39 +1457,39 @@ class TestGetAllDocsErrorHandling:
 
 
 @pytest.mark.unit
-class TestGetAllDocsAllProjects:
-    '''Tests for _get_all_docs_all_projects.'''
+class TestGetAllDocsAllWorkspaces:
+    '''Tests for _get_all_docs_all_workspaces.'''
 
-    def test_all_projects_returns_tuples(self) -> None:
-        '''Test _get_all_docs_all_projects returns (project_id, message) tuples.'''
+    def test_all_workspaces_returns_tuples(self) -> None:
+        '''Test _get_all_docs_all_workspaces returns (workspace_id, message) tuples.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("proj-a", "Message A")
             engine.add("proj-b", "Message B")
             engine.commit()
 
-            results = engine._get_all_docs_all_projects()
+            results = engine._get_all_docs_all_workspaces()
             assert len(results) == 2
-            project_ids = {pid for pid, _ in results}
-            assert "proj-a" in project_ids
-            assert "proj-b" in project_ids
+            workspace_ids = {pid for pid, _ in results}
+            assert "proj-a" in workspace_ids
+            assert "proj-b" in workspace_ids
 
-    def test_all_projects_index_none_returns_empty(self) -> None:
-        '''Test _get_all_docs_all_projects returns [] when _index is None.'''
+    def test_all_workspaces_index_none_returns_empty(self) -> None:
+        '''Test _get_all_docs_all_workspaces returns [] when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine._index = None
-            result = engine._get_all_docs_all_projects()
+            result = engine._get_all_docs_all_workspaces()
             assert result == []
 
-    def test_all_projects_exception_with_logger(self) -> None:
-        '''Test _get_all_docs_all_projects logs warning on exception.'''
+    def test_all_workspaces_exception_with_logger(self) -> None:
+        '''Test _get_all_docs_all_workspaces logs warning on exception.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             with patch.object(
@@ -1499,16 +1499,16 @@ class TestGetAllDocsAllProjects:
                     lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
                 ),
             ):
-                result = engine._get_all_docs_all_projects()
+                result = engine._get_all_docs_all_workspaces()
 
             assert result == []
             calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("all projects" in c for c in calls)
+            assert any("all workspaces" in c for c in calls)
 
-    def test_all_projects_exception_without_logger(self) -> None:
-        '''Test _get_all_docs_all_projects returns [] on exception without logger.'''
+    def test_all_workspaces_exception_without_logger(self) -> None:
+        '''Test _get_all_docs_all_workspaces returns [] on exception without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             with patch.object(
@@ -1518,19 +1518,19 @@ class TestGetAllDocsAllProjects:
                     lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
                 ),
             ):
-                result = engine._get_all_docs_all_projects()
+                result = engine._get_all_docs_all_workspaces()
 
             assert result == []
 
 
 @pytest.mark.unit
 class TestInvalidateTombstoneCache:
-    '''Tests for _invalidate_tombstone_cache with specific project_id.'''
+    '''Tests for _invalidate_tombstone_cache with specific workspace_id.'''
 
-    def test_invalidate_specific_project(self) -> None:
+    def test_invalidate_specific_workspace(self) -> None:
         '''Test invalidating cache for a specific project.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             # Populate cache by querying tombstones for two projects
@@ -1547,10 +1547,10 @@ class TestInvalidateTombstoneCache:
             assert "proj-a" not in engine._tombstone_cache
             assert "proj-b" in engine._tombstone_cache
 
-    def test_invalidate_nonexistent_project_is_noop(self) -> None:
+    def test_invalidate_nonexistent_workspace_is_noop(self) -> None:
         '''Test invalidating cache for a non-existent project does nothing.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             # Should not raise
@@ -1559,7 +1559,7 @@ class TestInvalidateTombstoneCache:
     def test_invalidate_all_clears_entire_cache(self) -> None:
         '''Test invalidating with None clears entire cache.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("proj-a", "msg")
@@ -1578,7 +1578,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
     def test_cache_hit_returns_cached(self) -> None:
         '''Test that cached tombstones are returned without re-querying.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("test", "msg1")
@@ -1594,7 +1594,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
         '''Test that oldest entry is evicted when cache exceeds max size.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 tombstone_cache_max_size=2,
             )
@@ -1618,7 +1618,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
     def test_index_none_returns_empty_set(self) -> None:
         '''Test that _get_tombstoned_memories returns empty set when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine._index = None
 
@@ -1629,7 +1629,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
         '''Test ValueError handling in _get_tombstoned_memories with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_index = MagicMock()
@@ -1646,7 +1646,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
         '''Test generic exception handling in _get_tombstoned_memories with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_index = MagicMock()
@@ -1662,7 +1662,7 @@ class TestGetTombstonedMessagesCacheAndErrors:
     def test_generic_exception_without_logger(self) -> None:
         '''Test generic exception without logger returns empty set.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             mock_index = MagicMock()
@@ -1678,25 +1678,25 @@ class TestGetTombstonedMessagesCacheAndErrors:
 class TestSearchErrorHandling:
     '''Tests for search error handling paths.'''
 
-    def test_search_empty_query_uses_project_only(self) -> None:
-        '''Test search with empty query string uses project_id-only query.'''
+    def test_search_empty_query_uses_workspace_only(self) -> None:
+        '''Test search with empty query string uses workspace_id-only query.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("test", "test document content")
             engine.commit()
 
-            # Empty/whitespace query should use project_id only path
+            # Empty/whitespace query should use workspace_id only path
             results = engine.search("  ", "test", limit=10)
-            # Should return results since all docs match project_id
+            # Should return results since all docs match workspace_id
             assert len(results) >= 1
 
     def test_search_value_error_returns_empty(self) -> None:
         '''Test search returns [] on ValueError and logs with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_index = MagicMock()
@@ -1712,7 +1712,7 @@ class TestSearchErrorHandling:
     def test_search_value_error_without_logger(self) -> None:
         '''Test search returns [] on ValueError without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             mock_index = MagicMock()
@@ -1727,7 +1727,7 @@ class TestSearchErrorHandling:
         '''Test search returns [] on OSError and logs with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_index = MagicMock()
@@ -1743,7 +1743,7 @@ class TestSearchErrorHandling:
     def test_search_os_error_without_logger(self) -> None:
         '''Test search returns [] on OSError without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             mock_index = MagicMock()
@@ -1757,7 +1757,7 @@ class TestSearchErrorHandling:
     def test_search_unexpected_error_raises_search_error(self) -> None:
         '''Test search raises SearchError on unexpected exceptions.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             mock_index = MagicMock()
@@ -1771,7 +1771,7 @@ class TestSearchErrorHandling:
         '''Test that search escapes query on first parse failure.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.add("test", "test document with special chars")
@@ -1805,7 +1805,7 @@ class TestSearchErrorHandling:
         '''Test that empty query + ValueError is re-raised (not escaped).'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_index = MagicMock()
@@ -1820,7 +1820,7 @@ class TestSearchErrorHandling:
         '''Test that search logs debug messages for each match.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.add("test", "findable content here")
@@ -1835,7 +1835,7 @@ class TestSearchErrorHandling:
         '''Test search with _index=None logs warning with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
             engine._index = None
 
@@ -1852,7 +1852,7 @@ class TestEnsureInitialized:
     def test_ensure_initialized_creates_searcher(self) -> None:
         '''Test that ensure_initialized forces searcher creation.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             assert engine._searcher is None
@@ -1870,7 +1870,7 @@ class TestCloseErrorHandling:
         '''Test that close handles errors during writer cleanup.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.add("test", "msg")
@@ -1897,7 +1897,7 @@ class TestCloseErrorHandling:
         '''Test that close logs engine closed message.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.close()
@@ -1907,7 +1907,7 @@ class TestCloseErrorHandling:
     def test_close_without_writer(self) -> None:
         '''Test that close works when writer was never initialized.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             assert engine._writer is None
 
@@ -1924,7 +1924,7 @@ class TestSoftDeleteWithLogger:
         '''Test soft_delete logs debug when message not found.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             result = engine.soft_delete("test", "nonexistent")
@@ -1936,7 +1936,7 @@ class TestSoftDeleteWithLogger:
         '''Test soft_delete logs debug when tombstone added.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.add("test", "target message")
@@ -1959,7 +1959,7 @@ class TestDeleteWithSoftDeleteDisabled:
         '''Create engine with soft_delete_enabled=False.'''
         tmpdir = tempfile.mkdtemp()
         config = TantivyConfig(
-            project_id="test",
+            workspace_id="test",
             index_path=tmpdir,
             soft_delete_enabled=False,
         )
@@ -2006,7 +2006,7 @@ class TestDeleteWithSoftDeleteDisabled:
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=False,
             )
@@ -2027,7 +2027,7 @@ class TestDeleteWithSoftDeleteDisabled:
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=False,
             )
@@ -2045,7 +2045,7 @@ class TestDeleteWithSoftDeleteDisabled:
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=False,
             )
@@ -2055,7 +2055,7 @@ class TestDeleteWithSoftDeleteDisabled:
             engine.commit()
 
             with patch.object(
-                engine, "_get_all_docs_all_projects", side_effect=ValueError("bad")
+                engine, "_get_all_docs_all_workspaces", side_effect=ValueError("bad")
             ):
                 result = engine.delete("test", "msg")
 
@@ -2068,7 +2068,7 @@ class TestDeleteWithSoftDeleteDisabled:
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=False,
             )
@@ -2078,7 +2078,7 @@ class TestDeleteWithSoftDeleteDisabled:
             engine.commit()
 
             with patch.object(
-                engine, "_get_all_docs_all_projects", side_effect=OSError("disk")
+                engine, "_get_all_docs_all_workspaces", side_effect=OSError("disk")
             ):
                 result = engine.delete("test", "msg")
 
@@ -2091,7 +2091,7 @@ class TestDeleteWithSoftDeleteDisabled:
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=False,
             )
@@ -2101,7 +2101,7 @@ class TestDeleteWithSoftDeleteDisabled:
             engine.commit()
 
             with patch.object(
-                engine, "_get_all_docs_all_projects", side_effect=TypeError("oops")
+                engine, "_get_all_docs_all_workspaces", side_effect=TypeError("oops")
             ):
                 result = engine.delete("test", "msg")
 
@@ -2113,7 +2113,7 @@ class TestDeleteWithSoftDeleteDisabled:
         '''Test delete rebuild handles unexpected errors without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=False,
             )
@@ -2123,17 +2123,17 @@ class TestDeleteWithSoftDeleteDisabled:
             engine.commit()
 
             with patch.object(
-                engine, "_get_all_docs_all_projects", side_effect=TypeError("oops")
+                engine, "_get_all_docs_all_workspaces", side_effect=TypeError("oops")
             ):
                 result = engine.delete("test", "msg")
 
             assert result is False
 
-    def test_delete_rebuild_preserves_other_projects(self) -> None:
+    def test_delete_rebuild_preserves_other_workspaces(self) -> None:
         '''Test delete rebuild preserves documents from other projects.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 soft_delete_enabled=False,
             )
@@ -2158,7 +2158,7 @@ class TestRebuildIndexWithDocs:
     def test_rebuild_with_existing_writer_error(self) -> None:
         '''Test rebuild handles writer commit error gracefully.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("test", "original")
@@ -2184,7 +2184,7 @@ class TestGetDocLimitEdgeCases:
     def test_doc_limit_index_none(self) -> None:
         '''Test _get_doc_limit returns 0 when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine._index = None
             assert engine._get_doc_limit() == 0
@@ -2192,7 +2192,7 @@ class TestGetDocLimitEdgeCases:
     def test_doc_limit_callable_num_docs(self) -> None:
         '''Test _get_doc_limit uses callable num_docs.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             engine.add("test", "msg")
@@ -2205,7 +2205,7 @@ class TestGetDocLimitEdgeCases:
     def test_doc_limit_numeric_num_docs(self) -> None:
         '''Test _get_doc_limit handles num_docs as numeric attribute.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine.add("test", "msg")
             engine.commit()
@@ -2225,7 +2225,7 @@ class TestGetDocLimitEdgeCases:
         '''Test _get_doc_limit uses fallback when num_docs is negative.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_searcher = MagicMock()
@@ -2244,7 +2244,7 @@ class TestGetDocLimitEdgeCases:
         '''Test _get_doc_limit uses fallback when num_docs is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_searcher = MagicMock()
@@ -2263,7 +2263,7 @@ class TestGetDocLimitEdgeCases:
         '''Test _get_doc_limit uses fallback when num_docs raises.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_searcher = MagicMock()
@@ -2281,7 +2281,7 @@ class TestGetDocLimitEdgeCases:
     def test_doc_limit_zero_returns_max_1(self) -> None:
         '''Test _get_doc_limit returns max(1, 0) = 1 for empty index.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             mock_searcher = MagicMock()
@@ -2304,7 +2304,7 @@ class TestGetTombstoneStatsEdgeCases:
     def test_stats_index_none(self) -> None:
         '''Test get_tombstone_stats returns zeros when _index is None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine._index = None
 
@@ -2318,7 +2318,7 @@ class TestGetTombstoneStatsEdgeCases:
         '''Test get_tombstone_stats returns zeros on exception with logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_index = MagicMock()
@@ -2334,7 +2334,7 @@ class TestGetTombstoneStatsEdgeCases:
     def test_stats_exception_without_logger(self) -> None:
         '''Test get_tombstone_stats returns zeros on exception without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             mock_index = MagicMock()
@@ -2355,7 +2355,7 @@ class TestNeedsCompactionWithLogger:
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 compaction_max_tombstones=1,
             )
@@ -2379,7 +2379,7 @@ class TestNeedsCompactionWithLogger:
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
             config = TantivyConfig(
-                project_id="test",
+                workspace_id="test",
                 index_path=tmpdir,
                 compaction_threshold_ratio=0.1,
                 compaction_max_tombstones=10000,
@@ -2407,7 +2407,7 @@ class TestCompactEdgeCases:
         '''Test compact returns failure dict on exception.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             mock_index = MagicMock()
@@ -2425,7 +2425,7 @@ class TestCompactEdgeCases:
     def test_compact_exception_without_logger(self) -> None:
         '''Test compact returns failure dict on exception without logger.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
 
             mock_index = MagicMock()
@@ -2440,7 +2440,7 @@ class TestCompactEdgeCases:
         '''Test compact logs completion message with stats.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_logger = MagicMock()
-            config = TantivyConfig(project_id="test", index_path=tmpdir)
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
 
             engine.add("test", "keep")

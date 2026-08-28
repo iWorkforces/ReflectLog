@@ -36,7 +36,7 @@ config/
 
 **Validation in __post_init__** - Raise `ConfigurationError` for invalid values immediately.
 
-**Regex Patterns** - `PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")` prevents path traversal.
+**Regex Patterns** - `WORKSPACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")` prevents path traversal.
 
 **Preset Override** - Individual env vars override preset values via `REFLECTLOG_PROFILE`.
 
@@ -48,4 +48,4 @@ config/
 - Never use `.format()` on prompts with user input - use `Template.safe_substitute()`
 - Never log or expose API keys - SecretString prevents accidental leaks
 - Never skip validation - always validate in `__post_init__` or via ConfigurationValidator
-- Never allow path traversal - validate PROJECT_ID against regex
+- Never allow path traversal - validate WORKSPACE_ID against regex

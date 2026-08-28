@@ -7,7 +7,7 @@ This script tests the Anthropic provider for SmartReplacer by:
 3. Running a real replacement check
 
 Usage:
-    PROJECT_ID=test-project uv run python scripts/test_anthropic_provider.py
+    WORKSPACE_ID=test-project uv run python scripts/test_anthropic_provider.py
 '''
 
 import asyncio
@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 async def main():
     '''Test the AnthropicReplacementProvider.'''
     # Set environment variables for the test
-    os.environ.setdefault("PROJECT_ID", "test-project")
+    os.environ.setdefault("WORKSPACE_ID", "test-project")
     os.environ["LLM_PROVIDER"] = "anthropic"
     os.environ["LLM_MODEL"] = "claude-sonnet-4-5"
 

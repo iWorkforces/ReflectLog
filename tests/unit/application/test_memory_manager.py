@@ -17,9 +17,9 @@ from reflectlog.core.logging import IStructuredLogger
 def mock_config() -> Config:
     """Mock configuration with hybrid search enabled."""
     config = Mock(spec=Config)
-    config.project_id = "test_project"
+    config.workspace_id = "test_project"
     config.enable_hybrid_search = True
-    config.tantivy_index_path_template = "{project_id}_tantivy_test"
+    config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
     config.index_base_path = "/tmp/test_indexes"
     config.search_limit = 5
     config.search_score_threshold = 0.8
@@ -90,7 +90,7 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -110,7 +110,7 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -170,7 +170,7 @@ class TestHybridMemoryManager:
 
                     # Verify get_id_by_content was called (not get_all)
                     mock_usearch.get_id_by_content.assert_called_once_with(
-                        mock_config.project_id, "test"
+                        mock_config.workspace_id, "test"
                     )
                     mock_usearch.get_all.assert_not_called()
                     assert len(candidates) == 1
@@ -203,7 +203,7 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -248,7 +248,7 @@ class TestHybridMemoryManager:
                 result = manager._has_exact_match("test message")
                 assert result is True
                 mock_usearch.get_id_by_content.assert_called_with(
-                    mock_config.project_id, "test message"
+                    mock_config.workspace_id, "test message"
                 )
 
                 # Test: Memory not found
@@ -257,7 +257,7 @@ class TestHybridMemoryManager:
                 result = manager._has_exact_match("nonexistent")
                 assert result is False
                 mock_usearch.get_id_by_content.assert_called_with(
-                    mock_config.project_id, "nonexistent"
+                    mock_config.workspace_id, "nonexistent"
                 )
 
                 # Test: Error handling - should return False and allow add
@@ -310,7 +310,7 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch("reflectlog.application.memory.manager.TantivyEngine"):
@@ -327,7 +327,7 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -350,7 +350,7 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -380,7 +380,7 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -411,7 +411,7 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -421,7 +421,7 @@ class TestParallelMemoryAddition:
 
                     # Use a function to return different results based on memory
                     # Note: _has_exact_match wraps query in quotes: f'"{escaped_query}"'
-                    def tantivy_search_side_effect(query, project_id, limit=5):
+                    def tantivy_search_side_effect(query, workspace_id, limit=5):
                         # Strip quotes to get original memory
                         if query == '"duplicate"':
                             return [("duplicate", 1.0)]  # Found duplicate
@@ -477,7 +477,7 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -520,7 +520,7 @@ class TestConcurrencyConfiguration:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
@@ -543,7 +543,7 @@ class TestConcurrencyConfiguration:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda project_id, memories, infer: memories
+                lambda workspace_id, memories, infer: memories
             )
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(

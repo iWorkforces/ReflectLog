@@ -21,14 +21,14 @@ class IMemoryStore(Protocol):
 
     async def add(
         self,
-        project_id: str,
+        workspace_id: str,
         content: str,
         metadata: MemoryRecord | None = None,
     ) -> str:
         """Add a memory entry to the store.
 
         Args:
-            project_id: Project identifier for filtering.
+            workspace_id: Workspace identifier for filtering.
             content: Memory content to store.
             metadata: Optional additional metadata.
 
@@ -39,13 +39,13 @@ class IMemoryStore(Protocol):
 
     async def get(
         self,
-        project_id: str,
+        workspace_id: str,
         memory_id: str,
     ) -> MemoryRecord | None:
         """Retrieve a memory entry by ID.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             memory_id: Memory identifier.
 
         Returns:
@@ -55,12 +55,12 @@ class IMemoryStore(Protocol):
 
     async def get_all(
         self,
-        project_id: str,
+        workspace_id: str,
     ) -> list[MemoryRecord]:
-        """Retrieve all memories for a project.
+        """Retrieve all memories for a workspace.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
 
         Returns:
             List of all memory entries.
@@ -69,13 +69,13 @@ class IMemoryStore(Protocol):
 
     async def delete(
         self,
-        project_id: str,
+        workspace_id: str,
         memory_id: str,
     ) -> bool:
         """Delete a memory entry.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             memory_id: Memory identifier.
 
         Returns:
@@ -85,7 +85,7 @@ class IMemoryStore(Protocol):
 
     async def update(
         self,
-        project_id: str,
+        workspace_id: str,
         memory_id: str,
         content: str,
         metadata: MemoryRecord | None = None,
@@ -93,7 +93,7 @@ class IMemoryStore(Protocol):
         """Update a memory entry.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             memory_id: Memory identifier.
             content: New memory content.
             metadata: Optional new metadata.
@@ -105,13 +105,13 @@ class IMemoryStore(Protocol):
 
     async def find_by_content(
         self,
-        project_id: str,
+        workspace_id: str,
         content: str,
     ) -> MemoryRecord | None:
         """Find a memory by exact content match.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             content: Memory content to find.
 
         Returns:
@@ -121,13 +121,13 @@ class IMemoryStore(Protocol):
 
     async def exists(
         self,
-        project_id: str,
+        workspace_id: str,
         content: str,
     ) -> bool:
         """Check if a memory with exact content exists.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             content: Memory content to check.
 
         Returns:
@@ -137,12 +137,12 @@ class IMemoryStore(Protocol):
 
     async def count(
         self,
-        project_id: str,
+        workspace_id: str,
     ) -> int:
         """Count memories in a project.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
 
         Returns:
             Number of memories.
@@ -168,14 +168,14 @@ class IMemoryBackend(IMemoryStore, Protocol):
 
     async def search(
         self,
-        project_id: str,
+        workspace_id: str,
         query: str,
         limit: int = 10,
     ) -> list[tuple[str, float, str]]:
         """Search memories by semantic similarity.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             query: Search query.
             limit: Maximum results.
 
@@ -186,13 +186,13 @@ class IMemoryBackend(IMemoryStore, Protocol):
 
     async def add_batch(
         self,
-        project_id: str,
+        workspace_id: str,
         contents: list[str],
     ) -> list[str]:
         """Add multiple memories efficiently.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             contents: List of memory contents to store.
 
         Returns:
@@ -202,13 +202,13 @@ class IMemoryBackend(IMemoryStore, Protocol):
 
     async def get_id_by_content(
         self,
-        project_id: str,
+        workspace_id: str,
         content: str,
     ) -> int | None:
         """Get internal ID by memory content.
 
         Args:
-            project_id: Project identifier.
+            workspace_id: Workspace identifier.
             content: Memory content.
 
         Returns:
@@ -232,8 +232,8 @@ class IMemoryManager(Protocol):
     """
 
     @property
-    def project_id(self) -> str:
-        """Project identifier."""
+    def workspace_id(self) -> str:
+        """Workspace identifier."""
         ...
 
     @property

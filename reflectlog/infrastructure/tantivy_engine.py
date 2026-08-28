@@ -33,17 +33,17 @@ class TantivyConfig:
     """Configuration for TantivyEngine.
 
     Attributes:
-        project_id: Unique project identifier for filtering.
+        workspace_id: Unique workspace identifier for filtering.
         index_path: Path to the Tantivy index directory.
         soft_delete_enabled: Use O(1) tombstone marking instead of O(n) rebuild.
         compaction_threshold_ratio: Compact when tombstones > this ratio of docs.
         compaction_max_tombstones: Force compaction above this tombstone count.
         tombstone_ttl_days: Days before tombstones are eligible for removal.
-        tombstone_cache_max_size: Maximum number of project IDs to cache tombstones for.
+        tombstone_cache_max_size: Maximum number of workspace IDs to cache tombstones for.
         normalize_scores: Normalize BM25 scores to 0-1 range (batch min-max).
     """
 
-    project_id: str
+    workspace_id: str
     index_path: str
     soft_delete_enabled: bool = True
     compaction_threshold_ratio: float = 0.2
@@ -66,7 +66,7 @@ class TantivyConfig:
             Validated TantivyConfig instance.
         """
         return cls(
-            project_id=data.get("project_id", "") or "",
+            workspace_id=data.get("workspace_id", "") or "",
             index_path=data.get("index_path", "") or "",
             soft_delete_enabled=bool(data.get("soft_delete_enabled", True)),
             compaction_threshold_ratio=float(
@@ -95,7 +95,7 @@ class TantivyEngine(BaseModel):
     - Persistent index storage on disk
     - Lazy initialization of writer and searcher
     - Stemmed full-text search (en_stem tokenizer)
-    - Project-level filtering via project_id field
+    - Workspace-level filtering via workspace_id field
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -113,7 +113,7 @@ class TantivyEngine(BaseModel):
     # Bounded in-memory tombstone cache for O(1) lookup
     # after first search
     # Uses OrderedDict for LRU eviction when size exceeds tombstone_cache_max_size
-    # Key: project_id, Value: set of tombstoned memory contents
+    # Key: workspace_id, Value: set of tombstoned memory contents
     _tombstone_cache: OrderedDict[str, set[str]] = PrivateAttr(
         default_factory=lambda: OrderedDict[str, set[str]]()
     )
@@ -129,7 +129,7 @@ class TantivyEngine(BaseModel):
         """Initialize TantivyEngine.
 
         Args:
-            config: TantivyConfig or dict with project_id and index_path.
+            config: TantivyConfig or dict with workspace_id and index_path.
             logger: Optional StructuredLogger instance for logging.
             **kwargs: Additional arguments passed to BaseModel.
 
@@ -148,18 +148,18 @@ class TantivyEngine(BaseModel):
         return "tantivy"
 
     def _build_schema(self) -> tantivy.Schema:
-        """Build Tantivy schema with project_id, content, and soft-delete fields.
+        """Build Tantivy schema with workspace_id, content, and soft-delete fields.
 
         Returns:
             Tantivy schema with:
-            - project_id: Stored text field with raw tokenizer (exact match)
+            - workspace_id: Stored text field with raw tokenizer (exact match)
             - content: Stored text field with en_stem tokenizer (full-text search)
             - is_deleted: Stored unsigned field for soft-delete (0=active, 1=deleted)
             - deleted_at: Stored integer field for deletion timestamp in ms
         """
         schema_builder = tantivy.SchemaBuilder()
         _ = schema_builder.add_text_field(
-            "project_id", stored=True, tokenizer_name="raw"
+            "workspace_id", stored=True, tokenizer_name="raw"
         )
         _ = schema_builder.add_text_field(
             "content", stored=True, tokenizer_name="en_stem"
@@ -198,7 +198,7 @@ class TantivyEngine(BaseModel):
                 self.logger.info(
                     "Loaded existing Tantivy index",
                     extra={
-                        "project_id": self.config.project_id,
+                        "workspace_id": self.config.workspace_id,
                         "tantivy_index_path": index_path,
                     },
                 )
@@ -210,7 +210,7 @@ class TantivyEngine(BaseModel):
                 self.logger.info(
                     "Created new Tantivy index",
                     extra={
-                        "project_id": self.config.project_id,
+                        "workspace_id": self.config.workspace_id,
                         "tantivy_index_path": index_path,
                     },
                 )
@@ -276,13 +276,13 @@ class TantivyEngine(BaseModel):
         if self._index is not None:
             self._writer = self._index.writer()
 
-    def _get_all_docs(self, project_id: str) -> list[str]:
-        """Get all active (non-tombstoned) documents for a project.
+    def _get_all_docs(self, workspace_id: str) -> list[str]:
+        """Get all active (non-tombstoned) documents for a workspace.
 
         Uses cached tombstone set for O(1) post-filtering after first call.
 
         Args:
-            project_id: Project identifier to filter by.
+            workspace_id: Workspace identifier to filter by.
 
         Returns:
             List of memory strings for the given project (excluding tombstoned).
@@ -292,14 +292,14 @@ class TantivyEngine(BaseModel):
 
         try:
             # Get cached tombstoned memories (O(1) after first call)
-            tombstoned_memories = self._get_tombstoned_memories(project_id)
+            tombstoned_memories = self._get_tombstoned_memories(workspace_id)
             doc_limit = self._get_doc_limit()
 
             # Query all docs for this project
-            escaped_project_id = self._escape_tantivy_query(project_id)
+            escaped_workspace_id = self._escape_tantivy_query(workspace_id)
             query = self._index.parse_query(
-                query=f'project_id:"{escaped_project_id}"',
-                default_field_names=["project_id"],
+                query=f'workspace_id:"{escaped_workspace_id}"',
+                default_field_names=["workspace_id"],
             )
 
             # Get all results (use index doc count to avoid truncation)
@@ -325,13 +325,13 @@ class TantivyEngine(BaseModel):
                 self.logger.warning(
                     "Failed to get all docs from Tantivy",
                     extra={
-                        "project_id": project_id,
+                        "workspace_id": workspace_id,
                         "error": str(e),
                     },
                 )
             return []
 
-    def find_by_exact_match(self, project_id: str, content: str) -> list[str]:
+    def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]:
         """Find all memories that exactly match the given memory text.
 
         Uses Python-level string comparison after fetching all docs for the project.
@@ -339,20 +339,20 @@ class TantivyEngine(BaseModel):
         exact phrase matching via Tantivy queries.
 
         Args:
-            project_id: Project identifier to filter by.
+            workspace_id: Workspace identifier to filter by.
             content: Exact memory text to find.
 
         Returns:
             List of matching memory strings (may contain duplicates if stored multiple times).
         """
-        all_docs = self._get_all_docs(project_id)
+        all_docs = self._get_all_docs(workspace_id)
         return [doc for doc in all_docs if doc == content]
 
-    def _get_all_docs_all_projects(self) -> list[tuple[str, str]]:
-        """Get all documents from all projects.
+    def _get_all_docs_all_workspaces(self) -> list[tuple[str, str]]:
+        """Get all documents from all workspaces.
 
         Returns:
-            List of (project_id, content) tuples for all documents in the index.
+            List of (workspace_id, content) tuples for all documents in the index.
         """
         if self._index is None:
             return []
@@ -367,12 +367,12 @@ class TantivyEngine(BaseModel):
             # Get all documents by iterating through segment readers
             results: list[tuple[str, str]] = []
 
-            # Use a query that matches everything - project_id always exists
-            # Search for project_id:* doesn't work, so we'll try multiple common project patterns
+            # Use a query that matches everything - workspace_id always exists
+            # Search for workspace_id:* doesn't work, so we'll try multiple common project patterns
             # Actually, let's use the searcher's doc method with addresses
 
-            # Alternative approach: search for any document with project_id field
-            # We'll use a very broad search since all docs have project_id
+            # Alternative approach: search for any document with workspace_id field
+            # We'll use a very broad search since all docs have workspace_id
             query = self._index.parse_query(
                 query="*",
                 default_field_names=["content"],
@@ -382,33 +382,33 @@ class TantivyEngine(BaseModel):
 
             for _, doc_addr in top_docs.hits:
                 doc = searcher.doc(doc_addr)
-                project_id = doc.get_first("project_id")
+                workspace_id = doc.get_first("workspace_id")
                 memory = doc.get_first("content")
-                if project_id is not None and memory is not None:
-                    results.append((project_id, memory))
+                if workspace_id is not None and memory is not None:
+                    results.append((workspace_id, memory))
 
             return results
 
         except Exception as e:
             if self.logger:
                 self.logger.warning(
-                    "Failed to get all docs from Tantivy (all projects)",
+                    "Failed to get all docs from Tantivy (all workspaces)",
                     extra={"error": str(e)},
                 )
             return []
 
-    def add(self, project_id: str, content: str) -> None:
+    def add(self, workspace_id: str, content: str) -> None:
         """Add a document to the Tantivy index (thread-safe).
 
         Thread-safe: Uses writer lock since Tantivy IndexWriter is NOT thread-safe.
 
         Args:
-            project_id: Project identifier for filtering.
+            workspace_id: Workspace identifier for filtering.
             content: Memory content to index.
         """
         with self._writer_lock:
             doc = tantivy.Document()
-            doc.add_text("project_id", project_id)
+            doc.add_text("workspace_id", workspace_id)
             doc.add_text("content", content)
 
             # Add soft-delete fields with default values
@@ -451,7 +451,7 @@ class TantivyEngine(BaseModel):
                 if self.logger:
                     self.logger.debug(
                         "Tantivy index committed (writer reusable)",
-                        extra={"project_id": self.config.project_id},
+                        extra={"workspace_id": self.config.workspace_id},
                     )
 
     def flush(self) -> None:
@@ -484,26 +484,26 @@ class TantivyEngine(BaseModel):
                 if self.logger:
                     self.logger.debug(
                         "Tantivy index flushed (writer invalidated)",
-                        extra={"project_id": self.config.project_id},
+                        extra={"workspace_id": self.config.workspace_id},
                     )
 
-    def _invalidate_tombstone_cache(self, project_id: str | None = None) -> None:
-        """Invalidate tombstone cache for a project or all projects.
+    def _invalidate_tombstone_cache(self, workspace_id: str | None = None) -> None:
+        """Invalidate tombstone cache for a workspace or all workspaces.
 
         Thread-safe cache invalidation. Call this after any operation that
         modifies tombstones (soft_delete, commit, compact).
 
         Args:
-            project_id: Specific project to invalidate. If None, clears entire cache.
+            workspace_id: Specific project to invalidate. If None, clears entire cache.
         """
         with self._tombstone_cache_lock:
-            if project_id is None:
+            if workspace_id is None:
                 self._tombstone_cache.clear()
-            elif project_id in self._tombstone_cache:
-                del self._tombstone_cache[project_id]
+            elif workspace_id in self._tombstone_cache:
+                del self._tombstone_cache[workspace_id]
 
-    def _get_tombstoned_memories(self, project_id: str) -> set[str]:
-        """Get set of memories that have tombstones for a project.
+    def _get_tombstoned_memories(self, workspace_id: str) -> set[str]:
+        """Get set of memories that have tombstones for a workspace.
 
         Uses bounded in-memory caching with LRU eviction for O(1) lookup.
         Cache is populated by querying is_deleted=1 documents directly.
@@ -513,17 +513,17 @@ class TantivyEngine(BaseModel):
         in projects with many deletions (max 10000 tombstones per project).
 
         Args:
-            project_id: Project identifier to filter by.
+            workspace_id: Workspace identifier to filter by.
 
         Returns:
             Set of memory strings that have tombstones.
         """
         # Fast path: check cache first (thread-safe read)
         with self._tombstone_cache_lock:
-            if project_id in self._tombstone_cache:
+            if workspace_id in self._tombstone_cache:
                 # Move to end (most recently used)
-                self._tombstone_cache.move_to_end(project_id)
-                return self._tombstone_cache[project_id]
+                self._tombstone_cache.move_to_end(workspace_id)
+                return self._tombstone_cache[workspace_id]
 
         if self._index is None:
             return set()
@@ -534,10 +534,10 @@ class TantivyEngine(BaseModel):
             # Cache miss: query ONLY tombstoned documents directly (is_deleted=1)
             # This is O(tombstones) instead of O(all_docs)
             # Use range syntax [1 TO 1] for numeric field exact match
-            escaped_project_id = self._escape_tantivy_query(project_id)
+            escaped_workspace_id = self._escape_tantivy_query(workspace_id)
             query = self._index.parse_query(
-                query=f'project_id:"{escaped_project_id}" AND is_deleted:[1 TO 1]',
-                default_field_names=["project_id"],
+                query=f'workspace_id:"{escaped_workspace_id}" AND is_deleted:[1 TO 1]',
+                default_field_names=["workspace_id"],
             )
 
             top_docs = self.searcher.search(query=query, limit=doc_limit)
@@ -555,7 +555,7 @@ class TantivyEngine(BaseModel):
                             self.logger.warning(
                                 "Tombstone cache per-project limit reached, truncating",
                                 extra={
-                                    "project_id": project_id,
+                                    "workspace_id": workspace_id,
                                     "tombstone_count": len(tombstoned),
                                     "max_per_project": max_tombstones_per_project,
                                 },
@@ -569,9 +569,9 @@ class TantivyEngine(BaseModel):
                 if len(self._tombstone_cache) >= self.config.tombstone_cache_max_size:
                     _ = self._tombstone_cache.popitem(last=False)
                 # Add new entry and move to end (most recently used)
-                self._tombstone_cache[project_id] = tombstoned
+                self._tombstone_cache[workspace_id] = tombstoned
                 # Ensure this entry is at the end (most recent)
-                self._tombstone_cache.move_to_end(project_id)
+                self._tombstone_cache.move_to_end(workspace_id)
 
             return tombstoned
 
@@ -580,7 +580,7 @@ class TantivyEngine(BaseModel):
             if self.logger:
                 self.logger.warning(
                     "Failed to get tombstoned memories (query parse error)",
-                    extra={"project_id": project_id, "error": str(e)},
+                    extra={"workspace_id": workspace_id, "error": str(e)},
                 )
             return set()
         except Exception as e:
@@ -588,7 +588,7 @@ class TantivyEngine(BaseModel):
             if self.logger:
                 self.logger.warning(
                     "Failed to get tombstoned memories",
-                    extra={"project_id": project_id, "error": str(e)},
+                    extra={"workspace_id": workspace_id, "error": str(e)},
                 )
             return set()
 
@@ -623,7 +623,7 @@ class TantivyEngine(BaseModel):
         return list(zip(memories, normalized.tolist(), strict=True))
 
     def search(
-        self, query: str, project_id: str, limit: int
+        self, query: str, workspace_id: str, limit: int
     ) -> list[tuple[str, float]]:
         """Execute full-text search.
 
@@ -632,7 +632,7 @@ class TantivyEngine(BaseModel):
 
         Args:
             query: Search query string.
-            project_id: Filter results by project_id.
+            workspace_id: Filter results by workspace_id.
             limit: Maximum number of results to return.
 
         Returns:
@@ -644,14 +644,14 @@ class TantivyEngine(BaseModel):
                 if self.logger:
                     self.logger.warning(
                         "Tantivy search skipped: index not initialized",
-                        extra={"project_id": self.config.project_id},
+                        extra={"workspace_id": self.config.workspace_id},
                     )
                 return []
 
-            tombstoned_memories = self._get_tombstoned_memories(project_id)
+            tombstoned_memories = self._get_tombstoned_memories(workspace_id)
             search_limit = limit * 3 if tombstoned_memories else limit
 
-            parsed_query = self._build_search_query(query, project_id)
+            parsed_query = self._build_search_query(query, workspace_id)
             results = self._collect_search_results(
                 parsed_query, search_limit, limit, tombstoned_memories
             )
@@ -666,7 +666,7 @@ class TantivyEngine(BaseModel):
                 self.logger.warning(
                     "Tantivy query parsing failed",
                     extra={
-                        "project_id": self.config.project_id,
+                        "workspace_id": self.config.workspace_id,
                         "query": query[:100],
                         "error": str(e),
                         "error_type": "QueryParseError",
@@ -679,7 +679,7 @@ class TantivyEngine(BaseModel):
                 self.logger.error(
                     "Tantivy file system error during search",
                     extra={
-                        "project_id": self.config.project_id,
+                        "workspace_id": self.config.workspace_id,
                         "index_path": self.config.index_path,
                         "error": str(e),
                         "error_type": "FileSystemError",
@@ -690,17 +690,17 @@ class TantivyEngine(BaseModel):
         except Exception as e:
             raise SearchError(f"Tantivy search failed: {e}") from e
 
-    def _build_search_query(self, query: str, project_id: str) -> tantivy.Query:
-        """Build and parse a Tantivy query with project_id filter.
+    def _build_search_query(self, query: str, workspace_id: str) -> tantivy.Query:
+        """Build and parse a Tantivy query with workspace_id filter.
 
         Falls back to escaped query text if initial parsing fails.
         """
-        escaped_project_id = self._escape_tantivy_query(project_id)
+        escaped_workspace_id = self._escape_tantivy_query(workspace_id)
         query_text = query.strip()
         if query_text:
-            combined_query = f'({query_text}) AND project_id:"{escaped_project_id}"'
+            combined_query = f'({query_text}) AND workspace_id:"{escaped_workspace_id}"'
         else:
-            combined_query = f'project_id:"{escaped_project_id}"'
+            combined_query = f'workspace_id:"{escaped_workspace_id}"'
 
         assert self._index is not None
         try:
@@ -712,7 +712,7 @@ class TantivyEngine(BaseModel):
                 raise
             escaped_query_text = self._escape_tantivy_query(query_text)
             combined_query = (
-                f'({escaped_query_text}) AND project_id:"{escaped_project_id}"'
+                f'({escaped_query_text}) AND workspace_id:"{escaped_workspace_id}"'
             )
             parsed = self._index.parse_query(
                 query=combined_query, default_field_names=["content"]
@@ -721,7 +721,7 @@ class TantivyEngine(BaseModel):
                 self.logger.debug(
                     "Escaped Tantivy query after parse failure",
                     extra={
-                        "project_id": self.config.project_id,
+                        "workspace_id": self.config.workspace_id,
                         "original_query": query_text[:100],
                         "escaped_query": escaped_query_text[:100],
                     },
@@ -792,7 +792,7 @@ class TantivyEngine(BaseModel):
                         self.logger.warning(
                             "Error during Tantivy writer cleanup",
                             extra={
-                                "project_id": self.config.project_id,
+                                "workspace_id": self.config.workspace_id,
                                 "error": str(e),
                             },
                         )
@@ -809,7 +809,7 @@ class TantivyEngine(BaseModel):
             # but we clear the reference for consistency
             self._index = None
 
-    def soft_delete(self, project_id: str, content: str) -> bool:
+    def soft_delete(self, workspace_id: str, content: str) -> bool:
         """Mark a document as deleted by adding a tombstone (O(1) operation).
 
         Thread-safe. This is much faster than rebuilding the entire index (O(n) for rebuild vs O(1)).
@@ -821,20 +821,20 @@ class TantivyEngine(BaseModel):
         - Compaction removes both original and tombstone
 
         Args:
-            project_id: Project identifier for filtering.
+            workspace_id: Workspace identifier for filtering.
             content: Exact memory content to soft-delete.
 
         Returns:
             True if tombstone was added, False if memory wasn't found.
         """
         # First, verify the memory exists (only check non-deleted documents)
-        existing = self.find_by_exact_match(project_id, content)
+        existing = self.find_by_exact_match(workspace_id, content)
         if not existing:
             if self.logger:
                 self.logger.debug(
                     "Soft-delete: memory not found",
                     extra={
-                        "project_id": project_id,
+                        "workspace_id": workspace_id,
                         "memory_preview": content[:50] if content else "",
                     },
                 )
@@ -843,7 +843,7 @@ class TantivyEngine(BaseModel):
         # Add tombstone document
         with self._writer_lock:
             doc = tantivy.Document()
-            doc.add_text("project_id", project_id)
+            doc.add_text("workspace_id", workspace_id)
             doc.add_text("content", content)
             doc.add_unsigned("is_deleted", 1)  # 1 = deleted (tombstone)
             doc.add_integer("deleted_at", int(time.time() * 1000))  # Unix timestamp ms
@@ -854,14 +854,14 @@ class TantivyEngine(BaseModel):
             self.logger.debug(
                 "Soft-delete: tombstone added",
                 extra={
-                    "project_id": project_id,
+                    "workspace_id": workspace_id,
                     "memory_preview": content[:50] if content else "",
                 },
             )
 
         return True
 
-    def delete(self, project_id: str, content: str) -> bool:
+    def delete(self, workspace_id: str, content: str) -> bool:
         """Delete a document from the Tantivy index by exact memory match (thread-safe).
 
         When soft-delete is enabled (default), uses O(1) tombstone marking.
@@ -873,7 +873,7 @@ class TantivyEngine(BaseModel):
         - Compaction removes tombstones and originals periodically
 
         Rebuild approach (when soft-delete disabled):
-        - Gets all documents from all projects
+        - Gets all documents from all workspaces
         - Filters out the target memory
         - Destroys and recreates the index
         - Re-adds all remaining documents
@@ -881,7 +881,7 @@ class TantivyEngine(BaseModel):
         Thread-safe: Uses writer lock since Tantivy IndexWriter is NOT thread-safe.
 
         Args:
-            project_id: Project identifier for filtering.
+            workspace_id: Workspace identifier for filtering.
             content: Exact memory content to delete.
 
         Returns:
@@ -889,20 +889,20 @@ class TantivyEngine(BaseModel):
         """
         # Use soft-delete if enabled (O(1) vs O(n))
         if self.config.soft_delete_enabled:
-            result = self.soft_delete(project_id, content)
+            result = self.soft_delete(workspace_id, content)
             if result:
                 self.commit()
             return result
 
         # Fall back to rebuild approach when soft-delete disabled
         try:
-            return self._delete_via_rebuild(project_id, content)
+            return self._delete_via_rebuild(workspace_id, content)
         except ValueError as e:
-            self._log_delete_error(project_id, content, e, "warning", "QueryParseError")
+            self._log_delete_error(workspace_id, content, e, "warning", "QueryParseError")
             return False
         except OSError as e:
             self._log_delete_error(
-                project_id,
+                workspace_id,
                 content,
                 e,
                 "error",
@@ -911,25 +911,25 @@ class TantivyEngine(BaseModel):
             )
             return False
         except Exception as e:
-            self._log_delete_error(project_id, content, e, "error", type(e).__name__)
+            self._log_delete_error(workspace_id, content, e, "error", type(e).__name__)
             return False
 
-    def _delete_via_rebuild(self, project_id: str, content: str) -> bool:
+    def _delete_via_rebuild(self, workspace_id: str, content: str) -> bool:
         """Delete a document using the full index rebuild approach."""
         if self._index is None:
             return False
 
-        all_docs = self._get_all_docs_all_projects()
+        all_docs = self._get_all_docs_all_workspaces()
 
         target_exists = any(
-            pid == project_id and msg == content for pid, msg in all_docs
+            pid == workspace_id and msg == content for pid, msg in all_docs
         )
         if not target_exists:
             if self.logger:
                 self.logger.debug(
                     "Tantivy delete: document not found",
                     extra={
-                        "project_id": project_id,
+                        "workspace_id": workspace_id,
                         "memory_preview": content[:50] if content else "",
                     },
                 )
@@ -938,7 +938,7 @@ class TantivyEngine(BaseModel):
         docs_to_keep = [
             (pid, msg)
             for pid, msg in all_docs
-            if not (pid == project_id and msg == content)
+            if not (pid == workspace_id and msg == content)
         ]
         deleted_count = len(all_docs) - len(docs_to_keep)
 
@@ -946,7 +946,7 @@ class TantivyEngine(BaseModel):
             self.logger.debug(
                 "Tantivy delete: found document(s) to delete",
                 extra={
-                    "project_id": project_id,
+                    "workspace_id": workspace_id,
                     "memory_preview": content[:50] if content else "",
                     "deleted_count": deleted_count,
                     "remaining_count": len(docs_to_keep),
@@ -959,7 +959,7 @@ class TantivyEngine(BaseModel):
             self.logger.debug(
                 "Tantivy delete: completed successfully",
                 extra={
-                    "project_id": project_id,
+                    "workspace_id": workspace_id,
                     "memory_preview": content[:50] if content else "",
                     "deleted_count": deleted_count,
                 },
@@ -969,7 +969,7 @@ class TantivyEngine(BaseModel):
 
     def _log_delete_error(
         self,
-        project_id: str,
+        workspace_id: str,
         content: str,
         error: Exception,
         level: str,
@@ -982,7 +982,7 @@ class TantivyEngine(BaseModel):
             return
 
         extra: dict[str, object] = {
-            "project_id": project_id,
+            "workspace_id": workspace_id,
             "memory_preview": content[:50] if content else "",
             "error": str(error),
             "error_type": error_type,
@@ -1001,14 +1001,14 @@ class TantivyEngine(BaseModel):
         log_fn(msg, extra=extra)
 
     def _rebuild_index_with_docs(self, docs_to_keep: list[tuple[str, str]]) -> None:
-        """Rebuild the index with the specified documents from all projects.
+        """Rebuild the index with the specified documents from all workspaces.
 
         This destroys the existing index and creates a new one with all
         the documents in docs_to_keep. This is necessary because Tantivy-py's
         delete_documents() consumes the IndexWriter.
 
         Args:
-            docs_to_keep: List of (project_id, content) tuples to preserve.
+            docs_to_keep: List of (workspace_id, content) tuples to preserve.
         """
         import shutil
 
@@ -1038,9 +1038,9 @@ class TantivyEngine(BaseModel):
         # Step 3: Recreate the index
         self._initialize_index()
 
-        # Step 4: Re-add the kept documents (all projects)
-        for project_id, content in docs_to_keep:
-            self.add(project_id, content)
+        # Step 4: Re-add the kept documents (all workspaces)
+        for workspace_id, content in docs_to_keep:
+            self.add(workspace_id, content)
 
         # Step 5: Commit the changes
         self.commit()
@@ -1121,7 +1121,7 @@ class TantivyEngine(BaseModel):
         try:
             doc_limit = self._get_doc_limit()
 
-            # Get all documents across all projects
+            # Get all documents across all workspaces
             query = self._index.parse_query(
                 query="*",
                 default_field_names=["content"],
@@ -1323,13 +1323,13 @@ class TantivyEngine(BaseModel):
 
         for _, doc_addr in top_docs.hits:
             doc = self.searcher.doc(doc_addr)
-            project_id = doc.get_first("project_id")
+            workspace_id = doc.get_first("workspace_id")
             memory = doc.get_first("content")
             is_deleted_val = doc.get_first("is_deleted")
             is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
 
-            if project_id is not None and memory is not None:
-                all_docs.append((project_id, memory, is_deleted))
+            if workspace_id is not None and memory is not None:
+                all_docs.append((workspace_id, memory, is_deleted))
                 if is_deleted == 1:
                     tombstoned_memories.add(memory)
 
@@ -1337,14 +1337,14 @@ class TantivyEngine(BaseModel):
         removed_originals = 0
         removed_tombstones = 0
 
-        for project_id, memory, is_deleted in all_docs:
+        for workspace_id, memory, is_deleted in all_docs:
             if memory in tombstoned_memories:
                 if is_deleted == 1:
                     removed_tombstones += 1
                 else:
                     removed_originals += 1
             else:
-                docs_to_keep.append((project_id, memory))
+                docs_to_keep.append((workspace_id, memory))
 
         return docs_to_keep, removed_tombstones, removed_originals
 

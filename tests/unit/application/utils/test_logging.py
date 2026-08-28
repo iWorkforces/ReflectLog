@@ -24,7 +24,7 @@ class TestStructuredLogger:
     def structured_logger(self, mock_logger: MagicMock) -> StructuredLogger:
         '''Create a StructuredLogger with mock underlying logger.'''
         return StructuredLogger(
-            logger=mock_logger, default_extra={"project_id": "test-project"}
+            logger=mock_logger, default_extra={"workspace_id": "test-project"}
         )
 
     def test_init_with_default_extra(self, mock_logger: MagicMock) -> None:
@@ -40,19 +40,19 @@ class TestStructuredLogger:
     def test_merge_extra_with_none(self, structured_logger: StructuredLogger) -> None:
         '''Test _merge_extra returns default_extra when extra is None.'''
         result = structured_logger._merge_extra(None)
-        assert result == {"project_id": "test-project"}
+        assert result == {"workspace_id": "test-project"}
 
     def test_merge_extra_with_values(self, structured_logger: StructuredLogger) -> None:
         '''Test _merge_extra merges default and provided extras.'''
         result = structured_logger._merge_extra({"custom": "value"})
-        assert result == {"project_id": "test-project", "custom": "value"}
+        assert result == {"workspace_id": "test-project", "custom": "value"}
 
     def test_merge_extra_override_default(
         self, structured_logger: StructuredLogger
     ) -> None:
         '''Test _merge_extra allows overriding default extra fields.'''
-        result = structured_logger._merge_extra({"project_id": "override"})
-        assert result == {"project_id": "override"}
+        result = structured_logger._merge_extra({"workspace_id": "override"})
+        assert result == {"workspace_id": "override"}
 
     def test_is_enabled_for(self, mock_logger: MagicMock) -> None:
         '''Test is_enabled_for delegates to underlying logger.'''
@@ -69,7 +69,7 @@ class TestStructuredLogger:
         structured_logger.info("test message", extra={"custom_field": "value"})
         mock_logger.info.assert_called_once_with(
             "test message",
-            extra={"project_id": "test-project", "custom_field": "value"},
+            extra={"workspace_id": "test-project", "custom_field": "value"},
             exc_info=False,
         )
 
@@ -80,7 +80,7 @@ class TestStructuredLogger:
         structured_logger.info("test message", exc_info=True)
         mock_logger.info.assert_called_once_with(
             "test message",
-            extra={"project_id": "test-project"},
+            extra={"workspace_id": "test-project"},
             exc_info=True,
         )
 
@@ -91,7 +91,7 @@ class TestStructuredLogger:
         structured_logger.error("error message", extra={"err": "details"})
         mock_logger.error.assert_called_once_with(
             "error message",
-            extra={"project_id": "test-project", "err": "details"},
+            extra={"workspace_id": "test-project", "err": "details"},
             exc_info=False,
         )
 
@@ -102,7 +102,7 @@ class TestStructuredLogger:
         structured_logger.warning("warning message")
         mock_logger.warning.assert_called_once_with(
             "warning message",
-            extra={"project_id": "test-project"},
+            extra={"workspace_id": "test-project"},
             exc_info=False,
         )
 
@@ -113,7 +113,7 @@ class TestStructuredLogger:
         structured_logger.debug("debug message", extra={"debug_key": "debug_value"})
         mock_logger.debug.assert_called_once_with(
             "debug message",
-            extra={"project_id": "test-project", "debug_key": "debug_value"},
+            extra={"workspace_id": "test-project", "debug_key": "debug_value"},
             exc_info=False,
         )
 
@@ -130,7 +130,7 @@ class TestStructuredLoggerOperation:
     def structured_logger(self, mock_logger: MagicMock) -> StructuredLogger:
         '''Create a StructuredLogger with mock underlying logger.'''
         return StructuredLogger(
-            logger=mock_logger, default_extra={"project_id": "test"}
+            logger=mock_logger, default_extra={"workspace_id": "test"}
         )
 
     def test_operation_success(
@@ -147,7 +147,7 @@ class TestStructuredLoggerOperation:
         start_call = mock_logger.info.call_args_list[0]
         assert start_call == call(
             "Starting test_op",
-            extra={"project_id": "test", "operation": "test_op", "count": 5},
+            extra={"workspace_id": "test", "operation": "test_op", "count": 5},
             exc_info=False,
         )
 
@@ -156,7 +156,7 @@ class TestStructuredLoggerOperation:
         assert completion_call == call(
             "Completed test_op",
             extra={
-                "project_id": "test",
+                "workspace_id": "test",
                 "operation": "test_op",
                 "count": 5,
                 "result": "success",
@@ -208,7 +208,7 @@ class TestCreateLogger:
         mock_get_logger.assert_called_once_with("test_name")
         mock_underlying.setLevel.assert_called_once_with(logging.DEBUG)
         assert isinstance(result, StructuredLogger)
-        assert result.default_extra == {"project_id": "test-project"}
+        assert result.default_extra == {"workspace_id": "test-project"}
 
     @patch("fastmcp.utilities.logging.get_logger")
     def test_create_logger_default_level(self, mock_get_logger: MagicMock) -> None:

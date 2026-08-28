@@ -156,9 +156,9 @@ class EngineFactory:
             return None
 
         tantivy_config = TantivyConfig(
-            project_id=config.project_id,
+            workspace_id=config.workspace_id,
             index_path=config.tantivy_index_path_template.format(
-                project_id=config.project_id
+                workspace_id=config.workspace_id
             ).lower(),
             normalize_scores=config.tantivy_normalize_scores,
         )

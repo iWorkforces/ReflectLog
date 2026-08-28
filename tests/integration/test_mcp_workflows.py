@@ -16,7 +16,7 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             stored_memories.extend(memories or [])
             return memories or []
 
@@ -55,7 +55,7 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             stored_memories.extend(memories or [])
             return memories or []
 
@@ -99,7 +99,7 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             stored_memories.extend(memories or [])
             return memories or []
 
@@ -108,7 +108,7 @@ class TestMCPWorkflows:
             matching = [mem for mem in stored_memories if mem == query]
             return create_search_results(matching)
 
-        def delete_side_effect(memory_id=None, project_id=None):
+        def delete_side_effect(memory_id=None, workspace_id=None):
             # Remove by numeric ID (matches MemoryStore auto-increment IDs)
             if memory_id is None:
                 return
@@ -127,7 +127,7 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
         mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
-            lambda project_id, memory: stored_memories.index(memory)
+            lambda workspace_id, memory: stored_memories.index(memory)
             if memory in stored_memories
             else None
         )
@@ -179,7 +179,7 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             stored_memories.extend(memories or [])
             return memories or []
 
@@ -187,7 +187,7 @@ class TestMCPWorkflows:
             matching = [mem for mem in stored_memories if query.lower() in mem.lower()]
             return create_search_results(matching)
 
-        def delete_side_effect(memory_id=None, project_id=None):
+        def delete_side_effect(memory_id=None, workspace_id=None):
             if memory_id is None:
                 return
             try:
@@ -201,7 +201,7 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
-            lambda project_id, memory: stored_memories.index(memory)
+            lambda workspace_id, memory: stored_memories.index(memory)
             if memory in stored_memories
             else None
         )
@@ -246,7 +246,7 @@ class TestMCPWorkflows:
         '''Test multiple add operations in sequence.'''
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             stored_memories.extend(memories or [])
             return memories or []
 
@@ -315,7 +315,7 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             for mem in memories or []:
                 if mem not in stored_memories:
                     stored_memories.append(mem)
@@ -325,7 +325,7 @@ class TestMCPWorkflows:
             matching = [mem for mem in stored_memories if mem == query]
             return create_search_results(matching)
 
-        def delete_side_effect(memory_id=None, project_id=None):
+        def delete_side_effect(memory_id=None, workspace_id=None):
             if memory_id is None:
                 return
             try:
@@ -343,7 +343,7 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
         mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
-            lambda project_id, memory: stored_memories.index(memory)
+            lambda workspace_id, memory: stored_memories.index(memory)
             if memory in stored_memories
             else None
         )
@@ -398,7 +398,7 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             stored_memories.extend(memories or [])
             return memories or []
 
@@ -452,7 +452,7 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             stored_memories.extend(memories or [])
             return memories or []
 
@@ -508,7 +508,7 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, project_id=None, memories=None, infer=True):
+        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
             stored_memories.extend(memories or [])
             return memories or []
 

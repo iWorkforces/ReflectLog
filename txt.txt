@@ -5,7 +5,7 @@ Epic 1: Configuration & Security Hardening
 Priority: High
 
 - Task 1.1: Validate all required environment variables at startup with clear error messages
-- Task 1.2: Add secure configuration validation for PROJECT_ID (prevent path traversal)
+- Task 1.2: Add secure configuration validation for WORKSPACE_ID (prevent path traversal)
 - Task 1.3: Implement API key rotation detection and warnings
 - Task 1.4: Add rate limiting for MCP tool operations
 - Task 1.5: Create configuration schema validation with pydantic
@@ -68,7 +68,7 @@ Technical Constraints & Dependencies
 - Text Store: SQLite with WAL mode for message persistence
 - Async Framework: anyio with 32 concurrent request limit
 - Transport Modes: stdio (default), HTTP, SSE, streamable-http
-- Required: PROJECT_ID environment variable, OPENROUTER_API_KEY
-- Storage: Local filesystem persistence at indexes/{PROJECT_ID}/usearch/
+- Required: WORKSPACE_ID environment variable, OPENROUTER_API_KEY
+- Storage: Local filesystem persistence at indexes/{WORKSPACE_ID}/usearch/
 - No Frontend: This is an MCP server, not a web application
 - Memory Architecture: USearch HNSW + SQLite MessageStore + Tantivy full-text search

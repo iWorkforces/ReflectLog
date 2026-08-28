@@ -26,7 +26,7 @@ tests/unit/application/utils/
 |------|---------|
 | test_circuit_breaker.py | Open/half-open/closed transitions |
 | test_http_client.py | Connection pooling, retry |
-| test_security.py | `validate_project_id()`, SQL patterns |
+| test_security.py | `validate_workspace_id()`, SQL patterns |
 
 ## KEY PATTERNS
 
