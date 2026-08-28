@@ -36,7 +36,7 @@ def reconcile_pending_replacements(
     Acquires ``write_lock`` before ``lock`` when both are provided.
 
     Returns:
-        Number of pending transitions that were applied.
+        Number of pending transitions that were marked complete.
     """
     store = _recovery_store(semantic_engine, logger)
     if store is None:
@@ -140,21 +140,37 @@ def replacement_converged(
         return True
     if not _tantivy_has(tantivy_engine, transition.workspace_id, transition.new_content):
         return False
-    return not _tantivy_has(
-        tantivy_engine, transition.workspace_id, transition.old_content
-    )
+    if not _tantivy_has(tantivy_engine, transition.workspace_id, transition.old_content):
+        return True
+    return _old_text_live_under_new_id(transition, semantic_engine)
 
 
 def _old_id_gone(
     transition: ReplacementTransition, semantic_engine: ISemanticSearchEngine
 ) -> bool:
     """Return True when the recorded old id is gone from SQLite and USearch."""
-    current_id = semantic_engine.get_id_by_content(
-        transition.workspace_id, transition.old_content
-    )
-    if current_id == transition.old_memory_id:
+    if _sqlite_id_for(transition, semantic_engine, transition.old_content) == (
+        transition.old_memory_id
+    ):
         return False
     return _vector_absent(semantic_engine, transition.old_memory_id)
+
+
+def _old_text_live_under_new_id(
+    transition: ReplacementTransition, semantic_engine: ISemanticSearchEngine
+) -> bool:
+    """Return True when old text is stored under a different live id."""
+    current_id = _sqlite_id_for(transition, semantic_engine, transition.old_content)
+    return current_id is not None and current_id != transition.old_memory_id
+
+
+def _sqlite_id_for(
+    transition: ReplacementTransition,
+    semantic_engine: ISemanticSearchEngine,
+    content: str,
+) -> int | None:
+    """Look up the live SQLite id for ``content`` in this transition's workspace."""
+    return semantic_engine.get_id_by_content(transition.workspace_id, content)
 
 
 def _remove_recorded_old(
@@ -167,10 +183,7 @@ def _remove_recorded_old(
     if tantivy_engine is None:
         return
 
-    current_id = semantic_engine.get_id_by_content(
-        transition.workspace_id, transition.old_content
-    )
-    if current_id is not None and current_id != transition.old_memory_id:
+    if _old_text_live_under_new_id(transition, semantic_engine):
         return
     _ = tantivy_engine.delete(transition.workspace_id, transition.old_content)
 
