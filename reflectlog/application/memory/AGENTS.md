@@ -29,7 +29,7 @@ memory/
 
 ## CONVENTIONS
 
-**Pluggable Stages** - SearchPipeline uses `IBackendExecutor`, `IFusionStage`, `IFilterStage`, `IRerankStage` protocols.
+**SearchPipeline** - Canonical class is `search_strategies.SearchPipeline`. Construct it with semantic/tantivy engines, a `FusionEngine`, `Config`, logger, and optional memory manager for lazy rerankers. Execute with a `SearchContext`; it returns a `SearchResult`.
 
 **Pluggable Phases** - AddPipeline uses `IDuplicateDetectionPhase`, `IReplacementDetectionPhase`, `IStoragePhase` protocols.
 

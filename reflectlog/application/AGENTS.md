@@ -18,7 +18,7 @@ Orchestration layer implementing 3-phase add pipeline and 4-step search pipeline
 
 ## CONVENTIONS
 
-**Pipeline Architecture** - SearchPipeline and AddPipeline use pluggable stages/phases. Each stage returns SearchResult for composability.
+**Pipeline Architecture** - Search uses `search_strategies.SearchPipeline` with a `SearchContext`. Add uses `AddPipeline` with pluggable phases.
 **3-Phase Add** - Phase 1: duplicate detection (parallel batch), Phase 2: smart replacement (LLM checks), Phase 3: sequential storage.
 
 **4-Step Search** - Step 1: parallel dual-search, Step 2: RRF fusion, Step 3: threshold filter, Step 4: LLM/cross-encoder rerank.
