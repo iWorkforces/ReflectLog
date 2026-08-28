@@ -58,34 +58,6 @@ class TestMemoryStoreInitialization:
             assert os.path.exists(db_path)
             store.close()
 
-    def test_renames_legacy_project_id_column(self) -> None:
-        '''Existing databases keep rows after project_id is renamed.'''
-        import sqlite3
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = os.path.join(tmpdir, "legacy.db")
-            conn = sqlite3.connect(db_path)
-            _ = conn.execute(
-                """
-                CREATE TABLE memories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    project_id TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            _ = conn.execute(
-                "INSERT INTO memories (project_id, content) VALUES (?, ?)",
-                ("legacy-ws", "old row"),
-            )
-            conn.commit()
-            conn.close()
-
-            store = MemoryStore(db_path=db_path)
-            assert store.get_all("legacy-ws") == ["old row"]
-            store.close()
-
 
 class TestMemoryStoreInsert:
     '''Tests for MemoryStore.insert method.'''

@@ -207,6 +207,13 @@ class TestFromEnvironmentRequired:
         with pytest.raises(ConfigurationError, match="WORKSPACE_ID"):
             Config.from_environment()
 
+    def test_project_id_env_is_ignored(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.delenv("WORKSPACE_ID", raising=False)
+        monkeypatch.setenv("PROJECT_ID", "legacy-ws")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
+        with pytest.raises(ConfigurationError, match="WORKSPACE_ID"):
+            Config.from_environment()
+
     def test_empty_workspace_id(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("WORKSPACE_ID", "")
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")

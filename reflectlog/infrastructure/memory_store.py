@@ -155,37 +155,10 @@ class MemoryStore(BaseModel):
     def _create_schema(self) -> None:
         """Create database schema if it doesn't exist."""
         cursor = self.connection.cursor()
-        self._rename_legacy_project_id_columns(cursor)
         self._create_memories_schema(cursor)
         self._create_archive_schema(cursor)
         self._create_transition_schema(cursor)
         cursor.close()
-
-    def _rename_legacy_project_id_columns(self, cursor: sqlite3.Cursor) -> None:
-        """Rename leftover project_id columns so existing databases keep working."""
-        for table in ("memories", "archived_memories", "replacement_transitions"):
-            if not self._table_exists(cursor, table):
-                continue
-            columns = self._table_columns(cursor, table)
-            if "project_id" in columns and "workspace_id" not in columns:
-                _ = cursor.execute(
-                    f"ALTER TABLE {table} RENAME COLUMN project_id TO workspace_id"
-                )
-        _ = cursor.execute("DROP INDEX IF EXISTS idx_project_id")
-        _ = cursor.execute("DROP INDEX IF EXISTS idx_archived_project_id")
-
-    def _table_exists(self, cursor: sqlite3.Cursor, table: str) -> bool:
-        """Return True when the named table is already present."""
-        _ = cursor.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-            (table,),
-        )
-        return cursor.fetchone() is not None
-
-    def _table_columns(self, cursor: sqlite3.Cursor, table: str) -> set[str]:
-        """Return column names for an existing table."""
-        _ = cursor.execute(f"PRAGMA table_info({table})")
-        return {str(row[1]) for row in cursor.fetchall()}
 
     def _create_memories_schema(self, cursor: sqlite3.Cursor) -> None:
         """Create the active memories table and lookup indexes."""
