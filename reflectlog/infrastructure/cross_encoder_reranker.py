@@ -249,8 +249,8 @@ class CrossEncoderReranker(BaseModel):
         """Rerank candidates using FlagReranker scores with optional recency decay.
 
         Scores each candidate document against the query using FlagReranker,
-        applies score threshold filtering, optional recency decay, sorts by score
-        descending, and returns the top-k results.
+        normalizes, gates on the CE threshold, optionally reorders by recency,
+        and then returns the top-k results.
 
         Args:
             query: Search query string.
@@ -289,9 +289,11 @@ class CrossEncoderReranker(BaseModel):
         self._log_candidate_scores(scored)
         scored.sort(key=lambda x: x[1], reverse=True)
         # Gate on pre-decay CE quality so recency only reorders survivors.
-        scored = self._apply_threshold_and_limit(scored)
+        # min_results is CE-quality insurance (applied here, before decay).
+        # top_k is applied after decay so recency can promote later ranks.
+        scored = self._apply_threshold(scored)
         scored = self._apply_recency_reorder(scored, timestamp_map)
-        return scored
+        return scored[: self.config.top_k]
 
     def _compute_scores(
         self,
@@ -367,11 +369,11 @@ class CrossEncoderReranker(BaseModel):
                 },
             )
 
-    def _apply_threshold_and_limit(
+    def _apply_threshold(
         self,
         scored: list[tuple[str, float]],
     ) -> list[tuple[str, float]]:
-        """Filter by score threshold, log results, and limit to top_k."""
+        """Filter by score threshold (min_results is CE-quality insurance)."""
         pre_filter_count = len(scored)
         scored = self._post_processor.filter_by_threshold(
             scored,
@@ -394,7 +396,7 @@ class CrossEncoderReranker(BaseModel):
                 },
             )
 
-        return scored[: self.config.top_k]
+        return scored
 
     async def rerank_async(
         self,

@@ -593,17 +593,22 @@ class TestBackendFailureContracts:
         fusion.fuse.assert_called_once_with([], [("from-tantivy", 0.8)])
 
     @pytest.mark.asyncio
-    async def test_semantic_init_failure_raises_search_error(self) -> None:
+    async def test_semantic_init_failure_falls_back_to_tantivy(self) -> None:
         semantic = MagicMock()
-        semantic.is_ready.return_value = False
         semantic.ensure_initialized.side_effect = RuntimeError("init fail")
         tantivy = MagicMock()
-        tantivy.is_ready.return_value = False
         tantivy.search.return_value = [("from-tantivy", 0.8)]
-        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("from-tantivy", 0.8)]
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion
+        )
 
-        with pytest.raises(SearchError, match="Failed to execute search"):
-            await pipeline.execute(_make_context(enable_hybrid_search=True))
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+        assert result.memories == ["from-tantivy"]
+        assert result.semantic_results == []
 
     @pytest.mark.asyncio
     async def test_tantivy_search_failure_falls_back_to_semantic(self) -> None:
@@ -635,13 +640,29 @@ class TestBackendFailureContracts:
             await pipeline.execute(_make_context(enable_hybrid_search=True))
 
     @pytest.mark.asyncio
-    async def test_tantivy_init_failure_raises_search_error(self) -> None:
+    async def test_tantivy_init_failure_falls_back_to_semantic(self) -> None:
         semantic = MagicMock()
-        semantic.is_ready.return_value = True
         semantic.search.return_value = [("ok", 0.9, _TS)]
         tantivy = MagicMock()
-        tantivy.is_ready.return_value = False
         tantivy.ensure_initialized.side_effect = RuntimeError("tantivy init fail")
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("ok", 0.9)]
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion
+        )
+
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+        assert result.memories == ["ok"]
+        assert result.tantivy_results == []
+
+    @pytest.mark.asyncio
+    async def test_semantic_error_and_empty_tantivy_raises_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.search.side_effect = RuntimeError("embed fail")
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
         pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
 
         with pytest.raises(SearchError, match="Failed to execute search"):

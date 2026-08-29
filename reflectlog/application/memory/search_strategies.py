@@ -8,6 +8,7 @@ concern-focused module. It implements the 4-step search pipeline:
 4. Reranking (CrossEncoder)
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import math
 import time
@@ -35,6 +36,26 @@ from .fusion.base import FusionEngine
 MIN_OVERFETCH_LIMIT = 8  # Floor so tiny limits still have fusion diversity
 TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize to 0-1
 LOG_QUERY_TRUNCATE_LENGTH = 100
+
+
+def _class_callable(obj: object, name: str) -> Callable[..., object] | None:
+    """Return a class-defined callable, walking the MRO.
+
+    Instance attributes and MagicMock auto-attrs are ignored so tests cannot
+    skip ``ensure_initialized`` by planting a truthy ``is_ready``.
+    """
+    for cls in type(obj).__mro__:
+        attr = cls.__dict__.get(name)
+        if callable(attr):
+            return attr
+    return None
+
+
+def _call_predicate(fn: Callable[..., object] | None, obj: object) -> bool:
+    """Invoke a class-defined predicate, treating a missing method as False."""
+    if fn is None:
+        return False
+    return bool(fn(obj))
 
 
 @dataclass
@@ -150,6 +171,8 @@ class SearchPipeline:
             # Execute 4-step hybrid search pipeline
             return await self._execute_hybrid_search(context)
 
+        except SearchError:
+            raise
         except Exception as e:
             self.logger.error(
                 "Search pipeline failed",
@@ -284,11 +307,11 @@ class SearchPipeline:
 
         semantic_results, semantic_error = soon_semantic.value
         tantivy_results, tantivy_error = soon_tantivy.value
-        if semantic_error is not None and tantivy_error is not None:
-            raise SearchError(
-                f"Failed to execute search: {semantic_error}"
-            ) from semantic_error
-        if semantic_error is not None and self._tantivy_engine is None:
+        if semantic_error is not None and (
+            tantivy_error is not None
+            or self._tantivy_engine is None
+            or not tantivy_results
+        ):
             raise SearchError(
                 f"Failed to execute search: {semantic_error}"
             ) from semantic_error
@@ -313,13 +336,12 @@ class SearchPipeline:
         Returns (results, error). A failed search yields [] plus the error
         so the caller can raise if every backend failed.
         """
-        # Init stays outside the search fallback: a failed ensure_initialized
-        # still raises SearchError from execute(), matching the prior contract.
-        # Use the real class method so MagicMock auto-attrs cannot skip init.
-        is_ready = type(self._semantic_engine).__dict__.get("is_ready")
-        if not callable(is_ready) or not is_ready(self._semantic_engine):
-            await asyncify(self._semantic_engine.ensure_initialized)()
         try:
+            # Class-defined is_ready (MRO walk) so MagicMock auto-attrs
+            # cannot skip init, but subclasses that inherit it still work.
+            is_ready = _class_callable(self._semantic_engine, "is_ready")
+            if not _call_predicate(is_ready, self._semantic_engine):
+                await asyncify(self._semantic_engine.ensure_initialized)()
             results: list[tuple[str, float, str]] = await asyncify(
                 self._semantic_engine.search
             )(
@@ -348,10 +370,10 @@ class SearchPipeline:
         """Execute full-text search on Tantivy engine."""
         if self._tantivy_engine is None:
             return [], None
-        is_ready = type(self._tantivy_engine).__dict__.get("is_ready")
-        if not callable(is_ready) or not is_ready(self._tantivy_engine):
-            await asyncify(self._tantivy_engine.ensure_initialized)()
         try:
+            is_ready = _class_callable(self._tantivy_engine, "is_ready")
+            if not _call_predicate(is_ready, self._tantivy_engine):
+                await asyncify(self._tantivy_engine.ensure_initialized)()
             tantivy_results: list[tuple[str, float]] = await asyncify(
                 self._tantivy_engine.search
             )(query, workspace_id, limit)
@@ -694,21 +716,21 @@ class SearchPipeline:
                 getattr(self._semantic_engine, "config", None), "workspace_id", None
             )
             if not callable(get_id) or not callable(getter) or workspace_id is None:
-                return {}
+                return completed
 
             for content in missing:
                 mem_id = get_id(workspace_id, content)
                 if mem_id is None:
-                    return {}
+                    continue
                 record = getter(mem_id)
                 created_at = (
                     getattr(record, "created_at", "") if record is not None else ""
                 )
                 if not created_at:
-                    return {}
+                    continue
                 completed[content] = created_at
         except Exception:
-            return {}
+            return completed
         return completed
 
 

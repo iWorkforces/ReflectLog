@@ -12,6 +12,7 @@ from reflectlog.application.memory.fusion.ranx_fusion import (
     SUPPORTED_NORMALIZATIONS,
     RanxFusionEngine,
 )
+from reflectlog.utility.scoring import compute_weighted_rrf_scores_batch
 
 
 @pytest.mark.unit
@@ -136,8 +137,14 @@ class TestRanxFusionEngineAlgorithm:
         results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.8)]
         results2: List[Tuple[str, float]] = [("B", 0.9), ("A", 0.1)]
         weighted = RanxFusionEngine(method="rrf", rrf_k=60, weights=[1.0, 2.0])
-        fused = weighted.fuse(results1, results2)
+        with patch(
+            "reflectlog.application.memory.fusion.ranx_fusion."
+            "compute_weighted_rrf_scores_batch",
+            wraps=compute_weighted_rrf_scores_batch,
+        ) as weighted_rrf:
+            fused = weighted.fuse(results1, results2)
 
+        assert weighted_rrf.called
         assert [name for name, _score in fused][0] == "B"
 
     def test_document_in_both_lists_ranks_higher(

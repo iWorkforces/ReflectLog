@@ -247,7 +247,7 @@ class TestSearchTantivy:
         )
 
         result = await pipeline._search_tantivy("query", 10, "proj")
-        assert result == []
+        assert result == ([], None)
 
 
 # ---------------------------------------------------------------------------
@@ -617,5 +617,56 @@ class TestSearchSemantic:
 
         result = await pipeline._search_semantic("query", 10, "proj")
 
-        assert result == []
+        assert result[0] == []
+        assert isinstance(result[1], RuntimeError)
         mock_logger.warning.assert_called_once()
+
+
+@pytest.mark.unit
+class TestCompleteTimestampMap:
+    """_complete_timestamp_map must keep stamps it already has."""
+
+    def test_keeps_semantic_stamps_when_one_lookup_misses(
+        self, pipeline, mock_semantic_engine
+    ) -> None:
+        mock_semantic_engine.get_id_by_content.return_value = None
+        mock_semantic_engine.memory_store = MagicMock()
+        mock_semantic_engine.config = MagicMock(workspace_id="proj")
+
+        completed = pipeline._complete_timestamp_map(
+            {"known": "2026-01-01T00:00:00+00:00"},
+            ["known", "fts-only"],
+        )
+
+        assert completed == {"known": "2026-01-01T00:00:00+00:00"}
+
+    def test_keeps_completed_on_lookup_exception(
+        self, pipeline, mock_semantic_engine
+    ) -> None:
+        mock_semantic_engine.get_id_by_content.side_effect = RuntimeError("store down")
+        mock_semantic_engine.memory_store = MagicMock()
+        mock_semantic_engine.config = MagicMock(workspace_id="proj")
+
+        completed = pipeline._complete_timestamp_map(
+            {"known": "2026-01-01T00:00:00+00:00"},
+            ["known", "fts-only"],
+        )
+
+        assert completed == {"known": "2026-01-01T00:00:00+00:00"}
+
+    def test_fills_missing_from_store(self, pipeline, mock_semantic_engine) -> None:
+        mock_semantic_engine.get_id_by_content.return_value = 7
+        record = MagicMock()
+        record.created_at = "2026-02-01T00:00:00+00:00"
+        mock_semantic_engine.memory_store.get.return_value = record
+        mock_semantic_engine.config = MagicMock(workspace_id="proj")
+
+        completed = pipeline._complete_timestamp_map(
+            {"known": "2026-01-01T00:00:00+00:00"},
+            ["known", "fts-only"],
+        )
+
+        assert completed == {
+            "known": "2026-01-01T00:00:00+00:00",
+            "fts-only": "2026-02-01T00:00:00+00:00",
+        }
