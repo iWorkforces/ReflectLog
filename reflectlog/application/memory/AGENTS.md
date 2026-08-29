@@ -49,6 +49,7 @@ memory/
 
 - Never normalize scores individually - batch normalization required for relative scores
 - Never apply recency decay before normalization
+- Never treat Tantivy OSError as empty success; dual search outage (or semantic error + empty FTS) raises SearchError
 - Never skip pipeline stages for direct engine access
 - Never assume fusion scores from different algorithms are comparable
 - Never compact Tantivy inside `delete`/`delete_batch`

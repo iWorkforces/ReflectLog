@@ -54,7 +54,7 @@ infrastructure/
 
 **Exception Wrapping** - Third-party errors wrapped in domain exceptions (VectorSearchError, RerankerError) with `from e` chaining.
 
-**Soft-Delete** - Tantivy tombstones (`is_deleted`). `delete`/`delete_batch` commit only; `compact()` is maintenance (ratio≥0.2 or count≥10000).
+**Soft-Delete** - Tantivy tombstones (`is_deleted`). A text is FTS-dead iff `tomb_count >= live_count`. One `delete()` plants enough tombs to hide every live copy; search skips tomb docs and dedupes. Disk errors during search raise `SearchError` (not `[]`). `compact()` is maintenance (ratio≥0.2 or count≥10000) and rebuilds with `_get_doc_limit()`.
 
 **Fail-closed embeds** - Short/empty `embed_documents` raise. USearch: SQLite first, then vectors; mid-add rolls back HNSW keys + rows.
 

@@ -18,6 +18,7 @@ Recency decay scoring for rerankers. Score normalization and filtering functions
 
 - Never normalize individually - batch normalization required for relative scores
 - Never apply recency decay before normalization
+- Never gate on decayed scores; CE thresholds first, then recency, then top_k
 - Never skip normalization - threshold semantics require [0,1] range
 - Never return empty results when safety net can provide minimum results
 
