@@ -152,9 +152,10 @@ class TestEngineFailure:
             mock_both_error,
         )
 
-        # Mock pipeline handles errors gracefully - returns empty list
-        results = await manager.search("test query")
-        assert isinstance(results, list)
+        from reflectlog.core.exceptions import SearchError
+
+        with pytest.raises(SearchError):
+            await manager.search("test query")
 
     @pytest.mark.asyncio
     async def test_cross_encoder_reranker_failure(self, manager, monkeypatch):
@@ -163,23 +164,23 @@ class TestEngineFailure:
         Should return fusion scores without reranking.
         '''
 
-        async def mock_reranker_error(*_args, **_kwargs):
-            raise ConnectionError("cross-encoder reranker failed")
+        from reflectlog.core.exceptions import SearchError
 
-        if (
-            hasattr(manager, "_cross_encoder_reranker")
-            and manager._cross_encoder_reranker is not None
-        ):
-            monkeypatch.setattr(
-                manager._cross_encoder_reranker,
-                "rerank_async",
-                mock_reranker_error,
-            )
+        class BoomReranker:
+            async def rerank_async(self, *_args: object, **_kwargs: object) -> list[object]:
+                raise ConnectionError("cross-encoder reranker failed")
 
-        results = await manager.search("test query")
+        object.__setattr__(manager.config, "reranker_engine", "cross_encoder")
+        object.__setattr__(manager.config, "fusion_ranking_threshold", 0.0)
+        manager._cross_encoder_reranker = BoomReranker()
+        manager._semantic_engine.search.return_value = [
+            ("a", 0.9, "2026-08-22T00:00:00+00:00"),
+            ("b", 0.8, "2026-08-22T00:00:00+00:00"),
+        ]
+        manager._tantivy_engine.search.return_value = [("a", 0.7), ("b", 0.6)]
 
-        # results is a list of strings, not tuples with scores
-        assert isinstance(results, list), "Should return a list of results"
+        with pytest.raises(SearchError, match="cross-encoder"):
+            await manager.search("test query")
 
     @pytest.mark.asyncio
     async def test_network_timeout(self, manager, monkeypatch):

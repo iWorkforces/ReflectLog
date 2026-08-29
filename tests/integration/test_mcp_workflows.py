@@ -16,9 +16,17 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def get_all_side_effect(**kwargs):
             return stored_memories.copy()
@@ -55,9 +63,17 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             # Simulate semantic search returning memories containing query
@@ -80,8 +96,12 @@ class TestMCPWorkflows:
         assert add_func is not None
         assert search_func is not None
         await add_func(memories)
-        mcp_server.memory_manager.config.enable_rrf_fusion = False
-        mcp_server.memory_manager.config.reranker_engine = "none"
+        object.__setattr__(
+            mcp_server.memory_manager.config, "enable_rrf_fusion", False
+        )
+        object.__setattr__(
+            mcp_server.memory_manager.config, "reranker_engine", "none"
+        )
         result = await search_func("Python")
 
         # Verify
@@ -99,9 +119,17 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             # Return exact matches for removal
@@ -127,6 +155,11 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
         mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
+            lambda workspace_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
+            else None
+        )
+        mcp_server.memory_manager.memory.get_id_by_content.side_effect = (
             lambda workspace_id, memory: stored_memories.index(memory)
             if memory in stored_memories
             else None
@@ -179,9 +212,17 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             matching = [mem for mem in stored_memories if query.lower() in mem.lower()]
@@ -201,6 +242,11 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
+            lambda workspace_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
+            else None
+        )
+        mcp_server.memory_manager.memory.get_id_by_content.side_effect = (
             lambda workspace_id, memory: stored_memories.index(memory)
             if memory in stored_memories
             else None
@@ -226,8 +272,12 @@ class TestMCPWorkflows:
         await add_func(memories)
 
         # 2. Search for "Python" - should find 3
-        mcp_server.memory_manager.config.enable_rrf_fusion = False
-        mcp_server.memory_manager.config.reranker_engine = "none"
+        object.__setattr__(
+            mcp_server.memory_manager.config, "enable_rrf_fusion", False
+        )
+        object.__setattr__(
+            mcp_server.memory_manager.config, "reranker_engine", "none"
+        )
         python_results_before = await search_func("Python")
         assert len(python_results_before) == 3
 
@@ -246,9 +296,17 @@ class TestMCPWorkflows:
         '''Test multiple add operations in sequence.'''
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def get_all_side_effect(**kwargs):
             return stored_memories.copy()
@@ -315,11 +373,19 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            for mem in memories or []:
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            for mem in batch or []:
                 if mem not in stored_memories:
                     stored_memories.append(mem)
-            return memories or []
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             matching = [mem for mem in stored_memories if mem == query]
@@ -343,6 +409,11 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.delete.side_effect = delete_side_effect
         mcp_server.memory_manager.memory.get_all.side_effect = get_all_side_effect
         mcp_server.memory_manager.memory.get_id_by_memory.side_effect = (
+            lambda workspace_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
+            else None
+        )
+        mcp_server.memory_manager.memory.get_id_by_content.side_effect = (
             lambda workspace_id, memory: stored_memories.index(memory)
             if memory in stored_memories
             else None
@@ -398,9 +469,17 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def get_all_side_effect(**kwargs):
             return stored_memories.copy()
@@ -452,9 +531,17 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             matching = [mem for mem in stored_memories if query in mem]
@@ -508,9 +595,17 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             matching = [mem for mem in stored_memories if query.lower() in mem.lower()]

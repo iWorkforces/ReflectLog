@@ -1,21 +1,8 @@
 '''Shared fixtures and configuration for all tests.'''
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-
-def _install_fastmcp_tool_lookup(server: object) -> None:
-    """Expose FastMCP 4 tools as `_tool_manager._tools` for existing tests."""
-    tools = {
-        tool.get_name(): SimpleNamespace(name=tool.get_name(), fn=tool.get_handler())
-        for tool in getattr(server, "tools", [])
-    }
-    mcp = getattr(server, "mcp", None)
-    if mcp is None:
-        return
-    mcp._tool_manager = SimpleNamespace(_tools=tools)
 
 
 class MockMemorySearchResult:
@@ -190,7 +177,6 @@ def mcp_server(set_env_vars, mock_usearch_engine):
         server.memory_manager = server._memory_manager  # type: ignore
         # Add backwards-compatible 'memory' attribute for tests
         server.memory_manager.memory = mock_usearch_engine  # type: ignore
-        _install_fastmcp_tool_lookup(server)
         return server
 
 

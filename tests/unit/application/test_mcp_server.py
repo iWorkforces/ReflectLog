@@ -102,7 +102,7 @@ class TestAddTool:
         mcp_server.memory_manager.memory.add_batch.assert_called_once()
         # USearchEngine.add_batch is called with keyword arguments
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
-        assert call_kwargs.get("contents") == memories or call_kwargs.get("memories") == memories
+        assert call_kwargs["contents"] == memories
         assert call_kwargs["workspace_id"] == mcp_server.config.workspace_id
 
     async def test_add_multiple_memories_success(self, mcp_server, sample_memories):
@@ -123,7 +123,7 @@ class TestAddTool:
         # Verify memory.add_batch was called with correct memories
         assert mcp_server.memory_manager.memory.add_batch.call_count == 1
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
-        assert call_kwargs.get("contents") == memories or call_kwargs.get("memories") == memories
+        assert call_kwargs["contents"] == memories
 
     async def test_add_empty_list_noop(self, mcp_server):
         '''Test adding empty list is no-op (no error, no call to memory).'''
@@ -188,7 +188,7 @@ class TestAddTool:
         await add_func(memories)
         assert mcp_server.memory_manager.memory.add_batch.call_count == 1
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
-        assert call_kwargs.get("contents") == memories or call_kwargs.get("memories") == memories
+        assert call_kwargs["contents"] == memories
 
     async def test_add_non_string_memory_raises_value_error(self, mcp_server):
         '''Test adding non-string memory raises ValueError.'''
@@ -312,7 +312,7 @@ class TestAddTool:
         await add_func(memories)
         assert mcp_server.memory_manager.memory.add_batch.call_count == 1
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
-        assert call_kwargs.get("contents") == memories or call_kwargs.get("memories") == memories
+        assert call_kwargs["contents"] == memories
 
     async def test_add_skips_duplicates(self, mcp_server):
         '''Test that duplicate memories are not stored twice.'''
