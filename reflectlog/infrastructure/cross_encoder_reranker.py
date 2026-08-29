@@ -105,9 +105,7 @@ class CrossEncoderReranker(BaseModel):
 
     This class provides fast, local reranking using FlagReranker which is
     optimized for BGE reranker models. It jointly encodes query and document
-    pairs and is designed to be used as the first stage in a two-stage
-    reranking pipeline, reducing the number of candidates that need expensive
-    LLM scoring.
+    pairs and is the only rerank stage in the search pipeline.
 
     The FlagReranker model is lazily loaded on first use and cached for
     subsequent calls. Loading is thread-safe.
@@ -331,6 +329,7 @@ class CrossEncoderReranker(BaseModel):
             self.config.enable_recency_boost
             and self.config.recency_decay_rate > 0
             and bool(timestamp_map)
+            and all(doc in timestamp_map for doc, _ in scored)
         )
         return self._post_processor.apply_decay(
             scored,

@@ -155,7 +155,7 @@ class SearchPipeline:
                 "Search pipeline failed",
                 extra={
                     "workspace_id": context.workspace_id,
-                    "query": context.query,
+                    "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
                     "error": str(e),
                 },
             )
@@ -180,9 +180,11 @@ class SearchPipeline:
             )
         results: list[tuple[str, float, str]] = soon_results.value or []
 
-        # Build timestamp map and memory list
         timestamp_map = {msg: created_at for msg, _, created_at in results}
-        memories = [msg for msg, _, _ in results]
+        paired = [(msg, score) for msg, score, _ in results]
+        if len(paired) > 1:
+            paired = await self._step4_reranking(context, paired, timestamp_map, 2)
+        memories = [msg for msg, _ in paired[: context.limit]]
 
         return SearchResult(
             memories=memories,
@@ -196,7 +198,6 @@ class SearchPipeline:
         # Step 1: Parallel Search
         semantic_results, tantivy_results = await self._step1_parallel_search(context)
 
-        # Build timestamp map from semantic results
         timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
         }
@@ -209,8 +210,11 @@ class SearchPipeline:
             context, semantic_results, tantivy_results
         )
 
-        # Step 3: Fusion threshold filtering (only when RRF enabled)
-        if context.enable_rrf_fusion:
+        # Step 3: Fusion threshold applies only to fused (2+ backend) RRF output.
+        # A single unfused list keeps backend scores (cosine/BM25), which must
+        # not be compared to fusion_ranking_threshold=0.8.
+        backends_used = int(bool(semantic_results)) + int(bool(tantivy_results))
+        if context.enable_rrf_fusion and backends_used >= 2:
             hybrid_results = await self._step3_fusion_threshold(context, hybrid_results)
             # Handle case where all results were filtered out
             if not hybrid_results:
@@ -226,6 +230,9 @@ class SearchPipeline:
         if len(hybrid_results) <= 1:
             self._log_skip_reranking(len(hybrid_results), rerank_step_num)
         else:
+            timestamp_map = self._complete_timestamp_map(
+                timestamp_map, [msg for msg, _ in hybrid_results]
+            )
             hybrid_results = await self._step4_reranking(
                 context, hybrid_results, timestamp_map, rerank_step_num
             )
@@ -238,7 +245,7 @@ class SearchPipeline:
             f"SEARCH COMPLETE: {len(memories)} result(s) returned",
             extra={
                 "workspace_id": context.workspace_id,
-                "query": context.query,
+                "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
                 "result_count": len(memories),
                 "top_score": hybrid_results[0][1] if hybrid_results else 0.0,
             },
@@ -299,8 +306,9 @@ class SearchPipeline:
         """
         # Init stays outside the search fallback: a failed ensure_initialized
         # still raises SearchError from execute(), matching the prior contract.
-        is_ready = getattr(self._semantic_engine, "is_ready", None)
-        if not callable(is_ready) or not is_ready():
+        # Use the real class method so MagicMock auto-attrs cannot skip init.
+        is_ready = type(self._semantic_engine).__dict__.get("is_ready")
+        if not callable(is_ready) or not is_ready(self._semantic_engine):
             await asyncify(self._semantic_engine.ensure_initialized)()
         try:
             results: list[tuple[str, float, str]] = await asyncify(
@@ -332,13 +340,25 @@ class SearchPipeline:
         """Execute full-text search on Tantivy engine."""
         if self._tantivy_engine is None:
             return []
-        is_ready = getattr(self._tantivy_engine, "is_ready", None)
-        if not callable(is_ready) or not is_ready():
+        is_ready = type(self._tantivy_engine).__dict__.get("is_ready")
+        if not callable(is_ready) or not is_ready(self._tantivy_engine):
             await asyncify(self._tantivy_engine.ensure_initialized)()
-        tantivy_results: list[tuple[str, float]] = await asyncify(
-            self._tantivy_engine.search
-        )(query, workspace_id, limit)
-        return tantivy_results
+        try:
+            tantivy_results: list[tuple[str, float]] = await asyncify(
+                self._tantivy_engine.search
+            )(query, workspace_id, limit)
+            return tantivy_results
+        except Exception as e:
+            self.logger.warning(
+                "Tantivy search failed - continuing with semantic results only",
+                extra={
+                    "workspace_id": workspace_id,
+                    "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+            )
+            return []
 
     async def _step2_fusion_or_concatenate(
         self,
@@ -644,6 +664,33 @@ class SearchPipeline:
             self.logger.info("No results found", extra={"result_count": 0})
 
         self.logger.info("─" * 50, extra={"section": "fusion"})
+
+    def _complete_timestamp_map(
+        self, timestamp_map: dict[str, str], contents: list[str]
+    ) -> dict[str, str]:
+        """Resolve created_at for every candidate. Empty map disables recency."""
+        completed = dict(timestamp_map)
+        missing = [content for content in contents if content not in completed]
+        if not missing:
+            return completed
+
+        get_id = getattr(self._semantic_engine, "get_id_by_content", None)
+        store = getattr(self._semantic_engine, "memory_store", None)
+        getter = getattr(store, "get", None)
+        workspace_id = getattr(getattr(self._semantic_engine, "config", None), "workspace_id", None)
+        if not callable(get_id) or not callable(getter) or workspace_id is None:
+            return {}
+
+        for content in missing:
+            mem_id = get_id(workspace_id, content)
+            if mem_id is None:
+                return {}
+            record = getter(mem_id)
+            created_at = getattr(record, "created_at", "") if record is not None else ""
+            if not created_at:
+                return {}
+            completed[content] = created_at
+        return completed
 
 
 def calculate_adaptive_overfetch(limit: int, index_size: int, config: Config) -> int:

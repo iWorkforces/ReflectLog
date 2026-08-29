@@ -614,7 +614,7 @@ class TestSingleResultRerankingSkip:
 
                         # Setup CrossEncoder reranker mock
                         mock_reranker = MagicMock()
-                        mock_reranker.rerank = AsyncMock(
+                        mock_reranker.rerank_async = AsyncMock(
                             return_value=[("single result", 0.95)]
                         )
                         mock_reranker_class.return_value = mock_reranker
@@ -623,7 +623,7 @@ class TestSingleResultRerankingSkip:
                         results = await manager.search("test query")
 
                         # Reranker should NOT be called (skipped for single result)
-                        mock_reranker.rerank.assert_not_called()
+                        mock_reranker.rerank_async.assert_not_awaited()
 
                         # Result should still be returned
                         assert len(results) == 1
@@ -719,14 +719,14 @@ class TestSingleResultRerankingSkip:
 
                         # Setup CrossEncoder reranker mock
                         mock_reranker = MagicMock()
-                        mock_reranker.rerank = AsyncMock(return_value=[])
+                        mock_reranker.rerank_async = AsyncMock(return_value=[])
                         mock_reranker_class.return_value = mock_reranker
 
                         manager = MemoryManager(mock_config, mock_logger)
                         results = await manager.search("test query")
 
                         # Reranker should NOT be called (no results to rerank)
-                        mock_reranker.rerank.assert_not_called()
+                        mock_reranker.rerank_async.assert_not_awaited()
 
                         # Empty results expected (no results from either engine)
                         assert len(results) == 0

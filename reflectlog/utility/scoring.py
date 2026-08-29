@@ -241,6 +241,28 @@ def compute_rrf_scores_batch(
     return scores
 
 
+@jit(nopython=True, cache=True, fastmath=True, parallel=True)
+def compute_weighted_rrf_scores_batch(
+    ranks_matrix: NDArray[np.int64],
+    weights: NDArray[np.float64],
+    k: int = 60,
+) -> NDArray[np.float64]:
+    """Weighted RRF: score(d) = sum_j w_j / (k + rank_j(d))."""
+    n_docs = ranks_matrix.shape[0]
+    n_rankings = ranks_matrix.shape[1]
+    scores = np.zeros(n_docs, dtype=np.float64)
+
+    for i in prange(n_docs):
+        total = 0.0
+        for j in range(n_rankings):
+            rank = ranks_matrix[i, j]
+            if rank > 0:
+                total += weights[j] / (k + rank)
+        scores[i] = total
+
+    return scores
+
+
 def warmup_numba_functions() -> bool:
     """Pre-compile all numba JIT functions to avoid first-call latency.
 
@@ -269,6 +291,9 @@ def warmup_numba_functions() -> bool:
         _ = normalize_scores_minmax(test_scores)
         _ = filter_scores_by_threshold(test_scores, 0.5)
         _ = compute_rrf_scores_batch(test_ranks, k=60)
+        _ = compute_weighted_rrf_scores_batch(
+            test_ranks, np.array([1.0, 1.0], dtype=np.float64), k=60
+        )
         _ = distance_to_similarity_cosine(test_distances)
 
         return True

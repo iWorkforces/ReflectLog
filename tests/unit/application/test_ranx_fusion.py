@@ -117,6 +117,31 @@ class TestRanxFusionEngineAlgorithm:
         assert fused[1][1] == pytest.approx(0.89)
         assert all(score >= 0.8 for _name, score in fused)
 
+    def test_disjoint_rank1_ties_normalize_to_one(
+        self, engine: RanxFusionEngine
+    ) -> None:
+        """Equal RRF scores must become 1.0 so the default 0.8 gate keeps them."""
+        results1: List[Tuple[str, float]] = [("semantic-only", 0.65)]
+        results2: List[Tuple[str, float]] = [("lexical-only", 0.40)]
+
+        fused = engine.fuse(results1, results2)
+
+        assert {name for name, _score in fused} == {"semantic-only", "lexical-only"}
+        assert all(score == pytest.approx(1.0) for _name, score in fused)
+
+    def test_weighted_rrf_uses_numba_weights(
+        self, engine: RanxFusionEngine
+    ) -> None:
+        """Weighted RRF must apply weights instead of dropping them."""
+        weighted = RanxFusionEngine(method="rrf", rrf_k=60, weights=[2.0, 1.0])
+        results1: List[Tuple[str, float]] = [("A", 0.9)]
+        results2: List[Tuple[str, float]] = [("B", 0.9)]
+
+        fused = weighted.fuse(results1, results2)
+
+        names = [name for name, _score in fused]
+        assert names[0] == "A"
+
     def test_document_in_both_lists_ranks_higher(
         self, engine: RanxFusionEngine
     ) -> None:
@@ -253,29 +278,18 @@ class TestRanxFusionEngineDifferentMethods:
         # All scores should be non-negative
         assert all(score >= 0 for _, score in fused)
 
-    def test_weighted_rrf_retries_without_weights_on_typeerror(self) -> None:
-        """Installed ranx RRF TypeError on weights falls back to unweighted."""
-        mock_logger = MagicMock()
-        engine = RanxFusionEngine(
-            method="rrf", weights=[1.0, 0.5], logger=mock_logger
-        )
+    def test_weighted_non_rrf_fails_closed_on_typeerror(self) -> None:
+        """Non-RRF fusion must not silently drop weights on TypeError."""
+        engine = RanxFusionEngine(method="sum", weights=[1.0, 0.5])
         results1: List[Tuple[str, float]] = [("A", 0.9)]
         results2: List[Tuple[str, float]] = [("B", 0.8)]
 
-        def fake_fuse(**kwargs):
-            params = kwargs.get("params") or {}
-            if isinstance(params, dict) and "weights" in params:
-                raise TypeError("fuse() got an unexpected keyword argument")
-            return Run({"q": {"A": 0.9, "B": 0.8}})
-
         with patch(
             "reflectlog.application.memory.fusion.ranx_fusion.ranx_fuse",
-            side_effect=fake_fuse,
+            side_effect=TypeError("weights not supported"),
         ):
-            fused = engine.fuse(results1, results2)
-
-        assert {name for name, _score in fused} == {"A", "B"}
-        mock_logger.warning.assert_called()
+            with pytest.raises(RuntimeError, match="refusing unweighted fallback"):
+                engine.fuse(results1, results2)
 
 
 @pytest.mark.unit
