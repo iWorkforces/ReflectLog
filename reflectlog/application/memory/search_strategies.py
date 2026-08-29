@@ -195,12 +195,14 @@ class SearchPipeline:
         # does not stall unrelated AnyIO/MCP work on the event loop.
         # A task group waits for that worker if the caller cancels,
         # matching hybrid search (asyncify alone does not).
+        soon_results = None
         async with create_task_group() as tg:
             soon_results = tg.soonify(asyncify(self._semantic_engine.search))(
                 query=context.query,
                 workspace_id=context.workspace_id,
                 limit=context.limit,
             )
+        assert soon_results is not None
         results: list[tuple[str, float, str]] = soon_results.value or []
 
         timestamp_map = {msg: created_at for msg, _, created_at in results}
