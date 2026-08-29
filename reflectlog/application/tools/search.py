@@ -126,7 +126,9 @@ class SearchTool(BaseTool):
                 _ = self._log_operation_footer("search", start_time)
 
                 self.log_completion(
-                    "search", query=query, result_count=len(similar_memories)
+                    "search",
+                    query=query[:100],
+                    result_count=len(similar_memories),
                 )
 
                 return similar_memories
@@ -137,7 +139,7 @@ class SearchTool(BaseTool):
                     e,
                     error_cls=SearchError,
                     message="Failed to search memory store",
-                    query=query,
+                    query=query[:100],
                 )
 
         return search
