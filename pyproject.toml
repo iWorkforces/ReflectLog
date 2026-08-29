@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "fastmcp>=3.4.7",
-    "pydantic>=2.13.4",
+    "pydantic>=2.13.5",
     "fastapi[standard]>=0.141.1",
     "uvicorn[standard]>=0.52.4",
     "asyncer>=0.0.18",
@@ -30,7 +30,7 @@ dependencies = [
     "uvloop>=0.22.1",
     "httptools>=0.8.0",
     "starlette>=1.6.0",
-    "openai>=3.5.0",
+    "openai>=3.6.0",
     "tiktoken>=0.14.0",
     "aiohttp>=3.14.3",
     "aiodns>=4.0.4",
@@ -50,7 +50,7 @@ dependencies = [
     "sentence-transformers>=6.0.0",
     "flagembedding>=1.4.2",
     "transformers<=5.16.1",
-    "claude-agent-sdk>=0.2.147",
+    "claude-agent-sdk>=0.2.148",
     "pydantic-core>=2.48.0",
 ]
 
