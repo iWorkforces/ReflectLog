@@ -95,11 +95,11 @@ class TestNormalize:
         assert lookup["c"] == pytest.approx(1.0)
 
     def test_all_equal_scores(self) -> None:
-        """All equal scores normalize to 0.5 (neutral baseline)."""
+        """All equal scores normalize to 1.0 (equally good)."""
         pp = RerankerPostProcessor(min_results=1, batch_normalize=True)
         result = pp.normalize([("a", 0.5), ("b", 0.5), ("c", 0.5)])
         for _, score in result:
-            assert score == pytest.approx(0.5)
+            assert score == pytest.approx(1.0)
 
     def test_logs_when_logger_present(self) -> None:
         """Logger is called with the configured log level after normalization."""

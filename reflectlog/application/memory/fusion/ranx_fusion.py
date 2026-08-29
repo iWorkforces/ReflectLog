@@ -344,21 +344,6 @@ class RanxFusionEngine(FusionEngine):
         if not runs:
             return []
 
-        # ranx.fuse() requires at least 2 runs - handle single run case
-        if len(runs) == 1:
-            sorted_results = self._convert_from_run(runs[0])
-            if self.logger:
-                self.logger.debug(
-                    f"Single result set - no fusion needed: {len(sorted_results)} results",
-                    extra={
-                        "method": self._method,
-                        "input_sets": len(result_sets),
-                        "non_empty_sets": 1,
-                        "unique_count": len(sorted_results),
-                    },
-                )
-            return sorted_results
-
         # Build params for ranx.fuse()
         params: dict[str, Any] | None = None
         if self._method == "rrf":

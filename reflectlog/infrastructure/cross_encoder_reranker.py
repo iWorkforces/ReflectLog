@@ -270,8 +270,8 @@ class CrossEncoderReranker(BaseModel):
             - If candidates is empty, returns empty list
             - With normalize=True, scores are in [0, 1] range (sigmoid applied)
             - With normalize=False, scores can be any real number
-            - Recency decay is applied after normalization when
-              enable_recency_boost=True
+            - Recency decay reorders after the score threshold so age
+              cannot empty a batch that already passed CE quality
         """
         if not candidates:
             return []
@@ -285,12 +285,12 @@ class CrossEncoderReranker(BaseModel):
             return candidates
 
         scored = self._compute_scores(query, candidates)
-        scored = self._apply_post_processing(scored, timestamp_map)
+        scored = self._post_processor.normalize(scored)
         self._log_candidate_scores(scored)
-
         scored.sort(key=lambda x: x[1], reverse=True)
+        # Gate on pre-decay CE quality so recency only reorders survivors.
         scored = self._apply_threshold_and_limit(scored)
-
+        scored = self._apply_recency_reorder(scored, timestamp_map)
         return scored
 
     def _compute_scores(
@@ -317,19 +317,17 @@ class CrossEncoderReranker(BaseModel):
             for (doc, _), score in zip(candidates, scores, strict=True)
         ]
 
-    def _apply_post_processing(
+    def _apply_recency_reorder(
         self,
         scored: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None,
     ) -> list[tuple[str, float]]:
-        """Apply normalization and optional recency decay."""
-        scored = self._post_processor.normalize(scored)
-
+        """Reorder survivors by recency. Missing or empty timestamps disable decay."""
         decay_enabled = (
             self.config.enable_recency_boost
             and self.config.recency_decay_rate > 0
             and bool(timestamp_map)
-            and all(doc in timestamp_map for doc, _ in scored)
+            and all(bool(timestamp_map.get(doc)) for doc, _ in scored)
         )
         return self._post_processor.apply_decay(
             scored,

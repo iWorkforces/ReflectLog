@@ -230,7 +230,7 @@ class SearchPipeline:
         if len(hybrid_results) <= 1:
             self._log_skip_reranking(len(hybrid_results), rerank_step_num)
         else:
-            timestamp_map = self._complete_timestamp_map(
+            timestamp_map = await asyncify(self._complete_timestamp_map)(
                 timestamp_map, [msg for msg, _ in hybrid_results]
             )
             hybrid_results = await self._step4_reranking(
@@ -282,8 +282,16 @@ class SearchPipeline:
         assert soon_semantic is not None
         assert soon_tantivy is not None
 
-        semantic_results = soon_semantic.value or []
-        tantivy_results = soon_tantivy.value or []
+        semantic_results, semantic_error = soon_semantic.value
+        tantivy_results, tantivy_error = soon_tantivy.value
+        if semantic_error is not None and tantivy_error is not None:
+            raise SearchError(
+                f"Failed to execute search: {semantic_error}"
+            ) from semantic_error
+        if semantic_error is not None and self._tantivy_engine is None:
+            raise SearchError(
+                f"Failed to execute search: {semantic_error}"
+            ) from semantic_error
 
         self.logger.info(
             f"Both engines completed (semantic: {len(semantic_results)}, tantivy: {len(tantivy_results)})",
@@ -299,10 +307,11 @@ class SearchPipeline:
 
     async def _search_semantic(
         self, query: str, limit: int, workspace_id: str
-    ) -> list[tuple[str, float, str]]:
+    ) -> tuple[list[tuple[str, float, str]], Exception | None]:
         """Execute semantic search on USearchEngine.
 
-        Falls back to empty list on error, relying on Tantivy results.
+        Returns (results, error). A failed search yields [] plus the error
+        so the caller can raise if every backend failed.
         """
         # Init stays outside the search fallback: a failed ensure_initialized
         # still raises SearchError from execute(), matching the prior contract.
@@ -318,9 +327,8 @@ class SearchPipeline:
                 workspace_id=workspace_id,
                 limit=limit,
             )
-            return results
+            return results, None
         except Exception as e:
-            # Enhanced diagnostic logging for semantic search fallback
             self.logger.warning(
                 "Semantic search failed - falling back to Tantivy full-text only",
                 extra={
@@ -332,14 +340,14 @@ class SearchPipeline:
                     "note": "Search will continue with Tantivy results only",
                 },
             )
-            return []
+            return [], e
 
     async def _search_tantivy(
         self, query: str, limit: int, workspace_id: str
-    ) -> list[tuple[str, float]]:
+    ) -> tuple[list[tuple[str, float]], Exception | None]:
         """Execute full-text search on Tantivy engine."""
         if self._tantivy_engine is None:
-            return []
+            return [], None
         is_ready = type(self._tantivy_engine).__dict__.get("is_ready")
         if not callable(is_ready) or not is_ready(self._tantivy_engine):
             await asyncify(self._tantivy_engine.ensure_initialized)()
@@ -347,7 +355,7 @@ class SearchPipeline:
             tantivy_results: list[tuple[str, float]] = await asyncify(
                 self._tantivy_engine.search
             )(query, workspace_id, limit)
-            return tantivy_results
+            return tantivy_results, None
         except Exception as e:
             self.logger.warning(
                 "Tantivy search failed - continuing with semantic results only",
@@ -358,7 +366,7 @@ class SearchPipeline:
                     "error": str(e),
                 },
             )
-            return []
+            return [], e
 
     async def _step2_fusion_or_concatenate(
         self,
@@ -669,27 +677,38 @@ class SearchPipeline:
         self, timestamp_map: dict[str, str], contents: list[str]
     ) -> dict[str, str]:
         """Resolve created_at for every candidate. Empty map disables recency."""
-        completed = dict(timestamp_map)
+        completed = {
+            content: stamp
+            for content, stamp in timestamp_map.items()
+            if stamp
+        }
         missing = [content for content in contents if content not in completed]
         if not missing:
             return completed
 
-        get_id = getattr(self._semantic_engine, "get_id_by_content", None)
-        store = getattr(self._semantic_engine, "memory_store", None)
-        getter = getattr(store, "get", None)
-        workspace_id = getattr(getattr(self._semantic_engine, "config", None), "workspace_id", None)
-        if not callable(get_id) or not callable(getter) or workspace_id is None:
-            return {}
+        try:
+            get_id = getattr(self._semantic_engine, "get_id_by_content", None)
+            store = getattr(self._semantic_engine, "memory_store", None)
+            getter = getattr(store, "get", None)
+            workspace_id = getattr(
+                getattr(self._semantic_engine, "config", None), "workspace_id", None
+            )
+            if not callable(get_id) or not callable(getter) or workspace_id is None:
+                return {}
 
-        for content in missing:
-            mem_id = get_id(workspace_id, content)
-            if mem_id is None:
-                return {}
-            record = getter(mem_id)
-            created_at = getattr(record, "created_at", "") if record is not None else ""
-            if not created_at:
-                return {}
-            completed[content] = created_at
+            for content in missing:
+                mem_id = get_id(workspace_id, content)
+                if mem_id is None:
+                    return {}
+                record = getter(mem_id)
+                created_at = (
+                    getattr(record, "created_at", "") if record is not None else ""
+                )
+                if not created_at:
+                    return {}
+                completed[content] = created_at
+        except Exception:
+            return {}
         return completed
 
 

@@ -624,6 +624,17 @@ class TestBackendFailureContracts:
         assert result.tantivy_results == []
 
     @pytest.mark.asyncio
+    async def test_both_backend_search_failures_raise_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.search.side_effect = RuntimeError("embed fail")
+        tantivy = MagicMock()
+        tantivy.search.side_effect = RuntimeError("tantivy boom")
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        with pytest.raises(SearchError, match="Failed to execute search"):
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+    @pytest.mark.asyncio
     async def test_tantivy_init_failure_raises_search_error(self) -> None:
         semantic = MagicMock()
         semantic.is_ready.return_value = True
@@ -639,7 +650,7 @@ class TestBackendFailureContracts:
     @pytest.mark.asyncio
     async def test_tantivy_none_returns_empty(self) -> None:
         pipeline = _make_pipeline(semantic=MagicMock(), tantivy=None)
-        assert await pipeline._search_tantivy("q", 10, "proj") == []
+        assert await pipeline._search_tantivy("q", 10, "proj") == ([], None)
 
 
 @pytest.mark.unit

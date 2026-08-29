@@ -132,15 +132,13 @@ class TestRanxFusionEngineAlgorithm:
     def test_weighted_rrf_uses_numba_weights(
         self, engine: RanxFusionEngine
     ) -> None:
-        """Weighted RRF must apply weights instead of dropping them."""
-        weighted = RanxFusionEngine(method="rrf", rrf_k=60, weights=[2.0, 1.0])
-        results1: List[Tuple[str, float]] = [("A", 0.9)]
-        results2: List[Tuple[str, float]] = [("B", 0.9)]
-
+        """Weighted RRF must change rank order versus unweighted RRF."""
+        results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.8)]
+        results2: List[Tuple[str, float]] = [("B", 0.9), ("A", 0.1)]
+        weighted = RanxFusionEngine(method="rrf", rrf_k=60, weights=[1.0, 2.0])
         fused = weighted.fuse(results1, results2)
 
-        names = [name for name, _score in fused]
-        assert names[0] == "A"
+        assert [name for name, _score in fused][0] == "B"
 
     def test_document_in_both_lists_ranks_higher(
         self, engine: RanxFusionEngine

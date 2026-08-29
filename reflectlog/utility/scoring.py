@@ -344,14 +344,13 @@ def normalize_reranker_scores(
         # Single result is best by definition
         return [(scored_results[0][0], 1.0)]
 
-    # Extract documents and scores
     documents = [doc for doc, _ in scored_results]
     scores: NDArray[np.float64] = np.array(
         [score for _, score in scored_results], dtype=np.float64
     )
+    if float(np.max(scores)) == float(np.min(scores)):
+        return [(doc, 1.0) for doc in documents]
 
-    # Use numba-accelerated min-max normalization
-    # This handles edge cases like all-equal scores (returns 1.0 for all)
     normalized = normalize_scores_minmax(scores)
 
     return [
