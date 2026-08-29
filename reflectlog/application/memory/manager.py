@@ -169,15 +169,21 @@ class MemoryManager:
                     workspace_id=self.workspace_id
                 ).lower(),
                 normalize_scores=self.config.tantivy_normalize_scores,
+                soft_delete_enabled=self.config.tantivy_soft_delete_enabled,
+                compaction_threshold_ratio=self.config.tantivy_compaction_threshold_ratio,
+                compaction_max_tombstones=self.config.tantivy_compaction_max_tombstones,
+                tombstone_ttl_days=self.config.tantivy_tombstone_ttl_days,
             )
             self._tantivy_engine = TantivyEngine(tantivy_config, logger=self.logger)
 
     def _init_fusion_engine(self) -> None:
         """Create fusion engine for hybrid ranking."""
+        fusion_weights = self.config.fusion_weights
         self._fusion_engine: FusionEngine = create_fusion_engine(
             method=self.config.fusion_method,
             normalization=self.config.fusion_normalization,
             rrf_k=self.config.fusion_rrf_k,
+            weights=fusion_weights if isinstance(fusion_weights, list) else None,
             logger=self.logger,
         )
 
@@ -622,10 +628,9 @@ class MemoryManager:
         Raises:
             RuntimeError: If storage operation fails.
         """
-        with self._write_lock, self._lock:
-            stored_count = 0
-            memories_to_add: list[str] = []
-            seen_memories: set[str] = set()
+        memories_to_add: list[str] = []
+        seen_memories: set[str] = set()
+        with self._lock:
 
             log_limit = min(len(memories), LOG_ADD_MEMORY_PREVIEW_LIMIT)
             for idx, memory in enumerate(memories, 1):
@@ -669,54 +674,61 @@ class MemoryManager:
                     },
                 )
 
-            if memories_to_add:
+        if not memories_to_add:
+            return 0
+
+        embedder = getattr(self._semantic_engine, "embedder", None)
+        embed_documents = getattr(embedder, "embed_documents", None)
+        vectors: list[list[float]] | None = None
+        if callable(embed_documents):
+            computed = embed_documents(memories_to_add)
+            if isinstance(computed, list):
+                typed_vectors: list[list[float]] = []
+                valid = True
+                for item in computed:
+                    if not isinstance(item, list):
+                        valid = False
+                        break
+                    typed_vectors.append(item)
+                if valid:
+                    vectors = typed_vectors
+
+        with self._write_lock, self._lock:
+            if vectors is None:
                 inserted_memories = self._semantic_engine.add_batch(
                     workspace_id=self.workspace_id,
                     contents=memories_to_add,
                     infer=self.config.enable_llm_infer,
                 )
+            else:
+                inserted_memories = self._semantic_engine.add_batch(
+                    workspace_id=self.workspace_id,
+                    contents=memories_to_add,
+                    infer=self.config.enable_llm_infer,
+                    vectors=vectors,
+                )
 
-                if self._tantivy_engine is not None:
+            if self._tantivy_engine is not None:
+                add_batch = type(self._tantivy_engine).__dict__.get("add_batch")
+                if callable(add_batch):
+                    _ = add_batch(
+                        self._tantivy_engine, self.workspace_id, inserted_memories
+                    )
+                else:
                     for memory in inserted_memories:
                         self._tantivy_engine.add(self.workspace_id, memory)
 
-                stored_count = len(inserted_memories)
-                inserted_set = set(inserted_memories)
-
-                stored_log_limit = min(
-                    len(memories_to_add), LOG_ADD_MEMORY_PREVIEW_LIMIT
+            stored_count = len(inserted_memories)
+            if stored_count != len(memories_to_add):
+                self.logger.warning(
+                    "    Skipped during batch insert",
+                    extra={
+                        "reason": "batch_insert_skipped",
+                        "expected_count": len(memories_to_add),
+                        "stored_count": stored_count,
+                    },
                 )
-                for idx, memory in enumerate(memories_to_add, 1):
-                    if idx > stored_log_limit:
-                        break
-                    if memory in inserted_set:
-                        self.logger.info(
-                            "    Stored in USearch (semantic) + Tantivy (full-text)",
-                            extra={
-                                "memory_index": idx,
-                                "engines": ["usearch", "tantivy"]
-                                if self._tantivy_engine
-                                else ["usearch"],
-                            },
-                        )
-                    else:
-                        self.logger.warning(
-                            "    Skipped during batch insert",
-                            extra={
-                                "memory_index": idx,
-                                "reason": "batch_insert_skipped",
-                            },
-                        )
-                if len(memories_to_add) > stored_log_limit:
-                    self.logger.info(
-                        f"  ... {len(memories_to_add) - stored_log_limit} more result(s) omitted from logs",
-                        extra={
-                            "omitted_count": len(memories_to_add) - stored_log_limit,
-                            "total_memories": len(memories_to_add),
-                        },
-                    )
 
-            # Commit Tantivy changes after batch
             if self._tantivy_engine is not None:
                 self._tantivy_engine.commit()
                 self.logger.info(
@@ -724,7 +736,6 @@ class MemoryManager:
                     extra={"engine": "tantivy"},
                 )
 
-            # Commit USearch semantic engine changes
             self._semantic_engine.commit()
             self.logger.info(
                 "  USearch index committed",
@@ -780,22 +791,19 @@ class MemoryManager:
         Raises:
             RuntimeError: If retrieval operation fails.
         """
-        with self._lock:
-            try:
+        try:
+            with self._lock:
                 memories = self._semantic_engine.get_all(workspace_id=self.workspace_id)
-
-                self.logger.info(
-                    f"Retrieved {len(memories)} memories (USearchEngine={len(memories)})",
-                    extra={
-                        "workspace_id": self.workspace_id,
-                        "count": len(memories),
-                    },
-                )
-
-                return memories
-
-            except Exception as e:
-                raise StorageError(f"Failed to retrieve memories: {e}") from e
+            self.logger.info(
+                f"Retrieved {len(memories)} memories (USearchEngine={len(memories)})",
+                extra={
+                    "workspace_id": self.workspace_id,
+                    "count": len(memories),
+                },
+            )
+            return memories
+        except Exception as e:
+            raise StorageError(f"Failed to retrieve memories: {e}") from e
 
     async def search(
         self,
@@ -987,7 +995,6 @@ class MemoryManager:
                 # If this fails after USearch deletion, we have inconsistent state
                 if self._tantivy_engine is not None:
                     try:
-                        # delete() commits internally for both soft-delete and rebuild modes
                         _ = self._tantivy_engine.delete(self.workspace_id, memory)
                     except Exception as tantivy_error:
                         # Log critical error - state is now inconsistent
@@ -1024,6 +1031,36 @@ class MemoryManager:
 
     def delete_by_message(self, message: str) -> bool:
         return self.delete_by_memory(message)
+
+    def delete_memories(self, memories: list[str]) -> int:
+        """Delete many memories under one write lock and one Tantivy commit."""
+        unique = list(dict.fromkeys(memories))
+        if not unique:
+            return 0
+        with self._write_lock, self._lock:
+            found: list[tuple[int, str]] = []
+            for memory in unique:
+                mem_id = self.get_id_by_content(memory)
+                if mem_id is not None:
+                    found.append((mem_id, memory))
+            for mem_id, _memory in found:
+                self._semantic_engine.delete(memory_id=str(mem_id))
+            if found and self._tantivy_engine is not None:
+                delete_batch = type(self._tantivy_engine).__dict__.get("delete_batch")
+                contents = [memory for _mem_id, memory in found]
+                if callable(delete_batch):
+                    _ = delete_batch(
+                        self._tantivy_engine,
+                        self.workspace_id,
+                        contents,
+                        verify_exists=False,
+                    )
+                else:
+                    for content in contents:
+                        _ = self._tantivy_engine.delete(self.workspace_id, content)
+            if found:
+                self._semantic_engine.commit()
+            return len(found)
 
     def get_id_by_content(self, content: str) -> int | None:
         """Get SQLite ID for exact memory content match.

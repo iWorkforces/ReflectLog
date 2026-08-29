@@ -90,8 +90,9 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -110,8 +111,9 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -133,6 +135,7 @@ class TestHybridMemoryManager:
                     # Setup USearch engine mock
                     mock_usearch = MagicMock()
                     mock_usearch.add_batch.return_value = ["test"]
+                    mock_usearch.get_id_by_content.return_value = None
                     mock_usearch_class.return_value = mock_usearch
 
                     # Setup tantivy mock
@@ -203,8 +206,9 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -213,14 +217,13 @@ class TestHybridMemoryManager:
                     mock_tantivy_class.return_value = mock_tantivy
 
                     manager = MemoryManager(mock_config, mock_logger)
+                    mock_usearch = mock_usearch_class.return_value
 
-                    # Should find exact match via Tantivy
-                    mock_tantivy.search.return_value = [("test message", 1.0)]
+                    mock_usearch.get_id_by_content.return_value = 1
                     result = manager._has_exact_match("test message")
                     assert result is True
 
-                    # Should not find different message
-                    mock_tantivy.search.return_value = [("different message", 1.0)]
+                    mock_usearch.get_id_by_content.return_value = None
                     result = manager._has_exact_match("test message")
                     assert result is False
 
@@ -310,8 +313,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch("reflectlog.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
@@ -327,8 +331,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -350,8 +355,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -380,8 +386,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -411,8 +418,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -421,13 +429,14 @@ class TestParallelMemoryAddition:
 
                     # Use a function to return different results based on memory
                     # Note: _has_exact_match wraps query in quotes: f'"{escaped_query}"'
-                    def tantivy_search_side_effect(query, workspace_id, limit=5):
-                        # Strip quotes to get original memory
-                        if query == '"duplicate"':
-                            return [("duplicate", 1.0)]  # Found duplicate
-                        return []  # No match for other memories
+                    mock_usearch = mock_usearch_class.return_value
 
-                    mock_tantivy.search.side_effect = tantivy_search_side_effect
+                    def get_id(_workspace_id, content):
+                        if content == "duplicate":
+                            return 1
+                        return None
+
+                    mock_usearch.get_id_by_content.side_effect = get_id
                     mock_tantivy_class.return_value = mock_tantivy
 
                     manager = MemoryManager(mock_config, mock_logger)
@@ -451,6 +460,7 @@ class TestParallelMemoryAddition:
                     mock_usearch = MagicMock()
                     mock_usearch.add_batch.side_effect = Exception("Storage error")
                     mock_usearch.search.return_value = []  # For deduplication check
+                    mock_usearch.get_id_by_content.return_value = None
                     mock_usearch_class.return_value = mock_usearch
 
                     # Setup Tantivy mock
@@ -477,8 +487,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -520,8 +531,9 @@ class TestConcurrencyConfiguration:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -543,8 +555,9 @@ class TestConcurrencyConfiguration:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories, infer: memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
+            mock_usearch_class.return_value.get_id_by_content.return_value = None
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"

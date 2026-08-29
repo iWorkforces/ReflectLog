@@ -711,22 +711,48 @@ class StoragePhase:
         memories: list[str],
         replacement_map: dict[str, list[ReplacementInfo]],
     ) -> tuple[int, list[ReplacementInfo]]:
-        """Record every transition, then delete, add, commit, and complete."""
+        """Embed outside the write lock, then record, delete, add, and commit."""
+        vectors = self._embed_for_persist(memories)
         if self._write_lock is None:
-            return self._persist_replacements_unlocked(memories, replacement_map)
+            return self._persist_replacements_unlocked(
+                memories, replacement_map, vectors
+            )
         with self._write_lock:
-            return self._persist_replacements_unlocked(memories, replacement_map)
+            return self._persist_replacements_unlocked(
+                memories, replacement_map, vectors
+            )
+
+    def _embed_for_persist(self, memories: list[str]) -> list[list[float]] | None:
+        """Compute document embeddings before taking the write lock."""
+        if not memories:
+            return None
+        embedder = getattr(self._semantic_engine, "embedder", None)
+        embed_documents = getattr(embedder, "embed_documents", None)
+        if not callable(embed_documents):
+            return None
+        computed = embed_documents(memories)
+        if not isinstance(computed, list):
+            return None
+        typed: list[list[float]] = []
+        for item in computed:
+            if not isinstance(item, list):
+                return None
+            typed.append([float(value) for value in item])
+        return typed
 
     def _persist_replacements_unlocked(
         self,
         memories: list[str],
         replacement_map: dict[str, list[ReplacementInfo]],
+        vectors: list[list[float]] | None = None,
     ) -> tuple[int, list[ReplacementInfo]]:
         """Mutate indexes while the caller already holds ``_write_lock``."""
         planned, replacements = self._plan_replacements(memories, replacement_map)
         transitions = self._record_planned_transitions(planned)
         self._delete_recorded_olds(transitions)
-        stored_count = self._store_and_commit(memories, dry_run=False, locked=True)
+        stored_count = self._store_and_commit(
+            memories, dry_run=False, locked=True, vectors=vectors
+        )
         self._complete_if_converged(transitions)
         return stored_count, replacements
 
@@ -872,13 +898,11 @@ class StoragePhase:
 
     def _delete_recorded_olds(self, transitions: list[ReplacementTransition]) -> None:
         """Delete each recorded old memory after transitions are durable."""
+        contents: list[str] = []
         for transition in transitions:
             try:
-                self._delete_memory(
-                    memory_id=str(transition.old_memory_id),
-                    content=transition.old_content,
-                    locked=True,
-                )
+                self._semantic_engine.delete(memory_id=str(transition.old_memory_id))
+                contents.append(transition.old_content)
             except Exception as delete_error:
                 self.logger.warning(
                     f"Failed to delete old memory: {delete_error}",
@@ -892,6 +916,18 @@ class StoragePhase:
                     f"Failed to delete old memory after recording transition "
                     f"{transition.id}: {delete_error}"
                 ) from delete_error
+        if contents and self._tantivy_engine is not None:
+            delete_batch = type(self._tantivy_engine).__dict__.get("delete_batch")
+            if callable(delete_batch):
+                _ = delete_batch(
+                    self._tantivy_engine,
+                    self._workspace_id,
+                    contents,
+                    verify_exists=False,
+                )
+            else:
+                for content in contents:
+                    _ = self._tantivy_engine.delete(self._workspace_id, content)
 
     def _store_and_commit(
         self,
@@ -899,12 +935,15 @@ class StoragePhase:
         dry_run: bool,
         *,
         locked: bool = False,
+        vectors: list[list[float]] | None = None,
     ) -> int:
         """Batch-add new memories and commit changes to engines."""
         if dry_run or not memories_to_add:
             return 0
 
-        stored_memories = self._add_memories_batch(memories_to_add, locked=locked)
+        stored_memories = self._add_memories_batch(
+            memories_to_add, locked=locked, vectors=vectors
+        )
         stored_count = len(stored_memories)
         if stored_count != len(memories_to_add):
             self.logger.warning(
@@ -921,7 +960,11 @@ class StoragePhase:
         return stored_count
 
     def _add_memories_batch(
-        self, memories: list[str], *, locked: bool = False
+        self,
+        memories: list[str],
+        *,
+        locked: bool = False,
+        vectors: list[list[float]] | None = None,
     ) -> list[str]:
         """Add multiple memories to both semantic and full-text engines."""
         if not memories:
@@ -930,21 +973,37 @@ class StoragePhase:
         try:
             if self._write_lock is not None and not locked:
                 with self._write_lock:
-                    return self._add_memories_unlocked(memories)
-            return self._add_memories_unlocked(memories)
+                    return self._add_memories_unlocked(memories, vectors)
+            return self._add_memories_unlocked(memories, vectors)
         except Exception as e:
             raise StorageError(f"Failed to add memory batch: {e}") from e
 
-    def _add_memories_unlocked(self, memories: list[str]) -> list[str]:
+    def _add_memories_unlocked(
+        self,
+        memories: list[str],
+        vectors: list[list[float]] | None = None,
+    ) -> list[str]:
         """Add memories assuming the caller already serialized writes."""
-        inserted_memories = self._semantic_engine.add_batch(
-            workspace_id=self._workspace_id,
-            contents=memories,
-            infer=self.config.enable_llm_infer,
-        )
+        if vectors is None:
+            inserted_memories = self._semantic_engine.add_batch(
+                workspace_id=self._workspace_id,
+                contents=memories,
+                infer=self.config.enable_llm_infer,
+            )
+        else:
+            inserted_memories = self._semantic_engine.add_batch(
+                workspace_id=self._workspace_id,
+                contents=memories,
+                infer=self.config.enable_llm_infer,
+                vectors=vectors,
+            )
         if self._tantivy_engine is not None:
-            for memory in inserted_memories:
-                self._tantivy_engine.add(self._workspace_id, memory)
+            add_batch = type(self._tantivy_engine).__dict__.get("add_batch")
+            if callable(add_batch):
+                _ = add_batch(self._tantivy_engine, self._workspace_id, inserted_memories)
+            else:
+                for memory in inserted_memories:
+                    self._tantivy_engine.add(self._workspace_id, memory)
         self.logger.debug(
             "Batch added memories to hybrid storage",
             extra={

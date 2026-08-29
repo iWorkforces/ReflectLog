@@ -60,7 +60,7 @@ def mock_semantic_engine():
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.add_batch = MagicMock(
-        side_effect=lambda workspace_id, contents, infer: contents
+        side_effect=lambda workspace_id, contents, infer=False, vectors=None, **_kwargs: contents
     )
     engine.search = MagicMock(return_value=[])
     engine.delete = MagicMock(return_value=None)
@@ -201,13 +201,12 @@ class TestDuplicateDetectionPhase:
             logger=mock_logger,
         )
 
-        # Tantivy finds exact match for "existing"
-        def tantivy_search(query, workspace_id, limit):
-            if "existing" in query:
-                return [("existing", 1.0)]
-            return []
+        def get_id(workspace_id, content):
+            if content == "existing":
+                return 1
+            return None
 
-        mock_tantivy_engine.search.side_effect = tantivy_search
+        mock_semantic_engine.get_id_by_content.side_effect = get_id
 
         result = await phase.execute(["existing", "new_msg"])
 
@@ -970,8 +969,7 @@ class TestStoragePhase:
     ):
         """Duplicate memory returns False (lines 782-790)."""
         mock_config.deduplicate_memories = True
-        # Tantivy finds exact match
-        mock_tantivy_engine.search.return_value = [("dup msg", 1.0)]
+        mock_semantic_engine.get_id_by_content.return_value = 7
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -1025,7 +1023,7 @@ class TestStoragePhase:
         self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
     ):
         """_has_exact_match delegates to match_utils.has_exact_match (line 824)."""
-        mock_tantivy_engine.search.return_value = [("some msg", 1.0)]
+        mock_semantic_engine.get_id_by_content.return_value = 1
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,

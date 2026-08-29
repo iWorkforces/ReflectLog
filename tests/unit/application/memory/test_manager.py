@@ -125,8 +125,9 @@ def _make_manager(config, logger):
     ):
         mock_usearch = MagicMock()
         mock_usearch.add_batch.side_effect = (
-            lambda workspace_id, memories, infer: memories
+            lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
         )
+        mock_usearch.get_id_by_content.return_value = None
         usearch_cls.return_value = mock_usearch
 
         mock_tantivy = MagicMock()
@@ -456,8 +457,7 @@ class TestAddMemory:
     def test_add_memory_duplicate_skipped(self, mock_config, mock_logger):
         """Duplicate memory returns False (lines 527-535)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        # Tantivy search returns exact match
-        mock_tantivy.search.return_value = [("hello world", 1.0)]
+        mock_usearch.get_id_by_content.return_value = 11
 
         result = manager._add_memory("hello world")
         assert result is False
@@ -527,7 +527,7 @@ class TestAddMemoriesBatchLogging:
         """Duplicate within batch should be skipped (lines 593-602)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.add_batch.side_effect = (
-            lambda workspace_id, memories, infer: memories
+            lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
         )
 
         result = manager.add_memories(["mem1", "mem1", "mem2"])
