@@ -1,6 +1,6 @@
 # ReflectLog Knowledge Base - Utility
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -14,6 +14,8 @@ utility/
 ├── types.py             # Constants (TOKEN_PREFIX, SERVICE_NAME, ApiKeyResult)
 ├── utility.py           # Credential retrieval functions (get_anthropic_api_key, init_credentials)
 ├── scoring.py           # JIT-compiled RRF, normalization, filtering (Numba)
+├── http.py              # Production HttpClientFactory (SIGINT close_all_sync)
+├── retry.py             # Production async_retry_with_backoff (SmartReplacer)
 └── platforms/           # OS-specific implementations
     ├── __init__.py      # get_platform_retriever() factory
     ├── base.py          # CredentialRetriever ABC with parse_credential()

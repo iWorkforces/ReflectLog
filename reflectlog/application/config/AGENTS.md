@@ -1,6 +1,6 @@
 # Agent Guidelines for reflectlog/application/config/
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -32,7 +32,8 @@ config/
 
 **Secret Wrapping** - API keys wrapped in `SecretString` (use `.get_secret_value()`).
 
-**Jailbreak Protection** - Use `Template.safe_substitute()` and escape braces `{` `}` in user input.
+**Jailbreak Protection** - `string.Template.substitute` (`$query`). Do not double `{`/`}`; Template does not unescape.
+**Reranker env** - `RERANKER_ENGINE` is `cross_encoder` (default) or `none`. `llm` is invalid.
 
 **Validation in __post_init__** - Raise `ConfigurationError` for invalid values immediately.
 
@@ -45,7 +46,8 @@ config/
 ## ANTI-PATTERNS
 
 - Never modify Config at runtime - it's frozen for safety
-- Never use `.format()` on prompts with user input - use `Template.safe_substitute()`
+- Never use `.format()` on prompts with user input
+- Never brace-escape user text for `Template` (leftover from `str.format`)
 - Never log or expose API keys - SecretString prevents accidental leaks
 - Never skip validation - always validate in `__post_init__` or via ConfigurationValidator
 - Never allow path traversal - validate WORKSPACE_ID against regex

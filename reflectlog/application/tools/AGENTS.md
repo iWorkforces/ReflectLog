@@ -1,6 +1,6 @@
 # Agent Guidelines for reflectlog/application/tools/
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 MCP tool implementations providing external interface to memory system. Each tool inherits BaseTool.
@@ -12,8 +12,8 @@ MCP tool implementations providing external interface to memory system. Each too
 | Add tool | tools/add.py | 3-phase add pipeline |
 | GetAll tool | tools/get_all.py | Returns all messages |
 | Search tool | tools/search.py | RRF fusion + reranking |
-| Remove tool | tools/remove.py | Exact match deletion |
-| Health check | tools/health_check.py | Status reporting |
+| Remove tool | tools/remove.py | `delete_memories` → `list[str]`; not-found = set difference |
+| Health check | tools/health_check.py | Read-only; no reconcile |
 | Tool base | tools/base.py | Abstract base class |
 | Registration | mcp_server.py | AVAILABLE_TOOL_CLASSES dict |
 

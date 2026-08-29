@@ -1,6 +1,6 @@
 # Infrastructure Unit Tests
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -25,7 +25,9 @@ tests/unit/infrastructure/
 |------|---------|
 | test_tantivy_engine.py | Soft-delete, tombstone cache, compaction |
 | test_memory_store.py | Batch CRUD, archive/restore |
-| test_usearch_engine.py | Exact vs approximate search |
+| test_usearch_engine.py | Exact vs HNSW, batch rollback, fail-closed embeds |
+| test_cached_embeddings.py | LRU + short-batch raise |
+| test_cross_encoder_reranker.py | Batch norm, recency |
 
 ## ANTI-PATTERNS
 

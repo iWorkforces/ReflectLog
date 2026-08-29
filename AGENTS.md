@@ -1,12 +1,12 @@
 # ReflectLog Knowledge Base
 
-**Generated:** 2026-08-26
-**Commit:** 95567fa
+**Generated:** 2026-08-29
+**Commit:** 7df1375
 **Branch:** develop
 
 ## OVERVIEW
 
-ReflectLog is a Python 3.14 MCP memory server for persistent project memories. It combines USearch semantic retrieval, Tantivy full-text retrieval, RRF fusion, optional reranking, and smart replacement.
+Python 3.14 MCP memory server. USearch semantic + Tantivy FTS + RRF fusion, optional local cross-encoder rerank (`RERANKER_ENGINE=cross_encoder|none`), LLM only for smart replacement.
 
 ## STRUCTURE
 
@@ -35,7 +35,8 @@ ReflectLog is a Python 3.14 MCP memory server for persistent project memories. I
 | Add/search pipelines | `reflectlog/application/memory/` | Three-phase add; staged hybrid search |
 | Environment config | `reflectlog/application/config/settings.py` | Frozen `Config`, parsing, presets |
 | Contracts and types | `reflectlog/core/` | Protocol-first dependency boundaries |
-| Storage/search backends | `reflectlog/infrastructure/` | USearch, Tantivy, SQLite, rerankers |
+| Storage/search backends | `reflectlog/infrastructure/` | USearch, Tantivy, SQLite, cross-encoder |
+| Pooled HTTP | `reflectlog/utility/http.py` | Production `HttpClientFactory`; app `utils/http_client.py` is leftover |
 | Score math | `reflectlog/utility/scoring.py` | Numba-compiled fusion, normalization, filtering |
 | Tests | `tests/` | Unit mirrors package; integration uses real engines |
 
@@ -51,7 +52,9 @@ ReflectLog is a Python 3.14 MCP memory server for persistent project memories. I
 | `USearchEngine` | Class | `infrastructure/usearch_engine.py` | High | Semantic index and SQLite-backed records |
 | `TantivyEngine` | Class | `infrastructure/tantivy_engine.py` | High | Full-text index, tombstones, compaction |
 | `RanxFusionEngine` | Class | `application/memory/fusion/ranx_fusion.py` | Medium | RRF and alternative fusion algorithms |
-| `RerankerPostProcessor` | Class | `infrastructure/reranker_post_processor.py` | Medium | Reranker composition and temporal scoring |
+| `RerankerPostProcessor` | Class | `infrastructure/reranker_post_processor.py` | Medium | CE post-process + recency |
+| `CrossEncoderReranker` | Class | `infrastructure/cross_encoder_reranker.py` | High | Local FlagReranker; search Step 4 |
+| `delete_memories` | Method | `application/memory/manager.py` | High | Returns `list[str]` of deleted contents |
 
 ## CONVENTIONS
 
@@ -71,14 +74,17 @@ ReflectLog is a Python 3.14 MCP memory server for persistent project memories. I
 - Do not access search engines directly from MCP tools; route operations through the memory pipelines/manager.
 - Do not treat USearch writes as thread-safe.
 - Do not normalize reranker scores one item at a time or apply recency decay before normalization.
-- Do not bypass Tantivy tombstone-compaction checks.
+- Do not compact Tantivy on the delete path; `compact()` is maintenance only.
+- Do not pad short embed batches with `[]`; fail closed.
+- Do not min-max a single fusion list (drops near-ties at threshold 0.8).
+- Do not treat MagicMock auto-attrs as batch APIs; production uses `type(obj).__dict__.get(...)`.
 - Do not expose secrets, tokens, or API keys in logs, exceptions, or tests.
 
 ## UNIQUE STYLES
 
-- Add flow: duplicate detection, smart replacement, then sequential persistence.
-- Search flow: parallel backends, fusion, threshold filtering, then optional reranking.
-- Tantivy deletion is soft-delete first; compaction rebuilds when tombstone thresholds are exceeded.
+- Add flow: parallel dedup/replace, then embed outside `_write_lock`, then sequential persist.
+- Search flow: parallel backends, fusion, threshold filter, optional CE rerank (skip if ≤1 hit).
+- Tantivy delete is tombstone+commit only; compact when ratio/count thresholds fire.
 - The source of truth for `get_all()` is the USearch semantic backend; maintain backend consistency.
 - Plugin support covers entry points, directory scanning, and static registration.
 - Test configuration treats warnings as errors; coverage is reported by the wrapper but has no enforced fail-under gate.
@@ -106,4 +112,4 @@ uv run reflectlog --transport http --port 9103
 
 ## GUIDANCE HIERARCHY
 
-Focused child guides exist for the package and its application, core, infrastructure, plugin, and utility domains; the deepest guides cover memory fusion/reranking, platform credentials, and search bases. Test guides mirror the unit, integration, load, and security topology. `scripts/` and `stubs/` also have dedicated guidance.
+Child guides: `reflectlog/{application,core,infrastructure,plugins,utility}` and test mirrors. Deepest: `memory/fusion`, `memory/reranking` (pointer), `utility/platforms`, `infrastructure/search` (marker). No guides on empty `infrastructure/{embeddings,llm,memory,reranking}` markers.

@@ -1,6 +1,6 @@
 # Infrastructure Layer
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 External integrations wrapping third-party libraries with protocol-based interfaces.
 
 ## STRUCTURE
@@ -54,9 +54,11 @@ infrastructure/
 
 **Exception Wrapping** - Third-party errors wrapped in domain exceptions (VectorSearchError, RerankerError) with `from e` chaining.
 
-**Soft-Delete Pattern** - Tantivy uses O(1) tombstone flag (is_deleted) instead of O(n) rebuild. Compacts at 20% tombstones.
+**Soft-Delete** - Tantivy tombstones (`is_deleted`). `delete`/`delete_batch` commit only; `compact()` is maintenance (ratio≥0.2 or count≥10000).
 
-**LRU Caching** - Query embeddings cached (default 100 entries) using MD5 hash keys. Tantivy tombstone cache for fast skip.
+**Fail-closed embeds** - Short/empty `embed_documents` raise. USearch: SQLite first, then vectors; mid-add rolls back HNSW keys + rows.
+
+**LRU Caching** - `CachedEmbeddings` SHA-256 + lock. Tantivy tombstone LRU skip.
 
 **Batch Operations** - USearch supports batch add/remove for bulk operations. Cross-encoder reranking uses batched inference.
 
@@ -67,7 +69,8 @@ infrastructure/
 - Never assume USearch is thread-safe - serialize all writes with _write_lock
 - Never cache LLM responses in search results (only embeddings)
 - Never use bare `except:` - catch specific third-party exceptions (usearch.SearchError, tantivy.TantivyError)
-- Never skip tombstone compaction check in Tantivy (memory leak risk)
+- Never compact Tantivy inside request-path delete
+- Never leave SQLite rows after a mid-batch `index.add` failure
 - Never create new MemoryStore per request - reuse instance
 - Never call LLM provider sync - all methods async
 - Never use hard-coded model names - pull from config

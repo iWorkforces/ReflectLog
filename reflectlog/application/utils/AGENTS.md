@@ -1,6 +1,6 @@
 # Agent Guidelines for reflectlog/application/utils/
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 Cross-cutting utilities for logging, metrics, resilience, security, and performance.
 
 ## STRUCTURE
@@ -43,7 +43,7 @@ utils/
 
 **Numba JIT**: Functions now live in `reflectlog/utility/scoring.py`. Call `warmup_numba_functions()` at startup. First-call latency 50-200ms otherwise.
 
-**HTTP Pooling**: Use `HttpClientFactory` singleton. Default `max_connections=100`, `max_keepalive=20`. HTTP/2 enabled for httpx.
+**HTTP Pooling**: Production factory is `reflectlog.utility.http.HttpClientFactory` (`close_all_sync` on SIGINT). This package's `http_client.py` / `retry.py` / `metrics.py` / `circuit_breaker.py` have no runtime callers.
 
 **Logging**: `StructuredLogger` auto-redacts secrets via `redact_dict_secrets`. Use `operation()` context manager for multi-step operations.
 

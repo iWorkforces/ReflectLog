@@ -1,6 +1,6 @@
 # ReflectLog Application Layer
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 Orchestration layer implementing 3-phase add pipeline and 4-step search pipeline with MCP tool bindings.
@@ -21,7 +21,7 @@ Orchestration layer implementing 3-phase add pipeline and 4-step search pipeline
 **Pipeline Architecture** - Search uses `search_strategies.SearchPipeline` with a `SearchContext`. Add uses `AddPipeline` with pluggable phases.
 **3-Phase Add** - Phase 1: duplicate detection (parallel batch), Phase 2: smart replacement (LLM checks), Phase 3: sequential storage.
 
-**4-Step Search** - Step 1: parallel dual-search, Step 2: RRF fusion, Step 3: threshold filter, Step 4: LLM/cross-encoder rerank.
+**4-Step Search** - Step 1: parallel dual-search, Step 2: RRF fusion, Step 3: threshold filter, Step 4: cross-encoder only (`none` disables).
 
 **Adaptive Overfetch** - Multiplier adjusts 1.5-3x based on index size.
 

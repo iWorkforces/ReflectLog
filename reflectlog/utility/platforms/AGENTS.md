@@ -1,6 +1,6 @@
 # Agent Guidelines for reflectlog/utility/platforms/
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 Platform abstraction for secure credential retrieval from OS-specific stores.
@@ -22,11 +22,10 @@ platforms/
 | Credential parsing | platforms/base.py | 3-format fallback chain |
 
 ## CONVENTIONS
-- Factory returns platform subclass, all get_credential() return None on errors
-- 10s subprocess timeout, lazy import in factory (no module-level platform imports)
+- Factory returns platform subclass or `None` on unknown OS. All `get_credential()` return None on errors.
+- Darwin/Linux subprocess timeout 10s; **Windows 30s**. Lazy import in factory.
+- Linux reads config files first (inline parse, skips `parse_credential()`), then `secret-tool`.
 
 ## ANTI-PATTERNS
-- Never raise exceptions on credential retrieval - return None
-- Never log credential values or partial tokens
-- Never bypass parse_credential() validation
-- Never call get_credential() without subprocess timeout
+- Never raise or log credential values
+- Never call `get_credential()` without a subprocess timeout

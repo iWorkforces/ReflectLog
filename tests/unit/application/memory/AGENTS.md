@@ -1,6 +1,6 @@
 # Memory Pipeline Unit Tests
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -10,9 +10,9 @@ Unit tests for 3-phase add pipeline and 4-step search pipeline. Tests manager, s
 
 ```
 tests/unit/application/memory/
-├── test_add_phases.py               # Phase 1/2/3 implementations (46KB)
-├── test_add_pipeline.py             # Pipeline orchestration (30KB)
-├── test_search_strategies.py        # 4-step search (23KB)
+├── test_add_phases.py               # Phase 1/2/3 implementations
+├── test_search_strategies.py        # 4-step search
+├── test_replacement_recovery.py     # Pending transition reconcile
 ├── test_search_pipeline.py          # Search orchestration (37KB)
 ├── test_manager.py                  # MemoryManager unit tests (35KB)
 ├── test_engine_factory.py           # Engine creation (26KB)
