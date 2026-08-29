@@ -23,6 +23,7 @@ Example:
     )
 """
 
+import logging
 import os
 import threading
 from typing import Any
@@ -301,7 +302,10 @@ class HttpClientFactory:
             try:
                 asyncio.run(_aclose())
             except Exception:
-                return
+                logging.getLogger(__name__).warning(
+                    "HTTP aclose failed during shutdown",
+                    exc_info=True,
+                )
 
         closer = threading.Thread(target=_run_aclose, name="http-aclose", daemon=True)
         closer.start()
