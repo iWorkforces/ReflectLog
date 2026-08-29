@@ -35,7 +35,12 @@ from typing import Any, final
 from asyncer import asyncify
 
 from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
-from reflectlog.core.exceptions import InconsistentStateError, SearchError, StorageError
+from reflectlog.core.exceptions import (
+    ConfigurationError,
+    InconsistentStateError,
+    SearchError,
+    StorageError,
+)
 from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
@@ -204,10 +209,15 @@ class MemoryManager:
                     "device": config.cross_encoder_device,
                 },
             )
-        else:
+        elif config.reranker_engine == "none":
             self.logger.info(
                 "Reranking disabled (RERANKER_ENGINE=none)",
                 extra={"reranker_engine": "none"},
+            )
+        else:
+            raise ConfigurationError(
+                f"Invalid RERANKER_ENGINE: '{config.reranker_engine}'. "
+                "Valid options: cross_encoder, none"
             )
 
     def _init_smart_replacer(self) -> None:
@@ -647,6 +657,12 @@ class MemoryManager:
                         break
                     typed_vectors.append(item)
                 if valid:
+                    if len(typed_vectors) != len(memories_to_add) or any(
+                        not item for item in typed_vectors
+                    ):
+                        raise StorageError(
+                            "Embedding batch size mismatch or empty vector"
+                        )
                     vectors = typed_vectors
 
         with self._write_lock, self._lock:
@@ -772,7 +788,7 @@ class MemoryManager:
         1. Parallel semantic + full-text search
         2. RRF fusion or concatenation
         3. Fusion threshold filtering (when RRF enabled)
-        4. Reranking (LLM or CrossEncoder)
+        4. Reranking (CrossEncoder)
 
         Args:
             query: Search query string.
@@ -815,8 +831,10 @@ class MemoryManager:
     def _semantic_index_size(self) -> int:
         """Return the semantic index size, or 0 if it cannot be read."""
         try:
-            engine_index = getattr(self._semantic_engine, "index", None)
-            return len(engine_index) if engine_index is not None else 0
+            raw_index = getattr(self._semantic_engine, "_index", None)
+            if raw_index is not None:
+                return len(raw_index)
+            return 0
         except Exception:
             return 0
 
@@ -838,9 +856,9 @@ class MemoryManager:
     def _engine_readiness(self, engine: object | None, *, absent: str) -> str:
         if engine is None:
             return absent
-        is_ready = getattr(engine, "is_ready", None)
+        is_ready = type(engine).__dict__.get("is_ready")
         try:
-            if callable(is_ready) and is_ready():
+            if callable(is_ready) and is_ready(engine):
                 return "initialized"
         except Exception:
             return "pending"
@@ -1012,17 +1030,25 @@ class MemoryManager:
                         "delete_batch"
                     )
                     if callable(delete_batch):
-                        _ = delete_batch(
+                        raw_deleted = delete_batch(
                             self._tantivy_engine,
                             self.workspace_id,
                             contents,
-                            verify_exists=True,
+                            verify_exists=False,
                         )
+                        deleted = raw_deleted if isinstance(raw_deleted, int) else -1
+                        if deleted < len(contents):
+                            raise InconsistentStateError(
+                                "USearch deletion succeeded but Tantivy "
+                                f"tombstoned {deleted}/{len(contents)} memories"
+                            )
                     else:
                         for content in contents:
                             _ = self._tantivy_engine.delete(
-                                self.workspace_id, content
+                                self.workspace_id, content, verify_exists=False
                             )
+                except InconsistentStateError:
+                    raise
                 except Exception as tantivy_error:
                     raise InconsistentStateError(
                         "USearch deletion succeeded but Tantivy deletion failed: "

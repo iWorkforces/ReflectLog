@@ -292,6 +292,10 @@ class IMemoryManager(Protocol):
         """
         ...
 
+    def delete_memories(self, memories: list[str]) -> list[str]:
+        """Delete many memories and return the contents that were removed."""
+        ...
+
     async def close(self) -> None:
         """Release resources and persist data."""
         ...

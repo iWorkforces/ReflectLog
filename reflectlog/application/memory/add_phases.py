@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 import anyio
 from asyncer import asyncify, create_task_group
 
-from reflectlog.core.exceptions import StorageError
+from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
 from ...core.logging import IStructuredLogger
 from ...core.types import (
@@ -713,6 +713,11 @@ class StoragePhase:
             return self._persist_replacements_unlocked(
                 memories, replacement_map, vectors
             )
+        if self._lock is not None:
+            with self._write_lock, self._lock:
+                return self._persist_replacements_unlocked(
+                    memories, replacement_map, vectors
+                )
         with self._write_lock:
             return self._persist_replacements_unlocked(
                 memories, replacement_map, vectors
@@ -729,10 +734,12 @@ class StoragePhase:
         computed = embed_documents(memories)
         if not isinstance(computed, list):
             return None
+        if len(computed) != len(memories):
+            raise StorageError("Embedding batch size mismatch for persist")
         typed: list[list[float]] = []
         for item in computed:
-            if not isinstance(item, list):
-                return None
+            if not isinstance(item, list) or not item:
+                raise StorageError("Embedding produced an empty or invalid vector")
             typed.append([float(value) for value in item])
         return typed
 
@@ -913,17 +920,35 @@ class StoragePhase:
                     f"{transition.id}: {delete_error}"
                 ) from delete_error
         if contents and self._tantivy_engine is not None:
-            delete_batch = type(self._tantivy_engine).__dict__.get("delete_batch")
-            if callable(delete_batch):
-                _ = delete_batch(
-                    self._tantivy_engine,
-                    self._workspace_id,
-                    contents,
-                    verify_exists=True,
+            try:
+                delete_batch = type(self._tantivy_engine).__dict__.get(
+                    "delete_batch"
                 )
-            else:
-                for content in contents:
-                    _ = self._tantivy_engine.delete(self._workspace_id, content)
+                if callable(delete_batch):
+                    raw_deleted = delete_batch(
+                        self._tantivy_engine,
+                        self._workspace_id,
+                        contents,
+                        verify_exists=False,
+                    )
+                    deleted = raw_deleted if isinstance(raw_deleted, int) else -1
+                    if deleted < len(contents):
+                        raise InconsistentStateError(
+                            "USearch replacement delete succeeded but Tantivy "
+                            f"tombstoned {deleted}/{len(contents)} memories"
+                        )
+                else:
+                    for content in contents:
+                        _ = self._tantivy_engine.delete(
+                            self._workspace_id, content, verify_exists=False
+                        )
+            except InconsistentStateError:
+                raise
+            except Exception as tantivy_error:
+                raise InconsistentStateError(
+                    "USearch replacement delete succeeded but Tantivy deletion "
+                    f"failed: {tantivy_error}"
+                ) from tantivy_error
 
     def _store_and_commit(
         self,
@@ -1227,7 +1252,14 @@ class AddPipeline:
             result.stored_count = phase3_result.stored_count
             result.replaced_count = phase3_result.replaced_count
             result.replacements = phase3_result.replacements
+            persist_skipped = (
+                len(phase1_result.unique_memories) - phase3_result.stored_count
+            )
+            if persist_skipped > 0:
+                result.skipped_count += persist_skipped
 
+        except InconsistentStateError:
+            raise
         except Exception as e:
             mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.logger.error(

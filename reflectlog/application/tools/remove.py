@@ -107,7 +107,12 @@ class RemoveTool(BaseTool):
                     deleted = await asyncify(self.memory.delete_memories)(
                         unique_memories
                     )
-                    deleted_set = set(deleted) if isinstance(deleted, list) else set()
+                    if not isinstance(deleted, list):
+                        raise TypeError(
+                            "delete_memories must return list[str], "
+                            f"got {type(deleted).__name__}"
+                        )
+                    deleted_set = set(deleted)
                     actual_removed = len(deleted_set)
                     memories_not_found = [
                         truncate_memory(memory, 50)

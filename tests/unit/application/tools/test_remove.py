@@ -222,6 +222,46 @@ class TestRemoveToolPartialRemoval:
         summary = next(msg for msg in info_calls if "not found" in msg.lower())
         assert "1 memory" in summary
 
+    async def test_delete_memories_returns_deleted_contents(
+        self, mock_config, mock_tool_logger
+    ):
+        """Production batch path reports the contents delete_memories returned."""
+
+        class FakeManager:
+            def delete_memories(self, memories: list[str]) -> list[str]:
+                return ["Kept"]
+
+        tool = RemoveTool(
+            config=mock_config,
+            memory_manager=FakeManager(),
+            logger=mock_tool_logger,
+        )
+        handler = tool.get_handler()
+        await handler(["Kept"])
+
+        info_calls = [
+            str(c.args[0]) for c in mock_tool_logger.info.call_args_list if c.args
+        ]
+        assert any("Kept" in msg or "1" in msg for msg in info_calls)
+
+    async def test_delete_memories_non_list_fails_closed(
+        self, mock_config, mock_tool_logger
+    ):
+        """A non-list delete_memories return must not look like success."""
+
+        class FakeManager:
+            def delete_memories(self, memories: list[str]) -> int:
+                return 1
+
+        tool = RemoveTool(
+            config=mock_config,
+            memory_manager=FakeManager(),
+            logger=mock_tool_logger,
+        )
+        handler = tool.get_handler()
+        with pytest.raises(StorageError, match="Failed to remove memories"):
+            await handler(["Exists"])
+
 
 @pytest.mark.unit
 class TestRemoveToolErrorHandling:
