@@ -349,7 +349,7 @@ class TestValidatePositiveFloat:
 class TestValidateRerankerEngine:
     '''Tests for ConfigurationValidator.validate_reranker_engine.'''
 
-    @pytest.mark.parametrize("engine", ["llm", "cross_encoder", "none"])
+    @pytest.mark.parametrize("engine", ["cross_encoder", "none"])
     def test_valid_engines(self, engine):
         '''All valid reranker engines are accepted.'''
         v = ConfigurationValidator()
@@ -443,7 +443,7 @@ class TestValidateDependencies:
         result = v.validate_dependencies(
             enable_hybrid_search=True,
             enable_rrf_fusion=True,
-            reranker_engine="llm",
+            reranker_engine="cross_encoder",
         )
         assert result is True
         assert not v.has_errors()
@@ -454,7 +454,7 @@ class TestValidateDependencies:
         result = v.validate_dependencies(
             enable_hybrid_search=False,
             enable_rrf_fusion=True,
-            reranker_engine="llm",
+            reranker_engine="cross_encoder",
         )
         assert result is True
 
@@ -988,7 +988,7 @@ class TestValidateConfig:
             "add_max_concurrency": 8,
             "embedding_batch_size": 32,
             "embedding_cache_size": 100,
-            "reranker_engine": "llm",
+            "reranker_engine": "cross_encoder",
             "llm_provider": "openai",
             "cross_encoder_device": "cpu",
             "fusion_method": "rrf",
@@ -1154,7 +1154,7 @@ class TestValidateConfig:
             reranker_engine=None,
         )
         errors = validate_config(cfg)
-        # Defaults used: True, True, "llm" — all valid
+        # Defaults used: True, True, "cross_encoder" — all valid
         assert isinstance(errors, list)
 
     def test_all_percentage_fields_validated(self):

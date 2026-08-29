@@ -47,7 +47,6 @@ def manager(monkeypatch):
     mgr._semantic_engine = mock_semantic_engine
     mgr._tantivy_engine = mock_tantivy_engine
     mgr._embedder = mock_embedder
-    mgr._llm_reranker = None
     mgr.config = config
     mgr.workspace_id = config.workspace_id
     mgr.is_hybrid_search = True

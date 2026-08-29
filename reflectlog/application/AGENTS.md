@@ -25,7 +25,7 @@ Orchestration layer implementing 3-phase add pipeline and 4-step search pipeline
 
 **Adaptive Overfetch** - Multiplier adjusts 1.5-3x based on index size.
 
-**Lazy Reranker** - LLM reranker initialized on-demand with double-checked locking pattern.
+**Lazy Reranker** - Cross-encoder reranker initialized on-demand with double-checked locking.
 
 **Canonical Type Locations** - Core domain types (`MemoryRecord`, `Embeddings`, `ISemanticSearchEngine`) live in `core/types.py`. Pipeline `SearchContext` / `SearchResult` live in `memory/search_strategies.py`.
 

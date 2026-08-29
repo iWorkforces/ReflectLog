@@ -212,22 +212,6 @@ class TestProtocolConformanceTantivy:
             )
 
 
-class TestProtocolConformanceLLMReranker:
-    """LLMReranker exposes the reranking interface."""
-
-    def test_has_rerank_method(self) -> None:
-        from reflectlog.infrastructure.llm_reranker import LLMReranker
-
-        assert hasattr(LLMReranker, "rerank"), (
-            "LLMReranker missing rerank method"
-        )
-
-    def test_llm_reranker_config_has_from_config(self) -> None:
-        from reflectlog.infrastructure.llm_reranker import LLMRerankerConfig
-
-        assert hasattr(LLMRerankerConfig, "from_config")
-
-
 class TestProtocolConformanceCrossEncoder:
     """CrossEncoderReranker exposes the reranking interface."""
 

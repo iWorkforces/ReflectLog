@@ -22,7 +22,7 @@ config/
 |-------|------|--------|
 | Config dataclass | settings.py | Frozen dataclass, environment variable loading |
 | Validation logic | validation.py | Type, range, SQL injection prevention |
-| Prompt templates | `../../core/prompts.py` | LLM reranking, smart replacement detection |
+| Prompt templates | `../../core/prompts.py` | Smart replacement detection |
 | Presets | presets.py | Pre-configured profiles for different use cases |
 | Factory methods | settings.py | create_*_config() for engine configs |
 

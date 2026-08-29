@@ -94,7 +94,6 @@ def _make_pipeline(
         fusion_engine = fusion
     if memory_manager is None:
         manager = MagicMock()
-        manager.llm_reranker = None
         manager.cross_encoder_reranker = None
     else:
         manager = memory_manager
@@ -570,8 +569,10 @@ class TestBackendFailureContracts:
     @pytest.mark.asyncio
     async def test_semantic_init_failure_raises_search_error(self) -> None:
         semantic = MagicMock()
+        semantic.is_ready.return_value = False
         semantic.ensure_initialized.side_effect = RuntimeError("init fail")
         tantivy = MagicMock()
+        tantivy.is_ready.return_value = False
         tantivy.search.return_value = [("from-tantivy", 0.8)]
         pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
 
@@ -592,8 +593,10 @@ class TestBackendFailureContracts:
     @pytest.mark.asyncio
     async def test_tantivy_init_failure_raises_search_error(self) -> None:
         semantic = MagicMock()
+        semantic.is_ready.return_value = True
         semantic.search.return_value = [("ok", 0.9, _TS)]
         tantivy = MagicMock()
+        tantivy.is_ready.return_value = False
         tantivy.ensure_initialized.side_effect = RuntimeError("tantivy init fail")
         pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
 
@@ -631,42 +634,6 @@ class TestRerankerSettings:
         assert result.memories == ["a", "b"]
 
     @pytest.mark.asyncio
-    async def test_llm_reranker_receives_timestamp_map(self) -> None:
-        semantic = MagicMock()
-        older = "2024-01-01T00:00:00Z"
-        semantic.search.return_value = [("a", 0.9, _TS), ("b", 0.8, older)]
-        tantivy = MagicMock()
-        tantivy.search.return_value = []
-        fusion = MagicMock()
-        fusion.method = "rrf"
-        fusion.fuse.return_value = [("a", 0.4), ("b", 0.3)]
-        config = _make_config(fusion_ranking_threshold=0.0, reranker_engine="llm")
-        llm = AsyncMock()
-        llm.rerank = AsyncMock(return_value=[("b", 0.99), ("a", 0.1)])
-        manager = MagicMock()
-        manager.llm_reranker = llm
-        manager.cross_encoder_reranker = None
-        pipeline = _make_pipeline(
-            semantic=semantic,
-            tantivy=tantivy,
-            fusion=fusion,
-            config=config,
-            memory_manager=manager,
-        )
-
-        result = await pipeline.execute(
-            _make_context(enable_rrf_fusion=True, reranker_engine="llm")
-        )
-
-        llm.rerank.assert_awaited_once()
-        args = llm.rerank.await_args
-        assert args is not None
-        assert args.args[0] == "test query"
-        assert args.args[1] == [("a", 0.4), ("b", 0.3)]
-        assert args.args[2] == {"a": _TS, "b": older}
-        assert result.memories == ["b", "a"]
-
-    @pytest.mark.asyncio
     async def test_cross_encoder_reranker_applied(self) -> None:
         semantic = MagicMock()
         semantic.search.return_value = [("a", 0.9, _TS), ("b", 0.8, _TS)]
@@ -681,7 +648,6 @@ class TestRerankerSettings:
         encoder = AsyncMock()
         encoder.rerank_async = AsyncMock(return_value=[("b", 0.95), ("a", 0.2)])
         manager = MagicMock()
-        manager.llm_reranker = None
         manager.cross_encoder_reranker = encoder
         pipeline = _make_pipeline(
             semantic=semantic,
@@ -711,12 +677,13 @@ class TestRerankerSettings:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("only", 0.4)]
-        config = _make_config(fusion_ranking_threshold=0.0, reranker_engine="llm")
-        llm = AsyncMock()
-        llm.rerank = AsyncMock(return_value=[("only", 0.99)])
+        config = _make_config(
+            fusion_ranking_threshold=0.0, reranker_engine="cross_encoder"
+        )
+        encoder = AsyncMock()
+        encoder.rerank_async = AsyncMock(return_value=[("only", 0.99)])
         manager = MagicMock()
-        manager.llm_reranker = llm
-        manager.cross_encoder_reranker = None
+        manager.cross_encoder_reranker = encoder
         pipeline = _make_pipeline(
             semantic=semantic,
             tantivy=tantivy,
@@ -726,10 +693,10 @@ class TestRerankerSettings:
         )
 
         result = await pipeline.execute(
-            _make_context(enable_rrf_fusion=True, reranker_engine="llm")
+            _make_context(enable_rrf_fusion=True, reranker_engine="cross_encoder")
         )
 
-        llm.rerank.assert_not_awaited()
+        encoder.rerank_async.assert_not_awaited()
         assert result.memories == ["only"]
 
     @pytest.mark.asyncio
@@ -741,10 +708,12 @@ class TestRerankerSettings:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("low", 0.01)]
-        config = _make_config(fusion_ranking_threshold=0.5, reranker_engine="llm")
-        llm = AsyncMock()
+        config = _make_config(
+            fusion_ranking_threshold=0.5, reranker_engine="cross_encoder"
+        )
+        encoder = AsyncMock()
         manager = MagicMock()
-        manager.llm_reranker = llm
+        manager.cross_encoder_reranker = encoder
         pipeline = _make_pipeline(
             semantic=semantic,
             tantivy=tantivy,
@@ -754,10 +723,10 @@ class TestRerankerSettings:
         )
 
         result = await pipeline.execute(
-            _make_context(enable_rrf_fusion=True, reranker_engine="llm")
+            _make_context(enable_rrf_fusion=True, reranker_engine="cross_encoder")
         )
 
-        llm.rerank.assert_not_awaited()
+        encoder.rerank_async.assert_not_awaited()
         assert result.memories == []
 
 

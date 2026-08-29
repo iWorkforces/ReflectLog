@@ -112,7 +112,7 @@ class TestCrossEncoderConfig:
     def test_from_app_config_disabled(self) -> None:
         '''Test factory method from application config when disabled.'''
         mock_app_config = MagicMock()
-        mock_app_config.reranker_engine = "llm"  # Not cross_encoder
+        mock_app_config.reranker_engine = "none"  # Not cross_encoder
         mock_app_config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
         mock_app_config.cross_encoder_top_k = 20
         mock_app_config.cross_encoder_device = "cpu"

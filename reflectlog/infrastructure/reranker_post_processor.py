@@ -1,7 +1,7 @@
 """Shared post-processing for reranking results.
 
 Extracts the common normalize → decay → threshold pipeline used by both
-LLMReranker and CrossEncoderReranker into a single composition object,
+CrossEncoderReranker into a single composition object,
 avoiding Pydantic BaseModel MRO issues that prevent mixin-based reuse.
 """
 

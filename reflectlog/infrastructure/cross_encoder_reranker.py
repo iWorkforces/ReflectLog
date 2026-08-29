@@ -1,9 +1,8 @@
 """Cross-encoder reranker using FlagEmbedding's FlagReranker.
 
 This module provides a local cross-encoder model for fast reranking of search
-results before passing top candidates to the LLM reranker. This two-stage
-approach reduces LLM API costs by limiting the number of candidates that
-require expensive LLM scoring.
+results after fusion. The local model avoids API cost and keeps search
+latency on-device.
 
 Uses FlagEmbedding's FlagReranker which is optimized for BGE reranker models
 with built-in FP16 support and score normalization.

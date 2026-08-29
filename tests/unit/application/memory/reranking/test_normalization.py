@@ -248,13 +248,13 @@ class TestIntegration:
         assert result[0][0] == "doc1"
         assert result[0][1] == pytest.approx(1.0)
 
-    def test_llm_reranker_workflow(self) -> None:
-        '''Simulate LLM reranking workflow.
+    def test_calibrated_reranker_workflow(self) -> None:
+        """Simulate reranking workflow with calibrated scores.
 
-        LLM produces calibrated scores (0.7-0.9), which after normalization
-        might filter more aggressively.
-        '''
-        # Raw LLM scores (typical range)
+        Calibrated scores (0.7-0.9) after normalization can filter more
+        aggressively.
+        """
+        # Raw calibrated scores (typical range)
         raw_scored = [
             ("doc1", 0.90),  # Best -> 1.0
             ("doc2", 0.85),  # Middle -> 0.75

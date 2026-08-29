@@ -1169,7 +1169,7 @@ class TestHealthCheckTool:
         assert result["workspace_id"] == "test_project"
         assert result["semantic_engine"] == "initialized"
         assert result["tantivy_engine"] == "initialized"
-        assert result["reranker_engine"] == "llm"
+        assert result["reranker_engine"] == "cross_encoder"
         assert result["hybrid_search_enabled"] is True
         assert result["rrf_fusion_enabled"] is True
         assert result["recency_boost_enabled"] is True
@@ -1214,7 +1214,7 @@ class TestHealthCheckTool:
 
     async def test_health_check_with_different_reranker(self, mcp_server):
         '''Test health check reports configured reranker engine.'''
-        # The default reranker is "llm" - verify it's reported correctly
+        # The default reranker is "cross_encoder" - verify it's reported correctly
         ready = MagicMock()
         ready.is_ready.return_value = True
         mcp_server.memory_manager._semantic_engine = ready
@@ -1229,8 +1229,8 @@ class TestHealthCheckTool:
         assert health_check_func is not None
         result = await health_check_func()
 
-        # Default reranker should be "llm"
-        assert result["reranker_engine"] == "llm"
+        # Default reranker should be "cross_encoder"
+        assert result["reranker_engine"] == "cross_encoder"
 
 
 @pytest.mark.unit

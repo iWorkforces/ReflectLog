@@ -22,7 +22,6 @@ from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
-from reflectlog.infrastructure.llm_reranker import LLMReranker
 
 
 # ---------------------------------------------------------------------------
@@ -161,42 +160,40 @@ class TestEagerInitialization:
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_reranker = True
-        mock_config.reranker_engine = "llm"
+        mock_config.reranker_engine = "cross_encoder"
 
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
             patch(f"{MODULE}.TantivyEngine"),
-            patch(f"{MODULE}.LLMRerankerConfig"),
-            patch(f"{MODULE}.LLMReranker") as reranker_cls,
+            patch(f"{MODULE}.CrossEncoderConfig"),
+            patch(f"{MODULE}.CrossEncoderReranker") as reranker_cls,
         ):
             usearch_cls.return_value = MagicMock()
-            # Make get_reranker return a real LLMReranker mock so it succeeds
             reranker_cls.return_value = MagicMock()
             manager = MemoryManager(mock_config, mock_logger)
-            # Should not raise, reranker initialised
-            assert manager._llm_reranker is not None
+            assert manager._cross_encoder_reranker is not None
 
-    def test_eager_init_reranker_with_llm(self, mock_config, mock_logger):
-        """Eager init with valid llm reranker (lines 342-351)."""
+    def test_eager_init_reranker_with_cross_encoder(self, mock_config, mock_logger):
+        """Eager init with a valid cross-encoder reranker."""
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_reranker = True
-        mock_config.reranker_engine = "llm"
+        mock_config.reranker_engine = "cross_encoder"
 
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
             patch(f"{MODULE}.TantivyEngine"),
-            patch(f"{MODULE}.LLMRerankerConfig"),
-            patch(f"{MODULE}.LLMReranker") as reranker_cls,
+            patch(f"{MODULE}.CrossEncoderConfig"),
+            patch(f"{MODULE}.CrossEncoderReranker") as reranker_cls,
         ):
             mock_reranker = MagicMock()
             reranker_cls.return_value = mock_reranker
             usearch_cls.return_value = MagicMock()
 
             manager = MemoryManager(mock_config, mock_logger)
-            assert manager._llm_reranker is mock_reranker
+            assert manager._cross_encoder_reranker is mock_reranker
 
     def test_eager_init_smart_replacer_disabled_raises(self, mock_config, mock_logger):
         """Eager smart replacer with enable_smart_replace=False raises (lines 364-369)."""
@@ -253,56 +250,7 @@ class TestEagerInitialization:
 
 @pytest.mark.unit
 class TestLazyRerankerProperties:
-    """Tests for llm_reranker, cross_encoder_reranker, get_reranker properties."""
-
-    def test_llm_reranker_returns_none_when_not_llm(self, mock_config, mock_logger):
-        """llm_reranker returns None when reranker_engine != "llm" (line 407)."""
-        mock_config.reranker_engine = "none"
-        manager, _, _ = _make_manager(mock_config, mock_logger)
-        assert manager.llm_reranker is None
-
-    def test_llm_reranker_returns_cached(self, mock_config, mock_logger):
-        """llm_reranker returns cached instance on second call (line 407)."""
-        mock_config.reranker_engine = "llm"
-        with (
-            patch(f"{MODULE}.USearchEngine") as usearch_cls,
-            patch(f"{MODULE}.LangchainQwenEmbeddings"),
-            patch(f"{MODULE}.TantivyEngine"),
-            patch(f"{MODULE}.LLMRerankerConfig"),
-            patch(f"{MODULE}.LLMReranker") as reranker_cls,
-        ):
-            mock_reranker = MagicMock()
-            reranker_cls.return_value = mock_reranker
-            usearch_cls.return_value = MagicMock()
-
-            manager = MemoryManager(mock_config, mock_logger)
-            first = manager.llm_reranker
-            second = manager.llm_reranker
-            assert first is second
-            assert first is mock_reranker
-            # Should only create once
-            reranker_cls.assert_called_once()
-
-    def test_llm_reranker_double_check_locking(self, mock_config, mock_logger):
-        """llm_reranker double-check after lock (line 413)."""
-        mock_config.reranker_engine = "llm"
-        with (
-            patch(f"{MODULE}.USearchEngine") as usearch_cls,
-            patch(f"{MODULE}.LangchainQwenEmbeddings"),
-            patch(f"{MODULE}.TantivyEngine"),
-            patch(f"{MODULE}.LLMRerankerConfig"),
-            patch(f"{MODULE}.LLMReranker") as reranker_cls,
-        ):
-            mock_reranker = MagicMock()
-            reranker_cls.return_value = mock_reranker
-            usearch_cls.return_value = MagicMock()
-
-            manager = MemoryManager(mock_config, mock_logger)
-            # Pre-set the reranker to simulate another thread initialized it
-            sentinel = cast(LLMReranker, MagicMock())
-            manager._llm_reranker = sentinel
-            result = manager.llm_reranker
-            assert result is sentinel
+    """Tests for cross_encoder_reranker and get_reranker properties."""
 
     def test_cross_encoder_reranker_returns_none_when_not_configured(
         self, mock_config, mock_logger

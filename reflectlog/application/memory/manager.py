@@ -41,7 +41,6 @@ from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
-from reflectlog.infrastructure.llm_reranker import LLMReranker, LLMRerankerConfig
 from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
@@ -190,19 +189,12 @@ class MemoryManager:
     def _init_rerankers(self) -> None:
         """Set up reranker references for lazy initialization via properties.
 
-        Rerankers (LLM or CrossEncoder) are created on first search
-        to avoid startup overhead.
+        The cross-encoder is created on first search to avoid startup overhead.
         """
-        self._llm_reranker: LLMReranker | None = None
         self._cross_encoder_reranker: CrossEncoderReranker | None = None
 
         config = self.config
-        if config.reranker_engine == "llm":
-            self.logger.info(
-                f"LLM reranker configured (lazy init) [model={config.llm_model}]",
-                extra={"reranker_engine": "llm", "model": config.llm_model},
-            )
-        elif config.reranker_engine == "cross_encoder":
+        if config.reranker_engine == "cross_encoder":
             self.logger.info(
                 f"CrossEncoder reranker configured (lazy init) "
                 f"[model={config.cross_encoder_model}]",
@@ -381,11 +373,11 @@ class MemoryManager:
         # Pre-warm reranker if explicitly configured (lazy by default)
         if should_init_reranker:
             # Validate that reranker engine type is supported
-            if self.config.reranker_engine not in ("llm", "cross_encoder"):
+            if self.config.reranker_engine != "cross_encoder":
                 raise ValueError(
                     f"Invalid reranker_engine for eager initialization: "
                     f"{self.config.reranker_engine!r}. "
-                    f"Must be 'llm' or 'cross_encoder', or set "
+                    f"Must be 'cross_encoder', or set "
                     f"eager_initialize_reranker=false for lazy loading."
                 )
 
@@ -444,35 +436,6 @@ class MemoryManager:
                 "Eager initialization skipped (all components set to lazy loading)",
                 extra={"workspace_id": self.workspace_id},
             )
-
-    @property
-    def llm_reranker(self) -> LLMReranker | None:
-        """Get LLM reranker (lazy initialization with thread-safety).
-
-        Returns:
-            LLMReranker instance if configured, None otherwise.
-
-        Raises:
-            RuntimeError: If reranker_engine is 'llm' but initialization fails.
-        """
-        # Fast path: already initialized or not configured
-        if self._llm_reranker is not None or self.config.reranker_engine != "llm":
-            return self._llm_reranker
-
-        # Slow path: need to initialize with lock
-        with self._reranker_lock:
-            # Double-check after acquiring lock
-            if self._llm_reranker is not None or self.config.reranker_engine != "llm":
-                return self._llm_reranker
-
-            # Initialize LLM reranker
-            reranker_config = LLMRerankerConfig.from_config(ConfigAdapter(self.config))
-            self._llm_reranker = LLMReranker(config=reranker_config, logger=self.logger)
-            self.logger.info(
-                f"Lazy initialized LLM reranker [model={self.config.llm_model}]",
-                extra={"reranker_engine": "llm", "model": self.config.llm_model},
-            )
-            return self._llm_reranker
 
     @property
     def cross_encoder_reranker(self) -> CrossEncoderReranker | None:
@@ -551,19 +514,9 @@ class MemoryManager:
             )
             return self._smart_replacer
 
-    def get_reranker(self) -> LLMReranker | CrossEncoderReranker | None:
-        """Get the appropriate reranker based on configuration.
-
-        Returns:
-            The configured reranker instance (LLM or CrossEncoder), or None if disabled.
-
-        Note:
-            This method provides a unified interface for the search pipeline
-            to obtain the active reranker without needing to know the type.
-        """
-        if self.config.reranker_engine == "llm":
-            return self.llm_reranker
-        elif self.config.reranker_engine == "cross_encoder":
+    def get_reranker(self) -> CrossEncoderReranker | None:
+        """Get the configured cross-encoder reranker, or None if disabled."""
+        if self.config.reranker_engine == "cross_encoder":
             return self.cross_encoder_reranker
         return None
 

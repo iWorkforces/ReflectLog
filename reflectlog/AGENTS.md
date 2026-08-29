@@ -3,7 +3,7 @@
 **Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
 
 ## OVERVIEW
-MCP server providing persistent, project-based semantic memory storage. Combines USearch + Tantivy with RRF fusion and optional LLM reranking.
+MCP server providing persistent, project-based semantic memory storage. Combines USearch + Tantivy with RRF fusion and optional cross-encoder reranking.
 
 ## STRUCTURE
 
@@ -16,7 +16,7 @@ reflectlog/
 │   ├── tools/         # MCP tool implementations (add, search, get_all, remove)
 │   ├── config/        # Config dataclass, validation, prompts
 │   └── utils/         # Logging, metrics, retry, circuit breaker
-├── infrastructure/    # USearchEngine, TantivyEngine, LLM reranker, embeddings
+├── infrastructure/    # USearchEngine, TantivyEngine, cross-encoder reranker, embeddings
 ├── plugins/          # Plugin discovery, registry, loading
 └── utility/          # Platform utilities, scoring.py (JIT-compiled RRF, normalization, filtering)
 ```

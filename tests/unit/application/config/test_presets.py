@@ -54,7 +54,7 @@ class TestConfigPreset:
             search_score_threshold=0.5,
             fusion_rrf_k=60,
             overfetch_multiplier=3,
-            reranker_engine="llm",
+            reranker_engine="cross_encoder",
             enable_recency_boost=True,
             recency_decay_rate=0.02,
             enable_smart_replace=True,
@@ -71,7 +71,7 @@ class TestConfigPreset:
         assert preset.search_score_threshold == 0.5
         assert preset.fusion_rrf_k == 60
         assert preset.overfetch_multiplier == 3
-        assert preset.reranker_engine == "llm"
+        assert preset.reranker_engine == "cross_encoder"
         assert preset.enable_recency_boost is True
         assert preset.recency_decay_rate == 0.02
         assert preset.enable_smart_replace is True
@@ -151,7 +151,7 @@ class TestPresetConstants:
         assert QUALITY_PRESET.search_score_threshold == 0.7
         assert QUALITY_PRESET.fusion_rrf_k == 80
         assert QUALITY_PRESET.overfetch_multiplier == 5
-        assert QUALITY_PRESET.reranker_engine == "llm"
+        assert QUALITY_PRESET.reranker_engine == "cross_encoder"
         assert QUALITY_PRESET.enable_recency_boost is True
         assert QUALITY_PRESET.enable_smart_replace is True
         assert QUALITY_PRESET.smart_replace_threshold == 0.9
@@ -332,7 +332,7 @@ class TestApplyPresetToEnv:
         assert os.environ["SEARCH_SCORE_THRESHOLD"] == "0.7"
         assert os.environ["FUSION_RRF_K"] == "80"
         assert os.environ["OVERFETCH_MULTIPLIER"] == "5"
-        assert os.environ["RERANKER_ENGINE"] == "llm"
+        assert os.environ["RERANKER_ENGINE"] == "cross_encoder"
         assert os.environ["ENABLE_RECENCY_BOOST"] == "true"
         # recency_decay_rate is None on QUALITY_PRESET, so not set
         assert "RECENCY_DECAY_RATE" not in os.environ

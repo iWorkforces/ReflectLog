@@ -102,7 +102,7 @@ def set_env_vars(monkeypatch):
         "LOG_LEVEL": "INFO",
         "DEDUPLICATE_MEMORIES": "true",
         "ADD_MAX_CONCURRENCY": "8",
-        "RERANKER_ENGINE": "llm",
+        "RERANKER_ENGINE": "cross_encoder",
         # Disable embedding cache in tests to avoid issues with mocked embedders
         "EMBEDDING_CACHE_ENABLED": "false",
         # Disable eager initialization in tests to avoid issues with mocked engines

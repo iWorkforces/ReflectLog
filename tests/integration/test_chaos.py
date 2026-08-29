@@ -54,7 +54,6 @@ def manager(monkeypatch):
     mgr._semantic_engine = mock_semantic_engine
     mgr._tantivy_engine = mock_tantivy_engine
     mgr._embedder = mock_embedder
-    mgr._llm_reranker = None
     mgr.config = config
     mgr.workspace_id = config.workspace_id
     mgr.is_hybrid_search = True
@@ -148,20 +147,22 @@ class TestEngineFailure:
         assert isinstance(results, list)
 
     @pytest.mark.asyncio
-    async def test_llm_reranker_failure(self, manager, monkeypatch):
-        '''Test search when LLM reranker fails.
+    async def test_cross_encoder_reranker_failure(self, manager, monkeypatch):
+        '''Test search when the cross-encoder reranker fails.
 
         Should return fusion scores without reranking.
         '''
 
-        async def mock_reranker_error():
-            raise ConnectionError("LLM reranker connection failed")
+        async def mock_reranker_error(*_args, **_kwargs):
+            raise ConnectionError("cross-encoder reranker failed")
 
-        # Check if reranker exists before trying to mock it
-        if hasattr(manager, "_llm_reranker") and manager._llm_reranker is not None:
+        if (
+            hasattr(manager, "_cross_encoder_reranker")
+            and manager._cross_encoder_reranker is not None
+        ):
             monkeypatch.setattr(
-                manager._llm_reranker,
-                "rerank",
+                manager._cross_encoder_reranker,
+                "rerank_async",
                 mock_reranker_error,
             )
 

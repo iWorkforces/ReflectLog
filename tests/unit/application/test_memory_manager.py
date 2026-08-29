@@ -46,7 +46,7 @@ def mock_config() -> Config:
     config.smart_replace_retry_delay = 1.0
     config.llm_provider = "openai"
     # Reranker settings
-    config.reranker_engine = "llm"
+    config.reranker_engine = "cross_encoder"
     config.reranker_min_results = 0
     config.reranker_batch_normalize = True
     # Recency boost settings
@@ -272,7 +272,7 @@ class TestHybridMemoryManager:
     @pytest.mark.asyncio
     async def test_search_uses_rrf_fusion(self, mock_config, mock_logger):
         """Test hybrid search uses RRFFusion for ranking."""
-        mock_config.reranker_engine = "none"  # Skip LLM reranking in unit test
+        mock_config.reranker_engine = "none"  # Skip reranking in unit test
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
@@ -578,13 +578,13 @@ class TestSingleResultRerankingSkip:
     When fusion filtering produces <= 1 result, reranking is unnecessary because:
     - 0 results: Nothing to rerank
     - 1 result: No ordering to optimize
-    This saves 15-25s of LLM API latency for single-result queries.
+    This saves 15-25s of reranker latency for single-result queries.
     """
 
     @pytest.mark.asyncio
-    async def test_single_result_skips_llm_reranking(self, mock_config, mock_logger):
-        """Single result after fusion should skip LLM reranking step."""
-        mock_config.reranker_engine = "llm"
+    async def test_single_result_skips_reranking(self, mock_config, mock_logger):
+        """Single result after fusion should skip reranking step."""
+        mock_config.reranker_engine = "cross_encoder"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.5
 
@@ -596,7 +596,7 @@ class TestSingleResultRerankingSkip:
                     "reflectlog.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     with patch(
-                        "reflectlog.application.memory.manager.LLMReranker"
+                        "reflectlog.application.memory.manager.CrossEncoderReranker"
                     ) as mock_reranker_class:
                         # Setup USearchEngine mock - return 1 result
                         # Now returns 3-tuples: (message, score, created_at)
@@ -612,7 +612,7 @@ class TestSingleResultRerankingSkip:
                         mock_tantivy.search.return_value = [("single result", 0.9)]
                         mock_tantivy_class.return_value = mock_tantivy
 
-                        # Setup LLMReranker mock
+                        # Setup CrossEncoder reranker mock
                         mock_reranker = MagicMock()
                         mock_reranker.rerank = AsyncMock(
                             return_value=[("single result", 0.95)]
@@ -622,7 +622,7 @@ class TestSingleResultRerankingSkip:
                         manager = MemoryManager(mock_config, mock_logger)
                         results = await manager.search("test query")
 
-                        # LLM reranker should NOT be called (skipped for single result)
+                        # Reranker should NOT be called (skipped for single result)
                         mock_reranker.rerank.assert_not_called()
 
                         # Result should still be returned
@@ -692,7 +692,7 @@ class TestSingleResultRerankingSkip:
         self, mock_config, mock_logger
     ):
         """Zero results after fusion should skip reranking (implicit - no candidates)."""
-        mock_config.reranker_engine = "llm"
+        mock_config.reranker_engine = "cross_encoder"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.5
 
@@ -704,7 +704,7 @@ class TestSingleResultRerankingSkip:
                     "reflectlog.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     with patch(
-                        "reflectlog.application.memory.manager.LLMReranker"
+                        "reflectlog.application.memory.manager.CrossEncoderReranker"
                     ) as mock_reranker_class:
                         # Setup USearchEngine mock - return empty results
                         mock_usearch = MagicMock()
@@ -717,7 +717,7 @@ class TestSingleResultRerankingSkip:
                         mock_tantivy.search.return_value = []  # No full-text results
                         mock_tantivy_class.return_value = mock_tantivy
 
-                        # Setup LLMReranker mock
+                        # Setup CrossEncoder reranker mock
                         mock_reranker = MagicMock()
                         mock_reranker.rerank = AsyncMock(return_value=[])
                         mock_reranker_class.return_value = mock_reranker
@@ -725,7 +725,7 @@ class TestSingleResultRerankingSkip:
                         manager = MemoryManager(mock_config, mock_logger)
                         results = await manager.search("test query")
 
-                        # LLM reranker should NOT be called (no results to rerank)
+                        # Reranker should NOT be called (no results to rerank)
                         mock_reranker.rerank.assert_not_called()
 
                         # Empty results expected (no results from either engine)
@@ -736,7 +736,7 @@ class TestSingleResultRerankingSkip:
         self, mock_config, mock_logger
     ):
         """Multiple results after fusion should proceed to reranking normally."""
-        mock_config.reranker_engine = "llm"
+        mock_config.reranker_engine = "cross_encoder"
         mock_config.enable_rrf_fusion = True
         mock_config.fusion_ranking_threshold = 0.3  # Low threshold to keep results
 
@@ -748,7 +748,7 @@ class TestSingleResultRerankingSkip:
                     "reflectlog.application.memory.manager.TantivyEngine"
                 ) as mock_tantivy_class:
                     with patch(
-                        "reflectlog.application.memory.manager.LLMReranker"
+                        "reflectlog.application.memory.manager.CrossEncoderReranker"
                     ) as mock_reranker_class:
                         # Setup USearchEngine mock - return multiple results
                         # Now returns 3-tuples: (message, score, created_at)
@@ -769,9 +769,9 @@ class TestSingleResultRerankingSkip:
                         ]
                         mock_tantivy_class.return_value = mock_tantivy
 
-                        # Setup LLMReranker mock
+                        # Setup CrossEncoder reranker mock
                         mock_reranker = MagicMock()
-                        mock_reranker.rerank = AsyncMock(
+                        mock_reranker.rerank_async = AsyncMock(
                             return_value=[
                                 ("result 1", 0.95),
                                 ("result 2", 0.85),
@@ -783,8 +783,7 @@ class TestSingleResultRerankingSkip:
                         manager = MemoryManager(mock_config, mock_logger)
                         results = await manager.search("test query")
 
-                        # LLM reranker SHOULD be called (multiple results to rerank)
-                        mock_reranker.rerank.assert_called_once()
+                        mock_reranker.rerank_async.assert_awaited_once()
 
                         # Results should be from reranker
                         assert len(results) >= 1

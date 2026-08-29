@@ -18,7 +18,6 @@ from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
-from reflectlog.infrastructure.llm_reranker import LLMReranker, LLMRerankerConfig
 from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
@@ -190,26 +189,6 @@ class EngineFactory:
             weights=fusion_weights if isinstance(fusion_weights, list) else None,
             logger=logger,
         )
-
-
-def create_llm_reranker(
-    config: Config,
-    logger: IStructuredLogger | None,
-) -> LLMReranker | None:
-    """Create LLM reranker if configured.
-
-    Args:
-        config: Application configuration.
-        logger: Structured logger instance.
-
-    Returns:
-        LLMReranker instance or None if not configured.
-    """
-    if config.reranker_engine != "llm":
-        return None
-
-    reranker_config = LLMRerankerConfig.from_config(ConfigAdapter(config))
-    return LLMReranker(config=reranker_config, logger=logger)
 
 
 def create_cross_encoder_reranker(

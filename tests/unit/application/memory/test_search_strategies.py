@@ -80,7 +80,6 @@ def mock_fusion_engine() -> MagicMock:
 def mock_memory_manager() -> MagicMock:
     """Mock MemoryManager for lazy reranker fetching."""
     manager = MagicMock()
-    manager.llm_reranker = None
     manager.cross_encoder_reranker = None
     return manager
 
@@ -320,18 +319,6 @@ class TestGetReranker:
         assert rtype is None
         assert rinstance is None
 
-    def test_returns_llm_reranker(
-        self, pipeline, mock_config, mock_memory_manager
-    ) -> None:
-        """Returns ("llm", reranker) when config says llm and reranker exists."""
-        mock_config.reranker_engine = "llm"
-        mock_reranker = MagicMock()
-        mock_memory_manager.llm_reranker = mock_reranker
-
-        rtype, rinstance = pipeline._get_reranker()
-        assert rtype == "llm"
-        assert rinstance is mock_reranker
-
     def test_returns_cross_encoder_reranker(
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
@@ -348,8 +335,8 @@ class TestGetReranker:
         self, pipeline, mock_config, mock_memory_manager
     ) -> None:
         """Returns (None, None) when no lazy reranker instance is available."""
-        mock_config.reranker_engine = "llm"
-        mock_memory_manager.llm_reranker = None
+        mock_config.reranker_engine = "cross_encoder"
+        mock_memory_manager.cross_encoder_reranker = None
 
         rtype, rinstance = pipeline._get_reranker()
         assert rtype is None
@@ -389,7 +376,6 @@ class TestStep4Reranking:
     ) -> None:
         """When no reranker is configured, returns results unchanged."""
         mock_config.reranker_engine = "none"
-        mock_memory_manager.llm_reranker = None
         mock_memory_manager.cross_encoder_reranker = None
 
         ctx = _make_context(reranker_engine="none")
@@ -397,50 +383,6 @@ class TestStep4Reranking:
 
         reranked = await pipeline._step4_reranking(ctx, results, {}, 4)
         assert reranked == results
-
-
-# ---------------------------------------------------------------------------
-# TestRerankLLM – lines 493-495 (fallback when llm_reranker is None)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestRerankLLM:
-    """Tests for _rerank_llm()."""
-
-    @pytest.mark.asyncio
-    async def test_fallback_when_no_reranker_provided(
-        self, pipeline, mock_config, mock_memory_manager
-    ) -> None:
-        """_rerank_llm() returns results unmodified when no reranker (lines 493-495)."""
-        mock_config.reranker_engine = "none"
-        mock_memory_manager.llm_reranker = None
-
-        ctx = _make_context()
-        results = [("msg1", 0.5), ("msg2", 0.3)]
-
-        reranked = await pipeline._rerank_llm(
-            ctx, results, {}, step_num=4, llm_reranker=None
-        )
-        assert reranked == results
-
-    @pytest.mark.asyncio
-    async def test_llm_reranking_with_provided_reranker(
-        self, pipeline, mock_config
-    ) -> None:
-        """_rerank_llm() calls reranker.rerank() and logs timing."""
-        mock_reranker = AsyncMock()
-        mock_reranker.rerank = AsyncMock(return_value=[("msg1", 0.95)])
-
-        ctx = _make_context()
-        results = [("msg1", 0.5), ("msg2", 0.3)]
-        ts_map = {"msg1": "2025-01-01T00:00:00Z"}
-
-        reranked = await pipeline._rerank_llm(
-            ctx, results, ts_map, step_num=4, llm_reranker=mock_reranker
-        )
-        assert reranked == [("msg1", 0.95)]
-        mock_reranker.rerank.assert_awaited_once_with(ctx.query, results, ts_map)
 
 
 # ---------------------------------------------------------------------------
