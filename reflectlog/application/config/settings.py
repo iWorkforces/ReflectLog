@@ -196,9 +196,9 @@ class Config:
     )
 
     # USearch exact search settings
-    usearch_exact_search: bool = True  # Force exact brute-force search (bypasses HNSW)
+    usearch_exact_search: bool = False  # HNSW approximate search (exact is opt-in)
     usearch_exact_search_threshold: int = (
-        10000  # Auto-switch to exact when index < threshold
+        256  # Auto-switch to exact when index is smaller than this
     )
 
     # Fusion settings (ranx-based)
@@ -214,7 +214,7 @@ class Config:
     min_memory_length: int = 1
 
     # Reranker engine selection
-    reranker_engine: str = "llm"  # "llm", "cross_encoder", or "none"
+    reranker_engine: str = "cross_encoder"  # "llm", "cross_encoder", or "none"
 
     # LLM reranking settings (used when reranker_engine="llm")
     llm_model: str = "x-ai/grok-4.1-fast"  # LLM model for reranking
@@ -363,11 +363,11 @@ class Config:
                 1.0, float(os.environ.get("OVERFETCH_MAX_MULTIPLIER", "3.0"))
             ),
             "usearch_exact_search": os.environ.get(
-                "USEARCH_EXACT_SEARCH", "true"
+                "USEARCH_EXACT_SEARCH", "false"
             ).lower()
             == "true",
             "usearch_exact_search_threshold": max(
-                0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "10000"))
+                0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "256"))
             ),
             "fusion_method": os.environ.get("FUSION_METHOD", "rrf").lower(),
             "fusion_normalization": os.environ.get("FUSION_NORMALIZATION") or None,
@@ -418,7 +418,7 @@ class Config:
     def _parse_reranker_config() -> RerankerConfigDict:
         """Parse reranker-related configuration from environment variables."""
         # Determine reranker engine
-        reranker_engine_raw = os.environ.get("RERANKER_ENGINE", "llm")
+        reranker_engine_raw = os.environ.get("RERANKER_ENGINE", "cross_encoder")
         reranker_engine = reranker_engine_raw.lower()
         valid_engines = ("llm", "cross_encoder", "none")
         if reranker_engine not in valid_engines:

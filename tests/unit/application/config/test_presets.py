@@ -134,7 +134,7 @@ class TestPresetConstants:
         assert PERFORMANCE_PRESET.search_score_threshold == 0.3
         assert PERFORMANCE_PRESET.fusion_rrf_k == 40
         assert PERFORMANCE_PRESET.overfetch_multiplier == 2
-        assert PERFORMANCE_PRESET.reranker_engine == "cross_encoder"
+        assert PERFORMANCE_PRESET.reranker_engine == "none"
         assert PERFORMANCE_PRESET.enable_recency_boost is False
         assert PERFORMANCE_PRESET.enable_smart_replace is False
         assert PERFORMANCE_PRESET.embedding_batch_size == 1024
@@ -314,7 +314,7 @@ class TestApplyPresetToEnv:
         assert os.environ["SEARCH_SCORE_THRESHOLD"] == "0.3"
         assert os.environ["FUSION_RRF_K"] == "40"
         assert os.environ["OVERFETCH_MULTIPLIER"] == "2"
-        assert os.environ["RERANKER_ENGINE"] == "cross_encoder"
+        assert os.environ["RERANKER_ENGINE"] == "none"
         assert os.environ["ENABLE_RECENCY_BOOST"] == "false"
         assert os.environ["ENABLE_SMART_REPLACE"] == "false"
         assert os.environ["EMBEDDING_BATCH_SIZE"] == "1024"

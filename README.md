@@ -93,7 +93,7 @@ await remove(["I use FastAPI for APIs"])
 ```bash
 # Search Settings
 SEARCH_LIMIT=5                    # Max results per search
-RERANKER_ENGINE=llm               # llm, cross_encoder, or none
+RERANKER_ENGINE=cross_encoder     # llm, cross_encoder, or none
 ENABLE_HYBRID_SEARCH=true         # Enable full-text search
 
 # Reranking

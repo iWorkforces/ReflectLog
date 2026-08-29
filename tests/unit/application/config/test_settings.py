@@ -126,7 +126,7 @@ class TestConfigDefaults:
 
     def test_reranker_defaults(self):
         cfg = self._make_config()
-        assert cfg.reranker_engine == "llm"
+        assert cfg.reranker_engine == "cross_encoder"
         assert cfg.llm_model == "x-ai/grok-4.1-fast"
         assert cfg.search_score_threshold == 0.5
         assert cfg.rerank_max_concurrency == 10
@@ -154,8 +154,8 @@ class TestConfigDefaults:
 
     def test_usearch_defaults(self):
         cfg = self._make_config()
-        assert cfg.usearch_exact_search is True
-        assert cfg.usearch_exact_search_threshold == 10000
+        assert cfg.usearch_exact_search is False
+        assert cfg.usearch_exact_search_threshold == 256
 
     def test_memory_validation_defaults(self):
         cfg = self._make_config()
