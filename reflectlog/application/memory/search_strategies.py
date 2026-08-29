@@ -33,7 +33,7 @@ from ..utils.validation import truncate_memory
 from .fusion.base import FusionEngine
 
 # Constants for magic numbers (documented for maintainability)
-MIN_OVERFETCH_LIMIT = 20  # Minimum docs to fetch for better fusion quality
+MIN_OVERFETCH_LIMIT = 8  # Floor so tiny limits still have fusion diversity
 TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize to 0-1
 LOG_QUERY_TRUNCATE_LENGTH = 100
 
@@ -205,8 +205,8 @@ class SearchPipeline:
             msg: created_at for msg, _, created_at in semantic_results
         }
 
-        # Log results
-        self._log_search_results(context, semantic_results, tantivy_results)
+        if self.config.log_search_results_verbose:
+            self._log_search_results(context, semantic_results, tantivy_results)
 
         # Step 2: RRF Fusion or Concatenation
         hybrid_results = await self._step2_fusion_or_concatenate(
@@ -303,7 +303,9 @@ class SearchPipeline:
         """
         # Init stays outside the search fallback: a failed ensure_initialized
         # still raises SearchError from execute(), matching the prior contract.
-        await asyncify(self._semantic_engine.ensure_initialized)()
+        is_ready = getattr(self._semantic_engine, "is_ready", None)
+        if not callable(is_ready) or not is_ready():
+            await asyncify(self._semantic_engine.ensure_initialized)()
         try:
             results: list[tuple[str, float, str]] = await asyncify(
                 self._semantic_engine.search
@@ -334,7 +336,9 @@ class SearchPipeline:
         """Execute full-text search on Tantivy engine."""
         if self._tantivy_engine is None:
             return []
-        await asyncify(self._tantivy_engine.ensure_initialized)()
+        is_ready = getattr(self._tantivy_engine, "is_ready", None)
+        if not callable(is_ready) or not is_ready():
+            await asyncify(self._tantivy_engine.ensure_initialized)()
         tantivy_results: list[tuple[str, float]] = await asyncify(
             self._tantivy_engine.search
         )(query, workspace_id, limit)
@@ -476,6 +480,9 @@ class SearchPipeline:
             },
         )
 
+        if not self.config.log_search_results_verbose:
+            return filtered
+
         # Show filtered results with status
         for idx, (memory, score) in enumerate(results[: min(5, len(results))], 1):
             status, interpretation = format_fusion_score_status(score, threshold)
@@ -541,6 +548,7 @@ class SearchPipeline:
                     results,
                     step_num,
                     cross_encoder_reranker,
+                    timestamp_map=timestamp_map,
                 )
             case _:
                 # No reranking configured
@@ -602,6 +610,7 @@ class SearchPipeline:
         results: list[tuple[str, float]],
         step_num: int,
         cross_encoder_reranker: CrossEncoderReranker | None = None,
+        timestamp_map: dict[str, str] | None = None,
     ) -> list[tuple[str, float]]:
         """Rerank using CrossEncoder."""
         # Use provided reranker or fetch via _get_reranker
@@ -623,9 +632,14 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        reranked_results = await cross_encoder_reranker.rerank_async(
-            context.query, results
-        )
+        if timestamp_map is None:
+            reranked_results = await cross_encoder_reranker.rerank_async(
+                context.query, results
+            )
+        else:
+            reranked_results = await cross_encoder_reranker.rerank_async(
+                context.query, results, timestamp_map
+            )
         results = reranked_results
 
         rerank_duration = (time.time() - rerank_start) * 1000

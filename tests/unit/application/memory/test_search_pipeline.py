@@ -696,7 +696,9 @@ class TestRerankerSettings:
         )
 
         encoder.rerank_async.assert_awaited_once_with(
-            "test query", [("a", 0.4), ("b", 0.3)]
+            "test query",
+            [("a", 0.4), ("b", 0.3)],
+            {"a": _TS, "b": _TS},
         )
         assert result.memories == ["b", "a"]
 
@@ -1198,10 +1200,10 @@ class TestCanonicalOverfetch:
         # Canonical adaptive uses max multiplier for small indexes: 10*3=30, then
         # the same number happens to match — check a large-index case instead.
         large = calculate_adaptive_overfetch(10, 10000, config)
-        assert large == 20  # 10 * min_multiplier 1.5, above MIN_OVERFETCH_LIMIT
+        assert large == 15  # 10 * min_multiplier 1.5, above MIN_OVERFETCH_LIMIT
 
     def test_minimum_overfetch_floor(self) -> None:
         config = _make_config()
         config.overfetch_adaptive = False
         config.overfetch_multiplier = 1
-        assert calculate_adaptive_overfetch(1, 0, config) >= 20
+        assert calculate_adaptive_overfetch(1, 0, config) >= 8

@@ -11,7 +11,10 @@ import numpy as np
 from ranx import Run
 from ranx import fuse as ranx_fuse
 
-from reflectlog.utility.scoring import normalize_scores_minmax
+from reflectlog.utility.scoring import (
+    compute_rrf_scores_batch,
+    normalize_scores_minmax,
+)
 
 from .base import FusionEngine
 
@@ -222,6 +225,44 @@ class RanxFusionEngine(FusionEngine):
             for msg, score in zip(memories, normalized_scores, strict=True)
         ]
 
+    def _fuse_rrf_numba(
+        self, result_sets: list[list[tuple[str, float]]]
+    ) -> list[tuple[str, float]]:
+        """RRF via interned doc ids and the compiled batch scorer."""
+        doc_index: dict[str, int] = {}
+        docs: list[str] = []
+        for result_set in result_sets:
+            for memory, _score in result_set:
+                if memory not in doc_index:
+                    doc_index[memory] = len(docs)
+                    docs.append(memory)
+
+        ranks = np.zeros((len(docs), len(result_sets)), dtype=np.int64)
+        for run_idx, result_set in enumerate(result_sets):
+            seen: set[int] = set()
+            for rank, (memory, _score) in enumerate(result_set, start=1):
+                doc_idx = doc_index[memory]
+                if doc_idx in seen:
+                    continue
+                ranks[doc_idx, run_idx] = rank
+                seen.add(doc_idx)
+
+        scores = compute_rrf_scores_batch(ranks, k=self._rrf_k)
+        paired = [(docs[idx], float(scores[idx])) for idx in range(len(docs))]
+        paired.sort(key=lambda item: item[1], reverse=True)
+        normalized = self._normalize_output_scores(paired)
+        if self.logger:
+            self.logger.debug(
+                f"Fusion completed: {len(normalized)} unique results "
+                f"from {len(result_sets)} result sets",
+                extra={
+                    "method": self._method,
+                    "input_sets": len(result_sets),
+                    "unique_count": len(normalized),
+                },
+            )
+        return normalized
+
     @override
     def fuse(
         self,
@@ -240,6 +281,9 @@ class RanxFusionEngine(FusionEngine):
         non_empty = [rs for rs in result_sets if rs]
         if not non_empty:
             return []
+
+        if self._method == "rrf" and self._weights is None:
+            return self._fuse_rrf_numba(non_empty)
 
         # Validate score ranges and log unusual inputs (debug level)
         if self.logger and self.logger.is_enabled_for(logging.DEBUG):

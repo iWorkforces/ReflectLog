@@ -346,7 +346,7 @@ class CrossEncoderReranker(BaseModel):
             return
 
         threshold = self.config.score_threshold
-        self.logger.info(
+        self.logger.debug(
             f"   FlagReranker scoring (threshold: {threshold:.2f}), "
             f"normalize: {self.config.normalize}, batch_norm: {self.config.batch_normalize}):",
             extra={
@@ -360,7 +360,7 @@ class CrossEncoderReranker(BaseModel):
         for idx, (doc, score) in enumerate(scored, 1):
             status = "[KEEP]" if score >= threshold else "[FILTER]"
             preview = doc[:60] + "..." if len(doc) > 60 else doc
-            self.logger.info(
+            self.logger.debug(
                 f"      [{idx}] {status} score={score:.4f} -> {preview}",
                 extra={
                     "candidate_index": idx,
