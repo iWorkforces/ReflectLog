@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from reflectlog.application.memory.add_phases import AddResult, ReplacementInfo
-from reflectlog.core.exceptions import StorageError
+from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
 
 @pytest.mark.unit
@@ -180,6 +180,19 @@ class TestAddToolErrorHandling:
             await handler(["Valid memory"])
 
         mock_tool_logger.error.assert_called()
+
+    async def test_inconsistent_state_is_reraised(
+        self, add_tool_instance, mock_memory_manager
+    ):
+        """InconsistentStateError must not be flattened to StorageError."""
+        original = InconsistentStateError("USearch/Tantivy split")
+        mock_memory_manager.add_memories_async = AsyncMock(side_effect=original)
+
+        handler = add_tool_instance.get_handler()
+        with pytest.raises(InconsistentStateError) as exc_info:
+            await handler(["Valid memory"])
+
+        assert exc_info.value is original
 
 
 @pytest.mark.unit

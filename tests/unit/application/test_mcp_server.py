@@ -8,6 +8,7 @@ import pytest
 
 from reflectlog.core.exceptions import (
     ConfigurationError,
+    InconsistentStateError,
     SearchError,
     StorageError,
 )
@@ -838,6 +839,18 @@ class TestRemoveTool:
         ):
             with pytest.raises(StorageError, match="Failed to remove memories"):
                 await self._remove_fn(mcp_server)(["Memory"])
+
+    async def test_remove_inconsistent_state_is_reraised(self, mcp_server):
+        """InconsistentStateError must not be flattened to StorageError."""
+        original = InconsistentStateError("USearch/Tantivy split")
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            side_effect=original,
+        ):
+            with pytest.raises(InconsistentStateError) as exc_info:
+                await self._remove_fn(mcp_server)(["Memory"])
+        assert exc_info.value is original
 
     async def test_remove_with_special_characters(self, mcp_server):
         memory = "Memory with special chars: !@#$%"

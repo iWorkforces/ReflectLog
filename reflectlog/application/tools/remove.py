@@ -164,6 +164,8 @@ class RemoveTool(BaseTool):
                     not_found=len(memories_not_found),
                 )
 
+            except TypeError:
+                raise
             except Exception as e:
                 self._raise_tool_error(
                     "remove",

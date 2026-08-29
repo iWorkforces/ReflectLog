@@ -1,11 +1,41 @@
 """Tests for RemoveTool implementation."""
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from reflectlog.application.tools.remove import RemoveTool
-from reflectlog.core.exceptions import StorageError
+from reflectlog.core.exceptions import InconsistentStateError, StorageError
+
+
+class RecordingManager:
+    """Manager with a real ``delete_memories`` so RemoveTool uses the batch path."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+        self.present: set[str] = set()
+        self.error: Exception | None = None
+        self.return_override: object | None = None
+
+    def delete_memories(self, memories: list[str]) -> list[str]:
+        if self.error is not None:
+            raise self.error
+        if self.return_override is not None:
+            return self.return_override  # type: ignore[return-value]
+        self.calls.append(list(memories))
+        return [memory for memory in memories if memory in self.present]
+
+
+@pytest.fixture
+def recording_manager() -> RecordingManager:
+    return RecordingManager()
+
+
+@pytest.fixture
+def remove_tool_instance(mock_config, recording_manager, mock_tool_logger) -> RemoveTool:
+    return RemoveTool(
+        config=mock_config,
+        memory_manager=recording_manager,
+        logger=mock_tool_logger,
+    )
 
 
 @pytest.mark.unit
@@ -13,44 +43,34 @@ class TestRemoveToolHappyPath:
     """Tests for successful remove operations."""
 
     async def test_remove_single_memory(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
-        """Removing a single existing memory calls search_for_removal and delete_by_memory."""
+        """Removing a single existing memory calls delete_memories."""
         memory = "Remove this"
-        mock_memory_manager.search_for_removal.return_value = [
-            {"id": "1", "memory": memory, "score": 0.95}
-        ]
+        recording_manager.present = {memory}
 
         handler = remove_tool_instance.get_handler()
         result = await handler([memory])
 
         assert result is None
-        mock_memory_manager.search_for_removal.assert_called_once_with(memory)
-        mock_memory_manager.delete_by_memory.assert_called_once_with(memory)
+        assert recording_manager.calls == [[memory]]
 
     async def test_remove_multiple_memories(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
-        """Removing multiple memories processes each sequentially."""
-
-        def search_side_effect(query):
-            return [{"id": "x", "memory": query, "score": 0.95}]
-
-        mock_memory_manager.search_for_removal.side_effect = search_side_effect
+        """Removing multiple memories sends the unique list to delete_memories."""
+        recording_manager.present = {"First", "Second"}
 
         handler = remove_tool_instance.get_handler()
         await handler(["First", "Second"])
 
-        assert mock_memory_manager.search_for_removal.call_count == 2
-        assert mock_memory_manager.delete_by_memory.call_count == 2
+        assert recording_manager.calls == [["First", "Second"]]
 
     async def test_remove_logs_invocation(
-        self, remove_tool_instance, mock_memory_manager, mock_tool_logger
+        self, remove_tool_instance, recording_manager, mock_tool_logger
     ):
         """Remove handler logs invocation with tool name."""
-        mock_memory_manager.search_for_removal.return_value = [
-            {"id": "1", "memory": "Hello", "score": 0.95}
-        ]
+        recording_manager.present = {"Hello"}
 
         handler = remove_tool_instance.get_handler()
         await handler(["Hello"])
@@ -62,20 +82,16 @@ class TestRemoveToolHappyPath:
         assert invocation_logged
 
     async def test_remove_duplicate_occurrences(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
-        """Multiple exact matches for a single memory are all deleted."""
+        """Duplicate request strings are collapsed before delete_memories."""
         memory = "Dup memory"
-        mock_memory_manager.search_for_removal.return_value = [
-            {"id": "1", "memory": memory, "score": 0.95},
-            {"id": "2", "memory": memory, "score": 0.90},
-            {"id": "3", "memory": memory, "score": 0.85},
-        ]
+        recording_manager.present = {memory}
 
         handler = remove_tool_instance.get_handler()
-        await handler([memory])
+        await handler([memory, memory])
 
-        assert mock_memory_manager.delete_by_memory.call_count == 3
+        assert recording_manager.calls == [[memory]]
 
 
 @pytest.mark.unit
@@ -83,15 +99,14 @@ class TestRemoveToolEmptyInput:
     """Tests for empty list input handling."""
 
     async def test_remove_empty_list_noop(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
-        """Empty list is a no-op that returns None without searching."""
+        """Empty list is a no-op that returns None without deleting."""
         handler = remove_tool_instance.get_handler()
         result = await handler([])
 
         assert result is None
-        mock_memory_manager.search_for_removal.assert_not_called()
-        mock_memory_manager.delete_by_memory.assert_not_called()
+        assert recording_manager.calls == []
 
     async def test_remove_empty_list_logs_message(
         self, remove_tool_instance, mock_tool_logger
@@ -112,47 +127,35 @@ class TestRemoveToolNotFound:
     """Tests for memory not found scenarios."""
 
     async def test_remove_nonexistent_silently_ignored(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
         """Non-existent memory is silently ignored without error."""
-        mock_memory_manager.search_for_removal.return_value = [
-            {"id": "1", "memory": "Similar but different", "score": 0.80}
-        ]
-
         handler = remove_tool_instance.get_handler()
         result = await handler(["Nonexistent memory"])
 
         assert result is None
-        mock_memory_manager.delete_by_memory.assert_not_called()
+        assert recording_manager.calls == [["Nonexistent memory"]]
 
     async def test_remove_no_candidates_at_all(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
-        """Zero search candidates still succeeds silently."""
-        mock_memory_manager.search_for_removal.return_value = []
-
+        """Missing memories still succeed silently."""
         handler = remove_tool_instance.get_handler()
         result = await handler(["Ghost memory"])
 
         assert result is None
-        mock_memory_manager.delete_by_memory.assert_not_called()
+        assert recording_manager.calls == [["Ghost memory"]]
 
     async def test_remove_case_sensitive_matching(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
         """Remove uses case-sensitive exact matching."""
-        mock_memory_manager.search_for_removal.return_value = [
-            {"id": "1", "memory": "Hello", "score": 0.95},
-            {"id": "2", "memory": "hello", "score": 0.90},
-            {"id": "3", "memory": "HELLO", "score": 0.85},
-        ]
+        recording_manager.present = {"Hello"}
 
         handler = remove_tool_instance.get_handler()
         await handler(["Hello"])
 
-        # Only exact case match "Hello" should be deleted
-        assert mock_memory_manager.delete_by_memory.call_count == 1
-        mock_memory_manager.delete_by_memory.assert_called_with("Hello")
+        assert recording_manager.calls == [["Hello"]]
 
 
 @pytest.mark.unit
@@ -160,35 +163,21 @@ class TestRemoveToolPartialRemoval:
     """Tests for partial removal scenarios."""
 
     async def test_mixed_existing_and_nonexistent(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
         """Mix of existing and non-existing memories: only existing ones are removed."""
-
-        def search_side_effect(query):
-            if query == "Exists":
-                return [{"id": "1", "memory": "Exists", "score": 0.95}]
-            return []
-
-        mock_memory_manager.search_for_removal.side_effect = search_side_effect
+        recording_manager.present = {"Exists"}
 
         handler = remove_tool_instance.get_handler()
         await handler(["Exists", "Ghost"])
 
-        assert mock_memory_manager.search_for_removal.call_count == 2
-        assert mock_memory_manager.delete_by_memory.call_count == 1
-        mock_memory_manager.delete_by_memory.assert_called_with("Exists")
+        assert recording_manager.calls == [["Exists", "Ghost"]]
 
     async def test_removal_summary_logging(
-        self, remove_tool_instance, mock_memory_manager, mock_tool_logger
+        self, remove_tool_instance, recording_manager, mock_tool_logger
     ):
         """Partial removal logs summary with found and not-found counts."""
-
-        def search_side_effect(query):
-            if query == "Found":
-                return [{"id": "1", "memory": "Found", "score": 0.95}]
-            return []
-
-        mock_memory_manager.search_for_removal.side_effect = search_side_effect
+        recording_manager.present = {"Found"}
 
         handler = remove_tool_instance.get_handler()
         await handler(["Found", "Missing"])
@@ -259,7 +248,7 @@ class TestRemoveToolPartialRemoval:
             logger=mock_tool_logger,
         )
         handler = tool.get_handler()
-        with pytest.raises(StorageError, match="Failed to remove memories"):
+        with pytest.raises(TypeError, match="delete_memories must return list"):
             await handler(["Exists"])
 
 
@@ -268,11 +257,11 @@ class TestRemoveToolErrorHandling:
     """Tests for remove error handling."""
 
     async def test_storage_error_wraps_with_from(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
         """Storage exception is wrapped as StorageError with 'from e' chaining."""
         original = RuntimeError("disk failure")
-        mock_memory_manager.search_for_removal.side_effect = original
+        recording_manager.error = original
 
         handler = remove_tool_instance.get_handler()
         with pytest.raises(StorageError, match="Failed to remove memories") as exc_info:
@@ -281,23 +270,33 @@ class TestRemoveToolErrorHandling:
         assert exc_info.value.__cause__ is original
 
     async def test_delete_failure_raises_storage_error(
-        self, remove_tool_instance, mock_memory_manager
+        self, remove_tool_instance, recording_manager
     ):
         """Delete failure during removal raises StorageError."""
-        mock_memory_manager.search_for_removal.return_value = [
-            {"id": "1", "memory": "Memory", "score": 0.95}
-        ]
-        mock_memory_manager.delete_by_memory.side_effect = RuntimeError("delete failed")
+        recording_manager.error = RuntimeError("delete failed")
 
         handler = remove_tool_instance.get_handler()
         with pytest.raises(StorageError, match="Failed to remove memories"):
             await handler(["Memory"])
 
+    async def test_inconsistent_state_is_reraised(
+        self, remove_tool_instance, recording_manager
+    ):
+        """InconsistentStateError must not be flattened to StorageError."""
+        original = InconsistentStateError("USearch/Tantivy split")
+        recording_manager.error = original
+
+        handler = remove_tool_instance.get_handler()
+        with pytest.raises(InconsistentStateError) as exc_info:
+            await handler(["Memory"])
+
+        assert exc_info.value is original
+
     async def test_error_logs_before_raising(
-        self, remove_tool_instance, mock_memory_manager, mock_tool_logger
+        self, remove_tool_instance, recording_manager, mock_tool_logger
     ):
         """Error triggers log_error before raising StorageError."""
-        mock_memory_manager.search_for_removal.side_effect = RuntimeError("boom")
+        recording_manager.error = RuntimeError("boom")
 
         handler = remove_tool_instance.get_handler()
         with pytest.raises(StorageError):
