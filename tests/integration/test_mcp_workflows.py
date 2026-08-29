@@ -549,17 +549,21 @@ class TestMCPWorkflows:
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
-
-        async def pipeline_search_side_effect(context, **kwargs):
-            query_str = context.query if hasattr(context, "query") else str(context)
-            matching = [mem for mem in stored_memories if query_str in mem]
-            mock_result = MagicMock()
-            mock_result.memories = matching
-            return mock_result
-
-        mcp_server.memory_manager._search_pipeline.execute = AsyncMock(
-            side_effect=pipeline_search_side_effect
+        object.__setattr__(mcp_server.memory_manager.config, "reranker_engine", "none")
+        object.__setattr__(
+            mcp_server.memory_manager.config, "fusion_ranking_threshold", 0.0
         )
+
+        def semantic_search(query, **_kwargs):
+            matching = [mem for mem in stored_memories if query in mem]
+            return [(mem, 0.9, "2026-08-22T00:00:00+00:00") for mem in matching]
+
+        def tantivy_search(query, *_args, **_kwargs):
+            matching = [mem for mem in stored_memories if query in mem]
+            return [(mem, 0.8) for mem in matching]
+
+        mcp_server.memory_manager._semantic_engine.search.side_effect = semantic_search
+        mcp_server.memory_manager._tantivy_engine.search.side_effect = tantivy_search
 
         add_func = None
         search_func = None
@@ -613,19 +617,25 @@ class TestMCPWorkflows:
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
-
-        async def pipeline_search_side_effect(context, **kwargs):
-            query_str = context.query if hasattr(context, "query") else str(context)
-            matching = [
-                mem for mem in stored_memories if query_str.lower() in mem.lower()
-            ]
-            mock_result = MagicMock()
-            mock_result.memories = matching
-            return mock_result
-
-        mcp_server.memory_manager._search_pipeline.execute = AsyncMock(
-            side_effect=pipeline_search_side_effect
+        object.__setattr__(mcp_server.memory_manager.config, "reranker_engine", "none")
+        object.__setattr__(
+            mcp_server.memory_manager.config, "fusion_ranking_threshold", 0.0
         )
+
+        def semantic_search(query, **_kwargs):
+            matching = [
+                mem for mem in stored_memories if query.lower() in mem.lower()
+            ]
+            return [(mem, 0.9, "2026-08-22T00:00:00+00:00") for mem in matching]
+
+        def tantivy_search(query, *_args, **_kwargs):
+            matching = [
+                mem for mem in stored_memories if query.lower() in mem.lower()
+            ]
+            return [(mem, 0.8) for mem in matching]
+
+        mcp_server.memory_manager._semantic_engine.search.side_effect = semantic_search
+        mcp_server.memory_manager._tantivy_engine.search.side_effect = tantivy_search
 
         add_func = None
         search_func = None
