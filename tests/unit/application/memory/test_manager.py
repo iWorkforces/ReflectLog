@@ -650,7 +650,9 @@ class TestDeleteOperations:
         result = manager.delete_by_memory("test memory")
         assert result is True
         mock_usearch.delete.assert_called_once_with(memory_id="42")
-        mock_tantivy.delete.assert_called_once_with("test_project", "test memory")
+        mock_tantivy.delete.assert_called_once_with(
+            "test_project", "test memory", verify_exists=True
+        )
 
     def test_delete_by_memory_without_tantivy(self, mock_config, mock_logger):
         """delete_by_memory works without Tantivy."""
@@ -729,6 +731,29 @@ class TestDeleteOperations:
 
         assert deleted == ["hello"]
         assert fake.calls == [("test_project", ["hello"], True)]
+
+    def test_delete_memories_short_count_fails_closed(
+        self, mock_config, mock_logger
+    ):
+        """A live FTS miss after USearch delete is InconsistentStateError."""
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.get_id_by_content.return_value = 7
+
+        class ShortTantivy:
+            def delete_batch(
+                self,
+                workspace_id: str,
+                contents: list[str],
+                verify_exists: bool = False,
+            ) -> int:
+                return 0
+
+        manager._tantivy_engine = ShortTantivy()
+
+        with pytest.raises(InconsistentStateError, match="deleted 0/1"):
+            manager.delete_memories(["hello"])
+
+        mock_usearch.delete.assert_called_once_with(memory_id="7")
 
 
 # ---------------------------------------------------------------------------

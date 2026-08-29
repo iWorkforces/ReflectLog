@@ -567,8 +567,13 @@ class TantivyEngine(BaseModel):
                 is_deleted_val = doc.get_first("is_deleted")
                 is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
                 if is_deleted == 1:
-                    if len(tomb_counts) >= max_tombstones_per_project:
-                        break
+                    # Cap unique tomb keys only. Never abort the scan — later
+                    # live re-adds of an already-seen text must still be counted.
+                    if (
+                        memory not in tomb_counts
+                        and len(tomb_counts) >= max_tombstones_per_project
+                    ):
+                        continue
                     tomb_counts[memory] = tomb_counts.get(memory, 0) + 1
                 else:
                     live_counts[memory] = live_counts.get(memory, 0) + 1
@@ -591,22 +596,26 @@ class TantivyEngine(BaseModel):
 
             return tombstoned
 
+        except OSError:
+            raise
         except ValueError as e:
-            # Query parsing errors - expected failure, log as warning
             if self.logger:
                 self.logger.warning(
                     "Failed to get tombstoned memories (query parse error)",
                     extra={"workspace_id": workspace_id, "error": str(e)},
                 )
-            return set()
+            raise RuntimeError(
+                f"Failed to get tombstoned memories: {e}"
+            ) from e
         except Exception as e:
-            # Unexpected errors - log as warning with more context
             if self.logger:
                 self.logger.warning(
                     "Failed to get tombstoned memories",
                     extra={"workspace_id": workspace_id, "error": str(e)},
                 )
-            return set()
+            raise RuntimeError(
+                f"Failed to get tombstoned memories: {e}"
+            ) from e
 
     def _normalize_scores(
         self, results: list[tuple[str, float]]
@@ -702,7 +711,7 @@ class TantivyEngine(BaseModel):
                         "error_type": "FileSystemError",
                     },
                 )
-            return []
+            raise SearchError(f"Tantivy file system error during search: {e}") from e
 
         except Exception as e:
             raise SearchError(f"Tantivy search failed: {e}") from e
@@ -752,9 +761,10 @@ class TantivyEngine(BaseModel):
         result_limit: int,
         tombstoned_memories: set[str],
     ) -> list[tuple[str, float]]:
-        """Execute query and collect results, filtering tombstoned memories."""
+        """Execute query and collect unique live documents."""
         top_docs = self.searcher.search(query=parsed_query, limit=search_limit)
         results: list[tuple[str, float]] = []
+        seen: set[str] = set()
 
         for score, doc_addr in top_docs.hits:
             doc = self.searcher.doc(doc_addr)
@@ -762,11 +772,17 @@ class TantivyEngine(BaseModel):
             if not isinstance(memory, str):
                 continue
 
-            if memory in tombstoned_memories:
+            is_deleted_val = doc.get_first("is_deleted")
+            is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+            if is_deleted == 1:
+                continue
+
+            if memory in tombstoned_memories or memory in seen:
                 continue
 
             if self.logger:
                 self.logger.debug(f"Tantivy match: {memory[:100]}...")
+            seen.add(memory)
             results.append((memory, score))
 
             if len(results) >= result_limit:
@@ -859,15 +875,14 @@ class TantivyEngine(BaseModel):
                     )
                 return False
 
-        # Add tombstone document
-        with self._writer_lock:
-            doc = tantivy.Document()
-            doc.add_text("workspace_id", workspace_id)
-            doc.add_text("content", content)
-            doc.add_unsigned("is_deleted", 1)  # 1 = deleted (tombstone)
-            doc.add_integer("deleted_at", int(time.time() * 1000))  # Unix timestamp ms
+        live_count, tomb_count = self._count_live_and_tomb(workspace_id, content)
+        needed = live_count - tomb_count
+        if needed <= 0:
+            if verify_exists:
+                return False
+            needed = 1
 
-            _ = self.writer.add_document(doc)
+        self._add_tombstone_docs(workspace_id, content, needed)
 
         if self.logger:
             self.logger.debug(
@@ -875,10 +890,52 @@ class TantivyEngine(BaseModel):
                 extra={
                     "workspace_id": workspace_id,
                     "memory_preview": content[:50] if content else "",
+                    "tombstones_added": needed,
                 },
             )
 
         return True
+
+    def _count_live_and_tomb(self, workspace_id: str, content: str) -> tuple[int, int]:
+        """Count committed live and tombstone copies of one memory."""
+        if self._index is None:
+            return 0, 0
+
+        escaped_workspace_id = self._escape_tantivy_query(workspace_id)
+        query = self._index.parse_query(
+            query=f'workspace_id:"{escaped_workspace_id}"',
+            default_field_names=["workspace_id"],
+        )
+        live_count = 0
+        tomb_count = 0
+        for _, doc_addr in self.searcher.search(
+            query=query, limit=self._get_doc_limit()
+        ).hits:
+            doc = self.searcher.doc(doc_addr)
+            memory = doc.get_first("content")
+            if memory != content:
+                continue
+            is_deleted_val = doc.get_first("is_deleted")
+            is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+            if is_deleted == 1:
+                tomb_count += 1
+            else:
+                live_count += 1
+        return live_count, tomb_count
+
+    def _add_tombstone_docs(
+        self, workspace_id: str, content: str, count: int
+    ) -> None:
+        """Plant ``count`` tombstone documents under the writer lock."""
+        deleted_at = int(time.time() * 1000)
+        with self._writer_lock:
+            for _ in range(count):
+                doc = tantivy.Document()
+                doc.add_text("workspace_id", workspace_id)
+                doc.add_text("content", content)
+                doc.add_unsigned("is_deleted", 1)
+                doc.add_integer("deleted_at", deleted_at)
+                _ = self.writer.add_document(doc)
 
     def delete(
         self, workspace_id: str, content: str, *, verify_exists: bool = True
@@ -1172,8 +1229,8 @@ class TantivyEngine(BaseModel):
             total_docs = 0
             active_docs = 0
             tombstones = 0
-            active_memories: set[str] = set()
-            tombstoned_memories: set[str] = set()
+            live_counts: dict[str, int] = {}
+            tomb_counts: dict[str, int] = {}
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
@@ -1185,16 +1242,16 @@ class TantivyEngine(BaseModel):
                 if is_deleted == 1:
                     tombstones += 1
                     if memory is not None:
-                        tombstoned_memories.add(memory)
+                        tomb_counts[memory] = tomb_counts.get(memory, 0) + 1
                 else:
                     active_docs += 1
                     if memory is not None:
-                        active_memories.add(memory)
+                        live_counts[memory] = live_counts.get(memory, 0) + 1
 
             unique_active = {
                 memory
-                for memory in active_memories
-                if memory not in tombstoned_memories
+                for memory, live in live_counts.items()
+                if tomb_counts.get(memory, 0) < live
             }
 
             return {
@@ -1360,7 +1417,7 @@ class TantivyEngine(BaseModel):
             query="*",
             default_field_names=["content"],
         )
-        top_docs = self.searcher.search(query=query, limit=100000)
+        top_docs = self.searcher.search(query=query, limit=self._get_doc_limit())
 
         all_docs: list[tuple[str, str, int]] = []
         live_counts: dict[tuple[str, str], int] = {}

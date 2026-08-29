@@ -75,7 +75,7 @@ def mock_tantivy_engine():
     """Mock TantivyEngine."""
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
-    engine.delete = MagicMock(return_value=None)
+    engine.delete = MagicMock(return_value=True)
     engine.commit = MagicMock(return_value=None)
     engine.search = MagicMock(return_value=[])
     return engine
