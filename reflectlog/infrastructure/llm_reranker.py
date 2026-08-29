@@ -13,7 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from reflectlog.core.config import IAppConfig
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.prompts import SCORING_PROMPT, SCORING_PROMPT_WITH_AGE
+from reflectlog.core.prompts import (
+    format_scoring_prompt,
+    format_scoring_prompt_with_age,
+)
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
@@ -210,11 +213,11 @@ class OpenAIRerankerProvider(BaseOpenAIProvider, IRerankerProvider):
         try:
             # Format the scoring prompt with or without temporal context
             if memory_age:
-                prompt = SCORING_PROMPT_WITH_AGE.format(
+                prompt = format_scoring_prompt_with_age(
                     query=query, document=document, memory_age=memory_age
                 )
             else:
-                prompt = SCORING_PROMPT.format(query=query, document=document)
+                prompt = format_scoring_prompt(query=query, document=document)
 
             # Call LLM with structured output (or fallback)
             result = await self._call_llm_with_structured_output(
@@ -360,11 +363,11 @@ class AnthropicRerankerProvider(IRerankerProvider):
         try:
             # Format the scoring prompt with or without temporal context
             if memory_age:
-                prompt = SCORING_PROMPT_WITH_AGE.format(
+                prompt = format_scoring_prompt_with_age(
                     query=query, document=document, memory_age=memory_age
                 )
             else:
-                prompt = SCORING_PROMPT.format(query=query, document=document)
+                prompt = format_scoring_prompt(query=query, document=document)
 
             # Call generate_content with model parameter
             response_text = await generate_content(
@@ -490,23 +493,25 @@ class LLMReranker(BaseModel):
             logger=self.logger,
         )
 
-        # TTL cache for reranking results to avoid redundant API calls
-        self._rerank_cache: dict[
-            str, tuple[float, float]
-        ] = {}  # key -> (score, timestamp)
-        self._rerank_cache_ttl: float = 60.0  # seconds
+        self._rerank_cache: dict[str, tuple[float, float]] = {}
+        self._rerank_cache_ttl = 60.0
+        self._rerank_cache_max = 256
 
-    def _compute_cache_key(self, query: str, document: str) -> str:
+    def _compute_cache_key(
+        self, query: str, document: str, memory_age: str | None
+    ) -> str:
         """Compute deterministic cache key for a query-document pair.
 
         Args:
             query: Search query string.
             document: Document text.
+            memory_age: Optional age string included so recency-aware
+                scores are not reused for a different age.
 
         Returns:
             MD5 hash hex string as cache key.
         """
-        raw = f"{query}||{document}"
+        raw = f"{query}||{document}||{memory_age or ''}"
         return hashlib.md5(raw.encode()).hexdigest()
 
     async def _score_single(
@@ -536,12 +541,14 @@ class LLMReranker(BaseModel):
             return (document, fallback_score)
 
         # Check cache first
-        cache_key = self._compute_cache_key(query, document)
-        current_time = _time.time()
-        if cache_key in self._rerank_cache:
-            cached_score, cached_time = self._rerank_cache[cache_key]
-            if current_time - cached_time < self._rerank_cache_ttl:
+        cache_key = self._compute_cache_key(query, document, memory_age)
+        cached = self._rerank_cache.get(cache_key)
+        now = _time.time()
+        if cached is not None:
+            cached_score, cached_at = cached
+            if now - cached_at < self._rerank_cache_ttl:
                 return (document, cached_score)
+            del self._rerank_cache[cache_key]
 
         # Only pass memory_age if recency boost is enabled
         effective_age = memory_age if self.config.enable_recency_boost else None
@@ -549,8 +556,11 @@ class LLMReranker(BaseModel):
             query, document, fallback_score, effective_age
         )
 
-        # Cache the result
-        self._rerank_cache[cache_key] = (score, current_time)
+        if len(self._rerank_cache) >= self._rerank_cache_max:
+            oldest_key = next(iter(self._rerank_cache), None)
+            if oldest_key is not None:
+                del self._rerank_cache[oldest_key]
+        self._rerank_cache[cache_key] = (score, now)
 
         return (document, score)
 
