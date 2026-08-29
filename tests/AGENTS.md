@@ -1,6 +1,6 @@
 # ReflectLog Test Suite
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -31,7 +31,7 @@ tests/ - 88 files, 34k lines
 ## CONVENTIONS
 
 - Async tests: mode=auto (no manual `@pytest.mark.asyncio` needed)
-- Mock strategy: `MagicMock(spec=...)` for spec-based mocking
+- Mock strategy: `MagicMock(spec=...)`. Production batch APIs use `type(obj).__dict__.get(...)` so MagicMock auto-attrs are not real `add_batch`/`delete_memories`.
 - Config reset: `reset_env_after_test` autouse fixture
 - NUMBA JIT disabled in memory/utils unit tests for coverage
 

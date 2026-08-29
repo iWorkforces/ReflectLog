@@ -107,7 +107,7 @@ class CircuitBreaker:
 
         Args:
             config: Circuit breaker configuration
-            name: Name for logging (e.g., "llm_reranker_api")
+            name: Name for logging (e.g., "smart_replacer_api")
             logger: Structured logger instance
         """
         if logger is None:

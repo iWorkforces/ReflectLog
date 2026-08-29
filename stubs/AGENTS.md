@@ -1,6 +1,6 @@
 # Type Stubs Directory
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -25,8 +25,9 @@ stubs/
 │   └── core/
 ├── sentence_transformers/       # Embedding models
 │   └── __init__.pyi
-└── hypothesis/                  # Property-based testing
-    └── __init__.pyi
+├── hypothesis/                  # Property-based testing
+├── flagembedding/               # FlagReranker
+└── claude_agent_sdk/            # Claude agent SDK
 ```
 
 ## WHERE TO LOOK

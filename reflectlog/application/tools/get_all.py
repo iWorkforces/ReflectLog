@@ -6,7 +6,6 @@ from asyncer import asyncify
 
 from reflectlog.core.exceptions import StorageError
 
-from ..utils.validation import truncate_memory
 from .base import BaseTool
 
 
@@ -55,25 +54,9 @@ class GetAllTool(BaseTool):
             try:
                 self.log_invocation("get_all")
 
-                # Retrieve all memories via asyncify (non-blocking)
                 memories = await asyncify(self.memory.get_all)()
-
-                # Log each retrieved memory
-                for idx, memory in enumerate(memories, 1):
-                    self.logger.info(
-                        f"[{idx}/{len(memories)}] Memory: {truncate_memory(memory)}",
-                        extra={
-                            "tool": "get_all",
-                            "memory_index": idx,
-                            "total_memories": len(memories),
-                            "memory_length": len(memory),
-                        },
-                    )
-
                 self.log_completion("get_all", count=len(memories))
-
-                # Return copy to prevent external mutation
-                return memories.copy()
+                return memories
 
             except Exception as e:
                 self.log_error("get_all", e)

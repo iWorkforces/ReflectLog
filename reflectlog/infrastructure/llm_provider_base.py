@@ -1,7 +1,7 @@
 """Base class for OpenAI-compatible LLM providers.
 
 This module provides BaseOpenAIProvider, which extracts common functionality
-shared between OpenAIRerankerProvider and OpenAIReplacementProvider:
+shared by OpenAIReplacementProvider:
 
 - AsyncOpenAI client initialization with DefaultAioHttpClient (HTTP/2 support)
 - Structured output with json_schema fallback to json_object
@@ -76,7 +76,7 @@ class BaseOpenAIProvider:
 
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
-            httpx_client = HttpClientFactory.get_async_httpx_client(http2=False)
+            httpx_client = HttpClientFactory.get_async_httpx_client(http2=True)
             self._client = AsyncOpenAI(
                 api_key=self._api_key,
                 base_url=self._base_url,

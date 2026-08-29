@@ -1,9 +1,8 @@
 """Cross-encoder reranker using FlagEmbedding's FlagReranker.
 
 This module provides a local cross-encoder model for fast reranking of search
-results before passing top candidates to the LLM reranker. This two-stage
-approach reduces LLM API costs by limiting the number of candidates that
-require expensive LLM scoring.
+results after fusion. The local model avoids API cost and keeps search
+latency on-device.
 
 Uses FlagEmbedding's FlagReranker which is optimized for BGE reranker models
 with built-in FP16 support and score normalization.
@@ -106,9 +105,7 @@ class CrossEncoderReranker(BaseModel):
 
     This class provides fast, local reranking using FlagReranker which is
     optimized for BGE reranker models. It jointly encodes query and document
-    pairs and is designed to be used as the first stage in a two-stage
-    reranking pipeline, reducing the number of candidates that need expensive
-    LLM scoring.
+    pairs and is the only rerank stage in the search pipeline.
 
     The FlagReranker model is lazily loaded on first use and cached for
     subsequent calls. Loading is thread-safe.
@@ -252,8 +249,8 @@ class CrossEncoderReranker(BaseModel):
         """Rerank candidates using FlagReranker scores with optional recency decay.
 
         Scores each candidate document against the query using FlagReranker,
-        applies score threshold filtering, optional recency decay, sorts by score
-        descending, and returns the top-k results.
+        normalizes, gates on the CE threshold, optionally reorders by recency,
+        and then returns the top-k results.
 
         Args:
             query: Search query string.
@@ -273,8 +270,8 @@ class CrossEncoderReranker(BaseModel):
             - If candidates is empty, returns empty list
             - With normalize=True, scores are in [0, 1] range (sigmoid applied)
             - With normalize=False, scores can be any real number
-            - Recency decay is applied after normalization when
-              enable_recency_boost=True
+            - Recency decay reorders after the score threshold so age
+              cannot empty a batch that already passed CE quality
         """
         if not candidates:
             return []
@@ -288,13 +285,15 @@ class CrossEncoderReranker(BaseModel):
             return candidates
 
         scored = self._compute_scores(query, candidates)
-        scored = self._apply_post_processing(scored, timestamp_map)
+        scored = self._post_processor.normalize(scored)
         self._log_candidate_scores(scored)
-
         scored.sort(key=lambda x: x[1], reverse=True)
-        scored = self._apply_threshold_and_limit(scored)
-
-        return scored
+        # Gate on pre-decay CE quality so recency only reorders survivors.
+        # min_results is CE-quality insurance (applied here, before decay).
+        # top_k is applied after decay so recency can promote later ranks.
+        scored = self._apply_threshold(scored)
+        scored = self._apply_recency_reorder(scored, timestamp_map)
+        return scored[: self.config.top_k]
 
     def _compute_scores(
         self,
@@ -320,18 +319,17 @@ class CrossEncoderReranker(BaseModel):
             for (doc, _), score in zip(candidates, scores, strict=True)
         ]
 
-    def _apply_post_processing(
+    def _apply_recency_reorder(
         self,
         scored: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None,
     ) -> list[tuple[str, float]]:
-        """Apply normalization and optional recency decay."""
-        scored = self._post_processor.normalize(scored)
-
+        """Reorder survivors by recency. Missing or empty timestamps disable decay."""
         decay_enabled = (
             self.config.enable_recency_boost
             and self.config.recency_decay_rate > 0
             and bool(timestamp_map)
+            and all(bool(timestamp_map.get(doc)) for doc, _ in scored)
         )
         return self._post_processor.apply_decay(
             scored,
@@ -346,7 +344,7 @@ class CrossEncoderReranker(BaseModel):
             return
 
         threshold = self.config.score_threshold
-        self.logger.info(
+        self.logger.debug(
             f"   FlagReranker scoring (threshold: {threshold:.2f}), "
             f"normalize: {self.config.normalize}, batch_norm: {self.config.batch_normalize}):",
             extra={
@@ -360,7 +358,7 @@ class CrossEncoderReranker(BaseModel):
         for idx, (doc, score) in enumerate(scored, 1):
             status = "[KEEP]" if score >= threshold else "[FILTER]"
             preview = doc[:60] + "..." if len(doc) > 60 else doc
-            self.logger.info(
+            self.logger.debug(
                 f"      [{idx}] {status} score={score:.4f} -> {preview}",
                 extra={
                     "candidate_index": idx,
@@ -371,11 +369,11 @@ class CrossEncoderReranker(BaseModel):
                 },
             )
 
-    def _apply_threshold_and_limit(
+    def _apply_threshold(
         self,
         scored: list[tuple[str, float]],
     ) -> list[tuple[str, float]]:
-        """Filter by score threshold, log results, and limit to top_k."""
+        """Filter by score threshold (min_results is CE-quality insurance)."""
         pre_filter_count = len(scored)
         scored = self._post_processor.filter_by_threshold(
             scored,
@@ -398,7 +396,7 @@ class CrossEncoderReranker(BaseModel):
                 },
             )
 
-        return scored[: self.config.top_k]
+        return scored
 
     async def rerank_async(
         self,

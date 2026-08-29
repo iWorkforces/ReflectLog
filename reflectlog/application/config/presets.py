@@ -83,7 +83,7 @@ PERFORMANCE_PRESET = ConfigPreset(
     search_score_threshold=0.3,
     fusion_rrf_k=40,
     overfetch_multiplier=2,
-    reranker_engine="cross_encoder",
+    reranker_engine="none",
     enable_recency_boost=False,
     enable_smart_replace=False,
     embedding_batch_size=1024,
@@ -100,7 +100,7 @@ QUALITY_PRESET = ConfigPreset(
     search_score_threshold=0.7,
     fusion_rrf_k=80,
     overfetch_multiplier=5,
-    reranker_engine="llm",
+    reranker_engine="cross_encoder",
     enable_recency_boost=True,
     enable_smart_replace=True,
     smart_replace_threshold=0.9,
@@ -148,9 +148,6 @@ def apply_preset_to_env(preset: ConfigPreset) -> None:
 
     if preset.enable_hybrid_search is not None:
         os.environ["ENABLE_HYBRID_SEARCH"] = str(preset.enable_hybrid_search).lower()
-
-    if preset.search_score_threshold is not None:
-        os.environ["SEARCH_SCORE_THRESHOLD"] = str(preset.search_score_threshold)
 
     if preset.fusion_rrf_k is not None:
         os.environ["FUSION_RRF_K"] = str(preset.fusion_rrf_k)

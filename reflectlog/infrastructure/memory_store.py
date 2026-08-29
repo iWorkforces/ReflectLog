@@ -1329,6 +1329,10 @@ class MemoryStore(BaseModel):
                         extra={"db_path": self.db_path},
                     )
 
+    def is_ready(self) -> bool:
+        """Return True if the SQLite connection has already been opened."""
+        return self._conn is not None
+
     def ensure_initialized(self) -> None:
         """Ensure the store is fully initialized.
 

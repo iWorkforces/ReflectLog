@@ -329,7 +329,9 @@ class TantivyEngine(BaseModel):
                         "error": str(e),
                     },
                 )
-            return []
+            raise RuntimeError(
+                f"Failed to get all docs from Tantivy: {e}"
+            ) from e
 
     def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]:
         """Find all memories that exactly match the given memory text.
@@ -416,6 +418,19 @@ class TantivyEngine(BaseModel):
             doc.add_integer("deleted_at", 0)  # 0 = not deleted
 
             _ = self.writer.add_document(doc)
+
+    def add_batch(self, workspace_id: str, contents: list[str]) -> None:
+        """Add multiple documents under a single writer lock."""
+        if not contents:
+            return
+        with self._writer_lock:
+            for content in contents:
+                doc = tantivy.Document()
+                doc.add_text("workspace_id", workspace_id)
+                doc.add_text("content", content)
+                doc.add_unsigned("is_deleted", 0)
+                doc.add_integer("deleted_at", 0)
+                _ = self.writer.add_document(doc)
 
     def commit(self) -> None:
         """Commit pending changes and refresh searcher (thread-safe).
@@ -531,37 +546,43 @@ class TantivyEngine(BaseModel):
         try:
             doc_limit = self._get_doc_limit()
 
-            # Cache miss: query ONLY tombstoned documents directly (is_deleted=1)
-            # This is O(tombstones) instead of O(all_docs)
-            # Use range syntax [1 TO 1] for numeric field exact match
+            # A text is dead only when tombstones outnumber live copies.
+            # That survives process restart (delete + re-add stays visible).
             escaped_workspace_id = self._escape_tantivy_query(workspace_id)
             query = self._index.parse_query(
-                query=f'workspace_id:"{escaped_workspace_id}" AND is_deleted:[1 TO 1]',
+                query=f'workspace_id:"{escaped_workspace_id}"',
                 default_field_names=["workspace_id"],
             )
 
             top_docs = self.searcher.search(query=query, limit=doc_limit)
-            tombstoned: set[str] = set()
-            # Per-project tombstone limit to prevent memory exhaustion
+            live_counts: dict[str, int] = {}
+            tomb_counts: dict[str, int] = {}
             max_tombstones_per_project = 10000
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
                 memory = doc.get_first("content")
-                if memory is not None:
-                    # Enforce per-project tombstone limit
-                    if len(tombstoned) >= max_tombstones_per_project:
-                        if self.logger:
-                            self.logger.warning(
-                                "Tombstone cache per-project limit reached, truncating",
-                                extra={
-                                    "workspace_id": workspace_id,
-                                    "tombstone_count": len(tombstoned),
-                                    "max_per_project": max_tombstones_per_project,
-                                },
-                            )
-                        break
-                    tombstoned.add(memory)
+                if memory is None:
+                    continue
+                is_deleted_val = doc.get_first("is_deleted")
+                is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+                if is_deleted == 1:
+                    # Cap unique tomb keys only. Never abort the scan — later
+                    # live re-adds of an already-seen text must still be counted.
+                    if (
+                        memory not in tomb_counts
+                        and len(tomb_counts) >= max_tombstones_per_project
+                    ):
+                        continue
+                    tomb_counts[memory] = tomb_counts.get(memory, 0) + 1
+                else:
+                    live_counts[memory] = live_counts.get(memory, 0) + 1
+
+            tombstoned = {
+                memory
+                for memory, tombs in tomb_counts.items()
+                if tombs >= live_counts.get(memory, 0)
+            }
 
             # Store in cache with LRU eviction (thread-safe write)
             with self._tombstone_cache_lock:
@@ -575,22 +596,26 @@ class TantivyEngine(BaseModel):
 
             return tombstoned
 
+        except OSError:
+            raise
         except ValueError as e:
-            # Query parsing errors - expected failure, log as warning
             if self.logger:
                 self.logger.warning(
                     "Failed to get tombstoned memories (query parse error)",
                     extra={"workspace_id": workspace_id, "error": str(e)},
                 )
-            return set()
+            raise RuntimeError(
+                f"Failed to get tombstoned memories: {e}"
+            ) from e
         except Exception as e:
-            # Unexpected errors - log as warning with more context
             if self.logger:
                 self.logger.warning(
                     "Failed to get tombstoned memories",
                     extra={"workspace_id": workspace_id, "error": str(e)},
                 )
-            return set()
+            raise RuntimeError(
+                f"Failed to get tombstoned memories: {e}"
+            ) from e
 
     def _normalize_scores(
         self, results: list[tuple[str, float]]
@@ -649,7 +674,8 @@ class TantivyEngine(BaseModel):
                 return []
 
             tombstoned_memories = self._get_tombstoned_memories(workspace_id)
-            search_limit = limit * 3 if tombstoned_memories else limit
+            extra = min(len(tombstoned_memories), limit) if tombstoned_memories else 0
+            search_limit = limit + extra
 
             parsed_query = self._build_search_query(query, workspace_id)
             results = self._collect_search_results(
@@ -685,7 +711,7 @@ class TantivyEngine(BaseModel):
                         "error_type": "FileSystemError",
                     },
                 )
-            return []
+            raise SearchError(f"Tantivy file system error during search: {e}") from e
 
         except Exception as e:
             raise SearchError(f"Tantivy search failed: {e}") from e
@@ -735,9 +761,10 @@ class TantivyEngine(BaseModel):
         result_limit: int,
         tombstoned_memories: set[str],
     ) -> list[tuple[str, float]]:
-        """Execute query and collect results, filtering tombstoned memories."""
+        """Execute query and collect unique live documents."""
         top_docs = self.searcher.search(query=parsed_query, limit=search_limit)
         results: list[tuple[str, float]] = []
+        seen: set[str] = set()
 
         for score, doc_addr in top_docs.hits:
             doc = self.searcher.doc(doc_addr)
@@ -745,11 +772,17 @@ class TantivyEngine(BaseModel):
             if not isinstance(memory, str):
                 continue
 
-            if memory in tombstoned_memories:
+            is_deleted_val = doc.get_first("is_deleted")
+            is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+            if is_deleted == 1:
+                continue
+
+            if memory in tombstoned_memories or memory in seen:
                 continue
 
             if self.logger:
                 self.logger.debug(f"Tantivy match: {memory[:100]}...")
+            seen.add(memory)
             results.append((memory, score))
 
             if len(results) >= result_limit:
@@ -809,7 +842,9 @@ class TantivyEngine(BaseModel):
             # but we clear the reference for consistency
             self._index = None
 
-    def soft_delete(self, workspace_id: str, content: str) -> bool:
+    def soft_delete(
+        self, workspace_id: str, content: str, *, verify_exists: bool = True
+    ) -> bool:
         """Mark a document as deleted by adding a tombstone (O(1) operation).
 
         Thread-safe. This is much faster than rebuilding the entire index (O(n) for rebuild vs O(1)).
@@ -827,28 +862,27 @@ class TantivyEngine(BaseModel):
         Returns:
             True if tombstone was added, False if memory wasn't found.
         """
-        # First, verify the memory exists (only check non-deleted documents)
-        existing = self.find_by_exact_match(workspace_id, content)
-        if not existing:
-            if self.logger:
-                self.logger.debug(
-                    "Soft-delete: memory not found",
-                    extra={
-                        "workspace_id": workspace_id,
-                        "memory_preview": content[:50] if content else "",
-                    },
-                )
-            return False
+        if verify_exists:
+            existing = self.find_by_exact_match(workspace_id, content)
+            if not existing:
+                if self.logger:
+                    self.logger.debug(
+                        "Soft-delete: memory not found",
+                        extra={
+                            "workspace_id": workspace_id,
+                            "memory_preview": content[:50] if content else "",
+                        },
+                    )
+                return False
 
-        # Add tombstone document
-        with self._writer_lock:
-            doc = tantivy.Document()
-            doc.add_text("workspace_id", workspace_id)
-            doc.add_text("content", content)
-            doc.add_unsigned("is_deleted", 1)  # 1 = deleted (tombstone)
-            doc.add_integer("deleted_at", int(time.time() * 1000))  # Unix timestamp ms
+        live_count, tomb_count = self._count_live_and_tomb(workspace_id, content)
+        needed = live_count - tomb_count
+        if needed <= 0:
+            if verify_exists:
+                return False
+            needed = 1
 
-            _ = self.writer.add_document(doc)
+        self._add_tombstone_docs(workspace_id, content, needed)
 
         if self.logger:
             self.logger.debug(
@@ -856,12 +890,56 @@ class TantivyEngine(BaseModel):
                 extra={
                     "workspace_id": workspace_id,
                     "memory_preview": content[:50] if content else "",
+                    "tombstones_added": needed,
                 },
             )
 
         return True
 
-    def delete(self, workspace_id: str, content: str) -> bool:
+    def _count_live_and_tomb(self, workspace_id: str, content: str) -> tuple[int, int]:
+        """Count committed live and tombstone copies of one memory."""
+        if self._index is None:
+            return 0, 0
+
+        escaped_workspace_id = self._escape_tantivy_query(workspace_id)
+        query = self._index.parse_query(
+            query=f'workspace_id:"{escaped_workspace_id}"',
+            default_field_names=["workspace_id"],
+        )
+        live_count = 0
+        tomb_count = 0
+        for _, doc_addr in self.searcher.search(
+            query=query, limit=self._get_doc_limit()
+        ).hits:
+            doc = self.searcher.doc(doc_addr)
+            memory = doc.get_first("content")
+            if memory != content:
+                continue
+            is_deleted_val = doc.get_first("is_deleted")
+            is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+            if is_deleted == 1:
+                tomb_count += 1
+            else:
+                live_count += 1
+        return live_count, tomb_count
+
+    def _add_tombstone_docs(
+        self, workspace_id: str, content: str, count: int
+    ) -> None:
+        """Plant ``count`` tombstone documents under the writer lock."""
+        deleted_at = int(time.time() * 1000)
+        with self._writer_lock:
+            for _ in range(count):
+                doc = tantivy.Document()
+                doc.add_text("workspace_id", workspace_id)
+                doc.add_text("content", content)
+                doc.add_unsigned("is_deleted", 1)
+                doc.add_integer("deleted_at", deleted_at)
+                _ = self.writer.add_document(doc)
+
+    def delete(
+        self, workspace_id: str, content: str, *, verify_exists: bool = True
+    ) -> bool:
         """Delete a document from the Tantivy index by exact memory match (thread-safe).
 
         When soft-delete is enabled (default), uses O(1) tombstone marking.
@@ -889,7 +967,7 @@ class TantivyEngine(BaseModel):
         """
         # Use soft-delete if enabled (O(1) vs O(n))
         if self.config.soft_delete_enabled:
-            result = self.soft_delete(workspace_id, content)
+            result = self.soft_delete(workspace_id, content, verify_exists=verify_exists)
             if result:
                 self.commit()
             return result
@@ -913,6 +991,26 @@ class TantivyEngine(BaseModel):
         except Exception as e:
             self._log_delete_error(workspace_id, content, e, "error", type(e).__name__)
             return False
+
+    def delete_batch(
+        self,
+        workspace_id: str,
+        contents: list[str],
+        *,
+        verify_exists: bool = True,
+    ) -> int:
+        """Soft-delete many memories and commit once."""
+        if not contents:
+            return 0
+        deleted = 0
+        for content in contents:
+            if self.soft_delete(
+                workspace_id, content, verify_exists=verify_exists
+            ):
+                deleted += 1
+        if deleted:
+            self.commit()
+        return deleted
 
     def _delete_via_rebuild(self, workspace_id: str, content: str) -> bool:
         """Delete a document using the full index rebuild approach."""
@@ -1131,8 +1229,8 @@ class TantivyEngine(BaseModel):
             total_docs = 0
             active_docs = 0
             tombstones = 0
-            active_memories: set[str] = set()
-            tombstoned_memories: set[str] = set()
+            live_counts: dict[str, int] = {}
+            tomb_counts: dict[str, int] = {}
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
@@ -1144,14 +1242,17 @@ class TantivyEngine(BaseModel):
                 if is_deleted == 1:
                     tombstones += 1
                     if memory is not None:
-                        tombstoned_memories.add(memory)
+                        tomb_counts[memory] = tomb_counts.get(memory, 0) + 1
                 else:
                     active_docs += 1
                     if memory is not None:
-                        active_memories.add(memory)
+                        live_counts[memory] = live_counts.get(memory, 0) + 1
 
-            # Unique active memories = active memories NOT in tombstoned set
-            unique_active = active_memories - tombstoned_memories
+            unique_active = {
+                memory
+                for memory, live in live_counts.items()
+                if tomb_counts.get(memory, 0) < live
+            }
 
             return {
                 "total_docs": total_docs,
@@ -1316,10 +1417,11 @@ class TantivyEngine(BaseModel):
             query="*",
             default_field_names=["content"],
         )
-        top_docs = self.searcher.search(query=query, limit=100000)
+        top_docs = self.searcher.search(query=query, limit=self._get_doc_limit())
 
         all_docs: list[tuple[str, str, int]] = []
-        tombstoned_memories: set[str] = set()
+        live_counts: dict[tuple[str, str], int] = {}
+        tomb_counts: dict[tuple[str, str], int] = {}
 
         for _, doc_addr in top_docs.hits:
             doc = self.searcher.doc(doc_addr)
@@ -1330,21 +1432,28 @@ class TantivyEngine(BaseModel):
 
             if workspace_id is not None and memory is not None:
                 all_docs.append((workspace_id, memory, is_deleted))
+                key = (workspace_id, memory)
                 if is_deleted == 1:
-                    tombstoned_memories.add(memory)
+                    tomb_counts[key] = tomb_counts.get(key, 0) + 1
+                else:
+                    live_counts[key] = live_counts.get(key, 0) + 1
 
         docs_to_keep: list[tuple[str, str]] = []
         removed_originals = 0
         removed_tombstones = 0
+        kept_live: dict[tuple[str, str], int] = {}
 
         for workspace_id, memory, is_deleted in all_docs:
-            if memory in tombstoned_memories:
-                if is_deleted == 1:
-                    removed_tombstones += 1
-                else:
-                    removed_originals += 1
-            else:
-                docs_to_keep.append((workspace_id, memory))
+            key = (workspace_id, memory)
+            if is_deleted == 1:
+                removed_tombstones += 1
+                continue
+            surplus = live_counts.get(key, 0) - tomb_counts.get(key, 0)
+            if surplus <= 0 or kept_live.get(key, 0) >= surplus:
+                removed_originals += 1
+                continue
+            kept_live[key] = kept_live.get(key, 0) + 1
+            docs_to_keep.append((workspace_id, memory))
 
         return docs_to_keep, removed_tombstones, removed_originals
 

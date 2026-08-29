@@ -69,36 +69,6 @@ def test_module_imports_cleanly(module_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-class TestLLMRerankerAPI:
-    """Verify llm_reranker public API surface."""
-
-    def test_exports_exist(self) -> None:
-        """LLMReranker, LLMRerankerConfig, and related symbols are importable."""
-        from reflectlog.infrastructure.llm_reranker import (
-            AnthropicRerankerProvider,
-            LLMReranker,
-            LLMRerankerConfig,
-            OpenAIRerankerProvider,
-            RelevanceScore,
-            create_reranker_provider,
-            format_memory_age,
-        )
-
-        assert callable(format_memory_age)
-        assert callable(create_reranker_provider)
-        assert LLMReranker is not None
-        assert LLMRerankerConfig is not None
-        assert RelevanceScore is not None
-        assert OpenAIRerankerProvider is not None
-        assert AnthropicRerankerProvider is not None
-
-    def test_llm_reranker_has_rerank_method(self) -> None:
-        """LLMReranker must expose an async rerank method."""
-        from reflectlog.infrastructure.llm_reranker import LLMReranker
-
-        assert hasattr(LLMReranker, "rerank")
-
-
 class TestCrossEncoderRerankerAPI:
     """Verify cross_encoder_reranker public API surface."""
 
@@ -393,13 +363,6 @@ class TestProtocolConformance:
             "is_ready",
         ):
             assert hasattr(TantivyEngine, attr), f"TantivyEngine missing {attr}"
-
-    def test_llm_reranker_is_ireranker(self) -> None:
-        """LLMReranker must have all IReranker protocol methods."""
-        from reflectlog.infrastructure.llm_reranker import LLMReranker
-
-        for attr in ("rerank",):
-            assert hasattr(LLMReranker, attr), f"LLMReranker missing {attr}"
 
     def test_cross_encoder_reranker_is_ireranker(self) -> None:
         """CrossEncoderReranker must have all IReranker protocol methods."""

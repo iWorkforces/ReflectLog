@@ -97,7 +97,7 @@ class TestGetClient:
         client = provider._get_client()
 
         assert client is mock_client
-        mock_http_factory.get_async_httpx_client.assert_called_once_with(http2=False)
+        mock_http_factory.get_async_httpx_client.assert_called_once_with(http2=True)
         mock_openai_cls.assert_called_once_with(
             api_key="sk-test",
             base_url="https://api.example.com",

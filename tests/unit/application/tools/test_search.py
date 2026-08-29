@@ -111,8 +111,8 @@ class TestSearchToolNoResults:
         info_calls = [
             str(c.args[0]) for c in mock_tool_logger.info.call_args_list if c.args
         ]
-        no_match_logged = any("no matching" in msg.lower() for msg in info_calls)
-        assert no_match_logged
+        completed = any("complet" in msg.lower() for msg in info_calls)
+        assert completed
 
 
 @pytest.mark.unit

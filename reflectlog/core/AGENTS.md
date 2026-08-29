@@ -1,6 +1,6 @@
 # ReflectLog Knowledge Base - Core Protocols
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -45,6 +45,10 @@ core/
 **Protocol Composition** - `IAppConfig` combines 6 sub-protocols: `IServerConfig`, `ISearchConfig`, `IStorageConfig`, `IRerankerConfig`, `IEmbedderConfig`, `IReplacementConfig`.
 
 **Factory Functions** - Adapter creation via `create_*_adapter()` factory functions.
+
+**RerankerEngine** - `Literal["cross_encoder", "none"]`. Unknown strings raise `ConfigurationError`.
+
+**Prompts** - `prompts.py` is replacement + MCP instructions only. Scoring/rerank prompts are gone.
 
 ## ANTI-PATTERNS
 

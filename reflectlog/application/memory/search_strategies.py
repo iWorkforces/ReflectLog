@@ -5,9 +5,10 @@ concern-focused module. It implements the 4-step search pipeline:
 1. Parallel Search (USearch + Tantivy)
 2. RRF Fusion or Concatenation
 3. Fusion Threshold Filtering (when RRF enabled)
-4. Reranking (LLM or CrossEncoder)
+4. Reranking (CrossEncoder)
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import math
 import time
@@ -15,7 +16,6 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
-    from reflectlog.infrastructure.llm_reranker import LLMReranker
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
 from asyncer import (
@@ -33,9 +33,29 @@ from ..utils.validation import truncate_memory
 from .fusion.base import FusionEngine
 
 # Constants for magic numbers (documented for maintainability)
-MIN_OVERFETCH_LIMIT = 20  # Minimum docs to fetch for better fusion quality
+MIN_OVERFETCH_LIMIT = 8  # Floor so tiny limits still have fusion diversity
 TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize to 0-1
 LOG_QUERY_TRUNCATE_LENGTH = 100
+
+
+def _class_callable(obj: object, name: str) -> Callable[..., object] | None:
+    """Return a class-defined callable, walking the MRO.
+
+    Instance attributes and MagicMock auto-attrs are ignored so tests cannot
+    skip ``ensure_initialized`` by planting a truthy ``is_ready``.
+    """
+    for cls in type(obj).__mro__:
+        attr = cls.__dict__.get(name)
+        if callable(attr):
+            return attr
+    return None
+
+
+def _call_predicate(fn: Callable[..., object] | None, obj: object) -> bool:
+    """Invoke a class-defined predicate, treating a missing method as False."""
+    if fn is None:
+        return False
+    return bool(fn(obj))
 
 
 @dataclass
@@ -48,7 +68,7 @@ class SearchContext:
         overfetch_limit: Number of candidates to fetch for better fusion quality.
         enable_hybrid_search: Whether Tantivy full-text search is enabled.
         enable_rrf_fusion: Whether RRF fusion is enabled (vs concatenation).
-        reranker_engine: The reranker engine to use ("llm", "cross_encoder", or "none").
+        reranker_engine: The reranker engine to use ("cross_encoder" or "none").
         workspace_id: Workspace identifier for logging.
     """
 
@@ -80,9 +100,6 @@ class SearchResult:
 
 class RerankerProvider(Protocol):
     @property
-    def llm_reranker(self) -> LLMReranker | None: ...
-
-    @property
     def cross_encoder_reranker(self) -> CrossEncoderReranker | None: ...
 
 
@@ -93,7 +110,7 @@ class SearchPipeline:
     1. Parallel semantic + full-text search
     2. RRF fusion or result concatenation
     3. Fusion threshold filtering (when RRF enabled)
-    4. Reranking (LLM or CrossEncoder)
+    4. Reranking (CrossEncoder)
 
     Thread-safe: Uses MemoryManager's RLock for state changes.
     """
@@ -154,12 +171,14 @@ class SearchPipeline:
             # Execute 4-step hybrid search pipeline
             return await self._execute_hybrid_search(context)
 
+        except SearchError:
+            raise
         except Exception as e:
             self.logger.error(
                 "Search pipeline failed",
                 extra={
                     "workspace_id": context.workspace_id,
-                    "query": context.query,
+                    "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
                     "error": str(e),
                 },
             )
@@ -184,9 +203,11 @@ class SearchPipeline:
             )
         results: list[tuple[str, float, str]] = soon_results.value or []
 
-        # Build timestamp map and memory list
         timestamp_map = {msg: created_at for msg, _, created_at in results}
-        memories = [msg for msg, _, _ in results]
+        paired = [(msg, score) for msg, score, _ in results]
+        if len(paired) > 1:
+            paired = await self._step4_reranking(context, paired, timestamp_map, 2)
+        memories = [msg for msg, _ in paired[: context.limit]]
 
         return SearchResult(
             memories=memories,
@@ -200,21 +221,23 @@ class SearchPipeline:
         # Step 1: Parallel Search
         semantic_results, tantivy_results = await self._step1_parallel_search(context)
 
-        # Build timestamp map from semantic results
         timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
         }
 
-        # Log results
-        self._log_search_results(context, semantic_results, tantivy_results)
+        if self.config.log_search_results_verbose:
+            self._log_search_results(context, semantic_results, tantivy_results)
 
         # Step 2: RRF Fusion or Concatenation
         hybrid_results = await self._step2_fusion_or_concatenate(
             context, semantic_results, tantivy_results
         )
 
-        # Step 3: Fusion threshold filtering (only when RRF enabled)
-        if context.enable_rrf_fusion:
+        # Step 3: Fusion threshold applies only to fused (2+ backend) RRF output.
+        # A single unfused list keeps backend scores (cosine/BM25), which must
+        # not be compared to fusion_ranking_threshold=0.8.
+        backends_used = int(bool(semantic_results)) + int(bool(tantivy_results))
+        if context.enable_rrf_fusion and backends_used >= 2:
             hybrid_results = await self._step3_fusion_threshold(context, hybrid_results)
             # Handle case where all results were filtered out
             if not hybrid_results:
@@ -230,6 +253,9 @@ class SearchPipeline:
         if len(hybrid_results) <= 1:
             self._log_skip_reranking(len(hybrid_results), rerank_step_num)
         else:
+            timestamp_map = await asyncify(self._complete_timestamp_map)(
+                timestamp_map, [msg for msg, _ in hybrid_results]
+            )
             hybrid_results = await self._step4_reranking(
                 context, hybrid_results, timestamp_map, rerank_step_num
             )
@@ -242,7 +268,7 @@ class SearchPipeline:
             f"SEARCH COMPLETE: {len(memories)} result(s) returned",
             extra={
                 "workspace_id": context.workspace_id,
-                "query": context.query,
+                "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
                 "result_count": len(memories),
                 "top_score": hybrid_results[0][1] if hybrid_results else 0.0,
             },
@@ -279,8 +305,16 @@ class SearchPipeline:
         assert soon_semantic is not None
         assert soon_tantivy is not None
 
-        semantic_results = soon_semantic.value or []
-        tantivy_results = soon_tantivy.value or []
+        semantic_results, semantic_error = soon_semantic.value
+        tantivy_results, tantivy_error = soon_tantivy.value
+        if semantic_error is not None and (
+            tantivy_error is not None
+            or self._tantivy_engine is None
+            or not tantivy_results
+        ):
+            raise SearchError(
+                f"Failed to execute search: {semantic_error}"
+            ) from semantic_error
 
         self.logger.info(
             f"Both engines completed (semantic: {len(semantic_results)}, tantivy: {len(tantivy_results)})",
@@ -296,15 +330,18 @@ class SearchPipeline:
 
     async def _search_semantic(
         self, query: str, limit: int, workspace_id: str
-    ) -> list[tuple[str, float, str]]:
+    ) -> tuple[list[tuple[str, float, str]], Exception | None]:
         """Execute semantic search on USearchEngine.
 
-        Falls back to empty list on error, relying on Tantivy results.
+        Returns (results, error). A failed search yields [] plus the error
+        so the caller can raise if every backend failed.
         """
-        # Init stays outside the search fallback: a failed ensure_initialized
-        # still raises SearchError from execute(), matching the prior contract.
-        await asyncify(self._semantic_engine.ensure_initialized)()
         try:
+            # Class-defined is_ready (MRO walk) so MagicMock auto-attrs
+            # cannot skip init, but subclasses that inherit it still work.
+            is_ready = _class_callable(self._semantic_engine, "is_ready")
+            if not _call_predicate(is_ready, self._semantic_engine):
+                await asyncify(self._semantic_engine.ensure_initialized)()
             results: list[tuple[str, float, str]] = await asyncify(
                 self._semantic_engine.search
             )(
@@ -312,9 +349,8 @@ class SearchPipeline:
                 workspace_id=workspace_id,
                 limit=limit,
             )
-            return results
+            return results, None
         except Exception as e:
-            # Enhanced diagnostic logging for semantic search fallback
             self.logger.warning(
                 "Semantic search failed - falling back to Tantivy full-text only",
                 extra={
@@ -326,19 +362,33 @@ class SearchPipeline:
                     "note": "Search will continue with Tantivy results only",
                 },
             )
-            return []
+            return [], e
 
     async def _search_tantivy(
         self, query: str, limit: int, workspace_id: str
-    ) -> list[tuple[str, float]]:
+    ) -> tuple[list[tuple[str, float]], Exception | None]:
         """Execute full-text search on Tantivy engine."""
         if self._tantivy_engine is None:
-            return []
-        await asyncify(self._tantivy_engine.ensure_initialized)()
-        tantivy_results: list[tuple[str, float]] = await asyncify(
-            self._tantivy_engine.search
-        )(query, workspace_id, limit)
-        return tantivy_results
+            return [], None
+        try:
+            is_ready = _class_callable(self._tantivy_engine, "is_ready")
+            if not _call_predicate(is_ready, self._tantivy_engine):
+                await asyncify(self._tantivy_engine.ensure_initialized)()
+            tantivy_results: list[tuple[str, float]] = await asyncify(
+                self._tantivy_engine.search
+            )(query, workspace_id, limit)
+            return tantivy_results, None
+        except Exception as e:
+            self.logger.warning(
+                "Tantivy search failed - continuing with semantic results only",
+                extra={
+                    "workspace_id": workspace_id,
+                    "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+            )
+            return [], e
 
     async def _step2_fusion_or_concatenate(
         self,
@@ -476,6 +526,9 @@ class SearchPipeline:
             },
         )
 
+        if not self.config.log_search_results_verbose:
+            return filtered
+
         # Show filtered results with status
         for idx, (memory, score) in enumerate(results[: min(5, len(results))], 1):
             status, interpretation = format_fusion_score_status(score, threshold)
@@ -488,11 +541,6 @@ class SearchPipeline:
 
         return filtered
 
-    def _get_llm_reranker(self) -> LLMReranker | None:
-        if self._memory_manager is None or self.config.reranker_engine != "llm":
-            return None
-        return self._memory_manager.llm_reranker
-
     def _get_cross_encoder_reranker(self) -> CrossEncoderReranker | None:
         if (
             self._memory_manager is None
@@ -503,15 +551,7 @@ class SearchPipeline:
 
     def _get_reranker(
         self,
-    ) -> (
-        tuple[Literal["llm"], LLMReranker]
-        | tuple[Literal["cross_encoder"], CrossEncoderReranker]
-        | tuple[None, None]
-    ):
-        llm_reranker = self._get_llm_reranker()
-        if llm_reranker is not None:
-            return ("llm", llm_reranker)
-
+    ) -> tuple[Literal["cross_encoder"], CrossEncoderReranker] | tuple[None, None]:
         cross_encoder_reranker = self._get_cross_encoder_reranker()
         if cross_encoder_reranker is not None:
             return ("cross_encoder", cross_encoder_reranker)
@@ -525,76 +565,18 @@ class SearchPipeline:
         timestamp_map: dict[str, str],
         step_num: int,
     ) -> list[tuple[str, float]]:
-        """Step 4: Rerank results using LLM or CrossEncoder."""
+        """Step 4: Rerank results using the cross-encoder when enabled."""
         match self._get_reranker():
-            case ("llm", llm_reranker):
-                return await self._rerank_llm(
-                    context,
-                    results,
-                    timestamp_map,
-                    step_num,
-                    llm_reranker,
-                )
             case ("cross_encoder", cross_encoder_reranker):
                 return await self._rerank_cross_encoder(
                     context,
                     results,
                     step_num,
                     cross_encoder_reranker,
+                    timestamp_map=timestamp_map,
                 )
             case _:
-                # No reranking configured
                 return results
-
-    async def _rerank_llm(
-        self,
-        context: SearchContext,
-        results: list[tuple[str, float]],
-        timestamp_map: dict[str, str],
-        step_num: int,
-        llm_reranker: LLMReranker | None = None,
-    ) -> list[tuple[str, float]]:
-        """Rerank using LLM."""
-        # Use provided reranker or fetch via _get_reranker
-        if llm_reranker is None:
-            llm_reranker = self._get_llm_reranker()
-            if llm_reranker is None:
-                return results
-
-        self.logger.info(
-            f"STEP {step_num}: LLM Reranking ({len(results)} candidates)...",
-            extra={
-                "step": "reranking",
-                "step_num": step_num,
-                "engine": "llm",
-                "candidate_count": len(results),
-            },
-        )
-
-        rerank_start = time.time()
-        pre_rerank_count = len(results)
-
-        reranked_results = await llm_reranker.rerank(
-            context.query, results, timestamp_map
-        )
-        results = reranked_results
-
-        rerank_duration = (time.time() - rerank_start) * 1000
-
-        self.logger.info(
-            f"Kept {len(results)}/{pre_rerank_count} result(s) after LLM scoring",
-            extra={
-                "kept_count": len(results),
-                "filtered_count": pre_rerank_count - len(results),
-                "threshold": self.config.search_score_threshold,
-            },
-        )
-        self.logger.info(
-            f"LLM reranking completed in {rerank_duration:.0f}ms",
-            extra={"rerank_duration_ms": rerank_duration},
-        )
-
-        return results
 
     async def _rerank_cross_encoder(
         self,
@@ -602,6 +584,7 @@ class SearchPipeline:
         results: list[tuple[str, float]],
         step_num: int,
         cross_encoder_reranker: CrossEncoderReranker | None = None,
+        timestamp_map: dict[str, str] | None = None,
     ) -> list[tuple[str, float]]:
         """Rerank using CrossEncoder."""
         # Use provided reranker or fetch via _get_reranker
@@ -623,9 +606,14 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        reranked_results = await cross_encoder_reranker.rerank_async(
-            context.query, results
-        )
+        if timestamp_map is None:
+            reranked_results = await cross_encoder_reranker.rerank_async(
+                context.query, results
+            )
+        else:
+            reranked_results = await cross_encoder_reranker.rerank_async(
+                context.query, results, timestamp_map
+            )
         results = reranked_results
 
         rerank_duration = (time.time() - rerank_start) * 1000
@@ -706,6 +694,44 @@ class SearchPipeline:
             self.logger.info("No results found", extra={"result_count": 0})
 
         self.logger.info("─" * 50, extra={"section": "fusion"})
+
+    def _complete_timestamp_map(
+        self, timestamp_map: dict[str, str], contents: list[str]
+    ) -> dict[str, str]:
+        """Resolve created_at for every candidate. Empty map disables recency."""
+        completed = {
+            content: stamp
+            for content, stamp in timestamp_map.items()
+            if stamp
+        }
+        missing = [content for content in contents if content not in completed]
+        if not missing:
+            return completed
+
+        try:
+            get_id = getattr(self._semantic_engine, "get_id_by_content", None)
+            store = getattr(self._semantic_engine, "memory_store", None)
+            getter = getattr(store, "get", None)
+            workspace_id = getattr(
+                getattr(self._semantic_engine, "config", None), "workspace_id", None
+            )
+            if not callable(get_id) or not callable(getter) or workspace_id is None:
+                return completed
+
+            for content in missing:
+                mem_id = get_id(workspace_id, content)
+                if mem_id is None:
+                    continue
+                record = getter(mem_id)
+                created_at = (
+                    getattr(record, "created_at", "") if record is not None else ""
+                )
+                if not created_at:
+                    continue
+                completed[content] = created_at
+        except Exception:
+            return completed
+        return completed
 
 
 def calculate_adaptive_overfetch(limit: int, index_size: int, config: Config) -> int:

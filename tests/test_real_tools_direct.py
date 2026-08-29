@@ -166,7 +166,7 @@ Summary:
 This was a complete END-TO-END integration test with:
   • fastmcp.Client (simple and reliable HTTP/SSE transport)
   • Real USearch vector database
-  • Real OpenAI API calls (embeddings + LLM reranking)
+  • Real OpenAI API calls (embeddings)
   • Real semantic search with L2 normalization
   • Persistent storage (data saved to disk)
             ''')

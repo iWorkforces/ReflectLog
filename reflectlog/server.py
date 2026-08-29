@@ -178,10 +178,28 @@ def main() -> None:
     print(f"Transport: {transport_mode}", file=output_stream)
 
     startup_start_time = time.time()
-    startup_phases = _run_numba_warmup(output_stream)
-
-    server = _start_server(output_stream, startup_start_time, startup_phases)
-    server.run()
+    server: FastMCPServer | None = None
+    startup_phases: dict[str, float] = {}
+    try:
+        server = _start_server(output_stream, startup_start_time, startup_phases)
+        # Warmup after signal handlers so Ctrl-C during JIT still closes cleanly.
+        extra_phases = _run_numba_warmup(output_stream)
+        existing = getattr(server._memory_manager, "startup_metrics", None)
+        merged: dict[str, float] = dict(startup_phases)
+        if isinstance(existing, dict):
+            for key, value in existing.items():
+                merged[str(key)] = float(value)
+        merged.update(extra_phases)
+        server.set_startup_metrics(merged)
+        _print_startup_timing(output_stream, merged)
+        server.run()
+    except KeyboardInterrupt:
+        if server is not None:
+            server.close()
+    except Exception:
+        if server is not None:
+            server.close()
+        raise
 
 
 def _apply_cli_env_vars(args: argparse.Namespace) -> str:
@@ -201,12 +219,25 @@ def _apply_cli_env_vars(args: argparse.Namespace) -> str:
     return os.environ.get("MCP_TRANSPORT", "stdio")
 
 
+def _print_startup_timing(
+    output_stream: SupportsWrite[str],
+    startup_phases: dict[str, float],
+) -> None:
+    """Print per-phase startup timings when STARTUP_TIMING_VERBOSE is set."""
+    if os.environ.get("STARTUP_TIMING_VERBOSE", "false").lower() != "true":
+        return
+    print("Startup timing breakdown:", file=output_stream)
+    for phase, duration in startup_phases.items():
+        print(f"  {phase}: {duration * 1000:.1f}ms", file=output_stream)
+
+
 def _run_numba_warmup(
     output_stream: SupportsWrite[str],
 ) -> dict[str, float]:
     """Run numba JIT warmup phase and return startup phases dict."""
     numba_warmup_enabled = os.environ.get("NUMBA_WARMUP", "true").lower() == "true"
-    numba_warmup_mode = os.environ.get("NUMBA_WARMUP_MODE", "background").lower()
+    default_warmup_mode = "background"
+    numba_warmup_mode = os.environ.get("NUMBA_WARMUP_MODE", default_warmup_mode).lower()
 
     startup_phases: dict[str, float] = {}
     numba_start = time.time()
@@ -257,10 +288,6 @@ def _start_server(
             f"Server startup completed in {total_startup_time * 1000:.1f}ms",
             file=output_stream,
         )
-        if os.environ.get("STARTUP_TIMING_VERBOSE", "false").lower() == "true":
-            print("Startup timing breakdown:", file=output_stream)
-            for phase, duration in startup_phases.items():
-                print(f"  {phase}: {duration * 1000:.1f}ms", file=output_stream)
 
         server.set_startup_metrics(startup_phases)
         return server

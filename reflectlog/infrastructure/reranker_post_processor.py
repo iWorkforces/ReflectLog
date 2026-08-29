@@ -1,8 +1,11 @@
 """Shared post-processing for reranking results.
 
-Extracts the common normalize → decay → threshold pipeline used by both
-LLMReranker and CrossEncoderReranker into a single composition object,
-avoiding Pydantic BaseModel MRO issues that prevent mixin-based reuse.
+Extracts the common normalize, threshold, and recency helpers used by
+CrossEncoderReranker into a single composition object, avoiding Pydantic
+BaseModel MRO issues that prevent mixin-based reuse.
+
+Callers apply the steps themselves. CrossEncoderReranker gates on
+pre-decay CE scores, then reorders survivors by recency, then slices top_k.
 """
 
 from reflectlog.core.logging import IStructuredLogger
@@ -16,10 +19,10 @@ from reflectlog.utility.scoring import (
 class RerankerPostProcessor:
     """Shared post-processing pipeline for reranking results.
 
-    Encapsulates the three-step post-processing shared by all rerankers:
+    Encapsulates the post-processing helpers shared by rerankers:
     1. Batch min-max score normalization
-    2. Recency decay (exponential time-based score adjustment)
-    3. Threshold filtering with safety-net minimum
+    2. Threshold filtering with safety-net minimum (CE-quality insurance)
+    3. Recency decay (exponential time-based reorder)
 
     Designed for composition: each Pydantic-based reranker holds a
     ``_post_processor`` instance and delegates post-processing to it.

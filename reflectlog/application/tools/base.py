@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from typing import Any, Never
 
-from reflectlog.core.exceptions import ReflectLogError
+from reflectlog.core.exceptions import InconsistentStateError, ReflectLogError
 from reflectlog.core.logging import IStructuredLogger
 
 from ..config.settings import Config
@@ -186,4 +186,6 @@ class BaseTool(ABC):
             ReflectLogError: Always raised (typed as Never).
         """
         self.log_error(operation, error, **kwargs)
+        if isinstance(error, InconsistentStateError):
+            raise error
         raise error_cls(f"{message}: {error}") from error

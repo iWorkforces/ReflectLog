@@ -42,7 +42,7 @@ class ConfigurationValidator:
 
     # Valid values for enums
     VALID_TRANSPORTS: ClassVar = {"stdio", "http", "sse", "streamable-http"}
-    VALID_RERANKER_ENGINES: ClassVar = {"llm", "cross_encoder", "none"}
+    VALID_RERANKER_ENGINES: ClassVar = {"cross_encoder", "none"}
     VALID_LLM_PROVIDERS: ClassVar = {"openai", "anthropic"}
     VALID_CROSS_ENCODER_DEVICES: ClassVar = {"cpu", "cuda", "mps"}
     VALID_FUSION_METHODS: ClassVar = {"rrf", "sum", "mnz", "max", "bordafuse"}
@@ -732,7 +732,7 @@ def _validate_storage_config(
         enable_rrf_fusion if isinstance(enable_rrf_fusion, bool) else True,
         reranker_engine
         if isinstance(reranker_engine, str) and reranker_engine
-        else "llm",
+        else "cross_encoder",
     )
 
 

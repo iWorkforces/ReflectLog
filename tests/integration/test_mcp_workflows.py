@@ -16,9 +16,17 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def get_all_side_effect(**kwargs):
             return stored_memories.copy()
@@ -31,7 +39,7 @@ class TestMCPWorkflows:
 
         add_func: Callable[..., Any] | None = None
         get_all_func: Callable[..., Any] | None = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "get_all":
@@ -55,9 +63,17 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             # Simulate semantic search returning memories containing query
@@ -70,7 +86,7 @@ class TestMCPWorkflows:
         # Get tool functions
         add_func = None
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "search":
@@ -80,8 +96,12 @@ class TestMCPWorkflows:
         assert add_func is not None
         assert search_func is not None
         await add_func(memories)
-        mcp_server.memory_manager.config.enable_rrf_fusion = False
-        mcp_server.memory_manager.config.reranker_engine = "none"
+        object.__setattr__(
+            mcp_server.memory_manager.config, "enable_rrf_fusion", False
+        )
+        object.__setattr__(
+            mcp_server.memory_manager.config, "reranker_engine", "none"
+        )
         result = await search_func("Python")
 
         # Verify
@@ -99,9 +119,17 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             # Return exact matches for removal
@@ -131,12 +159,17 @@ class TestMCPWorkflows:
             if memory in stored_memories
             else None
         )
+        mcp_server.memory_manager.memory.get_id_by_content.side_effect = (
+            lambda workspace_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
+            else None
+        )
 
         # Get tool functions
         add_func = None
         remove_func = None
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "remove":
@@ -179,9 +212,17 @@ class TestMCPWorkflows:
         # Setup mocks
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             matching = [mem for mem in stored_memories if query.lower() in mem.lower()]
@@ -205,12 +246,17 @@ class TestMCPWorkflows:
             if memory in stored_memories
             else None
         )
+        mcp_server.memory_manager.memory.get_id_by_content.side_effect = (
+            lambda workspace_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
+            else None
+        )
 
         # Get tool functions
         add_func = None
         search_func = None
         remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "search":
@@ -226,8 +272,12 @@ class TestMCPWorkflows:
         await add_func(memories)
 
         # 2. Search for "Python" - should find 3
-        mcp_server.memory_manager.config.enable_rrf_fusion = False
-        mcp_server.memory_manager.config.reranker_engine = "none"
+        object.__setattr__(
+            mcp_server.memory_manager.config, "enable_rrf_fusion", False
+        )
+        object.__setattr__(
+            mcp_server.memory_manager.config, "reranker_engine", "none"
+        )
         python_results_before = await search_func("Python")
         assert len(python_results_before) == 3
 
@@ -246,9 +296,17 @@ class TestMCPWorkflows:
         '''Test multiple add operations in sequence.'''
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def get_all_side_effect(**kwargs):
             return stored_memories.copy()
@@ -259,7 +317,7 @@ class TestMCPWorkflows:
         # Get tool functions
         add_func = None
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "get_all":
@@ -285,7 +343,7 @@ class TestMCPWorkflows:
         get_all_func = None
         search_func = None
         remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
             elif tool.name == "search":
@@ -315,11 +373,19 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            for mem in memories or []:
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            for mem in batch or []:
                 if mem not in stored_memories:
                     stored_memories.append(mem)
-            return memories or []
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             matching = [mem for mem in stored_memories if mem == query]
@@ -347,12 +413,17 @@ class TestMCPWorkflows:
             if memory in stored_memories
             else None
         )
+        mcp_server.memory_manager.memory.get_id_by_content.side_effect = (
+            lambda workspace_id, memory: stored_memories.index(memory)
+            if memory in stored_memories
+            else None
+        )
 
         # Get tool functions
         add_func = None
         remove_func = None
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "remove":
@@ -382,7 +453,7 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.search.return_value = []
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -398,9 +469,17 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def get_all_side_effect(**kwargs):
             return stored_memories.copy()
@@ -417,7 +496,7 @@ class TestMCPWorkflows:
         add_func = None
         get_all_func = None
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "get_all":
@@ -452,9 +531,17 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             matching = [mem for mem in stored_memories if query in mem]
@@ -462,21 +549,25 @@ class TestMCPWorkflows:
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
-
-        async def pipeline_search_side_effect(context, **kwargs):
-            query_str = context.query if hasattr(context, "query") else str(context)
-            matching = [mem for mem in stored_memories if query_str in mem]
-            mock_result = MagicMock()
-            mock_result.memories = matching
-            return mock_result
-
-        mcp_server.memory_manager._search_pipeline.execute = AsyncMock(
-            side_effect=pipeline_search_side_effect
+        object.__setattr__(mcp_server.memory_manager.config, "reranker_engine", "none")
+        object.__setattr__(
+            mcp_server.memory_manager.config, "fusion_ranking_threshold", 0.0
         )
+
+        def semantic_search(query, **_kwargs):
+            matching = [mem for mem in stored_memories if query in mem]
+            return [(mem, 0.9, "2026-08-22T00:00:00+00:00") for mem in matching]
+
+        def tantivy_search(query, *_args, **_kwargs):
+            matching = [mem for mem in stored_memories if query in mem]
+            return [(mem, 0.8) for mem in matching]
+
+        mcp_server.memory_manager._semantic_engine.search.side_effect = semantic_search
+        mcp_server.memory_manager._tantivy_engine.search.side_effect = tantivy_search
 
         add_func = None
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "search":
@@ -508,9 +599,17 @@ class TestMCPWorkflows:
 
         stored_memories = []
 
-        def add_side_effect(*, workspace_id=None, memories=None, infer=True):
-            stored_memories.extend(memories or [])
-            return memories or []
+        def add_side_effect(
+            *,
+            workspace_id=None,
+            memories=None,
+            contents=None,
+            infer=True,
+            **_kwargs,
+        ):
+            batch = contents if contents is not None else memories
+            stored_memories.extend(batch or [])
+            return batch or []
 
         def search_side_effect(query, **kwargs):
             matching = [mem for mem in stored_memories if query.lower() in mem.lower()]
@@ -518,23 +617,29 @@ class TestMCPWorkflows:
 
         mcp_server.memory_manager.memory.add_batch.side_effect = add_side_effect
         mcp_server.memory_manager.memory.search.side_effect = search_side_effect
-
-        async def pipeline_search_side_effect(context, **kwargs):
-            query_str = context.query if hasattr(context, "query") else str(context)
-            matching = [
-                mem for mem in stored_memories if query_str.lower() in mem.lower()
-            ]
-            mock_result = MagicMock()
-            mock_result.memories = matching
-            return mock_result
-
-        mcp_server.memory_manager._search_pipeline.execute = AsyncMock(
-            side_effect=pipeline_search_side_effect
+        object.__setattr__(mcp_server.memory_manager.config, "reranker_engine", "none")
+        object.__setattr__(
+            mcp_server.memory_manager.config, "fusion_ranking_threshold", 0.0
         )
+
+        def semantic_search(query, **_kwargs):
+            matching = [
+                mem for mem in stored_memories if query.lower() in mem.lower()
+            ]
+            return [(mem, 0.9, "2026-08-22T00:00:00+00:00") for mem in matching]
+
+        def tantivy_search(query, *_args, **_kwargs):
+            matching = [
+                mem for mem in stored_memories if query.lower() in mem.lower()
+            ]
+            return [(mem, 0.8) for mem in matching]
+
+        mcp_server.memory_manager._semantic_engine.search.side_effect = semantic_search
+        mcp_server.memory_manager._tantivy_engine.search.side_effect = tantivy_search
 
         add_func = None
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "search":

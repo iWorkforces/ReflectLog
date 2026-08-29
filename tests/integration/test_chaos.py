@@ -18,10 +18,11 @@ Usage:
 
 import asyncio
 import pytest
-from io import StringIO
-from unittest.mock import patch, Mock, MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock
 
 from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.memory.search_strategies import SearchPipeline
+from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
 from reflectlog.application.config.settings import Config
 
 
@@ -39,12 +40,15 @@ def manager(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setenv("SEARCH_LIMIT", "10")
     monkeypatch.setenv("EMBEDDING_DIMS", "1536")
+    monkeypatch.setenv("RERANKER_ENGINE", "none")
 
     mock_semantic_engine = MagicMock()
     mock_semantic_engine.search.return_value = []
+    mock_semantic_engine.is_ready = MagicMock(return_value=False)
 
     mock_tantivy_engine = MagicMock()
     mock_tantivy_engine.search.return_value = []
+    mock_tantivy_engine.is_ready = MagicMock(return_value=False)
 
     mock_embedder = MagicMock()
 
@@ -54,22 +58,29 @@ def manager(monkeypatch):
     mgr._semantic_engine = mock_semantic_engine
     mgr._tantivy_engine = mock_tantivy_engine
     mgr._embedder = mock_embedder
-    mgr._llm_reranker = None
     mgr.config = config
     mgr.workspace_id = config.workspace_id
     mgr.is_hybrid_search = True
     mgr._lock = MagicMock()
     mgr._write_lock = MagicMock()
-    mgr._search_pipeline = MagicMock()
-    mock_search_result = MagicMock()
-    mock_search_result.memories = []
-    mgr._search_pipeline.execute = AsyncMock(return_value=mock_search_result)
-    mgr._add_pipeline = MagicMock()
-    mgr._add_pipeline.execute = AsyncMock(
-        return_value=MagicMock(stored_count=0, skipped_count=0)
-    )
-    mgr._fusion_engine = MagicMock()
+    mgr._fusion_engine = RanxFusionEngine()
     mgr.logger = MagicMock()
+    mgr._cross_encoder_reranker = None
+    mgr._search_pipeline = SearchPipeline(
+        semantic_engine=mock_semantic_engine,
+        tantivy_engine=mock_tantivy_engine,
+        fusion_engine=mgr._fusion_engine,
+        config=config,
+        logger=mgr.logger,
+        memory_manager=mgr,
+    )
+    async def _default_add(
+        memories: list[str], dry_run: bool = False
+    ) -> MagicMock:
+        return MagicMock(stored_count=len(memories), skipped_count=0)
+
+    mgr._add_pipeline = MagicMock()
+    mgr._add_pipeline.execute = AsyncMock(side_effect=_default_add)
 
     yield mgr
 
@@ -87,9 +98,12 @@ class TestEngineFailure:
         Should fallback to USearch-only search.
         '''
 
-        async def mock_tantivy_error():
+        def mock_tantivy_error(*_args: object, **_kwargs: object) -> list[object]:
             raise ConnectionError("Tantivy connection failed")
 
+        manager._semantic_engine.search.return_value = [
+            ("from-usearch", 0.9, "2026-08-22T00:00:00+00:00")
+        ]
         monkeypatch.setattr(
             manager._tantivy_engine,
             "search",
@@ -98,17 +112,18 @@ class TestEngineFailure:
 
         results = await manager.search("test query")
 
-        assert len(results) >= 0, "Should still return results"
-        assert len(results) <= manager.config.search_limit
+        assert results == ["from-usearch"]
 
     @pytest.mark.asyncio
     async def test_usearch_unavailable(self, manager, monkeypatch):
         '''Test search when USearch is unavailable.
 
-        Should return empty results with graceful error.
+        Empty Tantivy plus a USearch outage is a dual outage.
         '''
 
-        async def mock_usearch_error():
+        from reflectlog.core.exceptions import SearchError
+
+        def mock_usearch_error(*_args: object, **_kwargs: object) -> list[object]:
             raise ConnectionError("USearch connection failed")
 
         monkeypatch.setattr(
@@ -117,9 +132,8 @@ class TestEngineFailure:
             mock_usearch_error,
         )
 
-        results = await manager.search("test query")
-
-        assert len(results) == 0, "Should return empty on USearch failure"
+        with pytest.raises(SearchError, match="USearch connection failed"):
+            await manager.search("test query")
 
     @pytest.mark.asyncio
     async def test_both_engines_fail(self, manager, monkeypatch):
@@ -129,7 +143,7 @@ class TestEngineFailure:
         Real implementation would propagate errors from engines.
         '''
 
-        async def mock_both_error():
+        def mock_both_error(*_args: object, **_kwargs: object) -> list[object]:
             raise ConnectionError("Both search engines unavailable")
 
         monkeypatch.setattr(
@@ -143,32 +157,35 @@ class TestEngineFailure:
             mock_both_error,
         )
 
-        # Mock pipeline handles errors gracefully - returns empty list
-        results = await manager.search("test query")
-        assert isinstance(results, list)
+        from reflectlog.core.exceptions import SearchError
+
+        with pytest.raises(SearchError):
+            await manager.search("test query")
 
     @pytest.mark.asyncio
-    async def test_llm_reranker_failure(self, manager, monkeypatch):
-        '''Test search when LLM reranker fails.
+    async def test_cross_encoder_reranker_failure(self, manager, monkeypatch):
+        '''Test search when the cross-encoder reranker fails.
 
-        Should return fusion scores without reranking.
+        Should raise SearchError so callers do not get a silent empty list.
         '''
 
-        async def mock_reranker_error():
-            raise ConnectionError("LLM reranker connection failed")
+        from reflectlog.core.exceptions import SearchError
 
-        # Check if reranker exists before trying to mock it
-        if hasattr(manager, "_llm_reranker") and manager._llm_reranker is not None:
-            monkeypatch.setattr(
-                manager._llm_reranker,
-                "rerank",
-                mock_reranker_error,
-            )
+        class BoomReranker:
+            async def rerank_async(self, *_args: object, **_kwargs: object) -> list[object]:
+                raise ConnectionError("cross-encoder reranker failed")
 
-        results = await manager.search("test query")
+        object.__setattr__(manager.config, "reranker_engine", "cross_encoder")
+        object.__setattr__(manager.config, "fusion_ranking_threshold", 0.0)
+        manager._cross_encoder_reranker = BoomReranker()
+        manager._semantic_engine.search.return_value = [
+            ("a", 0.9, "2026-08-22T00:00:00+00:00"),
+            ("b", 0.8, "2026-08-22T00:00:00+00:00"),
+        ]
+        manager._tantivy_engine.search.return_value = [("a", 0.7), ("b", 0.6)]
 
-        # results is a list of strings, not tuples with scores
-        assert isinstance(results, list), "Should return a list of results"
+        with pytest.raises(SearchError, match="cross-encoder"):
+            await manager.search("test query")
 
     @pytest.mark.asyncio
     async def test_network_timeout(self, manager, monkeypatch):
@@ -177,27 +194,19 @@ class TestEngineFailure:
         Should complete without hanging indefinitely.
         '''
 
-        async def slow_search():
-            from reflectlog.infrastructure.usearch_engine import USearchConfig
+        from reflectlog.core.exceptions import SearchError
 
-            await asyncio.sleep(10)
-            return []
+        def timeout_search(*_args: object, **_kwargs: object) -> list[object]:
+            raise TimeoutError("network timeout")
 
         monkeypatch.setattr(
             manager._semantic_engine,
             "search",
-            slow_search,
+            timeout_search,
         )
 
-        try:
-            results = await asyncio.wait_for(
-                manager.search("test query"),
-                timeout=0.1,
-            )
-        except asyncio.TimeoutError:
-            results = None  # Expected - should complete or timeout
-
-        assert results is None or len(results) >= 0
+        with pytest.raises(SearchError, match="network timeout"):
+            await manager.search("test query")
 
     @pytest.mark.asyncio
     async def test_concurrent_request_storm(self, manager):
@@ -228,23 +237,17 @@ class TestResourceExhaustion:
     async def test_disk_space_exhaustion(self, manager, tmp_path):
         '''Test behavior when disk space runs out.
 
-        With mocked pipeline, add returns gracefully.
-        Real implementation would raise OSError.
+        Add must not swallow a disk-full OSError from persist.
         '''
-        import os
 
-        from unittest.mock import patch
-
-        def mock_disk_full():
-            os.statvfs(tmp_path)
+        async def boom(*_args: object, **_kwargs: object) -> None:
             raise OSError("No space left on device")
 
-        with patch("os.statvfs", mock_disk_full):
-            # Mock pipeline handles errors gracefully - returns success
-            result = await manager.add_memories_async(
+        manager._add_pipeline.execute = boom
+        with pytest.raises(OSError, match="No space left"):
+            await manager.add_memories_async(
                 [f"Large memory {i}" for i in range(10)]
             )
-            assert result is not None
 
     @pytest.mark.asyncio
     async def test_memory_exhaustion(self, manager, monkeypatch):
@@ -254,9 +257,12 @@ class TestResourceExhaustion:
         '''
         large_text = "x" * 1000000
 
-        await manager.add_memories_async([large_text])
+        async def boom(*_args: object, **_kwargs: object) -> None:
+            raise MemoryError("out of memory")
 
-        assert True  # Should complete successfully
+        manager._add_pipeline.execute = boom
+        with pytest.raises(MemoryError, match="out of memory"):
+            await manager.add_memories_async([large_text])
 
     @pytest.mark.asyncio
     async def test_connection_pool_exhaustion(self, manager, monkeypatch):
@@ -267,8 +273,10 @@ class TestResourceExhaustion:
         '''
         from unittest.mock import AsyncMock
 
-        mock_search = AsyncMock()
-        mock_search.side_effect = ConnectionError("Connection pool exhausted")
+        from reflectlog.core.exceptions import SearchError
+
+        def mock_search(*_args: object, **_kwargs: object) -> list[object]:
+            raise ConnectionError("Connection pool exhausted")
 
         monkeypatch.setattr(
             manager._semantic_engine,
@@ -276,10 +284,9 @@ class TestResourceExhaustion:
             mock_search,
         )
 
-        # Mock pipeline doesn't call underlying engine directly
         for i in range(10):
-            result = await manager.search(f"Query {i}")
-            assert isinstance(result, list)
+            with pytest.raises(SearchError, match="Connection pool exhausted"):
+                await manager.search(f"Query {i}")
 
 
 class TestDataCorruption:
@@ -296,13 +303,12 @@ class TestDataCorruption:
         '''
         corrupted_vector = [float("nan")] * manager.config.embedding_dims
 
-        from unittest.mock import patch
+        async def boom(*_args: object, **_kwargs: object) -> None:
+            _ = corrupted_vector
+            raise ValueError("invalid embedding")
 
-        with patch.object(
-            manager._semantic_engine,
-            "_embed_query",
-            return_value=corrupted_vector,
-        ):
+        manager._add_pipeline.execute = boom
+        with pytest.raises(ValueError, match="invalid embedding"):
             await manager.add_memories_async(["test memory"])
 
     @pytest.mark.asyncio
@@ -315,15 +321,9 @@ class TestDataCorruption:
         from reflectlog.application.config.settings import Config
 
         reload_manager = ConfigReloadManager(lambda: Config.from_environment())
-
-        # Mock the reload method to do nothing for testing
-        original_reload = reload_manager.reload_config
-        reload_manager.reload_config = Mock(return_value=Config.from_environment())  # type: ignore
-
+        reloaded = reload_manager.reload_config()
+        assert reloaded.workspace_id == manager.config.workspace_id
         await manager.add_memories_async(["test memory"])
-
-        # Restore original
-        reload_manager.reload_config = original_reload  # type: ignore
 
 
 def run_chaos_tests(

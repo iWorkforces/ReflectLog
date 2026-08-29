@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 import anyio
 from asyncer import asyncify, create_task_group
 
-from reflectlog.core.exceptions import StorageError
+from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
 from ...core.logging import IStructuredLogger
 from ...core.types import (
@@ -256,12 +256,8 @@ class DuplicateDetectionPhase:
     def _has_exact_match(self, content: str) -> bool:
         """Check whether the exact memory already exists in storage.
 
-        Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
-        falling back to direct database lookup otherwise. Both paths are O(log n)
-        avoiding the ~100-500ms embedding API call overhead.
-
-        Sprint 2.1 Optimization: Fallback now uses get_id_by_content() for direct
-        indexed database lookup instead of semantic search with embedding API call.
+        Uses the unique SQLite (workspace_id, content) index. Tantivy is not
+        consulted for identity because stemming cannot do exact match.
         """
         return has_exact_match(
             semantic_engine=self._semantic_engine,
@@ -711,22 +707,55 @@ class StoragePhase:
         memories: list[str],
         replacement_map: dict[str, list[ReplacementInfo]],
     ) -> tuple[int, list[ReplacementInfo]]:
-        """Record every transition, then delete, add, commit, and complete."""
+        """Embed outside the write lock, then record, delete, add, and commit."""
+        vectors = self._embed_for_persist(memories)
         if self._write_lock is None:
-            return self._persist_replacements_unlocked(memories, replacement_map)
+            return self._persist_replacements_unlocked(
+                memories, replacement_map, vectors
+            )
+        if self._lock is not None:
+            with self._write_lock, self._lock:
+                return self._persist_replacements_unlocked(
+                    memories, replacement_map, vectors
+                )
         with self._write_lock:
-            return self._persist_replacements_unlocked(memories, replacement_map)
+            return self._persist_replacements_unlocked(
+                memories, replacement_map, vectors
+            )
+
+    def _embed_for_persist(self, memories: list[str]) -> list[list[float]] | None:
+        """Compute document embeddings before taking the write lock."""
+        if not memories:
+            return None
+        embedder = getattr(self._semantic_engine, "embedder", None)
+        embed_documents = getattr(embedder, "embed_documents", None)
+        if not callable(embed_documents):
+            return None
+        computed = embed_documents(memories)
+        if not isinstance(computed, list):
+            return None
+        if len(computed) != len(memories):
+            raise StorageError("Embedding batch size mismatch for persist")
+        typed: list[list[float]] = []
+        for item in computed:
+            if not isinstance(item, list) or not item:
+                raise StorageError("Embedding produced an empty or invalid vector")
+            typed.append([float(value) for value in item])
+        return typed
 
     def _persist_replacements_unlocked(
         self,
         memories: list[str],
         replacement_map: dict[str, list[ReplacementInfo]],
+        vectors: list[list[float]] | None = None,
     ) -> tuple[int, list[ReplacementInfo]]:
         """Mutate indexes while the caller already holds ``_write_lock``."""
         planned, replacements = self._plan_replacements(memories, replacement_map)
         transitions = self._record_planned_transitions(planned)
         self._delete_recorded_olds(transitions)
-        stored_count = self._store_and_commit(memories, dry_run=False, locked=True)
+        stored_count = self._store_and_commit(
+            memories, dry_run=False, locked=True, vectors=vectors
+        )
         self._complete_if_converged(transitions)
         return stored_count, replacements
 
@@ -872,13 +901,11 @@ class StoragePhase:
 
     def _delete_recorded_olds(self, transitions: list[ReplacementTransition]) -> None:
         """Delete each recorded old memory after transitions are durable."""
+        contents: list[str] = []
         for transition in transitions:
             try:
-                self._delete_memory(
-                    memory_id=str(transition.old_memory_id),
-                    content=transition.old_content,
-                    locked=True,
-                )
+                self._semantic_engine.delete(memory_id=str(transition.old_memory_id))
+                contents.append(transition.old_content)
             except Exception as delete_error:
                 self.logger.warning(
                     f"Failed to delete old memory: {delete_error}",
@@ -892,6 +919,45 @@ class StoragePhase:
                     f"Failed to delete old memory after recording transition "
                     f"{transition.id}: {delete_error}"
                 ) from delete_error
+        if contents and self._tantivy_engine is not None:
+            try:
+                delete_batch = type(self._tantivy_engine).__dict__.get(
+                    "delete_batch"
+                )
+                if callable(delete_batch):
+                    deleted_count = delete_batch(
+                        self._tantivy_engine,
+                        self._workspace_id,
+                        contents,
+                        verify_exists=True,
+                    )
+                    if not isinstance(deleted_count, int):
+                        raise InconsistentStateError(
+                            "USearch replacement delete succeeded but Tantivy "
+                            f"delete_batch returned {type(deleted_count).__name__}"
+                        )
+                    if deleted_count < len(contents):
+                        raise InconsistentStateError(
+                            "USearch replacement delete succeeded but Tantivy "
+                            f"deleted {deleted_count}/{len(contents)}"
+                        )
+                else:
+                    for content in contents:
+                        deleted = self._tantivy_engine.delete(
+                            self._workspace_id, content, verify_exists=True
+                        )
+                        if not deleted:
+                            raise InconsistentStateError(
+                                "USearch replacement delete succeeded but "
+                                f"Tantivy did not delete {content!r}"
+                            )
+            except InconsistentStateError:
+                raise
+            except Exception as tantivy_error:
+                raise InconsistentStateError(
+                    "USearch replacement delete succeeded but Tantivy deletion "
+                    f"failed: {tantivy_error}"
+                ) from tantivy_error
 
     def _store_and_commit(
         self,
@@ -899,12 +965,15 @@ class StoragePhase:
         dry_run: bool,
         *,
         locked: bool = False,
+        vectors: list[list[float]] | None = None,
     ) -> int:
         """Batch-add new memories and commit changes to engines."""
         if dry_run or not memories_to_add:
             return 0
 
-        stored_memories = self._add_memories_batch(memories_to_add, locked=locked)
+        stored_memories = self._add_memories_batch(
+            memories_to_add, locked=locked, vectors=vectors
+        )
         stored_count = len(stored_memories)
         if stored_count != len(memories_to_add):
             self.logger.warning(
@@ -921,7 +990,11 @@ class StoragePhase:
         return stored_count
 
     def _add_memories_batch(
-        self, memories: list[str], *, locked: bool = False
+        self,
+        memories: list[str],
+        *,
+        locked: bool = False,
+        vectors: list[list[float]] | None = None,
     ) -> list[str]:
         """Add multiple memories to both semantic and full-text engines."""
         if not memories:
@@ -930,21 +1003,37 @@ class StoragePhase:
         try:
             if self._write_lock is not None and not locked:
                 with self._write_lock:
-                    return self._add_memories_unlocked(memories)
-            return self._add_memories_unlocked(memories)
+                    return self._add_memories_unlocked(memories, vectors)
+            return self._add_memories_unlocked(memories, vectors)
         except Exception as e:
             raise StorageError(f"Failed to add memory batch: {e}") from e
 
-    def _add_memories_unlocked(self, memories: list[str]) -> list[str]:
+    def _add_memories_unlocked(
+        self,
+        memories: list[str],
+        vectors: list[list[float]] | None = None,
+    ) -> list[str]:
         """Add memories assuming the caller already serialized writes."""
-        inserted_memories = self._semantic_engine.add_batch(
-            workspace_id=self._workspace_id,
-            contents=memories,
-            infer=self.config.enable_llm_infer,
-        )
+        if vectors is None:
+            inserted_memories = self._semantic_engine.add_batch(
+                workspace_id=self._workspace_id,
+                contents=memories,
+                infer=self.config.enable_llm_infer,
+            )
+        else:
+            inserted_memories = self._semantic_engine.add_batch(
+                workspace_id=self._workspace_id,
+                contents=memories,
+                infer=self.config.enable_llm_infer,
+                vectors=vectors,
+            )
         if self._tantivy_engine is not None:
-            for memory in inserted_memories:
-                self._tantivy_engine.add(self._workspace_id, memory)
+            add_batch = type(self._tantivy_engine).__dict__.get("add_batch")
+            if callable(add_batch):
+                _ = add_batch(self._tantivy_engine, self._workspace_id, inserted_memories)
+            else:
+                for memory in inserted_memories:
+                    self._tantivy_engine.add(self._workspace_id, memory)
         self.logger.debug(
             "Batch added memories to hybrid storage",
             extra={
@@ -1172,7 +1261,14 @@ class AddPipeline:
             result.stored_count = phase3_result.stored_count
             result.replaced_count = phase3_result.replaced_count
             result.replacements = phase3_result.replacements
+            persist_skipped = (
+                len(phase1_result.unique_memories) - phase3_result.stored_count
+            )
+            if persist_skipped > 0:
+                result.skipped_count += persist_skipped
 
+        except InconsistentStateError:
+            raise
         except Exception as e:
             mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.logger.error(

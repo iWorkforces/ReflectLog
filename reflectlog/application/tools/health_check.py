@@ -2,8 +2,6 @@
 
 from typing import Any, override
 
-from asyncer import asyncify
-
 from .base import BaseTool
 
 
@@ -43,7 +41,8 @@ class HealthCheckTool(BaseTool):
                 Dictionary containing health status information with keys:
                 - status: Overall status string ("healthy", "degraded", or
                   "unhealthy"). Degraded means leftover replacement transitions
-                  remain after this check attempted to finish them.
+                  are still pending. This check is read-only; leftovers are
+                  finished on startup or the next add persist.
                 - workspace_id: The configured workspace identifier
                 - semantic_engine: "initialized", "pending", or "not_initialized"
                 - tantivy_engine: "initialized", "pending", or "disabled"
@@ -61,7 +60,7 @@ class HealthCheckTool(BaseTool):
                     "workspace_id": "my-project",
                     "semantic_engine": "initialized",
                     "tantivy_engine": "initialized",
-                    "reranker_engine": "llm",
+                    "reranker_engine": "cross_encoder",
                     "hybrid_search_enabled": True,
                     "rrf_fusion_enabled": True,
                     "recency_boost_enabled": True,
@@ -81,12 +80,6 @@ class HealthCheckTool(BaseTool):
                 engine_status = self.memory.search_engine_status()
                 semantic_engine_status = engine_status["semantic_engine"]
                 tantivy_engine_status = engine_status["tantivy_engine"]
-
-                reconcile_fn = getattr(
-                    self.memory, "reconcile_pending_replacements", None
-                )
-                if callable(reconcile_fn):
-                    _ = await asyncify(reconcile_fn)()
 
                 pending_count_fn = getattr(
                     self.memory, "pending_replacement_count", None

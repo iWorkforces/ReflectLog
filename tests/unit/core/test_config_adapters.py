@@ -100,23 +100,26 @@ def custom_config() -> Config:
 class TestRerankerEngineHelpers:
     """Tests for _validated_reranker_engine and _coerce_reranker_engine."""
 
-    @pytest.mark.parametrize("engine", ["llm", "cross_encoder", "none"])
+    @pytest.mark.parametrize("engine", ["cross_encoder", "none"])
     def test_validated_reranker_engine_valid(self, engine: str) -> None:
         """Valid literals pass through unchanged."""
         result = _validated_reranker_engine(engine)  # ty: ignore[invalid-argument-type]
         assert result == engine
 
-    @pytest.mark.parametrize("engine", ["llm", "cross_encoder", "none"])
+    @pytest.mark.parametrize("engine", ["cross_encoder", "none"])
     def test_coerce_reranker_engine_valid(self, engine: str) -> None:
         """Valid string values coerce correctly."""
         result = _coerce_reranker_engine(engine)
         assert result == engine
 
-    def test_coerce_reranker_engine_unknown_defaults_to_none(self) -> None:
-        """Unknown reranker engine strings coerce to 'none'."""
-        assert _coerce_reranker_engine("unknown") == "none"
-        assert _coerce_reranker_engine("") == "none"
-        assert _coerce_reranker_engine("LLM") == "none"  # Case-sensitive
+    def test_coerce_reranker_engine_unknown_fails_closed(self) -> None:
+        """Unknown reranker engine strings raise ConfigurationError."""
+        from reflectlog.core.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="Invalid RERANKER_ENGINE"):
+            _coerce_reranker_engine("llm")
+        with pytest.raises(ConfigurationError, match="Invalid RERANKER_ENGINE"):
+            _coerce_reranker_engine("unknown")
 
 
 # ---------------------------------------------------------------------------
@@ -205,9 +208,9 @@ class TestConfigAdapter:
         assert adapter.fusion_threshold == 0.8
 
     def test_reranker_engine_default(self, minimal_config: Config) -> None:
-        """Default reranker_engine is 'llm'."""
+        """Default reranker_engine is 'cross_encoder'."""
         adapter = ConfigAdapter(minimal_config)
-        assert adapter.reranker_engine == "llm"
+        assert adapter.reranker_engine == "cross_encoder"
 
     def test_reranker_engine_coercion(self, custom_config: Config) -> None:
         """reranker_engine coerces through _coerce_reranker_engine."""
@@ -521,14 +524,17 @@ class TestSearchConfigAdapter:
         assert adapter.reranker_engine == "cross_encoder"
 
     def test_reranker_engine_coercion_invalid(self) -> None:
-        """Invalid reranker_engine in Config coerces to 'none'."""
+        """Invalid reranker_engine in Config fails closed."""
+        from reflectlog.core.exceptions import ConfigurationError
+
         config = Config(
             workspace_id="test",
             openrouter_api_key=SecretString("sk-key"),
             reranker_engine="invalid_engine",
         )
         adapter = SearchConfigAdapter(config)
-        assert adapter.reranker_engine == "none"
+        with pytest.raises(ConfigurationError, match="Invalid RERANKER_ENGINE"):
+            _ = adapter.reranker_engine
 
     def test_search_score_threshold(self, custom_config: Config) -> None:
         """search_score_threshold delegates to Config."""
@@ -553,7 +559,7 @@ class TestSearchConfigAdapter:
         assert adapter.enable_rrf_fusion is True
         assert adapter.fusion_rrf_k == 60
         assert adapter.fusion_threshold == 0.8
-        assert adapter.reranker_engine == "llm"
+        assert adapter.reranker_engine == "cross_encoder"
         assert adapter.search_score_threshold == 0.5
         assert adapter.enable_recency_boost is True
         assert adapter.recency_decay_rate == 0.01

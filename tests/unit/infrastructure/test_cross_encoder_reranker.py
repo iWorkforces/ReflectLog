@@ -112,7 +112,7 @@ class TestCrossEncoderConfig:
     def test_from_app_config_disabled(self) -> None:
         '''Test factory method from application config when disabled.'''
         mock_app_config = MagicMock()
-        mock_app_config.reranker_engine = "llm"  # Not cross_encoder
+        mock_app_config.reranker_engine = "none"  # Not cross_encoder
         mock_app_config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
         mock_app_config.cross_encoder_top_k = 20
         mock_app_config.cross_encoder_device = "cpu"
@@ -837,6 +837,77 @@ class TestRecencyDecay:
             # doc2 is much newer so should have higher decayed score
             doc_scores = {doc: score for doc, score in result}
             assert doc_scores["doc2"] > doc_scores["doc1"]
+
+    def test_recency_does_not_gate_old_docs_at_default_threshold(self) -> None:
+        """Age may reorder but must not empty a batch that passed CE quality."""
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.5,
+            batch_normalize=False,
+            enable_recency_boost=True,
+            recency_decay_rate=0.01,
+        )
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8]
+            week_ago = "2026-08-22T00:00:00+00:00"
+            result = reranker.rerank(
+                "query",
+                [("old-a", 0.7), ("old-b", 0.6)],
+                timestamp_map={"old-a": week_ago, "old-b": week_ago},
+            )
+        assert [name for name, _score in result] == ["old-a", "old-b"]
+
+    def test_recency_does_not_gate_equal_scores_with_batch_normalize(self) -> None:
+        """Default batch min-max plus 0.5 must keep equal-score week-old docs."""
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.5,
+            batch_normalize=True,
+            enable_recency_boost=True,
+            recency_decay_rate=0.01,
+        )
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.8, 0.8]
+            week_ago = "2026-08-22T00:00:00+00:00"
+            result = reranker.rerank(
+                "query",
+                [("old-a", 0.7), ("old-b", 0.6)],
+                timestamp_map={"old-a": week_ago, "old-b": week_ago},
+            )
+        assert [name for name, _score in result] == ["old-a", "old-b"]
+
+    def test_top_k_is_applied_after_recency(self) -> None:
+        """Recency can promote a later CE rank into the top_k window."""
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=1,
+            score_threshold=0.0,
+            batch_normalize=False,
+            enable_recency_boost=True,
+            recency_decay_rate=0.01,
+        )
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8]
+            result = reranker.rerank(
+                "query",
+                [("old", 0.7), ("new", 0.6)],
+                timestamp_map={
+                    "old": "2026-08-01T00:00:00+00:00",
+                    "new": "2026-08-29T00:00:00+00:00",
+                },
+            )
+        assert [name for name, _score in result] == ["new"]
 
     def test_recency_decay_logs_when_logger_present(self) -> None:
         '''Test recency decay logs pre/post decay scores when logger is present (lines 367-368).'''

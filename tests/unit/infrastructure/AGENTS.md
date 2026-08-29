@@ -1,6 +1,6 @@
 # Infrastructure Unit Tests
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -13,7 +13,6 @@ tests/unit/infrastructure/
 ├── test_tantivy_engine.py           # Full-text search (95KB)
 ├── test_memory_store.py             # SQLite CRUD (61KB)
 ├── test_usearch_engine.py           # Vector search (47KB)
-├── test_llm_reranker.py             # LLM reranking (46KB)
 ├── test_cross_encoder_reranker.py   # Cross-encoder (38KB)
 ├── test_smart_replacer.py           # Replacement detection (36KB)
 ├── test_qwen3_embedding.py          # Qwen embeddings (26KB)
@@ -26,8 +25,9 @@ tests/unit/infrastructure/
 |------|---------|
 | test_tantivy_engine.py | Soft-delete, tombstone cache, compaction |
 | test_memory_store.py | Batch CRUD, archive/restore |
-| test_usearch_engine.py | Exact vs approximate search |
-| test_llm_reranker.py | Provider abstraction, parallel scoring |
+| test_usearch_engine.py | Exact vs HNSW, batch rollback, fail-closed embeds |
+| test_cached_embeddings.py | LRU + short-batch raise |
+| test_cross_encoder_reranker.py | Batch norm, recency |
 
 ## ANTI-PATTERNS
 

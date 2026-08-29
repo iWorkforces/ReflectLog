@@ -196,9 +196,9 @@ class Config:
     )
 
     # USearch exact search settings
-    usearch_exact_search: bool = True  # Force exact brute-force search (bypasses HNSW)
+    usearch_exact_search: bool = False  # HNSW approximate search (exact is opt-in)
     usearch_exact_search_threshold: int = (
-        10000  # Auto-switch to exact when index < threshold
+        256  # Auto-switch to exact when index is smaller than this
     )
 
     # Fusion settings (ranx-based)
@@ -214,14 +214,12 @@ class Config:
     min_memory_length: int = 1
 
     # Reranker engine selection
-    reranker_engine: str = "llm"  # "llm", "cross_encoder", or "none"
+    reranker_engine: str = "cross_encoder"  # "cross_encoder" or "none"
 
-    # LLM reranking settings (used when reranker_engine="llm")
-    llm_model: str = "x-ai/grok-4.1-fast"  # LLM model for reranking
-    search_score_threshold: float = 0.5  # Min LLM relevance score to keep (0-1)
-    rerank_max_concurrency: int = (
-        10  # Max parallel LLM calls for reranking (increased from 5)
-    )
+    # LLM settings used by smart replacement (not search reranking)
+    llm_model: str = "x-ai/grok-4.1-fast"
+    search_score_threshold: float = 0.5
+    rerank_max_concurrency: int = 10
 
     # Cross-encoder reranking settings (used when reranker_engine="cross_encoder")
     # Uses FlagEmbedding's FlagReranker for BGE reranker models
@@ -234,7 +232,7 @@ class Config:
     cross_encoder_normalize: bool = True  # Normalize scores to 0-1 with sigmoid
     cross_encoder_max_length: int = 512  # Max token length for query-doc pairs
 
-    # Unified reranker settings (apply to both LLM and CrossEncoder)
+    # Unified reranker settings
     reranker_min_results: int = 0  # Safety net: min results to return (0 = disabled)
     reranker_batch_normalize: bool = True  # Enable batch min-max normalization
 
@@ -363,11 +361,11 @@ class Config:
                 1.0, float(os.environ.get("OVERFETCH_MAX_MULTIPLIER", "3.0"))
             ),
             "usearch_exact_search": os.environ.get(
-                "USEARCH_EXACT_SEARCH", "true"
+                "USEARCH_EXACT_SEARCH", "false"
             ).lower()
             == "true",
             "usearch_exact_search_threshold": max(
-                0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "10000"))
+                0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "256"))
             ),
             "fusion_method": os.environ.get("FUSION_METHOD", "rrf").lower(),
             "fusion_normalization": os.environ.get("FUSION_NORMALIZATION") or None,
@@ -418,16 +416,16 @@ class Config:
     def _parse_reranker_config() -> RerankerConfigDict:
         """Parse reranker-related configuration from environment variables."""
         # Determine reranker engine
-        reranker_engine_raw = os.environ.get("RERANKER_ENGINE", "llm")
+        reranker_engine_raw = os.environ.get("RERANKER_ENGINE", "cross_encoder")
         reranker_engine = reranker_engine_raw.lower()
-        valid_engines = ("llm", "cross_encoder", "none")
+        valid_engines = ("cross_encoder", "none")
         if reranker_engine not in valid_engines:
             raise ConfigurationError(
                 f"Invalid RERANKER_ENGINE: '{reranker_engine}'. "
                 f"Valid options: {', '.join(valid_engines)}"
             )
 
-        # Determine LLM provider (used by SmartReplacer and LLMReranker)
+        # Determine LLM provider (used by SmartReplacer)
         llm_provider_raw = os.environ.get("LLM_PROVIDER", "anthropic")
         llm_provider = llm_provider_raw.lower()
         valid_llm_providers = ("openai", "anthropic")

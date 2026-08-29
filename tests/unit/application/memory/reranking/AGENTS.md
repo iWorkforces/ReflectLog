@@ -1,6 +1,6 @@
 # Reranking Unit Tests
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
 
@@ -31,7 +31,7 @@ def test_normalize_single_item():
 
 def test_normalize_equal_scores():
     result = normalize_reranker_scores([("a", 0.5), ("b", 0.5)])
-    assert all(s == 1.0 for _, s in result)  # All equal = 1.0
+    assert all(s == 0.5 for _, s in result)  # All equal = 0.5 (neutral)
 ```
 
 ### Recency Decay Formula

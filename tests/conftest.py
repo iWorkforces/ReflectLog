@@ -51,7 +51,7 @@ def mock_usearch_engine():
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.add_batch = MagicMock(
-        side_effect=lambda workspace_id, messages, infer: messages
+        side_effect=lambda workspace_id, messages=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else messages
     )
     # USearchEngine.get_all returns List[str] directly
     engine.get_all = MagicMock(return_value=[])
@@ -62,6 +62,7 @@ def mock_usearch_engine():
     engine.ensure_initialized = MagicMock(return_value=None)
     # Default constructed engines are not warmed; a bare MagicMock is truthy.
     engine.is_ready = MagicMock(return_value=False)
+    engine.get_id_by_content = MagicMock(return_value=None)
     return engine
 
 
@@ -101,7 +102,7 @@ def set_env_vars(monkeypatch):
         "LOG_LEVEL": "INFO",
         "DEDUPLICATE_MEMORIES": "true",
         "ADD_MAX_CONCURRENCY": "8",
-        "RERANKER_ENGINE": "llm",
+        "RERANKER_ENGINE": "cross_encoder",
         # Disable embedding cache in tests to avoid issues with mocked embedders
         "EMBEDDING_CACHE_ENABLED": "false",
         # Disable eager initialization in tests to avoid issues with mocked engines
@@ -310,13 +311,10 @@ def get_tool_func(mcp_server):
 
     def _get_tool(tool_name: str):
         '''Get tool function by name.'''
-        # Access the internal _tools dictionary directly to avoid async call
-        if hasattr(mcp_server.mcp._tool_manager, "_tools"):
-            tool = mcp_server.mcp._tool_manager._tools.get(tool_name)
-            if tool is None:
-                raise ValueError(f"Tool '{tool_name}' not found")
-            return tool.fn
-        raise RuntimeError("Tool manager not properly initialized")
+        for tool in mcp_server.tools:
+            if tool.get_name() == tool_name:
+                return tool.get_handler()
+        raise ValueError(f"Tool '{tool_name}' not found")
 
     return _get_tool
 

@@ -11,7 +11,11 @@ import numpy as np
 from ranx import Run
 from ranx import fuse as ranx_fuse
 
-from reflectlog.utility.scoring import normalize_scores_minmax
+from reflectlog.utility.scoring import (
+    compute_rrf_scores_batch,
+    compute_weighted_rrf_scores_batch,
+    normalize_scores_minmax,
+)
 
 from .base import FusionEngine
 
@@ -209,18 +213,68 @@ class RanxFusionEngine(FusionEngine):
         if not results:
             return results
 
-        # Extract memories and scores separately for vectorized processing
         memories = [msg for msg, _ in results]
         scores = np.array([score for _, score in results], dtype=np.float64)
+        # Zero-range RRF (disjoint rank-1 ties) must stay at 1.0 so the
+        # default fusion_ranking_threshold=0.8 does not drop every hit.
+        # Do not use shared min-max here: that maps a tie to 0.5.
+        if len(results) == 1 or float(np.max(scores)) == float(np.min(scores)):
+            return [(msg, 1.0) for msg in memories]
 
-        # Use numba-accelerated normalization (single-pass min/max + vectorized normalize)
         normalized_scores = normalize_scores_minmax(scores)
-
-        # Reconstruct result tuples with normalized scores
         return [
             (msg, float(score))
             for msg, score in zip(memories, normalized_scores, strict=True)
         ]
+
+    def _fuse_rrf_numba(
+        self, result_sets: list[list[tuple[str, float]]]
+    ) -> list[tuple[str, float]]:
+        """RRF via interned doc ids and the compiled batch scorer."""
+        doc_index: dict[str, int] = {}
+        docs: list[str] = []
+        for result_set in result_sets:
+            for memory, _score in result_set:
+                if memory not in doc_index:
+                    doc_index[memory] = len(docs)
+                    docs.append(memory)
+
+        ranks = np.zeros((len(docs), len(result_sets)), dtype=np.int64)
+        for run_idx, result_set in enumerate(result_sets):
+            seen: set[int] = set()
+            for rank, (memory, _score) in enumerate(result_set, start=1):
+                doc_idx = doc_index[memory]
+                if doc_idx in seen:
+                    continue
+                ranks[doc_idx, run_idx] = rank
+                seen.add(doc_idx)
+
+        if self._weights is not None:
+            if len(self._weights) != len(result_sets):
+                raise ValueError(
+                    f"RRF weights length {len(self._weights)} does not match "
+                    f"{len(result_sets)} result sets"
+                )
+            weight_arr = np.asarray(self._weights, dtype=np.float64)
+            scores = compute_weighted_rrf_scores_batch(
+                ranks, weight_arr, k=self._rrf_k
+            )
+        else:
+            scores = compute_rrf_scores_batch(ranks, k=self._rrf_k)
+        paired = [(docs[idx], float(scores[idx])) for idx in range(len(docs))]
+        paired.sort(key=lambda item: item[1], reverse=True)
+        normalized = self._normalize_output_scores(paired)
+        if self.logger:
+            self.logger.debug(
+                f"Fusion completed: {len(normalized)} unique results "
+                f"from {len(result_sets)} result sets",
+                extra={
+                    "method": self._method,
+                    "input_sets": len(result_sets),
+                    "unique_count": len(normalized),
+                },
+            )
+        return normalized
 
     @override
     def fuse(
@@ -240,6 +294,16 @@ class RanxFusionEngine(FusionEngine):
         non_empty = [rs for rs in result_sets if rs]
         if not non_empty:
             return []
+
+        if len(non_empty) == 1:
+            # Keep original backend scores. Min-max on one list stretches the
+            # lowest hit to 0.0, and fusion_ranking_threshold=0.8 then drops it.
+            return self._convert_from_run(
+                self._convert_to_run(non_empty[0], name="run_0")
+            )
+
+        if self._method == "rrf":
+            return self._fuse_rrf_numba(non_empty)
 
         # Validate score ranges and log unusual inputs (debug level)
         if self.logger and self.logger.is_enabled_for(logging.DEBUG):
@@ -280,36 +344,27 @@ class RanxFusionEngine(FusionEngine):
         if not runs:
             return []
 
-        # ranx.fuse() requires at least 2 runs - handle single run case
-        if len(runs) == 1:
-            sorted_results = self._convert_from_run(runs[0])
-            normalized_results = self._normalize_output_scores(sorted_results)
-            if self.logger:
-                self.logger.debug(
-                    f"Single result set - no fusion needed: {len(normalized_results)} results",
-                    extra={
-                        "method": self._method,
-                        "input_sets": len(result_sets),
-                        "non_empty_sets": 1,
-                        "unique_count": len(normalized_results),
-                    },
-                )
-            return normalized_results
-
         # Build params for ranx.fuse()
         params: dict[str, Any] | None = None
         if self._method == "rrf":
             params = {"k": self._rrf_k}
-            if self._weights is not None:
-                params["weights"] = self._weights
+        if self._weights is not None:
+            params = {} if params is None else params
+            params["weights"] = self._weights
 
-        # Perform fusion
-        combined = ranx_fuse(
-            runs=runs,
-            norm=self._normalization,
-            method=self._method,
-            params=params,
-        )
+        try:
+            combined = ranx_fuse(
+                runs=runs,
+                norm=self._normalization,
+                method=self._method,
+                params=params,
+            )
+        except TypeError as fuse_error:
+            if params is not None and "weights" in params:
+                raise RuntimeError(
+                    "Fusion algorithm rejected weights; refusing unweighted fallback"
+                ) from fuse_error
+            raise
 
         # Convert back to tuple format
         sorted_results = self._convert_from_run(combined)

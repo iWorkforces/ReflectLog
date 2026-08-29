@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from reflectlog.core.config import IAppConfig
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.prompts import REPLACEMENT_DETECTION_PROMPT
+from reflectlog.core.prompts import format_replacement_detection_prompt
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
@@ -455,7 +455,7 @@ class SmartReplacer(BaseModel):
 
         try:
             # Format the replacement detection prompt
-            prompt = REPLACEMENT_DETECTION_PROMPT.format(
+            prompt = format_replacement_detection_prompt(
                 old_memory=existing_memory,
                 new_memory=new_memory,
             )

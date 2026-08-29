@@ -7,7 +7,6 @@ Tests cover:
 - EngineFactory._create_tantivy_engine: Tantivy with/without hybrid search
 - EngineFactory._create_fusion_engine: Fusion engine creation
 - EngineFactoryResult: Dataclass structure
-- create_llm_reranker: LLM reranker factory
 - create_cross_encoder_reranker: CrossEncoder reranker factory
 - create_smart_replacer: SmartReplacer factory
 """
@@ -23,7 +22,6 @@ from reflectlog.application.memory.engine_factory import (
     EngineFactory,
     EngineFactoryResult,
     create_cross_encoder_reranker,
-    create_llm_reranker,
     create_smart_replacer,
 )
 from reflectlog.application.utils.logging import StructuredLogger
@@ -40,7 +38,11 @@ def mock_config() -> Mock:
     config.enable_hybrid_search = True
     config.tantivy_index_path_template = "indexes/{workspace_id}/tantivy"
     config.tantivy_normalize_scores = True
-    config.reranker_engine = "llm"
+    config.tantivy_soft_delete_enabled = True
+    config.tantivy_compaction_threshold_ratio = 0.2
+    config.tantivy_compaction_max_tombstones = 10000
+    config.tantivy_tombstone_ttl_days = 7
+    config.reranker_engine = "cross_encoder"
 
     # Embedding settings
     config.embedder_provider = "openai"
@@ -59,6 +61,7 @@ def mock_config() -> Mock:
     config.fusion_method = "rrf"
     config.fusion_normalization = None
     config.fusion_rrf_k = 60
+    config.fusion_weights = None
 
     # Smart replacement
     config.enable_smart_replace = True
@@ -92,14 +95,14 @@ class TestEngineFactoryResult:
             semantic_engine=semantic,
             tantivy_engine=tantivy,
             fusion_engine=fusion,
-            reranker_engine="llm",
+            reranker_engine="cross_encoder",
             enable_hybrid_search=True,
         )
 
         assert result.semantic_engine is semantic
         assert result.tantivy_engine is tantivy
         assert result.fusion_engine is fusion
-        assert result.reranker_engine == "llm"
+        assert result.reranker_engine == "cross_encoder"
         assert result.enable_hybrid_search is True
 
     def test_result_with_none_tantivy(self) -> None:
@@ -152,7 +155,7 @@ class TestCreateEngines:
     ) -> None:
         """create_engines should create all engines when hybrid search enabled."""
         mock_config.enable_hybrid_search = True
-        mock_config.reranker_engine = "llm"
+        mock_config.reranker_engine = "cross_encoder"
 
         result = factory.create_engines(mock_config, mock_logger)
 
@@ -160,7 +163,7 @@ class TestCreateEngines:
         assert result.semantic_engine is mock_usearch_cls.return_value
         assert result.tantivy_engine is mock_tantivy_cls.return_value
         assert result.fusion_engine is mock_create_fusion.return_value
-        assert result.reranker_engine == "llm"
+        assert result.reranker_engine == "cross_encoder"
         assert result.enable_hybrid_search is True
 
     @patch("reflectlog.application.memory.engine_factory.create_fusion_engine")
@@ -237,7 +240,7 @@ class TestCreateSemanticEngine:
         """Semantic engine should be created with USearchConfig and embedder."""
         result = factory._create_semantic_engine(mock_config, mock_logger)
 
-        mock_usearch_config_cls.from_config.assert_called_once_with(mock_config)
+        mock_usearch_config_cls.from_config.assert_called_once()
         mock_usearch_cls.assert_called_once_with(
             mock_usearch_config_cls.from_config.return_value,
             embedder=mock_cached_cls.return_value,
@@ -424,6 +427,10 @@ class TestCreateTantivyEngine:
             workspace_id="my_project",
             index_path="indexes/my_project/tantivy",
             normalize_scores=True,
+            soft_delete_enabled=True,
+            compaction_threshold_ratio=0.2,
+            compaction_max_tombstones=10000,
+            tombstone_ttl_days=7,
         )
         mock_tantivy_cls.assert_called_once_with(
             mock_tantivy_config_cls.return_value,
@@ -489,6 +496,7 @@ class TestCreateFusionEngine:
             method="rrf",
             normalization="min-max",
             rrf_k=30,
+            weights=None,
             logger=mock_logger,
         )
         assert result is mock_create_fusion.return_value
@@ -512,58 +520,9 @@ class TestCreateFusionEngine:
             method="sum",
             normalization=None,
             rrf_k=60,
+            weights=None,
             logger=mock_logger,
         )
-
-
-@pytest.mark.unit
-class TestCreateLLMReranker:
-    """Tests for create_llm_reranker standalone factory function."""
-
-    @patch("reflectlog.application.memory.engine_factory.LLMReranker")
-    @patch("reflectlog.application.memory.engine_factory.LLMRerankerConfig")
-    def test_creates_reranker_when_engine_is_llm(
-        self,
-        mock_config_cls: Mock,
-        mock_reranker_cls: Mock,
-        mock_config: Mock,
-        mock_logger: Mock,
-    ) -> None:
-        """Should create LLMReranker when reranker_engine is "llm"."""
-        mock_config.reranker_engine = "llm"
-
-        result = create_llm_reranker(mock_config, mock_logger)
-
-        mock_config_cls.from_config.assert_called_once_with(mock_config)
-        mock_reranker_cls.assert_called_once_with(
-            config=mock_config_cls.from_config.return_value,
-            logger=mock_logger,
-        )
-        assert result is mock_reranker_cls.return_value
-
-    def test_returns_none_when_engine_is_not_llm(
-        self,
-        mock_config: Mock,
-        mock_logger: Mock,
-    ) -> None:
-        """Should return None when reranker_engine is not "llm"."""
-        mock_config.reranker_engine = "cross_encoder"
-
-        result = create_llm_reranker(mock_config, mock_logger)
-
-        assert result is None
-
-    def test_returns_none_when_engine_is_none(
-        self,
-        mock_config: Mock,
-        mock_logger: Mock,
-    ) -> None:
-        """Should return None when reranker_engine is "none"."""
-        mock_config.reranker_engine = "none"
-
-        result = create_llm_reranker(mock_config, mock_logger)
-
-        assert result is None
 
 
 @pytest.mark.unit
@@ -584,7 +543,7 @@ class TestCreateCrossEncoderReranker:
 
         result = create_cross_encoder_reranker(mock_config, mock_logger)
 
-        mock_config_cls.from_config.assert_called_once_with(mock_config)
+        mock_config_cls.from_config.assert_called_once()
         mock_reranker_cls.assert_called_once_with(
             config=mock_config_cls.from_config.return_value,
             logger=mock_logger,
@@ -597,7 +556,7 @@ class TestCreateCrossEncoderReranker:
         mock_logger: Mock,
     ) -> None:
         """Should return None when reranker_engine is not "cross_encoder"."""
-        mock_config.reranker_engine = "llm"
+        mock_config.reranker_engine = "none"
 
         result = create_cross_encoder_reranker(mock_config, mock_logger)
 
@@ -634,7 +593,7 @@ class TestCreateSmartReplacer:
 
         result = create_smart_replacer(mock_config, mock_logger)
 
-        mock_config_cls.from_config.assert_called_once_with(mock_config)
+        mock_config_cls.from_config.assert_called_once()
         mock_replacer_cls.assert_called_once_with(
             config=mock_config_cls.from_config.return_value,
             logger=mock_logger,

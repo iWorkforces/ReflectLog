@@ -22,7 +22,6 @@ from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
-from reflectlog.infrastructure.llm_reranker import LLMReranker
 
 
 # ---------------------------------------------------------------------------
@@ -125,8 +124,9 @@ def _make_manager(config, logger):
     ):
         mock_usearch = MagicMock()
         mock_usearch.add_batch.side_effect = (
-            lambda workspace_id, memories, infer: memories
+            lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
         )
+        mock_usearch.get_id_by_content.return_value = None
         usearch_cls.return_value = mock_usearch
 
         mock_tantivy = MagicMock()
@@ -160,42 +160,40 @@ class TestEagerInitialization:
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_reranker = True
-        mock_config.reranker_engine = "llm"
+        mock_config.reranker_engine = "cross_encoder"
 
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
             patch(f"{MODULE}.TantivyEngine"),
-            patch(f"{MODULE}.LLMRerankerConfig"),
-            patch(f"{MODULE}.LLMReranker") as reranker_cls,
+            patch(f"{MODULE}.CrossEncoderConfig"),
+            patch(f"{MODULE}.CrossEncoderReranker") as reranker_cls,
         ):
             usearch_cls.return_value = MagicMock()
-            # Make get_reranker return a real LLMReranker mock so it succeeds
             reranker_cls.return_value = MagicMock()
             manager = MemoryManager(mock_config, mock_logger)
-            # Should not raise, reranker initialised
-            assert manager._llm_reranker is not None
+            assert manager._cross_encoder_reranker is not None
 
-    def test_eager_init_reranker_with_llm(self, mock_config, mock_logger):
-        """Eager init with valid llm reranker (lines 342-351)."""
+    def test_eager_init_reranker_with_cross_encoder(self, mock_config, mock_logger):
+        """Eager init with a valid cross-encoder reranker."""
         mock_config.eager_initialization = True
         mock_config.eager_initialize_search_engines = False
         mock_config.eager_initialize_reranker = True
-        mock_config.reranker_engine = "llm"
+        mock_config.reranker_engine = "cross_encoder"
 
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
             patch(f"{MODULE}.TantivyEngine"),
-            patch(f"{MODULE}.LLMRerankerConfig"),
-            patch(f"{MODULE}.LLMReranker") as reranker_cls,
+            patch(f"{MODULE}.CrossEncoderConfig"),
+            patch(f"{MODULE}.CrossEncoderReranker") as reranker_cls,
         ):
             mock_reranker = MagicMock()
             reranker_cls.return_value = mock_reranker
             usearch_cls.return_value = MagicMock()
 
             manager = MemoryManager(mock_config, mock_logger)
-            assert manager._llm_reranker is mock_reranker
+            assert manager._cross_encoder_reranker is mock_reranker
 
     def test_eager_init_smart_replacer_disabled_raises(self, mock_config, mock_logger):
         """Eager smart replacer with enable_smart_replace=False raises (lines 364-369)."""
@@ -252,56 +250,7 @@ class TestEagerInitialization:
 
 @pytest.mark.unit
 class TestLazyRerankerProperties:
-    """Tests for llm_reranker, cross_encoder_reranker, get_reranker properties."""
-
-    def test_llm_reranker_returns_none_when_not_llm(self, mock_config, mock_logger):
-        """llm_reranker returns None when reranker_engine != "llm" (line 407)."""
-        mock_config.reranker_engine = "none"
-        manager, _, _ = _make_manager(mock_config, mock_logger)
-        assert manager.llm_reranker is None
-
-    def test_llm_reranker_returns_cached(self, mock_config, mock_logger):
-        """llm_reranker returns cached instance on second call (line 407)."""
-        mock_config.reranker_engine = "llm"
-        with (
-            patch(f"{MODULE}.USearchEngine") as usearch_cls,
-            patch(f"{MODULE}.LangchainQwenEmbeddings"),
-            patch(f"{MODULE}.TantivyEngine"),
-            patch(f"{MODULE}.LLMRerankerConfig"),
-            patch(f"{MODULE}.LLMReranker") as reranker_cls,
-        ):
-            mock_reranker = MagicMock()
-            reranker_cls.return_value = mock_reranker
-            usearch_cls.return_value = MagicMock()
-
-            manager = MemoryManager(mock_config, mock_logger)
-            first = manager.llm_reranker
-            second = manager.llm_reranker
-            assert first is second
-            assert first is mock_reranker
-            # Should only create once
-            reranker_cls.assert_called_once()
-
-    def test_llm_reranker_double_check_locking(self, mock_config, mock_logger):
-        """llm_reranker double-check after lock (line 413)."""
-        mock_config.reranker_engine = "llm"
-        with (
-            patch(f"{MODULE}.USearchEngine") as usearch_cls,
-            patch(f"{MODULE}.LangchainQwenEmbeddings"),
-            patch(f"{MODULE}.TantivyEngine"),
-            patch(f"{MODULE}.LLMRerankerConfig"),
-            patch(f"{MODULE}.LLMReranker") as reranker_cls,
-        ):
-            mock_reranker = MagicMock()
-            reranker_cls.return_value = mock_reranker
-            usearch_cls.return_value = MagicMock()
-
-            manager = MemoryManager(mock_config, mock_logger)
-            # Pre-set the reranker to simulate another thread initialized it
-            sentinel = cast(LLMReranker, MagicMock())
-            manager._llm_reranker = sentinel
-            result = manager.llm_reranker
-            assert result is sentinel
+    """Tests for cross_encoder_reranker and get_reranker properties."""
 
     def test_cross_encoder_reranker_returns_none_when_not_configured(
         self, mock_config, mock_logger
@@ -456,8 +405,7 @@ class TestAddMemory:
     def test_add_memory_duplicate_skipped(self, mock_config, mock_logger):
         """Duplicate memory returns False (lines 527-535)."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        # Tantivy search returns exact match
-        mock_tantivy.search.return_value = [("hello world", 1.0)]
+        mock_usearch.get_id_by_content.return_value = 11
 
         result = manager._add_memory("hello world")
         assert result is False
@@ -527,7 +475,7 @@ class TestAddMemoriesBatchLogging:
         """Duplicate within batch should be skipped (lines 593-602)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.add_batch.side_effect = (
-            lambda workspace_id, memories, infer: memories
+            lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
         )
 
         result = manager.add_memories(["mem1", "mem1", "mem2"])
@@ -702,7 +650,9 @@ class TestDeleteOperations:
         result = manager.delete_by_memory("test memory")
         assert result is True
         mock_usearch.delete.assert_called_once_with(memory_id="42")
-        mock_tantivy.delete.assert_called_once_with("test_project", "test memory")
+        mock_tantivy.delete.assert_called_once_with(
+            "test_project", "test memory", verify_exists=True
+        )
 
     def test_delete_by_memory_without_tantivy(self, mock_config, mock_logger):
         """delete_by_memory works without Tantivy."""
@@ -720,6 +670,90 @@ class TestDeleteOperations:
             result = manager.delete_by_memory("test memory")
             assert result is True
             mock_usearch.delete.assert_called_once_with(memory_id="42")
+
+
+    def test_delete_memories_returns_found_contents(self, mock_config, mock_logger):
+        """delete_memories returns only contents that existed."""
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+
+        def lookup(_workspace_id: str, content: str) -> int | None:
+            return {"keep": 1, "also": 2}.get(content)
+
+        mock_usearch.get_id_by_content.side_effect = lookup
+
+        deleted = manager.delete_memories(["keep", "missing", "also"])
+
+        assert deleted == ["keep", "also"]
+        assert mock_usearch.delete.call_count == 2
+        mock_usearch.commit.assert_called_once()
+        assert mock_tantivy.delete.call_count == 2
+
+    def test_delete_memories_tantivy_failure_inconsistent_state(
+        self, mock_config, mock_logger
+    ):
+        """Tantivy failure after USearch batch delete raises InconsistentStateError."""
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.get_id_by_content.return_value = 42
+        mock_tantivy.delete.side_effect = RuntimeError("tantivy broken")
+
+        with pytest.raises(
+            InconsistentStateError,
+            match="USearch deletion succeeded but Tantivy deletion failed",
+        ):
+            manager.delete_memories(["test memory"])
+
+        mock_usearch.delete.assert_called_once_with(memory_id="42")
+
+    def test_delete_memories_uses_verify_exists_on_batch(
+        self, mock_config, mock_logger
+    ):
+        """Production delete_batch probes FTS so it does not plant phantom tombstones."""
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.get_id_by_content.return_value = 7
+
+        class FakeTantivy:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, list[str], bool]] = []
+
+            def delete_batch(
+                self,
+                workspace_id: str,
+                contents: list[str],
+                verify_exists: bool = False,
+            ) -> int:
+                self.calls.append((workspace_id, contents, verify_exists))
+                return len(contents)
+
+        fake = FakeTantivy()
+        manager._tantivy_engine = fake
+
+        deleted = manager.delete_memories(["hello"])
+
+        assert deleted == ["hello"]
+        assert fake.calls == [("test_project", ["hello"], True)]
+
+    def test_delete_memories_short_count_fails_closed(
+        self, mock_config, mock_logger
+    ):
+        """A live FTS miss after USearch delete is InconsistentStateError."""
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.get_id_by_content.return_value = 7
+
+        class ShortTantivy:
+            def delete_batch(
+                self,
+                workspace_id: str,
+                contents: list[str],
+                verify_exists: bool = False,
+            ) -> int:
+                return 0
+
+        manager._tantivy_engine = ShortTantivy()
+
+        with pytest.raises(InconsistentStateError, match="deleted 0/1"):
+            manager.delete_memories(["hello"])
+
+        mock_usearch.delete.assert_called_once_with(memory_id="7")
 
 
 # ---------------------------------------------------------------------------

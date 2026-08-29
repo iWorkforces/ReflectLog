@@ -35,31 +35,13 @@ def has_exact_match(
 ) -> bool:
     """Check whether the exact content already exists in storage.
 
-    Uses Tantivy for fast exact phrase matching when available,
-    falling back to direct database lookup otherwise.
-    """
-    if tantivy_engine is not None:
-        try:
-            escaped_query = escape_tantivy_query(content)
-            results = tantivy_engine.search(
-                f'"{escaped_query}"',
-                workspace_id,
-                limit=5,
-            )
-            has_match = any(msg == content for msg, _ in results)
-            if has_match and logger:
-                logger.debug(
-                    "Tantivy found exact duplicate",
-                    extra={"workspace_id": workspace_id},
-                )
-            return has_match
-        except Exception as e:
-            if logger:
-                logger.warning(
-                    "Tantivy duplicate check failed; falling back to database lookup",
-                    extra={"workspace_id": workspace_id, "error": str(e)},
-                )
+    Uses the unique SQLite ``(workspace_id, content)`` index. Tantivy is
+    not consulted: ``en_stem`` cannot do exact identity and a phrase query
+    of the full memory is more expensive than the indexed lookup.
 
+    ``tantivy_engine`` is accepted for call-site compatibility.
+    """
+    _ = tantivy_engine
     try:
         msg_id = semantic_engine.get_id_by_content(workspace_id, content)
         if msg_id is not None:

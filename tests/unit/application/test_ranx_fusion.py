@@ -1,9 +1,10 @@
 '''Unit tests for RanxFusionEngine class.'''
 
 from typing import List, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from ranx import Run
 
 from reflectlog.application.memory.fusion import create_fusion_engine
 from reflectlog.application.memory.fusion.ranx_fusion import (
@@ -11,6 +12,7 @@ from reflectlog.application.memory.fusion.ranx_fusion import (
     SUPPORTED_NORMALIZATIONS,
     RanxFusionEngine,
 )
+from reflectlog.utility.scoring import compute_weighted_rrf_scores_batch
 
 
 @pytest.mark.unit
@@ -97,6 +99,53 @@ class TestRanxFusionEngineAlgorithm:
         # Order should be preserved (A was ranked higher)
         assert fused[0][0] == "A"
         assert fused[1][0] == "B"
+        assert fused[0][1] == pytest.approx(0.9)
+        assert fused[1][1] == pytest.approx(0.8)
+
+    def test_single_list_keeps_near_tied_scores_above_threshold(
+        self, engine: RanxFusionEngine
+    ) -> None:
+        """A single backend list must not min-max near-ties under 0.8."""
+        results1: List[Tuple[str, float]] = [("near-a", 0.91), ("near-b", 0.89)]
+        results2: List[Tuple[str, float]] = []
+
+        with patch.object(engine, "_fuse_rrf_numba") as numba:
+            fused = engine.fuse(results1, results2)
+
+        numba.assert_not_called()
+        assert [name for name, _score in fused] == ["near-a", "near-b"]
+        assert fused[0][1] == pytest.approx(0.91)
+        assert fused[1][1] == pytest.approx(0.89)
+        assert all(score >= 0.8 for _name, score in fused)
+
+    def test_disjoint_rank1_ties_normalize_to_one(
+        self, engine: RanxFusionEngine
+    ) -> None:
+        """Equal RRF scores must become 1.0 so the default 0.8 gate keeps them."""
+        results1: List[Tuple[str, float]] = [("semantic-only", 0.65)]
+        results2: List[Tuple[str, float]] = [("lexical-only", 0.40)]
+
+        fused = engine.fuse(results1, results2)
+
+        assert {name for name, _score in fused} == {"semantic-only", "lexical-only"}
+        assert all(score == pytest.approx(1.0) for _name, score in fused)
+
+    def test_weighted_rrf_uses_numba_weights(
+        self, engine: RanxFusionEngine
+    ) -> None:
+        """Weighted RRF must change rank order versus unweighted RRF."""
+        results1: List[Tuple[str, float]] = [("A", 0.9), ("B", 0.8)]
+        results2: List[Tuple[str, float]] = [("B", 0.9), ("A", 0.1)]
+        weighted = RanxFusionEngine(method="rrf", rrf_k=60, weights=[1.0, 2.0])
+        with patch(
+            "reflectlog.application.memory.fusion.ranx_fusion."
+            "compute_weighted_rrf_scores_batch",
+            wraps=compute_weighted_rrf_scores_batch,
+        ) as weighted_rrf:
+            fused = weighted.fuse(results1, results2)
+
+        assert weighted_rrf.called
+        assert [name for name, _score in fused][0] == "B"
 
     def test_document_in_both_lists_ranks_higher(
         self, engine: RanxFusionEngine
@@ -233,6 +282,19 @@ class TestRanxFusionEngineDifferentMethods:
 
         # All scores should be non-negative
         assert all(score >= 0 for _, score in fused)
+
+    def test_weighted_non_rrf_fails_closed_on_typeerror(self) -> None:
+        """Non-RRF fusion must not silently drop weights on TypeError."""
+        engine = RanxFusionEngine(method="sum", weights=[1.0, 0.5])
+        results1: List[Tuple[str, float]] = [("A", 0.9)]
+        results2: List[Tuple[str, float]] = [("B", 0.8)]
+
+        with patch(
+            "reflectlog.application.memory.fusion.ranx_fusion.ranx_fuse",
+            side_effect=TypeError("weights not supported"),
+        ):
+            with pytest.raises(RuntimeError, match="refusing unweighted fallback"):
+                engine.fuse(results1, results2)
 
 
 @pytest.mark.unit

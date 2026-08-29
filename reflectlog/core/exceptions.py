@@ -156,15 +156,11 @@ class EmbeddingError(ReflectLogError):
 
 
 class RerankerError(ReflectLogError):
-    """Raised when LLM reranking fails.
+    """Raised when reranking fails.
 
-    This is raised when the LLM reranker encounters an unrecoverable error.
-    Note: Individual document scoring failures fall back gracefully to fusion scores;
+    This is raised when the reranker encounters an unrecoverable error.
+    Individual document scoring failures fall back to fusion scores;
     this exception is for systemic failures.
-
-    Example:
-        if self._client is None:
-            raise RerankerError("LLM reranker client is not initialized")
     """
 
     pass

@@ -1,8 +1,8 @@
 # Memory Management Layer
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 ## OVERVIEW
-3-phase add pipeline + 4-step search pipeline with RRF fusion and unified score normalization.
+3-phase add + 4-step search. Embed before `_write_lock`. Search Step 4 is CE or skip.
 
 ## STRUCTURE
 ```
@@ -33,7 +33,9 @@ memory/
 
 **Pluggable Phases** - AddPipeline uses `IDuplicateDetectionPhase`, `IReplacementDetectionPhase`, `IStoragePhase` protocols.
 
-**Unified Threshold Semantics** - Batch min-max normalization maps diverse reranker ranges (LLM: 0.7-0.9, CrossEncoder: 0.001-0.17) to consistent 0-1 range.
+**Embed-then-lock persist** - `_embed_for_persist()` then `_write_lock`. `delete_memories` returns `list[str]` of deleted contents; Tantivy fail → `InconsistentStateError`.
+**Identity** - SQLite unique `(workspace_id, content)` only. Tantivy stemming is not exact match.
+**Unified Threshold Semantics** - Batch min-max maps CE scores to [0,1]. Equal scores become 0.5.
 
 **RRF Formula** - `score(doc) = sum(1/(k+rank))` with `k=60` default, normalized to 0-1.
 
@@ -47,5 +49,8 @@ memory/
 
 - Never normalize scores individually - batch normalization required for relative scores
 - Never apply recency decay before normalization
+- Never treat Tantivy OSError as empty success; dual search outage (or semantic error + empty FTS) raises SearchError
 - Never skip pipeline stages for direct engine access
 - Never assume fusion scores from different algorithms are comparable
+- Never compact Tantivy inside `delete`/`delete_batch`
+- Never treat MagicMock `add_batch`/`delete_memories` as present; use `type(obj).__dict__.get(...)`

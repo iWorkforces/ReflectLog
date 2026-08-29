@@ -18,7 +18,6 @@ from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
-from reflectlog.infrastructure.llm_reranker import LLMReranker, LLMRerankerConfig
 from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
@@ -161,6 +160,10 @@ class EngineFactory:
                 workspace_id=config.workspace_id
             ).lower(),
             normalize_scores=config.tantivy_normalize_scores,
+            soft_delete_enabled=config.tantivy_soft_delete_enabled,
+            compaction_threshold_ratio=config.tantivy_compaction_threshold_ratio,
+            compaction_max_tombstones=config.tantivy_compaction_max_tombstones,
+            tombstone_ttl_days=config.tantivy_tombstone_ttl_days,
         )
         return TantivyEngine(tantivy_config, logger=logger)
 
@@ -178,33 +181,14 @@ class EngineFactory:
         Returns:
             Configured FusionEngine instance.
         """
+        fusion_weights = config.fusion_weights
         return create_fusion_engine(
             method=config.fusion_method,
             normalization=config.fusion_normalization,
             rrf_k=config.fusion_rrf_k,
-            weights=config.fusion_weights,
+            weights=fusion_weights if isinstance(fusion_weights, list) else None,
             logger=logger,
         )
-
-
-def create_llm_reranker(
-    config: Config,
-    logger: IStructuredLogger | None,
-) -> LLMReranker | None:
-    """Create LLM reranker if configured.
-
-    Args:
-        config: Application configuration.
-        logger: Structured logger instance.
-
-    Returns:
-        LLMReranker instance or None if not configured.
-    """
-    if config.reranker_engine != "llm":
-        return None
-
-    reranker_config = LLMRerankerConfig.from_config(ConfigAdapter(config))
-    return LLMReranker(config=reranker_config, logger=logger)
 
 
 def create_cross_encoder_reranker(

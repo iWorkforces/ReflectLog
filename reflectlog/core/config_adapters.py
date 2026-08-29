@@ -41,17 +41,16 @@ from reflectlog.core.config import (
     IServerConfig,
     IStorageConfig,
 )
+from reflectlog.core.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from reflectlog.application.config.settings import Config
 
 
-type RerankerEngine = Literal["llm", "cross_encoder", "none"]
+type RerankerEngine = Literal["cross_encoder", "none"]
 
 
 def _validated_reranker_engine(reranker_engine: RerankerEngine) -> RerankerEngine:
-    if reranker_engine == "llm":
-        return "llm"
     if reranker_engine == "cross_encoder":
         return "cross_encoder"
     if reranker_engine == "none":
@@ -60,13 +59,13 @@ def _validated_reranker_engine(reranker_engine: RerankerEngine) -> RerankerEngin
 
 
 def _coerce_reranker_engine(value: str) -> RerankerEngine:
-    if value == "llm":
-        reranker_engine: RerankerEngine = "llm"
-    elif value == "cross_encoder":
-        reranker_engine = "cross_encoder"
-    else:
-        reranker_engine = "none"
-    return _validated_reranker_engine(reranker_engine)
+    if value == "cross_encoder":
+        return _validated_reranker_engine("cross_encoder")
+    if value == "none":
+        return _validated_reranker_engine("none")
+    raise ConfigurationError(
+        f"Invalid RERANKER_ENGINE: '{value}'. Valid options: cross_encoder, none"
+    )
 
 
 @final
@@ -161,7 +160,7 @@ class ConfigAdapter(IAppConfig):
 
     @property
     def search_score_threshold(self) -> float:
-        """Minimum relevance score for LLM reranking."""
+        """Minimum relevance score used by search filtering."""
         return self._config.search_score_threshold
 
     @property
@@ -203,7 +202,7 @@ class ConfigAdapter(IAppConfig):
     # IRerankerConfig properties
     @property
     def llm_model(self) -> str:
-        """LLM model for reranking."""
+        """LLM model for smart replacement."""
         return self._config.llm_model
 
     @property
@@ -238,7 +237,7 @@ class ConfigAdapter(IAppConfig):
 
     @property
     def rerank_max_concurrency(self) -> int:
-        """Maximum parallel LLM reranking calls."""
+        """Maximum parallel LLM calls for smart replacement."""
         return self._config.rerank_max_concurrency
 
     @property

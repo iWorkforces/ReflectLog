@@ -11,7 +11,7 @@ ReflectLog is an [MCP (Model Context Protocol)](https://modelcontextprotocol.io)
 
 - **Hybrid Search**: Combines semantic similarity (USearch) + exact phrase matching (Tantivy)
 - **RRF Fusion**: Reciprocal Rank Fusion for optimal result ranking
-- **Pluggable Reranking**: LLM-based or local cross-encoder relevance scoring
+- **Pluggable Reranking**: Local cross-encoder relevance scoring (or none)
 - **Temporal-Aware Scoring**: Recency decay for handling contradictory memories
 - **Smart Memory Replacement**: LLM-based detection of memory updates
 - **Multiple Transport Modes**: stdio, HTTP, SSE, streamable-http
@@ -93,12 +93,8 @@ await remove(["I use FastAPI for APIs"])
 ```bash
 # Search Settings
 SEARCH_LIMIT=5                    # Max results per search
-RERANKER_ENGINE=llm               # llm, cross_encoder, or none
+RERANKER_ENGINE=cross_encoder     # cross_encoder or none
 ENABLE_HYBRID_SEARCH=true         # Enable full-text search
-
-# Reranking
-LLM_MODEL=x-ai/grok-4.1-fast      # LLM model for reranking
-SEARCH_SCORE_THRESHOLD=0.5        # Min relevance score
 
 # Memory Replacement
 ENABLE_SMART_REPLACE=true         # LLM-based memory replacement
@@ -126,7 +122,7 @@ ReflectLog/
 │   └── infrastructure/        # External integrations
 │       ├── usearch_engine.py  # Semantic vector search
 │       ├── tantivy_engine.py  # Full-text search
-│       └── llm_reranker.py    # LLM-based reranking
+│       └── cross_encoder_reranker.py  # Local cross-encoder reranking
 ```
 
 ### Data Persistence

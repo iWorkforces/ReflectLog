@@ -1,9 +1,9 @@
 # reflectlog Package
 
-**Generated:** 2026-08-26  **Commit:** 95567fa  **Branch:** develop
+**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
 
 ## OVERVIEW
-MCP server providing persistent, project-based semantic memory storage. Combines USearch + Tantivy with RRF fusion and optional LLM reranking.
+MCP server providing persistent, project-based semantic memory storage. Combines USearch + Tantivy with RRF fusion and optional cross-encoder reranking.
 
 ## STRUCTURE
 
@@ -16,7 +16,7 @@ reflectlog/
 │   ├── tools/         # MCP tool implementations (add, search, get_all, remove)
 │   ├── config/        # Config dataclass, validation, prompts
 │   └── utils/         # Logging, metrics, retry, circuit breaker
-├── infrastructure/    # USearchEngine, TantivyEngine, LLM reranker, embeddings
+├── infrastructure/    # USearchEngine, TantivyEngine, cross-encoder reranker, embeddings
 ├── plugins/          # Plugin discovery, registry, loading
 └── utility/          # Platform utilities, scoring.py (JIT-compiled RRF, normalization, filtering)
 ```
@@ -30,7 +30,7 @@ reflectlog/
 | Add pipeline | `application/memory/add_phases.py` | 3-phase parallel add with smart replacement |
 | Config | `application/config/settings.py` | 60+ env vars, dataclass |
 | Protocol interfaces | `core/` | ISemanticSearchEngine, IReranker, IMemoryStore, types.py |
-| Infrastructure | `infrastructure/` | USearch, Tantivy, LLM providers |
+| Infrastructure | `infrastructure/` | USearch, Tantivy, CE reranker, LLM for replace only |
 
 ## CONVENTIONS
 

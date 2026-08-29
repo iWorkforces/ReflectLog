@@ -92,7 +92,7 @@ class TestNormalizeRerankerScores:
         assert doc2_result[1] == pytest.approx(0.75)
 
     def test_all_equal_scores(self) -> None:
-        '''All equal scores should become 0.5 (neutral midpoint with no range).'''
+        '''All equal scores should become 1.0 (equally good).'''
         scored = [
             ("doc1", 0.5),
             ("doc2", 0.5),
@@ -102,8 +102,7 @@ class TestNormalizeRerankerScores:
 
         assert len(result) == 3
         for _doc, score in result:
-            # Zero range means no differentiation, so normalized to 0.5 (neutral midpoint)
-            assert score == 0.5
+            assert score == 1.0
 
     def test_preserves_document_order(self) -> None:
         '''Document order should be preserved.'''
@@ -248,13 +247,13 @@ class TestIntegration:
         assert result[0][0] == "doc1"
         assert result[0][1] == pytest.approx(1.0)
 
-    def test_llm_reranker_workflow(self) -> None:
-        '''Simulate LLM reranking workflow.
+    def test_calibrated_reranker_workflow(self) -> None:
+        """Simulate reranking workflow with calibrated scores.
 
-        LLM produces calibrated scores (0.7-0.9), which after normalization
-        might filter more aggressively.
-        '''
-        # Raw LLM scores (typical range)
+        Calibrated scores (0.7-0.9) after normalization can filter more
+        aggressively.
+        """
+        # Raw calibrated scores (typical range)
         raw_scored = [
             ("doc1", 0.90),  # Best -> 1.0
             ("doc2", 0.85),  # Middle -> 0.75

@@ -126,7 +126,7 @@ class TestConfigDefaults:
 
     def test_reranker_defaults(self):
         cfg = self._make_config()
-        assert cfg.reranker_engine == "llm"
+        assert cfg.reranker_engine == "cross_encoder"
         assert cfg.llm_model == "x-ai/grok-4.1-fast"
         assert cfg.search_score_threshold == 0.5
         assert cfg.rerank_max_concurrency == 10
@@ -154,8 +154,8 @@ class TestConfigDefaults:
 
     def test_usearch_defaults(self):
         cfg = self._make_config()
-        assert cfg.usearch_exact_search is True
-        assert cfg.usearch_exact_search_threshold == 10000
+        assert cfg.usearch_exact_search is False
+        assert cfg.usearch_exact_search_threshold == 256
 
     def test_memory_validation_defaults(self):
         cfg = self._make_config()
@@ -498,6 +498,13 @@ class TestFromEnvironmentOverrides:
         for k, v in REQUIRED_ENV.items():
             monkeypatch.setenv(k, v)
         monkeypatch.setenv("RERANKER_ENGINE", "invalid_engine")
+        with pytest.raises(ConfigurationError, match="Invalid RERANKER_ENGINE"):
+            Config.from_environment()
+
+    def test_reranker_engine_llm_rejected(self, monkeypatch: pytest.MonkeyPatch):
+        for k, v in REQUIRED_ENV.items():
+            monkeypatch.setenv(k, v)
+        monkeypatch.setenv("RERANKER_ENGINE", "llm")
         with pytest.raises(ConfigurationError, match="Invalid RERANKER_ENGINE"):
             Config.from_environment()
 
@@ -882,10 +889,10 @@ class TestStaticParseMethods:
         assert result["tantivy_compaction_threshold_ratio"] == 0.5
 
     def test_parse_reranker_config_valid(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("RERANKER_ENGINE", "llm")
+        monkeypatch.setenv("RERANKER_ENGINE", "cross_encoder")
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         result = Config._parse_reranker_config()
-        assert result["reranker_engine"] == "llm"
+        assert result["reranker_engine"] == "cross_encoder"
         assert result["llm_provider"] == "anthropic"
 
     def test_parse_reranker_config_invalid_engine_raises(
@@ -898,7 +905,7 @@ class TestStaticParseMethods:
     def test_parse_reranker_config_invalid_llm_provider_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        monkeypatch.setenv("RERANKER_ENGINE", "llm")
+        monkeypatch.setenv("RERANKER_ENGINE", "cross_encoder")
         monkeypatch.setenv("LLM_PROVIDER", "google")
         with pytest.raises(ConfigurationError, match="Invalid LLM_PROVIDER"):
             Config._parse_reranker_config()

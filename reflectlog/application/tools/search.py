@@ -6,7 +6,6 @@ from pydantic import Field
 
 from reflectlog.core.exceptions import SearchError
 
-from ..constants import LOG_SEPARATOR_LENGTH
 from ..utils.validation import truncate_memory
 from .base import BaseTool
 
@@ -79,21 +78,14 @@ class SearchTool(BaseTool):
                 []  # No semantically similar content
             """
             try:
-                self.log_invocation("search", query=query)
+                self.log_invocation("search", query=query[:100])
 
-                # Log search header
                 start_time = self._log_operation_header("search", "SEARCH OPERATION")
-                self.logger.info(
-                    f'   Query: "{query}"',
-                    extra={"tool": "search", "query": query},
-                )
-                self.logger.info(
-                    f"   Settings: limit={self.config.search_limit}",
-                    extra={
-                        "tool": "search",
-                        "limit": self.config.search_limit,
-                    },
-                )
+                if self.config.log_search_results_verbose:
+                    self.logger.info(
+                        f'   Query: "{query[:100]}"',
+                        extra={"tool": "search", "query": query[:100]},
+                    )
 
                 # Perform async hybrid search directly (search is now async)
                 similar_memories = await self.memory.search(
@@ -101,51 +93,42 @@ class SearchTool(BaseTool):
                     limit=self.config.search_limit,
                 )
 
-                # Log final results
-                if similar_memories:
-                    self.logger.info(
-                        "=" * LOG_SEPARATOR_LENGTH,
-                        extra={"tool": "search", "section": "results"},
-                    )
-                    self.logger.info(
-                        f"FINAL RESULTS ({len(similar_memories)} memory(ies)):",
-                        extra={
-                            "tool": "search",
-                            "query": query,
-                            "result_count": len(similar_memories),
-                        },
-                    )
-
-                    # Log each result with preview
-                    for idx, memory in enumerate(similar_memories, 1):
-                        preview = truncate_memory(memory, max_length=70)
+                if self.config.log_search_results_verbose:
+                    if similar_memories:
                         self.logger.info(
-                            f"   [{idx}] {preview}",
+                            f"FINAL RESULTS ({len(similar_memories)} memory(ies)):",
                             extra={
                                 "tool": "search",
-                                "query": query,
-                                "result_index": idx,
-                                "total_results": len(similar_memories),
+                                "result_count": len(similar_memories),
                             },
                         )
-                else:
-                    self.logger.info(
-                        "=" * LOG_SEPARATOR_LENGTH,
-                        extra={"tool": "search", "section": "results"},
-                    )
-                    self.logger.info(
-                        "FINAL RESULTS: No matching memories found",
-                        extra={
-                            "tool": "search",
-                            "query": query,
-                            "result_count": 0,
-                        },
-                    )
+                        preview_limit = min(
+                            len(similar_memories),
+                            self.config.log_search_result_limit,
+                        )
+                        for idx, memory in enumerate(
+                            similar_memories[:preview_limit], 1
+                        ):
+                            preview = truncate_memory(memory, max_length=70)
+                            self.logger.info(
+                                f"   [{idx}] {preview}",
+                                extra={
+                                    "tool": "search",
+                                    "result_index": idx,
+                                },
+                            )
+                    else:
+                        self.logger.info(
+                            "FINAL RESULTS: No matching memories found",
+                            extra={"tool": "search", "result_count": 0},
+                        )
 
                 _ = self._log_operation_footer("search", start_time)
 
                 self.log_completion(
-                    "search", query=query, result_count=len(similar_memories)
+                    "search",
+                    query=query[:100],
+                    result_count=len(similar_memories),
                 )
 
                 return similar_memories
@@ -156,7 +139,7 @@ class SearchTool(BaseTool):
                     e,
                     error_cls=SearchError,
                     message="Failed to search memory store",
-                    query=query,
+                    query=query[:100],
                 )
 
         return search

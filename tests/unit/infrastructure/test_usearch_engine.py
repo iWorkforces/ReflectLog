@@ -1,5 +1,6 @@
 '''Unit tests for USearchEngine.'''
 
+import gc
 import os
 import tempfile
 from typing import Generator, cast
@@ -448,24 +449,20 @@ class TestUSearchEngineExactSearch:
     def test_default_uses_exact_search(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
-        '''Default config should use exact (brute-force) search for small databases.'''
+        '''Default config should use HNSW unless exact search is forced.'''
         config, embedder, _ = temp_engine
-        # Note: temp_engine uses explicit config, so we test with default config
-        # The default USearchConfig has exact_search=True
         default_config = USearchConfig(
             workspace_id=config.workspace_id,
             index_path=config.index_path,
             db_path=config.db_path,
             embedding_dims=config.embedding_dims,
-            # Using defaults: exact_search=True, exact_search_threshold=0
         )
         engine = USearchEngine(config=default_config, embedder=embedder)
 
         try:
-            # Default config: exact_search=True, exact_search_threshold=0
-            assert default_config.exact_search is True
+            assert default_config.exact_search is False
             assert default_config.exact_search_threshold == 0
-            assert engine._should_use_exact_search() is True
+            assert engine._should_use_exact_search() is False
         finally:
             engine.close()
 
@@ -654,7 +651,7 @@ class TestUSearchConfigFromDict:
         assert config.connectivity == 16
         assert config.expansion_add == 128
         assert config.expansion_search == 64
-        assert config.exact_search is True
+        assert config.exact_search is False
         assert config.exact_search_threshold == 0
 
 
@@ -789,7 +786,7 @@ class TestUSearchEngineAddErrorPaths:
         try:
             engine.ensure_initialized()
             mock_store = MagicMock()
-            mock_store.insert.side_effect = StorageError("Duplicate message detected")
+            mock_store.insert.side_effect = StorageError("Duplicate memory detected")
             object.__setattr__(engine, "_memory_store", mock_store)
 
             engine.add("user1", "dup msg", infer=False)
@@ -812,7 +809,7 @@ class TestUSearchEngineAddErrorPaths:
             mock_store.insert.side_effect = TypeError("unexpected type error")
             object.__setattr__(engine, "_memory_store", mock_store)
 
-            with pytest.raises(RuntimeError, match="Failed to add content"):
+            with pytest.raises(RuntimeError, match="Failed to add memory"):
                 engine.add("user1", "error msg", infer=False)
 
             logger.error.assert_called()  # type: ignore
@@ -900,9 +897,11 @@ class TestUSearchEngineAddBatch:
         '''add_batch where insert_many returns empty should return empty list.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
+        real_store = None
 
         try:
             engine.ensure_initialized()
+            real_store = engine._memory_store
             mock_store = MagicMock()
             mock_store.insert_many.return_value = []
             object.__setattr__(engine, "_memory_store", mock_store)
@@ -910,6 +909,8 @@ class TestUSearchEngineAddBatch:
             result = engine.add_batch("user1", ["dup1", "dup2"], infer=False)
             assert result == []
         finally:
+            if real_store is not None:
+                real_store.close()
             engine.close()
 
     def test_add_batch_embedding_failure_rolls_back(
@@ -923,7 +924,7 @@ class TestUSearchEngineAddBatch:
         try:
             engine.ensure_initialized()
 
-            with pytest.raises(RuntimeError, match="Failed to add content batch"):
+            with pytest.raises(RuntimeError, match="Failed to add memory batch"):
                 engine.add_batch("user1", ["rb1", "rb2"], infer=False)
 
             contents = engine.get_all("user1")
@@ -954,10 +955,47 @@ class TestUSearchEngineAddBatch:
                 _ = engine.add_batch("user1", ["idx1", "idx2"], infer=False)
             assert engine.get_all("user1") == []
             assert len(engine.index) == 0
-            assert 1 not in engine.index
-            assert 2 not in engine.index
         finally:
             engine.close()
+
+    def test_add_batch_vectors_remap_after_unique_skip(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Precomputed vectors must follow remaining rows after UNIQUE skip."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        try:
+            engine.ensure_initialized()
+            first = [0.11] * 128
+            second = [0.22] * 128
+            third = [0.33] * 128
+            _ = engine.add_batch("user1", ["keep-a"], infer=False, vectors=[first])
+
+            captured: dict[str, object] = {}
+            original = engine._index_vectors
+
+            def wrap(
+                inserted: list[tuple[str, int]],
+                vectors: list[list[float]],
+                indexed_ids: list[int],
+            ) -> None:
+                captured["contents"] = [content for content, _mem_id in inserted]
+                captured["vectors"] = [list(vector) for vector in vectors]
+                original(inserted, vectors, indexed_ids)
+
+            with patch.object(engine, "_index_vectors", wrap):
+                stored = engine.add_batch(
+                    "user1",
+                    ["keep-a", "keep-b", "keep-c"],
+                    infer=False,
+                    vectors=[first, second, third],
+                )
+            assert stored == ["keep-b", "keep-c"]
+            assert captured["contents"] == ["keep-b", "keep-c"]
+            assert captured["vectors"] == [second, third]
+        finally:
+            engine.close()
+            gc.collect()
 
     def test_add_batch_embedding_size_mismatch(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
@@ -968,7 +1006,7 @@ class TestUSearchEngineAddBatch:
         engine = USearchEngine(config=config, embedder=bad_embedder, logger=logger)
 
         try:
-            with pytest.raises(RuntimeError, match="Failed to add content batch"):
+            with pytest.raises(RuntimeError, match="Failed to add memory batch"):
                 engine.add_batch("user1", ["m1", "m2"], infer=False)
         finally:
             engine.close()

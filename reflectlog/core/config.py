@@ -86,13 +86,13 @@ class ISearchConfig(Protocol):
         ...
 
     @property
-    def reranker_engine(self) -> Literal["llm", "cross_encoder", "none"]:
+    def reranker_engine(self) -> Literal["cross_encoder", "none"]:
         """Reranking engine type."""
         ...
 
     @property
     def search_score_threshold(self) -> float:
-        """Minimum relevance score for LLM reranking."""
+        """Minimum relevance score used by search filtering."""
         ...
 
     @property
@@ -142,7 +142,7 @@ class IRerankerConfig(Protocol):
 
     @property
     def llm_model(self) -> str:
-        """LLM model for reranking."""
+        """LLM model for smart replacement."""
         ...
 
     @property
@@ -157,7 +157,7 @@ class IRerankerConfig(Protocol):
 
     @property
     def rerank_max_concurrency(self) -> int:
-        """Maximum parallel LLM reranking calls."""
+        """Maximum parallel LLM calls for smart replacement."""
         ...
 
     @property
