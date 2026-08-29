@@ -265,10 +265,27 @@ class TestEmbedDocuments:
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
     ) -> None:
         '''Test embed_documents populates the per-text LRU.'''
+        mock_embedder.embed_documents.return_value = [[0.1, 0.2]]
         cached.embed_documents(["doc"])
         cached.embed_documents(["doc"])
         assert mock_embedder.embed_documents.call_count == 1
         assert cached.get_cache_stats()["size"] == 1
+
+    def test_short_embed_batch_raises(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        """A short embedder response must not pad empty vectors."""
+        mock_embedder.embed_documents.return_value = [[0.1, 0.2]]
+        with pytest.raises(RuntimeError, match="Embedding batch size mismatch"):
+            cached.embed_documents(["doc1", "doc2"])
+
+    def test_empty_embedding_raises(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        """An empty embedding for a cached document is a hard failure."""
+        mock_embedder.embed_documents.return_value = [[0.1, 0.2], []]
+        with pytest.raises(RuntimeError, match="Empty embedding returned"):
+            cached.embed_documents(["doc1", "doc2"])
 
 
 class TestAembedQuery:
@@ -366,9 +383,18 @@ class TestAembedDocuments:
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
     ) -> None:
         '''Test aembed_documents populates the per-text LRU.'''
+        mock_embedder.aembed_documents.return_value = [[0.7, 0.8]]
         await cached.aembed_documents(["adoc"])
         await cached.aembed_documents(["adoc"])
         assert mock_embedder.aembed_documents.await_count == 1
+
+    async def test_short_async_embed_batch_raises(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        """A short async embedder response must not pad empty vectors."""
+        mock_embedder.aembed_documents.return_value = [[0.7, 0.8]]
+        with pytest.raises(RuntimeError, match="Embedding batch size mismatch"):
+            await cached.aembed_documents(["adoc1", "adoc2"])
 
 
 class TestLRUEviction:

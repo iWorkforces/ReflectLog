@@ -178,11 +178,22 @@ class CachedEmbeddings(BaseModel):
 
         if miss_texts:
             computed = self.embedder.embed_documents(miss_texts)
-            for idx, embedding in zip(miss_indices, computed, strict=False):
+            if len(computed) != len(miss_texts):
+                raise RuntimeError(
+                    "Embedding batch size mismatch for cached embed_documents"
+                )
+            for idx, embedding in zip(miss_indices, computed, strict=True):
+                if not embedding:
+                    raise RuntimeError("Empty embedding returned for cached document")
                 self._set_cached(self._hash_query(texts[idx]), embedding)
                 results[idx] = embedding
 
-        return [embedding if embedding is not None else [] for embedding in results]
+        filled: list[list[float]] = []
+        for embedding in results:
+            if embedding is None:
+                raise RuntimeError("Missing cached embedding slot")
+            filled.append(embedding)
+        return filled
 
     async def aembed_query(self, text: str) -> list[float]:
         """Async version of embed_query with LRU caching.
@@ -253,11 +264,22 @@ class CachedEmbeddings(BaseModel):
 
         if miss_texts:
             computed = await self.embedder.aembed_documents(miss_texts)
-            for idx, embedding in zip(miss_indices, computed, strict=False):
+            if len(computed) != len(miss_texts):
+                raise RuntimeError(
+                    "Embedding batch size mismatch for cached aembed_documents"
+                )
+            for idx, embedding in zip(miss_indices, computed, strict=True):
+                if not embedding:
+                    raise RuntimeError("Empty embedding returned for cached document")
                 self._set_cached(self._hash_query(texts[idx]), embedding)
                 results[idx] = embedding
 
-        return [embedding if embedding is not None else [] for embedding in results]
+        filled: list[list[float]] = []
+        for embedding in results:
+            if embedding is None:
+                raise RuntimeError("Missing cached embedding slot")
+            filled.append(embedding)
+        return filled
 
     def get_cache_stats(self) -> dict[str, int | float]:
         """Get cache statistics.
