@@ -3,6 +3,7 @@
 import os
 
 import pytest
+from pytest import MonkeyPatch
 
 from reflectlog.application.config.presets import (
     BALANCED_PRESET,
@@ -180,22 +181,22 @@ class TestPresetConstants:
 class TestGetActivePreset:
     '''Tests for the get_active_preset function.'''
 
-    def test_returns_none_when_env_not_set(self, monkeypatch):
+    def test_returns_none_when_env_not_set(self, monkeypatch: MonkeyPatch) -> None:
         '''Should return None when REFLECTLOG_PROFILE is not set.'''
         monkeypatch.delenv("REFLECTLOG_PROFILE", raising=False)
         assert get_active_preset() is None
 
-    def test_returns_none_for_empty_string(self, monkeypatch):
+    def test_returns_none_for_empty_string(self, monkeypatch: MonkeyPatch) -> None:
         '''Should return None when REFLECTLOG_PROFILE is empty.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "")
         assert get_active_preset() is None
 
-    def test_returns_none_for_custom(self, monkeypatch):
+    def test_returns_none_for_custom(self, monkeypatch: MonkeyPatch) -> None:
         '''Should return None when REFLECTLOG_PROFILE is "custom".'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "custom")
         assert get_active_preset() is None
 
-    def test_returns_none_for_custom_uppercase(self, monkeypatch):
+    def test_returns_none_for_custom_uppercase(self, monkeypatch: MonkeyPatch) -> None:
         '''Should return None when REFLECTLOG_PROFILE is "CUSTOM" (case-insensitive).'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "CUSTOM")
         assert get_active_preset() is None
@@ -203,7 +204,9 @@ class TestGetActivePreset:
     @pytest.mark.parametrize(
         "profile_name", ["simple", "balanced", "performance", "quality"]
     )
-    def test_returns_correct_preset(self, monkeypatch, profile_name):
+    def test_returns_correct_preset(
+        self, monkeypatch: MonkeyPatch, profile_name: str
+    ) -> None:
         '''Should return matching preset for valid profile names.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", profile_name)
         result = get_active_preset()
@@ -213,14 +216,16 @@ class TestGetActivePreset:
     @pytest.mark.parametrize(
         "profile_name", ["SIMPLE", "Balanced", "PERFORMANCE", "Quality"]
     )
-    def test_returns_preset_case_insensitive(self, monkeypatch, profile_name):
+    def test_returns_preset_case_insensitive(
+        self, monkeypatch: MonkeyPatch, profile_name: str
+    ) -> None:
         '''Should handle case-insensitive profile names.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", profile_name)
         result = get_active_preset()
         assert result is not None
         assert result.name == profile_name.lower()
 
-    def test_returns_none_for_unknown_profile(self, monkeypatch):
+    def test_returns_none_for_unknown_profile(self, monkeypatch: MonkeyPatch) -> None:
         '''Should return None for unrecognized profile names.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "turbo")
         assert get_active_preset() is None
@@ -236,7 +241,7 @@ class TestApplyPresetToEnv:
     '''Tests for the apply_preset_to_env function.'''
 
     @pytest.fixture(autouse=True)
-    def _clean_env(self, monkeypatch):
+    def _clean_env(self, monkeypatch: MonkeyPatch) -> None:
         '''Remove preset-related env vars before each test.'''
         env_keys = [
             "SEARCH_LIMIT",
@@ -384,12 +389,12 @@ class TestApplyPresetToEnv:
 class TestGetPresetSummary:
     '''Tests for the get_preset_summary function.'''
 
-    def test_returns_no_preset_when_unset(self, monkeypatch):
+    def test_returns_no_preset_when_unset(self, monkeypatch: MonkeyPatch) -> None:
         '''Should return custom configuration message when no profile set.'''
         monkeypatch.delenv("REFLECTLOG_PROFILE", raising=False)
         assert get_preset_summary() == "No preset (custom configuration)"
 
-    def test_returns_no_preset_for_custom(self, monkeypatch):
+    def test_returns_no_preset_for_custom(self, monkeypatch: MonkeyPatch) -> None:
         '''Should return custom configuration message for "custom" profile.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "custom")
         assert get_preset_summary() == "No preset (custom configuration)"
@@ -404,14 +409,16 @@ class TestGetPresetSummary:
         ],
     )
     def test_returns_active_preset_name_uppercased(
-        self, monkeypatch, profile_name, expected_upper
-    ):
+        self, monkeypatch: MonkeyPatch, profile_name: str, expected_upper: str
+    ) -> None:
         '''Should return formatted string with uppercased preset name.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", profile_name)
         result = get_preset_summary()
         assert result == f"Active preset: {expected_upper}"
 
-    def test_returns_no_preset_for_unknown_profile(self, monkeypatch):
+    def test_returns_no_preset_for_unknown_profile(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
         '''Unknown profile should return custom configuration message.'''
         monkeypatch.setenv("REFLECTLOG_PROFILE", "nonexistent")
         assert get_preset_summary() == "No preset (custom configuration)"

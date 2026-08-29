@@ -56,7 +56,9 @@ class TestFormatFusionScoreStatus:
             (0.0, "Minimal"),
         ],
     )
-    def test_interpretation_ranges(self, score, expected_keyword):
+    def test_interpretation_ranges(
+        self, score: float, expected_keyword: str
+    ) -> None:
         '''Test interpretation contains expected keyword for score ranges.'''
         _, interpretation = format_fusion_score_status(score, 0.5)
         assert expected_keyword in interpretation

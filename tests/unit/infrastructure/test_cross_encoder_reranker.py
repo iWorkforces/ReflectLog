@@ -11,6 +11,7 @@ from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
+    FlagRerankerProtocol,
 )
 
 
@@ -296,15 +297,28 @@ class TestRerank:
         self, mock_reranker: CrossEncoderReranker
     ) -> None:
         '''Test that query-document pairs are built correctly for scoring.'''
-        mock_reranker._model.compute_score.return_value = [0.8, 0.7]  # type: ignore
+        class RecordingReranker:
+            def __init__(self) -> None:
+                self.pairs: list[tuple[str, str]] = []
+
+            def compute_score(
+                self,
+                sentence_pairs: list[tuple[str, str]],
+                *,
+                batch_size: int,
+                max_length: int,
+                normalize: bool,
+            ) -> list[float]:
+                self.pairs = sentence_pairs
+                return [0.8, 0.7]
+
+        model = RecordingReranker()
+        mock_reranker._model = model
 
         candidates = [("Python guide", 0.5), ("JavaScript guide", 0.5)]
-        mock_reranker.rerank("Python tutorials", candidates)
+        _ = mock_reranker.rerank("Python tutorials", candidates)
 
-        # Verify compute_score was called with correct pairs (tuples, not lists)
-        call_args = mock_reranker._model.compute_score.call_args  # type: ignore
-        pairs = call_args[0][0]
-        assert pairs == [
+        assert model.pairs == [
             ("Python tutorials", "Python guide"),
             ("Python tutorials", "JavaScript guide"),
         ]
@@ -508,7 +522,7 @@ class TestThreadSafety:
             # Simulate concurrent access
             import threading
 
-            results: list = []
+            results: list[FlagRerankerProtocol] = []
 
             def access_model() -> None:
                 model = reranker.model

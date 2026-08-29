@@ -160,13 +160,13 @@ class TestCachedEmbeddingsAPI:
 
     def test_exports_exist(self) -> None:
         """CachedEmbeddings is importable."""
-        from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 
         assert CachedEmbeddings is not None
 
     def test_has_embedding_methods(self) -> None:
         """CachedEmbeddings must expose embed_query, embed_documents, and async variants."""
-        from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 
         for method_name in (
             "embed_query",
@@ -178,7 +178,7 @@ class TestCachedEmbeddingsAPI:
 
     def test_has_cache_management_methods(self) -> None:
         """CachedEmbeddings must expose get_cache_stats and clear_cache."""
-        from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 
         assert hasattr(CachedEmbeddings, "get_cache_stats")
         assert hasattr(CachedEmbeddings, "clear_cache")
@@ -209,7 +209,7 @@ class TestQwen3EmbeddingAPI:
 
     def test_exports_exist(self) -> None:
         """LangchainQwenEmbeddings and EmbedderConfig are importable."""
-        from reflectlog.infrastructure.qwen3_embedding import (
+        from reflectlog.infrastructure.embeddings.qwen3_embedding import (
             EmbedderConfig,
             LangchainQwenEmbeddings,
         )
@@ -219,7 +219,7 @@ class TestQwen3EmbeddingAPI:
 
     def test_has_embedding_methods(self) -> None:
         """LangchainQwenEmbeddings must expose embed_query, embed_documents, and async variants."""
-        from reflectlog.infrastructure.qwen3_embedding import (
+        from reflectlog.infrastructure.embeddings.qwen3_embedding import (
             LangchainQwenEmbeddings,
         )
 
@@ -375,7 +375,7 @@ class TestProtocolConformance:
 
     def test_cached_embeddings_has_embeddings_interface(self) -> None:
         """CachedEmbeddings must have the Embeddings protocol methods."""
-        from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 
         for method_name in (
             "embed_query",
@@ -389,7 +389,7 @@ class TestProtocolConformance:
 
     def test_qwen3_embeddings_has_embeddings_interface(self) -> None:
         """LangchainQwenEmbeddings must have the Embeddings protocol methods."""
-        from reflectlog.infrastructure.qwen3_embedding import (
+        from reflectlog.infrastructure.embeddings.qwen3_embedding import (
             LangchainQwenEmbeddings,
         )
 

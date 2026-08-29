@@ -41,19 +41,19 @@ from reflectlog.core.exceptions import (
     SearchError,
     StorageError,
 )
-from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
-from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
+from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 from ...core.config_adapters import ConfigAdapter
 from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine, ReplacementTransition
+from ...core.types import Embeddings, ISemanticSearchEngine
 from ..config.settings import Config
 from ..utils.validation import (
     truncate_memory,
@@ -300,16 +300,7 @@ class MemoryManager:
 
     def pending_replacement_count(self) -> int:
         """Return how many replacement transitions are still pending."""
-        store = getattr(self._semantic_engine, "memory_store", None)
-        list_pending = getattr(store, "list_pending_transitions", None)
-        if store is None or not callable(list_pending):
-            return 0
-        pending = list_pending()
-        if not isinstance(pending, list):
-            return 0
-        return sum(
-            1 for row in pending if isinstance(row, ReplacementTransition)
-        )
+        return len(self._semantic_engine.memory_store.list_pending_transitions())
 
     def _log_configuration(self) -> None:
         """Log the final configuration state after initialization."""
@@ -643,27 +634,15 @@ class MemoryManager:
         if not memories_to_add:
             return 0
 
-        embedder = getattr(self._semantic_engine, "embedder", None)
-        embed_documents = getattr(embedder, "embed_documents", None)
         vectors: list[list[float]] | None = None
-        if callable(embed_documents):
-            computed = embed_documents(memories_to_add)
-            if isinstance(computed, list):
-                typed_vectors: list[list[float]] = []
-                valid = True
-                for item in computed:
-                    if not isinstance(item, list):
-                        valid = False
-                        break
-                    typed_vectors.append(item)
-                if valid:
-                    if len(typed_vectors) != len(memories_to_add) or any(
-                        not item for item in typed_vectors
-                    ):
-                        raise StorageError(
-                            "Embedding batch size mismatch or empty vector"
-                        )
-                    vectors = typed_vectors
+        embedder = getattr(self._semantic_engine, "embedder", None)
+        if (
+            "embed_documents" in type(embedder).__dict__
+            and isinstance(embedder, Embeddings)
+        ):
+            vectors = embedder.embed_documents(memories_to_add)
+            if len(vectors) != len(memories_to_add) or any(not item for item in vectors):
+                raise StorageError("Embedding batch size mismatch or empty vector")
 
         with self._write_lock, self._lock:
             if vectors is None:

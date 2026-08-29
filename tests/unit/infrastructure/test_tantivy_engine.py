@@ -5,6 +5,7 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+import tantivy
 
 from reflectlog.core.exceptions import SearchError
 from reflectlog.infrastructure.tantivy_engine import (
@@ -1837,15 +1838,18 @@ class TestSearchErrorHandling:
             mock_index = MagicMock()
             call_count = 0
 
-            def side_effect_parse_query(**kwargs):
+            def side_effect_parse_query(
+                query: str, *, default_field_names: list[str] | None = None
+            ) -> tantivy.Query:
                 nonlocal call_count
                 call_count += 1
-                query_str = kwargs.get("query", "")
-                is_search_query = "test" in query_str and "is_deleted" not in query_str
+                is_search_query = "test" in query and "is_deleted" not in query
                 if is_search_query and call_count <= 2:
                     raise ValueError("parse fail on first try")
                 assert original_index is not None  # type guard
-                return original_index.parse_query(**kwargs)
+                return original_index.parse_query(
+                    query, default_field_names=default_field_names
+                )
 
             mock_index.parse_query.side_effect = side_effect_parse_query
             engine._index = mock_index

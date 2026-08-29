@@ -273,23 +273,11 @@ def _index_contains(
         return None
 
 
-def _pending_rows(raw: object) -> list[ReplacementTransition]:
+def _pending_rows(raw: list[ReplacementTransition]) -> list[ReplacementTransition]:
     """Accept only real transition rows from list_pending_transitions()."""
-    if not isinstance(raw, list):
-        return []
-    return [row for row in raw if isinstance(row, ReplacementTransition)]
+    return raw
 
 
 def _tantivy_has(engine: TantivyEngine, workspace_id: str, content: str) -> bool:
     """Return True when exact-match results include ``content``."""
-    finder = getattr(engine, "find_by_exact_match", None)
-    if not callable(finder):
-        return False
-    matches = finder(workspace_id, content)
-    if not isinstance(matches, list):
-        return False
-    hits: list[str] = []
-    for match in matches:
-        if isinstance(match, str):
-            hits.append(match)
-    return content in hits
+    return content in engine.find_by_exact_match(workspace_id, content)

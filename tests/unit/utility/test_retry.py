@@ -201,8 +201,8 @@ class TestRetryBehavior:
 
     async def test_passes_args_and_kwargs(self) -> None:
         """Decorated function receives positional and keyword arguments."""
-        received_args: list = []
-        received_kwargs: list = []
+        received_args: list[tuple[int, str]] = []
+        received_kwargs: list[dict[str, bool]] = []
 
         @async_retry_with_backoff(max_retries=1)
         async def capture(a: int, b: str, *, c: bool = False) -> str:

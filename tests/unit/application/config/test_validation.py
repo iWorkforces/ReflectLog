@@ -8,6 +8,13 @@ from reflectlog.application.config.validation import (
     validate_config,
 )
 
+ConfigValue = str | int | float | bool | None
+
+
+class MockConfig:
+    def __init__(self, values: dict[str, ConfigValue]) -> None:
+        self.__dict__.update(values)
+
 
 # ---------------------------------------------------------------------------
 # ValidationError dataclass
@@ -171,7 +178,7 @@ class TestValidateTransport:
     '''Tests for ConfigurationValidator.validate_transport.'''
 
     @pytest.mark.parametrize("transport", ["stdio", "http", "sse", "streamable-http"])
-    def test_valid_transports(self, transport):
+    def test_valid_transports(self, transport: str) -> None:
         '''All valid transport modes are accepted.'''
         v = ConfigurationValidator()
         assert v.validate_transport(transport) is True
@@ -350,7 +357,7 @@ class TestValidateRerankerEngine:
     '''Tests for ConfigurationValidator.validate_reranker_engine.'''
 
     @pytest.mark.parametrize("engine", ["cross_encoder", "none"])
-    def test_valid_engines(self, engine):
+    def test_valid_engines(self, engine: str) -> None:
         '''All valid reranker engines are accepted.'''
         v = ConfigurationValidator()
         assert v.validate_reranker_engine(engine) is True
@@ -372,7 +379,7 @@ class TestValidateLlmProvider:
     '''Tests for ConfigurationValidator.validate_llm_provider.'''
 
     @pytest.mark.parametrize("provider", ["openai", "anthropic"])
-    def test_valid_providers(self, provider):
+    def test_valid_providers(self, provider: str) -> None:
         '''All valid LLM providers are accepted.'''
         v = ConfigurationValidator()
         assert v.validate_llm_provider(provider) is True
@@ -394,7 +401,7 @@ class TestValidateCrossEncoderDevice:
     '''Tests for ConfigurationValidator.validate_cross_encoder_device.'''
 
     @pytest.mark.parametrize("device", ["cpu", "cuda", "mps"])
-    def test_valid_devices(self, device):
+    def test_valid_devices(self, device: str) -> None:
         '''All valid devices are accepted.'''
         v = ConfigurationValidator()
         assert v.validate_cross_encoder_device(device) is True
@@ -416,7 +423,7 @@ class TestValidateFusionMethod:
     '''Tests for ConfigurationValidator.validate_fusion_method.'''
 
     @pytest.mark.parametrize("method", ["rrf", "sum", "mnz", "max", "bordafuse"])
-    def test_valid_methods(self, method):
+    def test_valid_methods(self, method: str) -> None:
         '''All valid fusion methods are accepted.'''
         v = ConfigurationValidator()
         assert v.validate_fusion_method(method) is True
@@ -966,9 +973,9 @@ class TestValidateOpenrouterApiKey:
 class TestValidateConfig:
     '''Tests for the validate_config() convenience function.'''
 
-    def _make_config(self, **overrides):
+    def _make_config(self, **overrides: ConfigValue) -> MockConfig:
         '''Create a mock config object with default valid values.'''
-        defaults = {
+        defaults: dict[str, ConfigValue] = {
             "workspace_id": "my-project",
             "transport": "stdio",
             "port": 9103,
@@ -1007,13 +1014,7 @@ class TestValidateConfig:
         }
         defaults.update(overrides)
 
-        class MockConfig:
-            pass
-
-        cfg = MockConfig()
-        for k, v in defaults.items():
-            setattr(cfg, k, v)
-        return cfg
+        return MockConfig(defaults)
 
     def test_valid_config_no_errors(self):
         '''Valid configuration produces no errors.'''

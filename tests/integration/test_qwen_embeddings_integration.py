@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from reflectlog.infrastructure.qwen3_embedding import LangchainQwenEmbeddings
+from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEmbeddings
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 RUN_REAL_API_TESTS = os.getenv("RUN_REAL_API_TESTS") == "1"

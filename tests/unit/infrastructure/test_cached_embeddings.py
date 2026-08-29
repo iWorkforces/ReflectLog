@@ -10,7 +10,15 @@ from cachetools import LRUCache
 from reflectlog.core.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
+
+
+def embedding_for_text(text: str) -> list[float]:
+    return [float(ord(text[0]))]
+
+
+def unit_embedding(_: str) -> list[float]:
+    return [1.0]
 
 
 def create_mock_logger() -> IStructuredLogger:
@@ -404,7 +412,7 @@ class TestLRUEviction:
         '''Test that LRU evicts least recently used entry when full.'''
         cached = CachedEmbeddings(embedder=mock_embedder, cache_size=3)
         cached._cache = LRUCache(maxsize=3)
-        mock_embedder.embed_query.side_effect = lambda t: [float(ord(t[0]))]
+        mock_embedder.embed_query.side_effect = embedding_for_text
 
         cached.embed_query("a")
         cached.embed_query("b")
@@ -417,7 +425,7 @@ class TestLRUEviction:
 
         # 'a' should be evicted - calling it again should re-compute
         mock_embedder.embed_query.reset_mock()
-        mock_embedder.embed_query.side_effect = lambda t: [float(ord(t[0]))]
+        mock_embedder.embed_query.side_effect = embedding_for_text
         cached.embed_query("a")
         mock_embedder.embed_query.assert_called_once_with("a")
 
@@ -425,7 +433,7 @@ class TestLRUEviction:
         '''Test that accessing an entry refreshes its LRU position.'''
         cached = CachedEmbeddings(embedder=mock_embedder, cache_size=3)
         cached._cache = LRUCache(maxsize=3)
-        mock_embedder.embed_query.side_effect = lambda t: [float(ord(t[0]))]
+        mock_embedder.embed_query.side_effect = embedding_for_text
 
         cached.embed_query("a")
         cached.embed_query("b")
@@ -436,12 +444,12 @@ class TestLRUEviction:
 
         # Now add 'd' - should evict 'b' (now LRU), not 'a'
         mock_embedder.embed_query.reset_mock()
-        mock_embedder.embed_query.side_effect = lambda t: [float(ord(t[0]))]
+        mock_embedder.embed_query.side_effect = embedding_for_text
         cached.embed_query("d")
 
         # 'b' should be evicted
         mock_embedder.embed_query.reset_mock()
-        mock_embedder.embed_query.side_effect = lambda t: [float(ord(t[0]))]
+        mock_embedder.embed_query.side_effect = embedding_for_text
         cached.embed_query("b")
         mock_embedder.embed_query.assert_called_once_with("b")
 
@@ -463,7 +471,7 @@ class TestGetCacheStats:
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
     ) -> None:
         '''Test stats reflect operations correctly.'''
-        mock_embedder.embed_query.side_effect = lambda t: [1.0]
+        mock_embedder.embed_query.side_effect = unit_embedding
         cached.embed_query("x")  # miss
         cached.embed_query("y")  # miss
         cached.embed_query("x")  # hit
@@ -482,7 +490,7 @@ class TestClearCache:
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
     ) -> None:
         '''Test that clear_cache removes all cached entries.'''
-        mock_embedder.embed_query.side_effect = lambda t: [1.0]
+        mock_embedder.embed_query.side_effect = unit_embedding
         cached.embed_query("a")
         cached.embed_query("b")
         assert cached.get_cache_stats()["size"] == 2
@@ -494,7 +502,7 @@ class TestClearCache:
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
     ) -> None:
         '''Test that clear_cache resets hit/miss counters.'''
-        mock_embedder.embed_query.side_effect = lambda t: [1.0]
+        mock_embedder.embed_query.side_effect = unit_embedding
         cached.embed_query("a")
         cached.embed_query("a")
 
@@ -507,10 +515,10 @@ class TestClearCache:
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
     ) -> None:
         '''Test that previously cached queries miss after clear.'''
-        mock_embedder.embed_query.side_effect = lambda t: [1.0]
+        mock_embedder.embed_query.side_effect = unit_embedding
         cached.embed_query("a")
         mock_embedder.embed_query.reset_mock()
-        mock_embedder.embed_query.side_effect = lambda t: [1.0]
+        mock_embedder.embed_query.side_effect = unit_embedding
 
         cached.clear_cache()
         cached.embed_query("a")

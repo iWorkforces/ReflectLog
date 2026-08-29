@@ -1,15 +1,34 @@
 '''Unit tests for LangchainQwenEmbeddings.'''
 
 import os
+from dataclasses import dataclass
+from typing import TypedDict, Unpack
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import anyio
 import pytest
 
-from reflectlog.infrastructure.qwen3_embedding import (
+from reflectlog.infrastructure.embeddings.qwen3_embedding import (
     EmbedderConfig,
     LangchainQwenEmbeddings,
 )
+
+
+class EmbeddingRequest(TypedDict):
+    input: list[str]
+    model: str
+    dimensions: int
+    encoding_format: str
+
+
+@dataclass(frozen=True)
+class EmbeddingDatum:
+    embedding: list[float]
+
+
+@dataclass(frozen=True)
+class EmbeddingResponse:
+    data: list[EmbeddingDatum]
 
 
 class TestLangchainQwenEmbeddingsInitialization:
@@ -26,10 +45,10 @@ class TestLangchainQwenEmbeddingsInitialization:
 
         with (
             patch(
-                "reflectlog.infrastructure.qwen3_embedding.OpenAI"
+                "reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"
             ) as mock_sync_client,
             patch(
-                "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
+                "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"
             ) as mock_async_client,
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
@@ -56,10 +75,10 @@ class TestLangchainQwenEmbeddingsInitialization:
 
         with (
             patch(
-                "reflectlog.infrastructure.qwen3_embedding.OpenAI"
+                "reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"
             ) as mock_sync_client,
             patch(
-                "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
+                "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"
             ) as mock_async_client,
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
@@ -78,8 +97,8 @@ class TestLangchainQwenEmbeddingsInitialization:
     def test_initialization_with_empty_config(self) -> None:
         '''Test initialization with empty configuration.'''
         with (
-            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config={})
             assert embeddings.config.embedding_dims == 1536  # Default value
@@ -89,10 +108,10 @@ class TestLangchainQwenEmbeddingsInitialization:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-api-key"}):
             with (
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 embeddings = LangchainQwenEmbeddings(config={})
@@ -109,10 +128,10 @@ class TestLangchainQwenEmbeddingsInitialization:
         ):
             with (
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 embeddings = LangchainQwenEmbeddings(config={})
@@ -127,10 +146,10 @@ class TestLangchainQwenEmbeddingsInitialization:
         with patch.dict(os.environ, {}, clear=True):
             with (
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 embeddings = LangchainQwenEmbeddings(config={})
@@ -146,8 +165,8 @@ class TestLangchainQwenEmbeddingsInitialization:
         '''Test deprecation warning for OPENAI_API_BASE.'''
         with patch.dict(os.environ, {"OPENAI_API_BASE": "https://old.url"}):
             with (
-                patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-                patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+                patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+                patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
             ):
                 with pytest.warns(DeprecationWarning, match="OPENAI_API_BASE"):
                     LangchainQwenEmbeddings(config={})
@@ -165,8 +184,8 @@ class TestSyncEmbedQuery:
             "api_key": "test-key",
         }
         with (
-            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
             return embeddings
@@ -224,8 +243,8 @@ class TestSyncEmbedDocuments:
             "api_key": "test-key",
         }
         with (
-            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
             return embeddings
@@ -284,8 +303,8 @@ class TestAsyncEmbedQuery:
             "api_key": "test-key",
         }
         with (
-            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
             return embeddings
@@ -360,7 +379,7 @@ class TestAsyncEmbedQuery:
         mock_embeddings._async_client = None
 
         with patch(
-            "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI",
+            "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI",
             return_value=async_client,
         ) as mock_async_client:
             result = await mock_embeddings.aembed_query("test")
@@ -381,8 +400,8 @@ class TestAsyncEmbedDocuments:
             "api_key": "test-key",
         }
         with (
-            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
         ):
             embeddings = LangchainQwenEmbeddings(config=config)
             return embeddings
@@ -423,18 +442,20 @@ class TestAsyncEmbedDocuments:
         '''
         call_count = 0
 
-        async def mock_create(*args, **kwargs):
+        async def mock_create(**kwargs: Unpack[EmbeddingRequest]) -> EmbeddingResponse:
             nonlocal call_count
             call_count += 1
             await anyio.sleep(0.01)  # Simulate async work
             # Return embeddings for all texts in the batch
-            input_texts = kwargs.get("input", [])
-            mock_response = MagicMock()
-            mock_response.data = [
-                MagicMock(embedding=[0.1 * (i + 1), 0.2 * (i + 1), 0.3 * (i + 1)])
-                for i in range(len(input_texts))
-            ]
-            return mock_response
+            input_texts = kwargs["input"]
+            return EmbeddingResponse(
+                data=[
+                    EmbeddingDatum(
+                        embedding=[0.1 * (i + 1), 0.2 * (i + 1), 0.3 * (i + 1)]
+                    )
+                    for i in range(len(input_texts))
+                ]
+            )
 
         mock_embeddings._async_client = AsyncMock()
         mock_embeddings._async_client.embeddings.create = mock_create
@@ -456,18 +477,16 @@ class TestAsyncEmbedDocuments:
         max_concurrent = 0
         current_concurrent = 0
 
-        async def mock_create(*args, **kwargs):
+        async def mock_create(**kwargs: Unpack[EmbeddingRequest]) -> EmbeddingResponse:
             nonlocal max_concurrent, current_concurrent
             current_concurrent += 1
             max_concurrent = max(max_concurrent, current_concurrent)
             await anyio.sleep(0.01)
             current_concurrent -= 1
-            input_texts = kwargs.get("input", [])
-            mock_response = MagicMock()
-            mock_response.data = [
-                MagicMock(embedding=[0.1, 0.2, 0.3]) for _ in input_texts
-            ]
-            return mock_response
+            input_texts = kwargs["input"]
+            return EmbeddingResponse(
+                data=[EmbeddingDatum(embedding=[0.1, 0.2, 0.3]) for _ in input_texts]
+            )
 
         mock_embeddings._async_client = AsyncMock()
         mock_embeddings._async_client.embeddings.create = mock_create
@@ -495,17 +514,15 @@ class TestAsyncEmbedDocuments:
         '''
         call_times: list[float] = []
 
-        async def mock_create(*args, **kwargs):
+        async def mock_create(**kwargs: Unpack[EmbeddingRequest]) -> EmbeddingResponse:
             import time
 
             call_times.append(time.time())
             await anyio.sleep(0.01)
-            input_texts = kwargs.get("input", [])
-            mock_response = MagicMock()
-            mock_response.data = [
-                MagicMock(embedding=[0.1, 0.2, 0.3]) for _ in input_texts
-            ]
-            return mock_response
+            input_texts = kwargs["input"]
+            return EmbeddingResponse(
+                data=[EmbeddingDatum(embedding=[0.1, 0.2, 0.3]) for _ in input_texts]
+            )
 
         mock_embeddings._async_client = AsyncMock()
         mock_embeddings._async_client.embeddings.create = mock_create
@@ -529,10 +546,10 @@ class TestConfigurationPriority:
             config = {"api_key": "config-key"}
             with (
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 embeddings = LangchainQwenEmbeddings(config=config)
@@ -546,10 +563,10 @@ class TestConfigurationPriority:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-key"}):
             with (
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.OpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"
                 ) as mock_sync_client,
                 patch(
-                    "reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"
                 ) as mock_async_client,
             ):
                 embeddings = LangchainQwenEmbeddings(config={})
@@ -568,8 +585,8 @@ class TestAsyncEmbedRetryFailure:
             "api_key": "test-key",
         }
         with (
-            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
         ):
             return LangchainQwenEmbeddings(config=config)
 
@@ -585,7 +602,7 @@ class TestAsyncEmbedRetryFailure:
 
         with (
             patch(
-                "reflectlog.infrastructure.qwen3_embedding.anyio.sleep",
+                "reflectlog.infrastructure.embeddings.qwen3_embedding.anyio.sleep",
                 new_callable=AsyncMock,
             ),
             pytest.raises(
@@ -613,8 +630,8 @@ class TestAembedDocumentsBatchFailure:
             "max_concurrent_batches": 2,
         }
         with (
-            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
         ):
             return LangchainQwenEmbeddings(config=config)
 
@@ -624,24 +641,22 @@ class TestAembedDocumentsBatchFailure:
     ) -> None:
         call_count = 0
 
-        async def mock_create(*args, **kwargs):
+        async def mock_create(**kwargs: Unpack[EmbeddingRequest]) -> EmbeddingResponse:
             nonlocal call_count
             call_count += 1
-            input_texts = kwargs.get("input", [])
+            input_texts = kwargs["input"]
             if input_texts == ["fail_text"]:
                 raise ConnectionError("batch failed")
-            mock_response = MagicMock()
-            mock_response.data = [
-                MagicMock(embedding=[0.1, 0.2, 0.3]) for _ in input_texts
-            ]
-            return mock_response
+            return EmbeddingResponse(
+                data=[EmbeddingDatum(embedding=[0.1, 0.2, 0.3]) for _ in input_texts]
+            )
 
         mock_embeddings._async_client = AsyncMock()
         mock_embeddings._async_client.embeddings.create = mock_create
 
         with (
             patch(
-                "reflectlog.infrastructure.qwen3_embedding.anyio.sleep",
+                "reflectlog.infrastructure.embeddings.qwen3_embedding.anyio.sleep",
                 new_callable=AsyncMock,
             ),
             pytest.warns(RuntimeWarning, match="Embedding batch .* failed"),
@@ -662,8 +677,8 @@ class TestAsyncContextManager:
             "api_key": "test-key",
         }
         with (
-            patch("reflectlog.infrastructure.qwen3_embedding.OpenAI"),
-            patch("reflectlog.infrastructure.qwen3_embedding.AsyncOpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
+            patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
         ):
             return LangchainQwenEmbeddings(config=config)
 

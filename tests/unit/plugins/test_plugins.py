@@ -98,6 +98,9 @@ class _FailingLifecyclePlugin:
         raise RuntimeError("cleanup boom")
 
 
+type TestPlugin = _DummyPlugin | _LifecyclePlugin | _FailingLifecyclePlugin
+
+
 # ---------------------------------------------------------------------------
 # registry.py — utc_now
 # ---------------------------------------------------------------------------
@@ -516,7 +519,7 @@ class TestPluginDiscoveryStrategy:
 
     async def test_base_raises_not_implemented(self) -> None:
         '''Base discover() raises NotImplementedError.'''
-        strategy = PluginDiscoveryStrategy()
+        strategy: PluginDiscoveryStrategy[_DummyPlugin] = PluginDiscoveryStrategy()
         with pytest.raises(NotImplementedError):
             await strategy.discover()
 
@@ -535,10 +538,14 @@ class TestEntryPointDiscovery:
         mock_ep = MagicMock()
         mock_ep.name = "my_plugin"
         mock_ep.value = "some.module:MyClass"
-        mock_ep.__str__ = lambda _: "my_plugin = some.module:MyClass"
+
+        def entry_point_repr(_: MagicMock) -> str:
+            return "my_plugin = some.module:MyClass"
+
+        mock_ep.configure_mock(__str__=entry_point_repr)
 
         with patch("importlib.metadata.entry_points", return_value=[mock_ep]):
-            strategy = EntryPointDiscovery(group="test.group", plugin_type=object)
+            strategy = EntryPointDiscovery(group="test.group", plugin_type=_DummyPlugin)
             result = await strategy.discover()
 
         assert len(result) == 1
@@ -552,10 +559,14 @@ class TestEntryPointDiscovery:
         mock_ep = MagicMock()
         mock_ep.name = "mod_plugin"
         mock_ep.value = "some.module"
-        mock_ep.__str__ = lambda _: "mod_plugin = some.module"
+
+        def entry_point_repr(_: MagicMock) -> str:
+            return "mod_plugin = some.module"
+
+        mock_ep.configure_mock(__str__=entry_point_repr)
 
         with patch("importlib.metadata.entry_points", return_value=[mock_ep]):
-            strategy = EntryPointDiscovery(group="g", plugin_type=object)
+            strategy = EntryPointDiscovery(group="g", plugin_type=_DummyPlugin)
             result = await strategy.discover()
 
         assert len(result) == 1
@@ -577,7 +588,7 @@ class TestEntryPointDiscovery:
 
             # Patch differently: the first call with group= raises,
             # second call without returns mock_eps
-            strategy = EntryPointDiscovery(group="g", plugin_type=object)
+            strategy = EntryPointDiscovery(group="g", plugin_type=_DummyPlugin)
 
             # Patch at module level
             with patch(
@@ -594,7 +605,11 @@ class TestEntryPointDiscovery:
         mock_ep.name = "filtered"
         mock_ep.value = "mod:Cls"
         mock_ep.group = "my_group"
-        mock_ep.__str__ = lambda _: "filtered = mod:Cls"
+
+        def entry_point_repr(_: MagicMock) -> str:
+            return "filtered = mod:Cls"
+
+        mock_ep.configure_mock(__str__=entry_point_repr)
 
         # Result without select(), behaves like list
         eps_list = [mock_ep]
@@ -606,7 +621,7 @@ class TestEntryPointDiscovery:
             # Second call (without args) returns list
             mock_fn.side_effect = [TypeError("bad"), eps_list]
 
-            strategy = EntryPointDiscovery(group="my_group", plugin_type=object)
+            strategy = EntryPointDiscovery(group="my_group", plugin_type=_DummyPlugin)
             result = await strategy.discover()
 
         assert len(result) == 1
@@ -1064,7 +1079,8 @@ class TestLifecycleHooks:
 
     def test_custom_hooks(self) -> None:
         '''Custom hooks can be set.'''
-        cb = lambda name: None  # noqa: E731
+        def cb(name: str) -> None:
+            pass
         hooks = LifecycleHooks(on_load=cb, on_activate=cb)
         assert hooks.on_load is cb
         assert hooks.on_activate is cb
@@ -1101,13 +1117,13 @@ class TestPluginLoader:
         self,
         plugins: list[DiscoveredPlugin] | None = None,
         hooks: LifecycleHooks | None = None,
-    ) -> PluginLoader:
+    ) -> PluginLoader[TestPlugin]:
         '''Create a PluginLoader with static discovery.'''
         if plugins is None:
             plugins = []
-        strategy = StaticRegistration(plugins)
-        registry: PluginRegistry[object] = PluginRegistry()
-        return PluginLoader(
+        strategy: StaticRegistration[TestPlugin] = StaticRegistration(plugins)
+        registry: PluginRegistry[TestPlugin] = PluginRegistry()
+        return PluginLoader[TestPlugin](
             discovery_strategy=strategy,
             registry=registry,
             hooks=hooks,
@@ -1515,7 +1531,7 @@ class TestPluginLoaderEdgeCases:
     async def test_deactivate_non_activated_plugin(self) -> None:
         '''deactivate_plugin() returns False when plugin is LOADED (not ACTIVATED).'''
         dp = DiscoveredPlugin(name="p", module_path="m", class_name="C")
-        strategy = StaticRegistration([dp])
+        strategy: StaticRegistration[object] = StaticRegistration([dp])
         registry: PluginRegistry[object] = PluginRegistry()
         loader = PluginLoader(
             discovery_strategy=strategy,
@@ -1536,7 +1552,7 @@ class TestPluginLoaderEdgeCases:
             DiscoveredPlugin(name="ok", module_path="m", class_name="OK"),
             DiscoveredPlugin(name="bad", module_path="m", class_name="Bad"),
         ]
-        strategy = StaticRegistration(plugins)
+        strategy: StaticRegistration[object] = StaticRegistration(plugins)
         registry: PluginRegistry[object] = PluginRegistry()
         loader = PluginLoader(
             discovery_strategy=strategy,
@@ -1563,7 +1579,7 @@ class TestPluginLoaderEdgeCases:
 
     async def test_shutdown_with_no_plugins(self) -> None:
         '''shutdown() on empty loader is a no-op.'''
-        strategy = StaticRegistration([])
+        strategy: StaticRegistration[object] = StaticRegistration([])
         registry: PluginRegistry[object] = PluginRegistry()
         loader = PluginLoader(
             discovery_strategy=strategy,
@@ -1575,7 +1591,7 @@ class TestPluginLoaderEdgeCases:
 
     async def test_loader_default_hooks(self) -> None:
         '''PluginLoader uses empty LifecycleHooks when none provided.'''
-        strategy = StaticRegistration([])
+        strategy: StaticRegistration[object] = StaticRegistration([])
         registry: PluginRegistry[object] = PluginRegistry()
         loader = PluginLoader(
             discovery_strategy=strategy,

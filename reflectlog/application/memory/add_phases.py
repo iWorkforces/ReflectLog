@@ -26,6 +26,7 @@ from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
 from ...core.logging import IStructuredLogger
 from ...core.types import (
+    Embeddings,
     ISemanticSearchEngine,
     ReplacementTransition,
     ReplacementTransitionRequest,
@@ -550,7 +551,7 @@ class SmartReplacementPhase:
         # anyio task group sufficient: fire-and-forget pattern for candidate checks
         async with anyio.create_task_group() as tg:
             for existing_memory, similarity_score in filtered_candidates:
-                tg.start_soon(collect_result, existing_memory, similarity_score)
+                _ = tg.start_soon(collect_result, existing_memory, similarity_score)
 
         # Filter out None results (failed checks or no replacement needed)
         return [r for r in results if r is not None]
@@ -728,19 +729,19 @@ class StoragePhase:
         if not memories:
             return None
         embedder = getattr(self._semantic_engine, "embedder", None)
-        embed_documents = getattr(embedder, "embed_documents", None)
-        if not callable(embed_documents):
+        if (
+            "embed_documents" not in type(embedder).__dict__
+            or not isinstance(embedder, Embeddings)
+        ):
             return None
-        computed = embed_documents(memories)
-        if not isinstance(computed, list):
-            return None
+        computed = embedder.embed_documents(memories)
         if len(computed) != len(memories):
             raise StorageError("Embedding batch size mismatch for persist")
         typed: list[list[float]] = []
         for item in computed:
-            if not isinstance(item, list) or not item:
+            if not item:
                 raise StorageError("Embedding produced an empty or invalid vector")
-            typed.append([float(value) for value in item])
+            typed.append(item)
         return typed
 
     def _persist_replacements_unlocked(
@@ -877,12 +878,9 @@ class StoragePhase:
             for info, new_memory, old_id in planned
         ]
         store = self._semantic_engine.memory_store
-        batch = getattr(store, "begin_replacement_transitions", None)
         try:
-            if callable(batch):
-                recorded = batch(requests)
-                if isinstance(recorded, list):
-                    return recorded
+            if "begin_replacement_transitions" in type(store).__dict__:
+                return store.begin_replacement_transitions(requests)
             return [
                 store.begin_replacement_transition(
                     old_memory_id=request.old_memory_id,

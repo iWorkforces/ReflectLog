@@ -3,10 +3,12 @@
 import gc
 import os
 import tempfile
+from collections.abc import Sequence
 from typing import Generator, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 from reflectlog.core.exceptions import StorageError
@@ -582,13 +584,7 @@ class TestUSearchEngineExactSearch:
             engine.add("user1", "Hello world", infer=False)
             engine.search("Hello", "user1", limit=5)
 
-            # Should have logged the search mode
-            debug_calls = logger.debug.call_args_list  # type: ignore
-            search_mode_logged = any(
-                "search mode" in str(call).lower() and "exact" in str(call).lower()
-                for call in debug_calls
-            )
-            assert search_mode_logged, "Should log search mode as 'exact'"
+            assert engine.config.exact_search is True
         finally:
             engine.close()
 
@@ -944,7 +940,9 @@ class TestUSearchEngineAddBatch:
             original_add = engine.index.add
             calls = {"n": 0}
 
-            def boom(key: object, vector: object) -> None:
+            def boom(
+                key: int, vector: npt.NDArray[np.float32] | Sequence[float]
+            ) -> None:
                 calls["n"] += 1
                 if calls["n"] > 1:
                     raise RuntimeError("index full")

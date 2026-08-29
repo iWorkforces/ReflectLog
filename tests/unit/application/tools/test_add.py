@@ -1,10 +1,11 @@
 """Tests for AddTool implementation."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from reflectlog.application.memory.add_phases import AddResult, ReplacementInfo
+from reflectlog.application.tools.add import AddTool
 from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
 
@@ -12,7 +13,7 @@ from reflectlog.core.exceptions import InconsistentStateError, StorageError
 class TestAddToolHappyPath:
     """Tests for successful add operations."""
 
-    async def test_add_single_memory(self, add_tool_instance, mock_memory_manager):
+    async def test_add_single_memory(self, add_tool_instance: AddTool, mock_memory_manager: MagicMock) -> None:
         """Adding a single valid memory calls add_memories_async and returns None."""
         handler = add_tool_instance.get_handler()
         result = await handler(["Remember this"])
@@ -22,7 +23,7 @@ class TestAddToolHappyPath:
             ["Remember this"], dry_run=False
         )
 
-    async def test_add_multiple_memories(self, add_tool_instance, mock_memory_manager):
+    async def test_add_multiple_memories(self, add_tool_instance: AddTool, mock_memory_manager: MagicMock) -> None:
         """Adding multiple memories passes entire list to add_memories_async."""
         mock_memory_manager.add_memories_async = AsyncMock(
             return_value=AddResult(
@@ -35,7 +36,7 @@ class TestAddToolHappyPath:
         call_args = mock_memory_manager.add_memories_async.call_args
         assert call_args.args[0] == ["First", "Second", "Third"]
 
-    async def test_add_with_dry_run(self, add_tool_instance, mock_memory_manager):
+    async def test_add_with_dry_run(self, add_tool_instance: AddTool, mock_memory_manager: MagicMock) -> None:
         """dry_run=True is forwarded to add_memories_async."""
         handler = add_tool_instance.get_handler()
         await handler(["Test memory"], dry_run=True)
@@ -44,7 +45,7 @@ class TestAddToolHappyPath:
             ["Test memory"], dry_run=True
         )
 
-    async def test_add_logs_invocation(self, add_tool_instance, mock_tool_logger):
+    async def test_add_logs_invocation(self, add_tool_instance: AddTool, mock_tool_logger: MagicMock) -> None:
         """Add handler calls log_invocation with tool name 'add'."""
         handler = add_tool_instance.get_handler()
         await handler(["Hello"])
@@ -59,8 +60,8 @@ class TestAddToolHappyPath:
         assert invocation_logged
 
     async def test_add_with_replacements(
-        self, add_tool_instance, mock_memory_manager, mock_tool_logger
-    ):
+        self, add_tool_instance: AddTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+    ) -> None:
         """Replacement details are logged when memories are replaced."""
         replacement = ReplacementInfo(
             old_memory="Old preference for Python",
@@ -90,8 +91,8 @@ class TestAddToolEmptyInput:
     """Tests for empty list input handling."""
 
     async def test_add_empty_list_returns_none(
-        self, add_tool_instance, mock_memory_manager
-    ):
+        self, add_tool_instance: AddTool, mock_memory_manager: MagicMock
+    ) -> None:
         """Empty list is a no-op that returns None without calling storage."""
         handler = add_tool_instance.get_handler()
         result = await handler([])
@@ -99,7 +100,7 @@ class TestAddToolEmptyInput:
         assert result is None
         mock_memory_manager.add_memories_async.assert_not_awaited()
 
-    async def test_add_empty_list_logs_noop(self, add_tool_instance, mock_tool_logger):
+    async def test_add_empty_list_logs_noop(self, add_tool_instance: AddTool, mock_tool_logger: MagicMock) -> None:
         """Empty list add logs appropriate message about no-op."""
         handler = add_tool_instance.get_handler()
         await handler([])
@@ -115,34 +116,34 @@ class TestAddToolEmptyInput:
 class TestAddToolValidation:
     """Tests for input validation errors."""
 
-    async def test_add_empty_string_raises_value_error(self, add_tool_instance):
+    async def test_add_empty_string_raises_value_error(self, add_tool_instance: AddTool) -> None:
         """Empty string memory raises ValueError."""
         handler = add_tool_instance.get_handler()
         with pytest.raises(ValueError):
             await handler([""])
 
-    async def test_add_whitespace_only_raises_value_error(self, add_tool_instance):
+    async def test_add_whitespace_only_raises_value_error(self, add_tool_instance: AddTool) -> None:
         """Whitespace-only memory raises ValueError."""
         handler = add_tool_instance.get_handler()
         with pytest.raises(ValueError):
             await handler(["   "])
 
-    async def test_add_too_long_memory_raises_value_error(self, add_tool_instance):
+    async def test_add_too_long_memory_raises_value_error(self, add_tool_instance: AddTool) -> None:
         """Memory exceeding max length raises ValueError."""
         handler = add_tool_instance.get_handler()
         too_long = "x" * 30721
         with pytest.raises(ValueError, match="too long"):
             await handler([too_long])
 
-    async def test_add_non_string_raises_value_error(self, add_tool_instance):
+    async def test_add_non_string_raises_value_error(self, add_tool_instance: AddTool) -> None:
         """Non-string item in memories raises ValueError."""
         handler = add_tool_instance.get_handler()
         with pytest.raises(ValueError):
             await handler([123])
 
     async def test_add_validation_does_not_call_storage(
-        self, add_tool_instance, mock_memory_manager
-    ):
+        self, add_tool_instance: AddTool, mock_memory_manager: MagicMock
+    ) -> None:
         """Validation errors prevent any storage call."""
         handler = add_tool_instance.get_handler()
         with pytest.raises(ValueError):
@@ -155,8 +156,8 @@ class TestAddToolErrorHandling:
     """Tests for storage error handling."""
 
     async def test_storage_error_wraps_with_from(
-        self, add_tool_instance, mock_memory_manager
-    ):
+        self, add_tool_instance: AddTool, mock_memory_manager: MagicMock
+    ) -> None:
         """Storage exception is wrapped as StorageError with 'from e' chaining."""
         original = RuntimeError("disk full")
         mock_memory_manager.add_memories_async = AsyncMock(side_effect=original)
@@ -168,8 +169,8 @@ class TestAddToolErrorHandling:
         assert exc_info.value.__cause__ is original
 
     async def test_storage_error_logs_before_raising(
-        self, add_tool_instance, mock_memory_manager, mock_tool_logger
-    ):
+        self, add_tool_instance: AddTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+    ) -> None:
         """Storage error triggers log_error before raising."""
         mock_memory_manager.add_memories_async = AsyncMock(
             side_effect=RuntimeError("write failed")
@@ -182,8 +183,8 @@ class TestAddToolErrorHandling:
         mock_tool_logger.error.assert_called()
 
     async def test_inconsistent_state_is_reraised(
-        self, add_tool_instance, mock_memory_manager
-    ):
+        self, add_tool_instance: AddTool, mock_memory_manager: MagicMock
+    ) -> None:
         """InconsistentStateError must not be flattened to StorageError."""
         original = InconsistentStateError("USearch/Tantivy split")
         mock_memory_manager.add_memories_async = AsyncMock(side_effect=original)
@@ -199,11 +200,11 @@ class TestAddToolErrorHandling:
 class TestAddToolMetadata:
     """Tests for AddTool metadata methods."""
 
-    def test_get_name(self, add_tool_instance):
+    def test_get_name(self, add_tool_instance: AddTool) -> None:
         """AddTool.get_name() returns 'add'."""
         assert add_tool_instance.get_name() == "add"
 
-    def test_get_instruction_snippet(self, add_tool_instance):
+    def test_get_instruction_snippet(self, add_tool_instance: AddTool) -> None:
         """get_instruction_snippet contains expected signature."""
         snippet = add_tool_instance.get_instruction_snippet()
         assert "add(memories: list[str])" in snippet

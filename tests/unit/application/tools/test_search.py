@@ -1,10 +1,11 @@
 """Tests for SearchTool implementation."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from reflectlog.core.exceptions import SearchError
+from reflectlog.application.tools.search import SearchTool
 
 
 @pytest.mark.unit
@@ -12,8 +13,8 @@ class TestSearchToolHappyPath:
     """Tests for successful search operations."""
 
     async def test_search_returns_results(
-        self, search_tool_instance, mock_memory_manager
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock
+    ) -> None:
         """Search returns list of matching memories."""
         expected = ["Python tutorial", "JavaScript guide"]
         mock_memory_manager.search = AsyncMock(return_value=expected)
@@ -25,8 +26,8 @@ class TestSearchToolHappyPath:
         mock_memory_manager.search.assert_awaited_once()
 
     async def test_search_passes_query_and_limit(
-        self, search_tool_instance, mock_memory_manager
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock
+    ) -> None:
         """Search forwards query and config limit to MemoryManager.search."""
         mock_memory_manager.search = AsyncMock(return_value=["result"])
 
@@ -40,8 +41,8 @@ class TestSearchToolHappyPath:
         assert call_args[0] == "test query"
 
     async def test_search_returns_ordered_results(
-        self, search_tool_instance, mock_memory_manager
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock
+    ) -> None:
         """Search preserves result order from MemoryManager."""
         ordered = ["Most relevant", "Somewhat relevant", "Least relevant"]
         mock_memory_manager.search = AsyncMock(return_value=ordered)
@@ -52,8 +53,8 @@ class TestSearchToolHappyPath:
         assert result == ordered
 
     async def test_search_logs_invocation(
-        self, search_tool_instance, mock_memory_manager, mock_tool_logger
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+    ) -> None:
         """Search logs invocation with query parameter."""
         mock_memory_manager.search = AsyncMock(return_value=[])
 
@@ -67,8 +68,8 @@ class TestSearchToolHappyPath:
         assert invocation_logged
 
     async def test_search_logs_completion(
-        self, search_tool_instance, mock_memory_manager, mock_tool_logger
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+    ) -> None:
         """Search logs completion with result count."""
         mock_memory_manager.search = AsyncMock(return_value=["a", "b"])
 
@@ -89,8 +90,8 @@ class TestSearchToolNoResults:
     """Tests for empty result scenarios."""
 
     async def test_search_returns_empty_list(
-        self, search_tool_instance, mock_memory_manager
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock
+    ) -> None:
         """Search returns empty list when no matches found."""
         mock_memory_manager.search = AsyncMock(return_value=[])
 
@@ -100,8 +101,8 @@ class TestSearchToolNoResults:
         assert result == []
 
     async def test_search_no_results_logs_message(
-        self, search_tool_instance, mock_memory_manager, mock_tool_logger
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+    ) -> None:
         """No-results search logs appropriate message."""
         mock_memory_manager.search = AsyncMock(return_value=[])
 
@@ -120,8 +121,8 @@ class TestSearchToolErrorHandling:
     """Tests for search error handling."""
 
     async def test_search_error_wraps_with_from(
-        self, search_tool_instance, mock_memory_manager
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock
+    ) -> None:
         """Search exception is wrapped as SearchError with 'from e' chaining."""
         original = RuntimeError("index corrupted")
         mock_memory_manager.search = AsyncMock(side_effect=original)
@@ -135,8 +136,8 @@ class TestSearchToolErrorHandling:
         assert exc_info.value.__cause__ is original
 
     async def test_search_error_logs_before_raising(
-        self, search_tool_instance, mock_memory_manager, mock_tool_logger
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+    ) -> None:
         """Search error triggers log_error before raising."""
         mock_memory_manager.search = AsyncMock(side_effect=RuntimeError("oops"))
 
@@ -147,8 +148,8 @@ class TestSearchToolErrorHandling:
         mock_tool_logger.error.assert_called()
 
     async def test_search_error_includes_query_context(
-        self, search_tool_instance, mock_memory_manager, mock_tool_logger
-    ):
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+    ) -> None:
         """Search error log includes query context."""
         mock_memory_manager.search = AsyncMock(side_effect=ValueError("bad"))
 
@@ -164,16 +165,16 @@ class TestSearchToolErrorHandling:
 class TestSearchToolMetadata:
     """Tests for SearchTool metadata methods."""
 
-    def test_get_name(self, search_tool_instance):
+    def test_get_name(self, search_tool_instance: SearchTool) -> None:
         """SearchTool.get_name() returns 'search'."""
         assert search_tool_instance.get_name() == "search"
 
-    def test_get_instruction_snippet(self, search_tool_instance):
+    def test_get_instruction_snippet(self, search_tool_instance: SearchTool) -> None:
         """get_instruction_snippet contains expected signature."""
         snippet = search_tool_instance.get_instruction_snippet()
         assert "search(query: str)" in snippet
 
-    def test_get_handler_returns_callable(self, search_tool_instance):
+    def test_get_handler_returns_callable(self, search_tool_instance: SearchTool) -> None:
         """get_handler returns a callable."""
         handler = search_tool_instance.get_handler()
         assert callable(handler)
