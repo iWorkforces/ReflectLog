@@ -261,14 +261,14 @@ class TestEmbedDocuments:
         assert result == [[0.1, 0.2], [0.3, 0.4]]
         mock_embedder.embed_documents.assert_called_once_with(texts)
 
-    def test_not_cached(
+    def test_reuses_cache_on_second_call(
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
     ) -> None:
-        '''Test embed_documents does not populate cache.'''
+        '''Test embed_documents populates the per-text LRU.'''
         cached.embed_documents(["doc"])
         cached.embed_documents(["doc"])
-        assert mock_embedder.embed_documents.call_count == 2
-        assert cached.get_cache_stats()["size"] == 0
+        assert mock_embedder.embed_documents.call_count == 1
+        assert cached.get_cache_stats()["size"] == 1
 
 
 class TestAembedQuery:
@@ -362,13 +362,13 @@ class TestAembedDocuments:
         assert result == [[0.7, 0.8], [0.9, 1.0]]
         mock_embedder.aembed_documents.assert_awaited_once_with(texts)
 
-    async def test_not_cached(
+    async def test_reuses_cache_on_second_call(
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
     ) -> None:
-        '''Test aembed_documents does not populate cache.'''
+        '''Test aembed_documents populates the per-text LRU.'''
         await cached.aembed_documents(["adoc"])
         await cached.aembed_documents(["adoc"])
-        assert mock_embedder.aembed_documents.await_count == 2
+        assert mock_embedder.aembed_documents.await_count == 1
 
 
 class TestLRUEviction:

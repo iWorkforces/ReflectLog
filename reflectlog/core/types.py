@@ -220,7 +220,13 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
-    def add_batch(self, workspace_id: str, contents: list[str], infer: bool) -> list[str]:
+    def add_batch(
+        self,
+        workspace_id: str,
+        contents: list[str],
+        infer: bool,
+        vectors: list[list[float]] | None = None,
+    ) -> list[str]:
         """Add multiple memories to the semantic index in a single batch.
 
         Args:

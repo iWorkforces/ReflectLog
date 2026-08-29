@@ -71,7 +71,7 @@ class USearchConfig:
     connectivity: int = 16
     expansion_add: int = 128
     expansion_search: int = 64
-    exact_search: bool = True
+    exact_search: bool = False
     exact_search_threshold: int = 0
 
     @classmethod
@@ -96,7 +96,7 @@ class USearchConfig:
             connectivity=int(data.get("connectivity", 16)),
             expansion_add=int(data.get("expansion_add", 128)),
             expansion_search=int(data.get("expansion_search", 64)),
-            exact_search=bool(data.get("exact_search", True)),
+            exact_search=bool(data.get("exact_search", False)),
             exact_search_threshold=int(data.get("exact_search_threshold", 0)),
         )
 
@@ -176,6 +176,8 @@ class USearchEngine(BaseModel):
     _memory_store: MemoryStore | None = PrivateAttr(default=None)
     # Instance-level lock for thread-safe lazy initialization (prevents cross-instance contention)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    _index_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
+    _dirty: bool = PrivateAttr(default=False)
 
     def __init__(
         self,
@@ -356,7 +358,9 @@ class USearchEngine(BaseModel):
                 ) from embed_error
 
             # Add to USearch index
-            self.index.add(mem_id, vector_np)
+            with self._index_lock:
+                self.index.add(mem_id, vector_np)
+            self._dirty = True
 
             if self.logger:
                 self.logger.debug(
@@ -403,6 +407,7 @@ class USearchEngine(BaseModel):
         workspace_id: str,
         contents: list[str],
         infer: bool,
+        vectors: list[list[float]] | None = None,
     ) -> list[str]:
         """Add multiple memories to the USearch index in a single batch.
 
@@ -410,6 +415,8 @@ class USearchEngine(BaseModel):
             workspace_id: Workspace identifier for filtering.
             contents: List of memory texts to index.
             infer: Whether to enable LLM-based memory inference (not supported).
+            vectors: Optional precomputed embeddings aligned with ``contents``.
+                When provided, this method does not call the embedder.
 
         Returns:
             List of memory contents successfully added (duplicates skipped).
@@ -437,8 +444,12 @@ class USearchEngine(BaseModel):
 
             # Generate embeddings with rollback on failure
             try:
-                vectors = self.embedder.embed_documents(inserted_contents)
-                if len(vectors) != len(inserted_contents):
+                if vectors is None:
+                    computed = self.embedder.embed_documents(inserted_contents)
+                else:
+                    content_to_vector = dict(zip(contents, vectors, strict=True))
+                    computed = [content_to_vector[content] for content in inserted_contents]
+                if len(computed) != len(inserted_contents):
                     raise RuntimeError(
                         "Embedding batch size mismatch for USearch add_batch"
                     )
@@ -462,10 +473,8 @@ class USearchEngine(BaseModel):
             # Add vectors to USearch index
             indexed_ids: list[int] = []
             try:
-                for (_, mem_id), vector in zip(inserted, vectors, strict=True):
-                    vector_np = np.array(vector, dtype=np.float32)
-                    self.index.add(mem_id, vector_np)
-                    indexed_ids.append(mem_id)
+                indexed_ids = self._index_vectors(inserted, computed)
+                self._dirty = True
             except Exception:
                 self._rollback_batch_inserts(inserted_ids, indexed_ids)
                 raise
@@ -492,13 +501,32 @@ class USearchEngine(BaseModel):
                 )
             raise RuntimeError(f"Failed to add memory batch: {e}") from e
 
+    def _index_vectors(
+        self,
+        inserted: list[tuple[str, int]],
+        vectors: list[list[float]],
+    ) -> list[int]:
+        """Add a batch of vectors to the HNSW index."""
+        keys = [mem_id for _, mem_id in inserted]
+        matrix = np.asarray(vectors, dtype=np.float32)
+        with self._index_lock:
+            add_many = getattr(self.index, "add_many", None)
+            if callable(add_many) and len(keys) >= 16:
+                _ = add_many(keys, matrix)
+                return keys
+            indexed_ids: list[int] = []
+            for mem_id, vector in zip(keys, matrix, strict=True):
+                self.index.add(int(mem_id), vector)
+                indexed_ids.append(int(mem_id))
+            return indexed_ids
+
     def _rollback_batch_inserts(
         self, inserted_ids: list[int], indexed_ids: list[int]
     ) -> None:
         """Undo SQLite rows and any vectors added before a mid-batch failure."""
-        for mem_id in indexed_ids:
-            if mem_id in self.index:
-                self.index.remove(mem_id)
+        with self._index_lock:
+            for mem_id in indexed_ids:
+                self.index.remove(int(mem_id))
         for mem_id in inserted_ids:
             _ = self.memory_store.delete(mem_id)
 
@@ -650,8 +678,9 @@ class USearchEngine(BaseModel):
         """Generate query embedding and execute index search with overfetch."""
         query_vector = self.embedder.embed_query(query)
         query_np = np.array(query_vector, dtype=np.float32)
-        overfetch_limit = min(limit * 3, len(self.index))
-        return self.index.search(query_np, overfetch_limit, exact=use_exact)
+        search_limit = min(max(limit, 1), len(self.index))
+        with self._index_lock:
+            return self.index.search(query_np, search_limit, exact=use_exact)
 
     def _filter_matches_by_workspace(
         self,
@@ -738,8 +767,10 @@ class USearchEngine(BaseModel):
             mem_id = int(memory_id)
 
             # Check if key exists in index
-            if mem_id in self.index:
-                self.index.remove(mem_id)
+            with self._index_lock:
+                if mem_id in self.index:
+                    self.index.remove(mem_id)
+                    self._dirty = True
 
             # Delete from SQLite
             deleted = self.memory_store.delete(mem_id)
@@ -792,7 +823,9 @@ class USearchEngine(BaseModel):
         """
         try:
             if self._index is not None:
-                self.index.save(self.config.index_path)
+                with self._index_lock:
+                    self.index.save(self.config.index_path)
+                self._dirty = False
                 if self.logger:
                     self.logger.debug(
                         "USearch index saved",

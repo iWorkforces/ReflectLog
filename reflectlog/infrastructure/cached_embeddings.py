@@ -1,6 +1,7 @@
 """Cached embeddings wrapper for query embedding LRU caching."""
 
 import hashlib
+import threading
 
 from cachetools import LRUCache
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -16,10 +17,10 @@ class CachedEmbeddings(BaseModel):
     text as the cache key. This is useful for search operations where the same
     query may be executed multiple times (e.g., during result refinement).
 
-    Note: `embed_documents()` is NOT cached since document embeddings are
-    typically computed once during ingestion.
+    `embed_documents()` consults the same per-text LRU so add-path Phase 2
+    query embeds can be reused during Phase 3 persist.
 
-    Thread-safety: Uses cachetools.LRUCache which is thread-safe by default.
+    Thread-safety: cachetools.LRUCache is not thread-safe; access is locked.
 
     Example:
         ```python
@@ -53,12 +54,20 @@ class CachedEmbeddings(BaseModel):
     # Optional logger for cache hit/miss stats
     logger: IStructuredLogger | None = None
 
-    # Private cache state (LRUCache from cachetools - thread-safe by default)
     _cache: LRUCache[str, list[float]] = PrivateAttr(
         default_factory=lambda: LRUCache(maxsize=100)
     )
+    _cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _hits: int = PrivateAttr(default=0)
     _misses: int = PrivateAttr(default=0)
+
+    def model_post_init(self, _context: object, /) -> None:
+        """Bind LRU capacity to the configured cache_size."""
+        self._cache = LRUCache(maxsize=max(1, self.cache_size))
+
+    def _normalize_text(self, text: str) -> str:
+        """Match embedder newline collapsing so cache keys align."""
+        return text.replace("\n", " ")
 
     def _hash_query(self, text: str) -> str:
         """Compute SHA-256 hash of query text as cache key.
@@ -71,7 +80,7 @@ class CachedEmbeddings(BaseModel):
         Returns:
             SHA-256 hex digest of the text.
         """
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+        return hashlib.sha256(self._normalize_text(text).encode("utf-8")).hexdigest()
 
     def _get_cached(self, cache_key: str) -> list[float] | None:
         """Get cached embedding if exists (LRU access).
@@ -82,12 +91,13 @@ class CachedEmbeddings(BaseModel):
         Returns:
             Cached embedding if found, None otherwise.
         """
-        cached = self._cache.get(cache_key)
-        if cached is not None:
-            self._hits += 1
-        else:
-            self._misses += 1
-        return cached
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                self._hits += 1
+            else:
+                self._misses += 1
+            return cached
 
     def _set_cached(self, cache_key: str, embedding: list[float]) -> None:
         """Cache an embedding with LRU eviction (automatic).
@@ -96,7 +106,8 @@ class CachedEmbeddings(BaseModel):
             cache_key: SHA-256 hash of the query text.
             embedding: Embedding vector to cache.
         """
-        self._cache[cache_key] = embedding
+        with self._cache_lock:
+            self._cache[cache_key] = embedding
 
     def embed_query(self, text: str) -> list[float]:
         """Embed query text with LRU caching.
@@ -143,10 +154,7 @@ class CachedEmbeddings(BaseModel):
         return embedding
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed documents (not cached - pass through to wrapped embedder).
-
-        Document embeddings are typically computed once during ingestion,
-        so caching provides little benefit and could consume significant memory.
+        """Embed documents, reusing per-text LRU entries from embed_query.
 
         Args:
             texts: List of document texts to embed.
@@ -154,7 +162,27 @@ class CachedEmbeddings(BaseModel):
         Returns:
             List of embedding vectors.
         """
-        return self.embedder.embed_documents(texts)
+        if not self.enabled or not texts:
+            return self.embedder.embed_documents(texts)
+
+        results: list[list[float] | None] = [None] * len(texts)
+        miss_indices: list[int] = []
+        miss_texts: list[str] = []
+        for idx, text in enumerate(texts):
+            cached = self._get_cached(self._hash_query(text))
+            if cached is not None:
+                results[idx] = cached
+            else:
+                miss_indices.append(idx)
+                miss_texts.append(text)
+
+        if miss_texts:
+            computed = self.embedder.embed_documents(miss_texts)
+            for idx, embedding in zip(miss_indices, computed, strict=False):
+                self._set_cached(self._hash_query(texts[idx]), embedding)
+                results[idx] = embedding
+
+        return [embedding if embedding is not None else [] for embedding in results]
 
     async def aembed_query(self, text: str) -> list[float]:
         """Async version of embed_query with LRU caching.
@@ -201,7 +229,7 @@ class CachedEmbeddings(BaseModel):
         return embedding
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Async version of embed_documents (not cached - pass through).
+        """Async version of embed_documents with the same per-text LRU.
 
         Args:
             texts: List of document texts to embed.
@@ -209,7 +237,27 @@ class CachedEmbeddings(BaseModel):
         Returns:
             List of embedding vectors.
         """
-        return await self.embedder.aembed_documents(texts)
+        if not self.enabled or not texts:
+            return await self.embedder.aembed_documents(texts)
+
+        results: list[list[float] | None] = [None] * len(texts)
+        miss_indices: list[int] = []
+        miss_texts: list[str] = []
+        for idx, text in enumerate(texts):
+            cached = self._get_cached(self._hash_query(text))
+            if cached is not None:
+                results[idx] = cached
+            else:
+                miss_indices.append(idx)
+                miss_texts.append(text)
+
+        if miss_texts:
+            computed = await self.embedder.aembed_documents(miss_texts)
+            for idx, embedding in zip(miss_indices, computed, strict=False):
+                self._set_cached(self._hash_query(texts[idx]), embedding)
+                results[idx] = embedding
+
+        return [embedding if embedding is not None else [] for embedding in results]
 
     def get_cache_stats(self) -> dict[str, int | float]:
         """Get cache statistics.

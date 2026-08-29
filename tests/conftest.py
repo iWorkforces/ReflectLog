@@ -51,7 +51,7 @@ def mock_usearch_engine():
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
     engine.add_batch = MagicMock(
-        side_effect=lambda workspace_id, messages, infer: messages
+        side_effect=lambda workspace_id, messages=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else messages
     )
     # USearchEngine.get_all returns List[str] directly
     engine.get_all = MagicMock(return_value=[])
@@ -62,6 +62,7 @@ def mock_usearch_engine():
     engine.ensure_initialized = MagicMock(return_value=None)
     # Default constructed engines are not warmed; a bare MagicMock is truthy.
     engine.is_ready = MagicMock(return_value=False)
+    engine.get_id_by_content = MagicMock(return_value=None)
     return engine
 
 
