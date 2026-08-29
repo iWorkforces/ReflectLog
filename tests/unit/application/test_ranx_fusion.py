@@ -1,9 +1,10 @@
 '''Unit tests for RanxFusionEngine class.'''
 
 from typing import List, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from ranx import Run
 
 from reflectlog.application.memory.fusion import create_fusion_engine
 from reflectlog.application.memory.fusion.ranx_fusion import (
@@ -97,6 +98,24 @@ class TestRanxFusionEngineAlgorithm:
         # Order should be preserved (A was ranked higher)
         assert fused[0][0] == "A"
         assert fused[1][0] == "B"
+        assert fused[0][1] == pytest.approx(0.9)
+        assert fused[1][1] == pytest.approx(0.8)
+
+    def test_single_list_keeps_near_tied_scores_above_threshold(
+        self, engine: RanxFusionEngine
+    ) -> None:
+        """A single backend list must not min-max near-ties under 0.8."""
+        results1: List[Tuple[str, float]] = [("near-a", 0.91), ("near-b", 0.89)]
+        results2: List[Tuple[str, float]] = []
+
+        with patch.object(engine, "_fuse_rrf_numba") as numba:
+            fused = engine.fuse(results1, results2)
+
+        numba.assert_not_called()
+        assert [name for name, _score in fused] == ["near-a", "near-b"]
+        assert fused[0][1] == pytest.approx(0.91)
+        assert fused[1][1] == pytest.approx(0.89)
+        assert all(score >= 0.8 for _name, score in fused)
 
     def test_document_in_both_lists_ranks_higher(
         self, engine: RanxFusionEngine
@@ -233,6 +252,30 @@ class TestRanxFusionEngineDifferentMethods:
 
         # All scores should be non-negative
         assert all(score >= 0 for _, score in fused)
+
+    def test_weighted_rrf_retries_without_weights_on_typeerror(self) -> None:
+        """Installed ranx RRF TypeError on weights falls back to unweighted."""
+        mock_logger = MagicMock()
+        engine = RanxFusionEngine(
+            method="rrf", weights=[1.0, 0.5], logger=mock_logger
+        )
+        results1: List[Tuple[str, float]] = [("A", 0.9)]
+        results2: List[Tuple[str, float]] = [("B", 0.8)]
+
+        def fake_fuse(**kwargs):
+            params = kwargs.get("params") or {}
+            if isinstance(params, dict) and "weights" in params:
+                raise TypeError("fuse() got an unexpected keyword argument")
+            return Run({"q": {"A": 0.9, "B": 0.8}})
+
+        with patch(
+            "reflectlog.application.memory.fusion.ranx_fusion.ranx_fuse",
+            side_effect=fake_fuse,
+        ):
+            fused = engine.fuse(results1, results2)
+
+        assert {name for name, _score in fused} == {"A", "B"}
+        mock_logger.warning.assert_called()
 
 
 @pytest.mark.unit

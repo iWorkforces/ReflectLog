@@ -282,6 +282,13 @@ class RanxFusionEngine(FusionEngine):
         if not non_empty:
             return []
 
+        if len(non_empty) == 1:
+            # Keep original backend scores. Min-max on one list stretches the
+            # lowest hit to 0.0, and fusion_ranking_threshold=0.8 then drops it.
+            return self._convert_from_run(
+                self._convert_to_run(non_empty[0], name="run_0")
+            )
+
         if self._method == "rrf" and self._weights is None:
             return self._fuse_rrf_numba(non_empty)
 
@@ -327,18 +334,17 @@ class RanxFusionEngine(FusionEngine):
         # ranx.fuse() requires at least 2 runs - handle single run case
         if len(runs) == 1:
             sorted_results = self._convert_from_run(runs[0])
-            normalized_results = self._normalize_output_scores(sorted_results)
             if self.logger:
                 self.logger.debug(
-                    f"Single result set - no fusion needed: {len(normalized_results)} results",
+                    f"Single result set - no fusion needed: {len(sorted_results)} results",
                     extra={
                         "method": self._method,
                         "input_sets": len(result_sets),
                         "non_empty_sets": 1,
-                        "unique_count": len(normalized_results),
+                        "unique_count": len(sorted_results),
                     },
                 )
-            return normalized_results
+            return sorted_results
 
         # Build params for ranx.fuse()
         params: dict[str, Any] | None = None
@@ -347,13 +353,29 @@ class RanxFusionEngine(FusionEngine):
             if self._weights is not None:
                 params["weights"] = self._weights
 
-        # Perform fusion
-        combined = ranx_fuse(
-            runs=runs,
-            norm=self._normalization,
-            method=self._method,
-            params=params,
-        )
+        try:
+            combined = ranx_fuse(
+                runs=runs,
+                norm=self._normalization,
+                method=self._method,
+                params=params,
+            )
+        except TypeError:
+            if params is not None and "weights" in params:
+                params = {key: value for key, value in params.items() if key != "weights"}
+                if self.logger:
+                    self.logger.warning(
+                        "ranx RRF does not accept weights; fusing without them",
+                        extra={"method": self._method},
+                    )
+                combined = ranx_fuse(
+                    runs=runs,
+                    norm=self._normalization,
+                    method=self._method,
+                    params=params,
+                )
+            else:
+                raise
 
         # Convert back to tuple format
         sorted_results = self._convert_from_run(combined)
