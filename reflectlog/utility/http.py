@@ -298,9 +298,12 @@ class HttpClientFactory:
             return
 
         def _run_aclose() -> None:
-            asyncio.run(_aclose())
+            try:
+                asyncio.run(_aclose())
+            except Exception:
+                return
 
-        closer = threading.Thread(target=_run_aclose, name="http-aclose", daemon=False)
+        closer = threading.Thread(target=_run_aclose, name="http-aclose", daemon=True)
         closer.start()
         closer.join(timeout=5.0)
 
