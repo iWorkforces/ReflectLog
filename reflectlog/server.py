@@ -184,7 +184,7 @@ def main() -> None:
         server = _start_server(output_stream, startup_start_time, startup_phases)
         # Warmup after signal handlers so Ctrl-C during JIT still closes cleanly.
         extra_phases = _run_numba_warmup(output_stream)
-        existing = getattr(server._memory_manager, "startup_metrics", None)
+        existing = server.startup_metrics
         merged: dict[str, float] = dict(startup_phases)
         if isinstance(existing, dict):
             for key, value in existing.items():

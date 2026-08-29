@@ -78,9 +78,10 @@ class TestApplyPendingTransition:
         semantic.get_id_by_content.side_effect = [None, 99, 99, None]
         semantic.index = {99}
         tantivy = MagicMock()
-        tantivy.find_by_exact_match.side_effect = (
-            lambda _pid, content: [content] if content == "new convention" else []
-        )
+        def find_existing(_workspace_id: str, content: str) -> list[str]:
+            return [content] if content == "new convention" else []
+
+        tantivy.find_by_exact_match.side_effect = find_existing
 
         _ = apply_pending_transition(
             _transition(),
@@ -95,9 +96,10 @@ class TestApplyPendingTransition:
 
     def test_reindexes_missing_vector(self) -> None:
         semantic = MagicMock()
-        semantic.get_id_by_content.side_effect = lambda _ws, content: (
-            7 if content == "new convention" else None
-        )
+        def get_new_id(_workspace_id: str, content: str) -> int | None:
+            return 7 if content == "new convention" else None
+
+        semantic.get_id_by_content.side_effect = get_new_id
         semantic.index = set()
 
         def add_and_index(**_kwargs: object) -> None:
@@ -123,12 +125,16 @@ class TestApplyPendingTransition:
 
     def test_skips_tantivy_delete_when_old_text_was_readded(self) -> None:
         semantic = MagicMock()
-        semantic.get_id_by_content.side_effect = lambda _ws, content: (
-            22 if content == "old convention" else 99
-        )
+        def get_current_id(_workspace_id: str, content: str) -> int:
+            return 22 if content == "old convention" else 99
+
+        semantic.get_id_by_content.side_effect = get_current_id
         semantic.index = {99}
         tantivy = MagicMock()
-        tantivy.find_by_exact_match.side_effect = lambda _ws, content: [content]
+        def find_all(_workspace_id: str, content: str) -> list[str]:
+            return [content]
+
+        tantivy.find_by_exact_match.side_effect = find_all
 
         completed = apply_pending_transition(
             _transition(),
@@ -143,12 +149,16 @@ class TestApplyPendingTransition:
 
     def test_leaves_pending_when_tantivy_still_has_old(self) -> None:
         semantic = MagicMock()
-        semantic.get_id_by_content.side_effect = lambda _ws, content: (
-            99 if content == "new convention" else None
-        )
+        def get_replacement_id(_workspace_id: str, content: str) -> int | None:
+            return 99 if content == "new convention" else None
+
+        semantic.get_id_by_content.side_effect = get_replacement_id
         semantic.index = {99}
         tantivy = MagicMock()
-        tantivy.find_by_exact_match.side_effect = lambda _ws, content: [content]
+        def find_all(_workspace_id: str, content: str) -> list[str]:
+            return [content]
+
+        tantivy.find_by_exact_match.side_effect = find_all
 
         completed = apply_pending_transition(
             _transition(),
@@ -195,9 +205,10 @@ class TestApplyPendingTransition:
 
     def test_converged_requires_old_id_gone(self) -> None:
         semantic = MagicMock()
-        semantic.get_id_by_content.side_effect = lambda _ws, content: (
-            11 if content == "old convention" else 99
-        )
+        def get_live_id(_workspace_id: str, content: str) -> int:
+            return 11 if content == "old convention" else 99
+
+        semantic.get_id_by_content.side_effect = get_live_id
         semantic.index = {99}
         assert (
             replacement_converged(
@@ -208,12 +219,16 @@ class TestApplyPendingTransition:
 
     def test_converged_when_old_text_live_under_new_id(self) -> None:
         semantic = MagicMock()
-        semantic.get_id_by_content.side_effect = lambda _ws, content: (
-            22 if content == "old convention" else 99
-        )
+        def get_live_id(_workspace_id: str, content: str) -> int:
+            return 22 if content == "old convention" else 99
+
+        semantic.get_id_by_content.side_effect = get_live_id
         semantic.index = {99}
         tantivy = MagicMock()
-        tantivy.find_by_exact_match.side_effect = lambda _ws, content: [content]
+        def find_all(_workspace_id: str, content: str) -> list[str]:
+            return [content]
+
+        tantivy.find_by_exact_match.side_effect = find_all
         assert (
             replacement_converged(
                 _transition(), semantic_engine=semantic, tantivy_engine=tantivy
@@ -386,14 +401,16 @@ class TestReconcilePendingReplacements:
             )
             semantic = MagicMock()
             semantic.memory_store = store
-            semantic.get_id_by_content.side_effect = lambda _ws, content: (
-                99 if content == "new convention" else None
-            )
+            def get_replacement_id(_workspace_id: str, content: str) -> int | None:
+                return 99 if content == "new convention" else None
+
+            semantic.get_id_by_content.side_effect = get_replacement_id
             semantic.index = {99}
             tantivy = MagicMock()
-            tantivy.find_by_exact_match.side_effect = (
-                lambda _ws, content: [content]
-            )
+            def find_all(_workspace_id: str, content: str) -> list[str]:
+                return [content]
+
+            tantivy.find_by_exact_match.side_effect = find_all
 
             count = reconcile_pending_replacements(
                 semantic_engine=semantic,

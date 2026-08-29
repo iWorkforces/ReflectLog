@@ -68,7 +68,7 @@ class TestSmartReplacerDegradation:
         # Use ConnectionError which is a retryable exception type
         call_count = 0
 
-        async def mock_create(*args, **kwargs):
+        async def mock_create(*args: str, **kwargs: str) -> Mock:
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
@@ -253,7 +253,7 @@ class TestSmartReplacerDegradation:
         )
 
         # Mock the LLM client to take too long
-        async def mock_create(*args, **kwargs):
+        async def mock_create(*args: str, **kwargs: str) -> Mock:
             await asyncio.sleep(1)  # Sleep longer than timeout
             mock_response = Mock()
             mock_response.choices = [Mock()]

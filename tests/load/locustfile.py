@@ -15,9 +15,62 @@ Usage:
 '''
 
 import time
-from locust import HttpUser, task, between, events  # type: ignore
-from locust.runners import LOCUST_MODE_LOCAL  # type: ignore
+from collections.abc import Callable, Sequence
+from datetime import timedelta
 from random import randint
+from typing import TYPE_CHECKING, ParamSpec, Protocol
+
+
+class HttpClient(Protocol):
+    def get(self, path: str) -> None: ...
+
+    def post(self, path: str, *, json: dict[str, str | list[str]]) -> None: ...
+
+
+class EventHook(Protocol):
+    def add_listener[**P](self, listener: Callable[P, None]) -> Callable[P, None]: ...
+
+
+class TestEventHook(Protocol):
+    def add[**P](self, listener: Callable[P, None]) -> Callable[P, None]: ...
+
+
+class RequestEvent(Protocol):
+    def fire(self, *, request_type: str, name: str | None) -> None: ...
+
+
+class RequestTime(Protocol):
+    def get(self) -> timedelta: ...
+
+
+class LocustEvents(Protocol):
+    init: EventHook
+    request: RequestEvent
+    request_time: RequestTime
+    test: TestEventHook
+
+
+P = ParamSpec("P")
+
+if TYPE_CHECKING:
+    class HttpUser:
+        client: HttpClient
+
+        def wait(self) -> None: ...
+
+    def between(min_wait: int, max_wait: int) -> Callable[[], float]: ...
+
+    def task(function: Callable[P, None]) -> Callable[P, None]: ...
+
+    class StaticEvents:
+        init: EventHook
+        request: RequestEvent
+        request_time: RequestTime
+        test: TestEventHook
+
+    events: LocustEvents = StaticEvents()
+else:
+    from locust import HttpUser, between, events, task
 
 
 class ReflectLogUser(HttpUser):
@@ -83,17 +136,17 @@ class ReflectLogUser(HttpUser):
         self.client.get("/mcp/health_check")
         self.wait()
 
-    def on_start(self, *args: object, **kwargs: object) -> None:
+    def on_start(self) -> None:
         '''Called when user starts a task.'''
         pass
 
-    def on_stop(self, *args: object, **kwargs: object) -> None:
+    def on_stop(self) -> None:
         '''Called when user stops a task.'''
         pass
 
 
 @events.init.add_listener
-def on_request(request_type: str, name: str | None, **kwargs: object) -> None:
+def on_request(request_type: str, name: str | None) -> None:
     '''Track request metrics for analysis.
 
     Args:
@@ -173,7 +226,7 @@ def test_mixed_workload(user: ReflectLogUser):
 
 
 @events.test.add
-def test_concurrent_users(user_factory):
+def test_concurrent_users(user_factory: Callable[[], ReflectLogUser]) -> None:
     '''Test system behavior under concurrent user load.
 
     Identifies bottlenecks and resource contention.
@@ -190,7 +243,9 @@ def test_concurrent_users(user_factory):
     )
 
 
-def run_locust_users(users, spawn_rate: float, run_time: int = 60):
+def run_locust_users(
+    users: Sequence[ReflectLogUser], spawn_rate: float, run_time: int = 60
+) -> None:
     '''Run Locust with specified parameters.
 
     Args:

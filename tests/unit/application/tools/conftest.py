@@ -8,13 +8,12 @@ from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.add_phases import AddResult
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.tools.add import AddTool
-from reflectlog.application.tools.base import BaseTool
 from reflectlog.application.tools.remove import RemoveTool
 from reflectlog.application.tools.search import SearchTool
 
 
 @pytest.fixture
-def mock_config(set_env_vars) -> Config:
+def mock_config(set_env_vars: dict[str, str]) -> Config:
     """Create a Config from test environment variables."""
     return Config.from_environment()
 
@@ -54,7 +53,9 @@ def mock_tool_logger() -> MagicMock:
 
 
 @pytest.fixture
-def add_tool_instance(mock_config, mock_memory_manager, mock_tool_logger) -> AddTool:
+def add_tool_instance(
+    mock_config: Config, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+) -> AddTool:
     """Create an AddTool instance with mocked dependencies."""
     return AddTool(
         config=mock_config, memory_manager=mock_memory_manager, logger=mock_tool_logger
@@ -63,7 +64,7 @@ def add_tool_instance(mock_config, mock_memory_manager, mock_tool_logger) -> Add
 
 @pytest.fixture
 def search_tool_instance(
-    mock_config, mock_memory_manager, mock_tool_logger
+    mock_config: Config, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
 ) -> SearchTool:
     """Create a SearchTool instance with mocked dependencies."""
     return SearchTool(
@@ -73,7 +74,7 @@ def search_tool_instance(
 
 @pytest.fixture
 def remove_tool_instance(
-    mock_config, mock_memory_manager, mock_tool_logger
+    mock_config: Config, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
 ) -> RemoveTool:
     """Create a RemoveTool instance with mocked dependencies."""
     return RemoveTool(

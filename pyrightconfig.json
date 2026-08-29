@@ -1,6 +1,7 @@
 {
   "include": [
-    "reflectlog"
+    "reflectlog",
+    "tests"
   ],
   "exclude": [
     "**/__pycache__",

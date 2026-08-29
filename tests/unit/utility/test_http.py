@@ -77,27 +77,27 @@ class TestHttpFactoryInterface:
 class TestDefaultConfiguration:
     """Test default configuration values."""
 
-    def test_default_max_connections(self, monkeypatch) -> None:
+    def test_default_max_connections(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default max_connections is 100."""
         monkeypatch.delenv("HTTP_MAX_CONNECTIONS", raising=False)
         assert HttpClientFactory.get_max_connections() == 100
 
-    def test_default_max_keepalive(self, monkeypatch) -> None:
+    def test_default_max_keepalive(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default max_keepalive_connections is 20."""
         monkeypatch.delenv("HTTP_MAX_KEEPALIVE_CONNECTIONS", raising=False)
         assert HttpClientFactory.get_max_keepalive_connections() == 20
 
-    def test_default_connect_timeout(self, monkeypatch) -> None:
+    def test_default_connect_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default connect timeout is 30.0."""
         monkeypatch.delenv("HTTP_CONNECT_TIMEOUT", raising=False)
         assert HttpClientFactory.get_connect_timeout() == 30.0
 
-    def test_default_read_timeout(self, monkeypatch) -> None:
+    def test_default_read_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default read timeout is 30.0."""
         monkeypatch.delenv("HTTP_READ_TIMEOUT", raising=False)
         assert HttpClientFactory.get_read_timeout() == 30.0
 
-    def test_default_write_timeout(self, monkeypatch) -> None:
+    def test_default_write_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default write timeout is 30.0."""
         monkeypatch.delenv("HTTP_WRITE_TIMEOUT", raising=False)
         assert HttpClientFactory.get_write_timeout() == 30.0
@@ -106,27 +106,27 @@ class TestDefaultConfiguration:
 class TestEnvOverrides:
     """Test environment variable overrides."""
 
-    def test_env_max_connections(self, monkeypatch) -> None:
+    def test_env_max_connections(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """HTTP_MAX_CONNECTIONS env var overrides default."""
         monkeypatch.setenv("HTTP_MAX_CONNECTIONS", "200")
         assert HttpClientFactory.get_max_connections() == 200
 
-    def test_env_max_keepalive(self, monkeypatch) -> None:
+    def test_env_max_keepalive(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """HTTP_MAX_KEEPALIVE_CONNECTIONS env var overrides default."""
         monkeypatch.setenv("HTTP_MAX_KEEPALIVE_CONNECTIONS", "50")
         assert HttpClientFactory.get_max_keepalive_connections() == 50
 
-    def test_env_connect_timeout(self, monkeypatch) -> None:
+    def test_env_connect_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """HTTP_CONNECT_TIMEOUT env var overrides default."""
         monkeypatch.setenv("HTTP_CONNECT_TIMEOUT", "10.0")
         assert HttpClientFactory.get_connect_timeout() == 10.0
 
-    def test_env_read_timeout(self, monkeypatch) -> None:
+    def test_env_read_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """HTTP_READ_TIMEOUT env var overrides default."""
         monkeypatch.setenv("HTTP_READ_TIMEOUT", "15.0")
         assert HttpClientFactory.get_read_timeout() == 15.0
 
-    def test_env_write_timeout(self, monkeypatch) -> None:
+    def test_env_write_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """HTTP_WRITE_TIMEOUT env var overrides default."""
         monkeypatch.setenv("HTTP_WRITE_TIMEOUT", "45.0")
         assert HttpClientFactory.get_write_timeout() == 45.0
@@ -135,7 +135,7 @@ class TestEnvOverrides:
 class TestHttpxLimitsAndTimeout:
     """Test httpx Limits and Timeout construction."""
 
-    def test_get_httpx_limits(self, monkeypatch) -> None:
+    def test_get_httpx_limits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """get_httpx_limits returns configured Limits object."""
         monkeypatch.setenv("HTTP_MAX_CONNECTIONS", "150")
         monkeypatch.setenv("HTTP_MAX_KEEPALIVE_CONNECTIONS", "30")
@@ -144,7 +144,7 @@ class TestHttpxLimitsAndTimeout:
         assert limits.max_connections == 150
         assert limits.max_keepalive_connections == 30
 
-    def test_get_httpx_timeout(self, monkeypatch) -> None:
+    def test_get_httpx_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """get_httpx_timeout returns configured Timeout object."""
         monkeypatch.setenv("HTTP_CONNECT_TIMEOUT", "5.0")
         monkeypatch.setenv("HTTP_READ_TIMEOUT", "10.0")

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from typing import cast
 
 import pytest
+from pytest import MonkeyPatch
 
 from reflectlog.core.prompts import (
     INSTRUCTIONS_HEADER,
@@ -12,6 +13,7 @@ from reflectlog.core.prompts import (
     build_instructions,
 )
 from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.mcp_server import FastMCPServer
 
 
 @pytest.mark.unit
@@ -111,7 +113,9 @@ class TestBuildInstructions:
 class TestToolInstructionSnippets:
     """Tests for tool get_instruction_snippet() implementations."""
 
-    def test_add_tool_snippet_format(self, mock_memory_class, set_env_vars):
+    def test_add_tool_snippet_format(
+        self, mock_memory_class: MagicMock, set_env_vars: None
+    ) -> None:
         """Test AddTool provides properly formatted snippet."""
         from reflectlog.application.tools.add import AddTool
 
@@ -128,7 +132,9 @@ class TestToolInstructionSnippets:
         )
         assert snippet.startswith("    •")
 
-    def test_get_all_tool_snippet_format(self, mock_memory_class, set_env_vars):
+    def test_get_all_tool_snippet_format(
+        self, mock_memory_class: MagicMock, set_env_vars: None
+    ) -> None:
         """Test GetAllTool provides properly formatted snippet."""
         from reflectlog.application.tools.get_all import GetAllTool
 
@@ -143,7 +149,9 @@ class TestToolInstructionSnippets:
         assert "list[str]" in snippet
         assert snippet.startswith("    •")
 
-    def test_search_tool_snippet_format(self, mock_memory_class, set_env_vars):
+    def test_search_tool_snippet_format(
+        self, mock_memory_class: MagicMock, set_env_vars: None
+    ) -> None:
         """Test SearchTool provides properly formatted snippet."""
         from reflectlog.application.tools.search import SearchTool
 
@@ -158,7 +166,9 @@ class TestToolInstructionSnippets:
         assert "semantic" in snippet.lower()
         assert snippet.startswith("    •")
 
-    def test_remove_tool_snippet_format(self, mock_memory_class, set_env_vars):
+    def test_remove_tool_snippet_format(
+        self, mock_memory_class: MagicMock, set_env_vars: None
+    ) -> None:
         """Test RemoveTool provides properly formatted snippet."""
         from reflectlog.application.tools.remove import RemoveTool
 
@@ -179,8 +189,8 @@ class TestDynamicInstructionsIntegration:
     """Test suite for dynamic MCP instructions with FastMCPServer."""
 
     def _build_server_and_capture_instructions(
-        self, monkeypatch, allowed_value: str | None
-    ):
+        self, monkeypatch: MonkeyPatch, allowed_value: str | None
+    ) -> tuple[FastMCPServer, str]:
         """Helper to create a FastMCPServer and capture the instructions."""
         monkeypatch.setenv("WORKSPACE_ID", "test_project")
         monkeypatch.setenv("OPENROUTER_API_KEY", "test_api_key")
@@ -190,9 +200,9 @@ class TestDynamicInstructionsIntegration:
         else:
             monkeypatch.setenv("ALLOWED_TOOLS", allowed_value)
 
-        captured_instructions = None
+        captured_instructions = ""
 
-        def capture_fastmcp(*args, **kwargs):
+        def capture_fastmcp(*args: str, **kwargs: str) -> MagicMock:
             nonlocal captured_instructions
             captured_instructions = kwargs.get("instructions", "")
             return MagicMock()
@@ -217,7 +227,9 @@ class TestDynamicInstructionsIntegration:
 
         return server, captured_instructions
 
-    def test_instructions_include_all_tools_when_no_restriction(self, monkeypatch):
+    def test_instructions_include_all_tools_when_no_restriction(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
         """Instructions should include all tools when ALLOWED_TOOLS is not set."""
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, None
@@ -228,7 +240,9 @@ class TestDynamicInstructionsIntegration:
         assert "search(query: str)" in instructions
         assert "remove(memories: list[str])" in instructions
 
-    def test_instructions_include_only_allowed_tools(self, monkeypatch):
+    def test_instructions_include_only_allowed_tools(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
         """Instructions should only document tools that are allowed."""
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "add,search"
@@ -239,7 +253,7 @@ class TestDynamicInstructionsIntegration:
         assert "get_all()" not in instructions
         assert "remove(memories: list[str])" not in instructions
 
-    def test_instructions_single_tool(self, monkeypatch):
+    def test_instructions_single_tool(self, monkeypatch: MonkeyPatch) -> None:
         """Instructions should work correctly with single tool."""
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "get_all"
@@ -250,7 +264,9 @@ class TestDynamicInstructionsIntegration:
         assert "search(query: str)" not in instructions
         assert "remove(memories: list[str])" not in instructions
 
-    def test_instructions_show_no_tools_message_when_none_enabled(self, monkeypatch):
+    def test_instructions_show_no_tools_message_when_none_enabled(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
         """Instructions should indicate no tools when none are enabled."""
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "none"
@@ -259,7 +275,9 @@ class TestDynamicInstructionsIntegration:
         assert "(No tools available)" in instructions
         assert "add(memories: list[str])" not in instructions
 
-    def test_instructions_header_always_present(self, monkeypatch):
+    def test_instructions_header_always_present(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
         """Server description header should always be included."""
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "add"

@@ -297,6 +297,10 @@ class FastMCPServer:
         """
         self._memory_manager.startup_metrics = metrics
 
+    @property
+    def startup_metrics(self) -> dict[str, float] | None:
+        return self._memory_manager.startup_metrics
+
 
 def main() -> None:
     """Entry point for the ReflectLog server.

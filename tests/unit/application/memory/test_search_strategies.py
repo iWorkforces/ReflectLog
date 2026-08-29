@@ -4,7 +4,6 @@ Covers uncovered lines: 128-137, 295, 365, 374-378, 451, 457, 475,
 493-495, 538-573, 671-683.
 """
 
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -19,7 +18,6 @@ from reflectlog.application.memory.search_strategies import (
     calculate_adaptive_overfetch,
 )
 from reflectlog.application.utils.logging import StructuredLogger
-from reflectlog.core.logging import IStructuredLogger
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +26,7 @@ from reflectlog.core.logging import IStructuredLogger
 
 
 @pytest.fixture
-def mock_config() -> Mock:
+def mock_config() -> Config:
     """Minimal mock Config for search_strategies tests."""
     config = Mock(spec=Config)
     config.workspace_id = "test_project"
@@ -44,9 +42,9 @@ def mock_config() -> Mock:
 
 
 @pytest.fixture
-def mock_logger() -> IStructuredLogger:
+def mock_logger() -> Mock:
     """Mock structured logger."""
-    return cast(IStructuredLogger, Mock(spec=StructuredLogger))
+    return Mock(spec=StructuredLogger)
 
 
 @pytest.fixture
@@ -86,12 +84,12 @@ def mock_memory_manager() -> MagicMock:
 
 @pytest.fixture
 def pipeline(
-    mock_semantic_engine,
-    mock_tantivy_engine,
-    mock_fusion_engine,
-    mock_config,
-    mock_logger,
-    mock_memory_manager,
+    mock_semantic_engine: MagicMock,
+    mock_tantivy_engine: MagicMock,
+    mock_fusion_engine: MagicMock,
+    mock_config: Config,
+    mock_logger: Mock,
+    mock_memory_manager: MagicMock,
 ) -> SearchPipeline:
     """Construct a SearchPipeline with mocked dependencies."""
     return SearchPipeline(
@@ -171,7 +169,7 @@ class TestSearchPipelineExecute:
 
     @pytest.mark.asyncio
     async def test_execute_raises_search_error_on_failure(
-        self, pipeline, mock_semantic_engine, mock_logger
+        self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock, mock_logger: Mock
     ) -> None:
         """execute() wraps unexpected exceptions in SearchError (lines 128-137)."""
         mock_semantic_engine.search.side_effect = RuntimeError("engine boom")
@@ -184,7 +182,7 @@ class TestSearchPipelineExecute:
         mock_logger.error.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_execute_semantic_only(self, pipeline, mock_semantic_engine) -> None:
+    async def test_execute_semantic_only(self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock) -> None:
         """Semantic-only search when hybrid is disabled."""
         mock_semantic_engine.search.return_value = [
             ("msg1", 0.9, "2025-01-01T00:00:00Z"),
@@ -199,10 +197,10 @@ class TestSearchPipelineExecute:
     @pytest.mark.asyncio
     async def test_execute_hybrid_search(
         self,
-        pipeline,
-        mock_semantic_engine,
-        mock_tantivy_engine,
-        mock_fusion_engine,
+        pipeline: SearchPipeline,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_fusion_engine: MagicMock,
     ) -> None:
         """Hybrid search invokes full pipeline."""
         mock_semantic_engine.search.return_value = [
@@ -230,11 +228,11 @@ class TestSearchTantivy:
     @pytest.mark.asyncio
     async def test_returns_empty_when_tantivy_is_none(
         self,
-        mock_config,
-        mock_logger,
-        mock_fusion_engine,
-        mock_semantic_engine,
-        mock_memory_manager,
+        mock_config: Config,
+        mock_logger: Mock,
+        mock_fusion_engine: MagicMock,
+        mock_semantic_engine: MagicMock,
+        mock_memory_manager: MagicMock,
     ) -> None:
         """_search_tantivy() returns [] when tantivy_engine is None (line 295)."""
         pipeline = SearchPipeline(
@@ -259,7 +257,7 @@ class TestSearchTantivy:
 class TestConcatenateResults:
     """Tests for _concatenate_results()."""
 
-    def test_limit_reached_during_semantic(self, pipeline) -> None:
+    def test_limit_reached_during_semantic(self, pipeline: SearchPipeline) -> None:
         """Stops adding semantic results once limit is reached (line 365)."""
         semantic = [("s1", 0.9), ("s2", 0.8), ("s3", 0.7)]
         tantivy = [("t1", 0.6)]
@@ -270,7 +268,7 @@ class TestConcatenateResults:
         assert combined[0][0] == "s1"
         assert combined[1][0] == "s2"
 
-    def test_limit_reached_during_tantivy(self, pipeline) -> None:
+    def test_limit_reached_during_tantivy(self, pipeline: SearchPipeline) -> None:
         """Stops adding tantivy results once limit is reached (lines 374-378)."""
         semantic = [("s1", 0.9)]
         tantivy = [("t1", 0.6), ("t2", 0.5), ("t3", 0.4)]
@@ -281,7 +279,7 @@ class TestConcatenateResults:
         assert combined[0][0] == "s1"
         assert combined[1][0] == "t1"
 
-    def test_deduplication_across_engines(self, pipeline) -> None:
+    def test_deduplication_across_engines(self, pipeline: SearchPipeline) -> None:
         """Duplicate memories across engines are skipped."""
         semantic = [("shared", 0.9)]
         tantivy = [("shared", 0.6), ("unique", 0.5)]
@@ -303,7 +301,7 @@ class TestGetReranker:
     """Tests for _get_reranker()."""
 
     def test_returns_none_when_memory_manager_is_none(
-        self, mock_config, mock_logger, mock_fusion_engine, mock_semantic_engine
+        self, mock_config: Config, mock_logger: Mock, mock_fusion_engine: MagicMock, mock_semantic_engine: MagicMock
     ) -> None:
         """_get_reranker() returns (None, None) when memory_manager is None (line 451)."""
         pipeline = SearchPipeline(
@@ -320,7 +318,7 @@ class TestGetReranker:
         assert rinstance is None
 
     def test_returns_cross_encoder_reranker(
-        self, pipeline, mock_config, mock_memory_manager
+        self, pipeline: SearchPipeline, mock_config: Config, mock_memory_manager: MagicMock
     ) -> None:
         """Returns ("cross_encoder", reranker) when configured (line 457)."""
         mock_config.reranker_engine = "cross_encoder"
@@ -332,7 +330,7 @@ class TestGetReranker:
         assert rinstance is mock_reranker
 
     def test_returns_none_when_reranker_is_none(
-        self, pipeline, mock_config, mock_memory_manager
+        self, pipeline: SearchPipeline, mock_config: Config, mock_memory_manager: MagicMock
     ) -> None:
         """Returns (None, None) when no lazy reranker instance is available."""
         mock_config.reranker_engine = "cross_encoder"
@@ -354,7 +352,7 @@ class TestStep4Reranking:
 
     @pytest.mark.asyncio
     async def test_cross_encoder_path(
-        self, pipeline, mock_config, mock_memory_manager
+        self, pipeline: SearchPipeline, mock_config: Config, mock_memory_manager: MagicMock
     ) -> None:
         """_step4_reranking() delegates to _rerank_cross_encoder (line 475)."""
         mock_config.reranker_engine = "cross_encoder"
@@ -372,7 +370,7 @@ class TestStep4Reranking:
 
     @pytest.mark.asyncio
     async def test_no_reranker_returns_original(
-        self, pipeline, mock_config, mock_memory_manager
+        self, pipeline: SearchPipeline, mock_config: Config, mock_memory_manager: MagicMock
     ) -> None:
         """When no reranker is configured, returns results unchanged."""
         mock_config.reranker_engine = "none"
@@ -396,7 +394,7 @@ class TestRerankCrossEncoder:
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_reranker_provided(
-        self, pipeline, mock_config, mock_memory_manager
+        self, pipeline: SearchPipeline, mock_config: Config, mock_memory_manager: MagicMock
     ) -> None:
         """Returns results unmodified when cross_encoder_reranker is None (lines 538-541)."""
         mock_config.reranker_engine = "none"
@@ -412,7 +410,7 @@ class TestRerankCrossEncoder:
 
     @pytest.mark.asyncio
     async def test_cross_encoder_reranking_with_provided_reranker(
-        self, pipeline, mock_config, mock_logger
+        self, pipeline: SearchPipeline, mock_config: Config, mock_logger: Mock
     ) -> None:
         """Full cross-encoder reranking path (lines 543-573)."""
         mock_reranker = AsyncMock()
@@ -441,7 +439,7 @@ class TestRerankCrossEncoder:
 class TestCalculateAdaptiveOverfetch:
     """Tests for calculate_adaptive_overfetch()."""
 
-    def test_static_multiplier_when_adaptive_disabled(self, mock_config) -> None:
+    def test_static_multiplier_when_adaptive_disabled(self, mock_config: Config) -> None:
         """Uses static multiplier when adaptive is disabled."""
         mock_config.overfetch_adaptive = False
         mock_config.overfetch_multiplier = 3
@@ -449,7 +447,7 @@ class TestCalculateAdaptiveOverfetch:
         result = calculate_adaptive_overfetch(5, 500, mock_config)
         assert result == max(5 * 3, MIN_OVERFETCH_LIMIT)
 
-    def test_static_multiplier_when_index_empty(self, mock_config) -> None:
+    def test_static_multiplier_when_index_empty(self, mock_config: Config) -> None:
         """Uses static multiplier when index_size is 0."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_multiplier = 3
@@ -457,7 +455,7 @@ class TestCalculateAdaptiveOverfetch:
         result = calculate_adaptive_overfetch(5, 0, mock_config)
         assert result == max(5 * 3, MIN_OVERFETCH_LIMIT)
 
-    def test_max_multiplier_for_small_index(self, mock_config) -> None:
+    def test_max_multiplier_for_small_index(self, mock_config: Config) -> None:
         """Uses max multiplier for small indexes (<= 100)."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
@@ -466,7 +464,7 @@ class TestCalculateAdaptiveOverfetch:
         result = calculate_adaptive_overfetch(10, 50, mock_config)
         assert result == int(10 * 3.0)
 
-    def test_min_multiplier_for_large_index(self, mock_config) -> None:
+    def test_min_multiplier_for_large_index(self, mock_config: Config) -> None:
         """Uses min multiplier for large indexes (>= 10000)."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
@@ -475,7 +473,7 @@ class TestCalculateAdaptiveOverfetch:
         result = calculate_adaptive_overfetch(10, 10000, mock_config)
         assert result == max(int(10 * 1.5), MIN_OVERFETCH_LIMIT)
 
-    def test_logarithmic_interpolation_mid_index(self, mock_config) -> None:
+    def test_logarithmic_interpolation_mid_index(self, mock_config: Config) -> None:
         """Logarithmic interpolation for mid-range index (lines 671-683)."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
@@ -488,7 +486,7 @@ class TestCalculateAdaptiveOverfetch:
         # And above the minimum overfetch limit
         assert result >= MIN_OVERFETCH_LIMIT
 
-    def test_minimum_overfetch_limit_enforced(self, mock_config) -> None:
+    def test_minimum_overfetch_limit_enforced(self, mock_config: Config) -> None:
         """Result is never below MIN_OVERFETCH_LIMIT."""
         mock_config.overfetch_adaptive = False
         mock_config.overfetch_multiplier = 1
@@ -496,7 +494,7 @@ class TestCalculateAdaptiveOverfetch:
         result = calculate_adaptive_overfetch(1, 0, mock_config)
         assert result >= MIN_OVERFETCH_LIMIT
 
-    def test_interpolation_at_boundary_100(self, mock_config) -> None:
+    def test_interpolation_at_boundary_100(self, mock_config: Config) -> None:
         """Exact boundary at index_size=100 yields max multiplier."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
@@ -505,7 +503,7 @@ class TestCalculateAdaptiveOverfetch:
         result = calculate_adaptive_overfetch(10, 100, mock_config)
         assert result == int(10 * 3.0)
 
-    def test_interpolation_at_boundary_10000(self, mock_config) -> None:
+    def test_interpolation_at_boundary_10000(self, mock_config: Config) -> None:
         """Exact boundary at index_size=10000 yields min multiplier."""
         mock_config.overfetch_adaptive = True
         mock_config.overfetch_max_multiplier = 3.0
@@ -527,11 +525,11 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_rrf_fusion_filters_all_results(
         self,
-        pipeline,
-        mock_semantic_engine,
-        mock_tantivy_engine,
-        mock_fusion_engine,
-        mock_config,
+        pipeline: SearchPipeline,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_fusion_engine: MagicMock,
+        mock_config: Config,
     ) -> None:
         """When all fused results are below threshold, returns empty."""
         mock_semantic_engine.search.return_value = [
@@ -549,12 +547,12 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_single_result_skips_reranking(
         self,
-        pipeline,
-        mock_semantic_engine,
-        mock_tantivy_engine,
-        mock_fusion_engine,
-        mock_config,
-        mock_logger,
+        pipeline: SearchPipeline,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_fusion_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
     ) -> None:
         """A single result after fusion skips reranking."""
         mock_semantic_engine.search.return_value = [
@@ -577,11 +575,11 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_concatenation_mode_skips_fusion_threshold(
         self,
-        pipeline,
-        mock_semantic_engine,
-        mock_tantivy_engine,
-        mock_config,
-        mock_logger,
+        pipeline: SearchPipeline,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
     ) -> None:
         """When RRF fusion disabled, uses concatenation (no threshold step)."""
         mock_semantic_engine.search.return_value = [
@@ -610,7 +608,7 @@ class TestSearchSemantic:
 
     @pytest.mark.asyncio
     async def test_fallback_on_error(
-        self, pipeline, mock_semantic_engine, mock_logger
+        self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock, mock_logger: Mock
     ) -> None:
         """Returns empty list and logs warning on exception."""
         mock_semantic_engine.search.side_effect = RuntimeError("embed fail")
@@ -627,7 +625,7 @@ class TestCompleteTimestampMap:
     """_complete_timestamp_map must keep stamps it already has."""
 
     def test_keeps_semantic_stamps_when_one_lookup_misses(
-        self, pipeline, mock_semantic_engine
+        self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock
     ) -> None:
         mock_semantic_engine.get_id_by_content.return_value = None
         mock_semantic_engine.memory_store = MagicMock()
@@ -641,7 +639,7 @@ class TestCompleteTimestampMap:
         assert completed == {"known": "2026-01-01T00:00:00+00:00"}
 
     def test_keeps_completed_on_lookup_exception(
-        self, pipeline, mock_semantic_engine
+        self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock
     ) -> None:
         mock_semantic_engine.get_id_by_content.side_effect = RuntimeError("store down")
         mock_semantic_engine.memory_store = MagicMock()
@@ -654,7 +652,7 @@ class TestCompleteTimestampMap:
 
         assert completed == {"known": "2026-01-01T00:00:00+00:00"}
 
-    def test_fills_missing_from_store(self, pipeline, mock_semantic_engine) -> None:
+    def test_fills_missing_from_store(self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock) -> None:
         mock_semantic_engine.get_id_by_content.return_value = 7
         record = MagicMock()
         record.created_at = "2026-02-01T00:00:00+00:00"

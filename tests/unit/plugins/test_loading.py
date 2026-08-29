@@ -70,16 +70,19 @@ class _FailingInitPlugin:
         raise RuntimeError("cleanup failed")
 
 
+type TestPlugin = _SimplePlugin | _LifecyclePlugin | _FailingInitPlugin
+
+
 def _make_loader(
     plugins: list[DiscoveredPlugin] | None = None,
     hooks: LifecycleHooks | None = None,
-) -> PluginLoader[object]:
+) -> PluginLoader[TestPlugin]:
     """Create a PluginLoader with static discovery and a fresh registry."""
     if plugins is None:
         plugins = []
-    strategy = StaticRegistration(registered_plugins=plugins)
-    registry: PluginRegistry[object] = PluginRegistry()
-    return PluginLoader(
+    strategy: StaticRegistration[TestPlugin] = StaticRegistration(registered_plugins=plugins)
+    registry: PluginRegistry[TestPlugin] = PluginRegistry()
+    return PluginLoader[TestPlugin](
         discovery_strategy=strategy,
         registry=registry,
         hooks=hooks,

@@ -20,6 +20,7 @@ Usage:
 
 import asyncio
 import pytest
+from pytest import MonkeyPatch
 
 from unittest.mock import MagicMock, AsyncMock
 
@@ -28,7 +29,7 @@ from reflectlog.application.config.settings import Config
 
 
 @pytest.fixture
-def manager(monkeypatch):
+def manager(monkeypatch: MonkeyPatch):
     '''Provide a MemoryManager instance for testing.'''
     monkeypatch.setenv("WORKSPACE_ID", "test-security-project")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")

@@ -9,7 +9,6 @@ import importlib.metadata
 import pkgutil
 import types
 from unittest.mock import MagicMock, patch
-from typing import Any, cast
 
 import pytest
 
@@ -437,7 +436,9 @@ class TestStaticRegistration:
         plugins = [
             DiscoveredPlugin(name="a", module_path="a", class_name="A"),
         ]
-        strategy = StaticRegistration(registered_plugins=plugins)
+        strategy: StaticRegistration[_BasePlugin] = StaticRegistration(
+            registered_plugins=plugins
+        )
         result = await strategy.discover()
 
         assert result == plugins
@@ -445,7 +446,9 @@ class TestStaticRegistration:
 
     async def test_empty_registration(self) -> None:
         """Empty list returns empty."""
-        strategy = StaticRegistration(registered_plugins=[])
+        strategy: StaticRegistration[_BasePlugin] = StaticRegistration(
+            registered_plugins=[]
+        )
         result = await strategy.discover()
         assert result == []
 
@@ -456,7 +459,9 @@ class TestStaticRegistration:
             DiscoveredPlugin(name="b", module_path="b", class_name="B"),
             DiscoveredPlugin(name="c", module_path="c", class_name="C"),
         ]
-        strategy = StaticRegistration(registered_plugins=plugins)
+        strategy: StaticRegistration[_BasePlugin] = StaticRegistration(
+            registered_plugins=plugins
+        )
         result = await strategy.discover()
 
         assert len(result) == 3
@@ -467,7 +472,9 @@ class TestStaticRegistration:
         plugins = [
             DiscoveredPlugin(name="x", module_path="x", class_name="X"),
         ]
-        strategy = StaticRegistration(registered_plugins=plugins)
+        strategy: StaticRegistration[_BasePlugin] = StaticRegistration(
+            registered_plugins=plugins
+        )
         result = await strategy.discover()
         result.append(DiscoveredPlugin(name="y", module_path="y", class_name="Y"))
 
@@ -486,18 +493,20 @@ class TestCompositeDiscovery:
 
     async def test_combines_results(self) -> None:
         """Results from all strategies are combined."""
-        s1 = StaticRegistration(
+        s1: StaticRegistration[_BasePlugin] = StaticRegistration(
             registered_plugins=[
                 DiscoveredPlugin(name="a", module_path="a", class_name="A"),
             ]
         )
-        s2 = StaticRegistration(
+        s2: StaticRegistration[_BasePlugin] = StaticRegistration(
             registered_plugins=[
                 DiscoveredPlugin(name="b", module_path="b", class_name="B"),
             ]
         )
 
-        composite = CompositeDiscovery(strategies=cast(list[PluginDiscoveryStrategy[Any]], [s1, s2]))
+        composite: CompositeDiscovery[_BasePlugin] = CompositeDiscovery(
+            strategies=[s1, s2]
+        )
         result = await composite.discover()
 
         assert len(result) == 2
@@ -506,18 +515,20 @@ class TestCompositeDiscovery:
 
     async def test_deduplicates_by_name(self) -> None:
         """Duplicate names are deduplicated, first wins."""
-        s1 = StaticRegistration(
+        s1: StaticRegistration[_BasePlugin] = StaticRegistration(
             registered_plugins=[
                 DiscoveredPlugin(name="dup", module_path="first", class_name="First"),
             ]
         )
-        s2 = StaticRegistration(
+        s2: StaticRegistration[_BasePlugin] = StaticRegistration(
             registered_plugins=[
                 DiscoveredPlugin(name="dup", module_path="second", class_name="Second"),
             ]
         )
 
-        composite = CompositeDiscovery(strategies=cast(list[PluginDiscoveryStrategy[Any]], [s1, s2]))
+        composite: CompositeDiscovery[_BasePlugin] = CompositeDiscovery(
+            strategies=[s1, s2]
+        )
         result = await composite.discover()
 
         assert len(result) == 1
@@ -525,16 +536,18 @@ class TestCompositeDiscovery:
 
     async def test_empty_strategies(self) -> None:
         """No strategies returns empty."""
-        composite = CompositeDiscovery(strategies=[])
+        composite: CompositeDiscovery[_BasePlugin] = CompositeDiscovery(strategies=[])
         result = await composite.discover()
         assert result == []
 
     async def test_all_empty_strategies(self) -> None:
         """All strategies returning empty gives empty."""
-        s1 = StaticRegistration(registered_plugins=[])
-        s2 = StaticRegistration(registered_plugins=[])
+        s1: StaticRegistration[_BasePlugin] = StaticRegistration(registered_plugins=[])
+        s2: StaticRegistration[_BasePlugin] = StaticRegistration(registered_plugins=[])
 
-        composite = CompositeDiscovery(strategies=cast(list[PluginDiscoveryStrategy[Any]], [s1, s2]))
+        composite: CompositeDiscovery[_BasePlugin] = CompositeDiscovery(
+            strategies=[s1, s2]
+        )
         result = await composite.discover()
         assert result == []
 

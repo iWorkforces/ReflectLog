@@ -1,7 +1,10 @@
 """Unit tests for HealthCheckTool."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
+from reflectlog.application.config.settings import Config
 from reflectlog.application.tools.health_check import HealthCheckTool
 
 
@@ -10,7 +13,7 @@ class TestHealthCheckToolStatus:
     """Health check must use the public readiness API."""
 
     async def test_reports_pending_when_engines_are_not_ready(
-        self, mock_config, mock_memory_manager, mock_tool_logger
+        self, mock_config: Config, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
     ) -> None:
         mock_memory_manager.search_engine_status.return_value = {
             "semantic_engine": "pending",
@@ -27,7 +30,7 @@ class TestHealthCheckToolStatus:
         mock_memory_manager.reconcile_pending_replacements.assert_not_called()
 
     async def test_degraded_when_pending_replacements_remain(
-        self, mock_config, mock_memory_manager, mock_tool_logger
+        self, mock_config: Config, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
     ) -> None:
         mock_memory_manager.search_engine_status.return_value = {
             "semantic_engine": "initialized",
@@ -44,7 +47,7 @@ class TestHealthCheckToolStatus:
         mock_memory_manager.pending_replacement_count.assert_called_once()
 
     async def test_healthy_when_no_pending_replacements(
-        self, mock_config, mock_memory_manager, mock_tool_logger
+        self, mock_config: Config, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
     ) -> None:
         mock_memory_manager.search_engine_status.return_value = {
             "semantic_engine": "initialized",
@@ -60,7 +63,7 @@ class TestHealthCheckToolStatus:
         mock_memory_manager.reconcile_pending_replacements.assert_not_called()
 
     async def test_unhealthy_does_not_reenter_status(
-        self, mock_config, mock_memory_manager, mock_tool_logger
+        self, mock_config: Config, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
     ) -> None:
         mock_memory_manager.search_engine_status.side_effect = RuntimeError("status boom")
         mock_memory_manager.startup_metrics = None
