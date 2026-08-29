@@ -206,7 +206,9 @@ def _run_numba_warmup(
 ) -> dict[str, float]:
     """Run numba JIT warmup phase and return startup phases dict."""
     numba_warmup_enabled = os.environ.get("NUMBA_WARMUP", "true").lower() == "true"
-    numba_warmup_mode = os.environ.get("NUMBA_WARMUP_MODE", "background").lower()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    default_warmup_mode = "sync" if transport == "stdio" else "background"
+    numba_warmup_mode = os.environ.get("NUMBA_WARMUP_MODE", default_warmup_mode).lower()
 
     startup_phases: dict[str, float] = {}
     numba_start = time.time()

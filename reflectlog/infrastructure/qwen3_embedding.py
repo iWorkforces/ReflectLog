@@ -80,7 +80,7 @@ class LangchainQwenEmbeddings(BaseModel):
 
     def _get_async_client(self) -> AsyncOpenAI:
         if self._async_client is None:
-            httpx_client = HttpClientFactory.get_async_httpx_client(http2=False)
+            httpx_client = HttpClientFactory.get_async_httpx_client(http2=True)
             self._async_client = AsyncOpenAI(
                 api_key=self.config.api_key,
                 base_url=self.config.openai_base_url,

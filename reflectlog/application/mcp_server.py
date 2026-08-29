@@ -261,6 +261,9 @@ class FastMCPServer:
 
         try:
             self._memory_manager.close()
+            from reflectlog.utility.http import HttpClientFactory
+
+            HttpClientFactory.close_all_sync()
             self.logger.info("Server shutdown complete - all data persisted")
         except Exception as e:
             self.logger.error(
