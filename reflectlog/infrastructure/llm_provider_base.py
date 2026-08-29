@@ -76,7 +76,7 @@ class BaseOpenAIProvider:
 
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
-            httpx_client = HttpClientFactory.get_async_httpx_client(http2=False)
+            httpx_client = HttpClientFactory.get_async_httpx_client(http2=True)
             self._client = AsyncOpenAI(
                 api_key=self._api_key,
                 base_url=self._base_url,

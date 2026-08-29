@@ -49,6 +49,7 @@ class HttpClientFactory:
     _async_httpx_client: httpx.AsyncClient | None = None
     _aiohttp_client: aiohttp.ClientSession | None = None
     _create_lock: threading.Lock = threading.Lock()
+    _pending_aclose: object | None = None
 
     @classmethod
     def get_max_connections(cls) -> int:
@@ -281,15 +282,34 @@ class HttpClientFactory:
 
     @classmethod
     def close_all_sync(cls) -> None:
-        """Close sync httpx client and drop async session references.
+        """Close pooled clients from a sync shutdown path (SIGINT/SIGTERM)."""
+        import asyncio
 
-        Async clients are closed without awaiting: shutdown is sync (SIGTERM).
-        """
-        if cls._httpx_client is not None:
-            cls._httpx_client.close()
+        with cls._create_lock:
+            sync_client = cls._httpx_client
+            async_client = cls._async_httpx_client
+            aiohttp_client = cls._aiohttp_client
             cls._httpx_client = None
-        cls._async_httpx_client = None
-        cls._aiohttp_client = None
+            cls._async_httpx_client = None
+            cls._aiohttp_client = None
+
+        if sync_client is not None:
+            sync_client.close()
+
+        async def _aclose() -> None:
+            if async_client is not None:
+                await async_client.aclose()
+            if aiohttp_client is not None:
+                await aiohttp_client.close()
+
+        if async_client is None and aiohttp_client is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(_aclose())
+            return
+        cls._pending_aclose = loop.create_task(_aclose())
 
 
 def get_pooled_httpx_client(**kwargs: Any) -> httpx.Client:
