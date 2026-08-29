@@ -925,22 +925,16 @@ class StoragePhase:
                     "delete_batch"
                 )
                 if callable(delete_batch):
-                    raw_deleted = delete_batch(
+                    _ = delete_batch(
                         self._tantivy_engine,
                         self._workspace_id,
                         contents,
-                        verify_exists=False,
+                        verify_exists=True,
                     )
-                    deleted = raw_deleted if isinstance(raw_deleted, int) else -1
-                    if deleted < len(contents):
-                        raise InconsistentStateError(
-                            "USearch replacement delete succeeded but Tantivy "
-                            f"tombstoned {deleted}/{len(contents)} memories"
-                        )
                 else:
                     for content in contents:
                         _ = self._tantivy_engine.delete(
-                            self._workspace_id, content, verify_exists=False
+                            self._workspace_id, content, verify_exists=True
                         )
             except InconsistentStateError:
                 raise

@@ -119,7 +119,6 @@ class TantivyEngine(BaseModel):
     )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
-    _revived_contents: dict[str, set[str]] = PrivateAttr(default_factory=dict)
 
     def __init__(
         self,
@@ -419,7 +418,6 @@ class TantivyEngine(BaseModel):
             doc.add_integer("deleted_at", 0)  # 0 = not deleted
 
             _ = self.writer.add_document(doc)
-        self._revive_contents(workspace_id, [content])
 
     def add_batch(self, workspace_id: str, contents: list[str]) -> None:
         """Add multiple documents under a single writer lock."""
@@ -433,7 +431,6 @@ class TantivyEngine(BaseModel):
                 doc.add_unsigned("is_deleted", 0)
                 doc.add_integer("deleted_at", 0)
                 _ = self.writer.add_document(doc)
-        self._revive_contents(workspace_id, contents)
 
     def commit(self) -> None:
         """Commit pending changes and refresh searcher (thread-safe).
@@ -505,22 +502,6 @@ class TantivyEngine(BaseModel):
                         extra={"workspace_id": self.config.workspace_id},
                     )
 
-    def _revive_contents(self, workspace_id: str, contents: list[str]) -> None:
-        """Mark re-added texts as live so content-addressed tombstones do not hide them."""
-        if not contents:
-            return
-        revived = self._revived_contents.setdefault(workspace_id, set())
-        revived.update(contents)
-        with self._tombstone_cache_lock:
-            cached = self._tombstone_cache.get(workspace_id)
-            if cached is not None:
-                cached.difference_update(contents)
-
-    def _forget_revived(self, workspace_id: str, content: str) -> None:
-        revived = self._revived_contents.get(workspace_id)
-        if revived is not None:
-            revived.discard(content)
-
     def _invalidate_tombstone_cache(self, workspace_id: str | None = None) -> None:
         """Invalidate tombstone cache for a workspace or all workspaces.
 
@@ -565,39 +546,38 @@ class TantivyEngine(BaseModel):
         try:
             doc_limit = self._get_doc_limit()
 
-            # Cache miss: query ONLY tombstoned documents directly (is_deleted=1)
-            # This is O(tombstones) instead of O(all_docs)
-            # Use range syntax [1 TO 1] for numeric field exact match
+            # A text is dead only when tombstones outnumber live copies.
+            # That survives process restart (delete + re-add stays visible).
             escaped_workspace_id = self._escape_tantivy_query(workspace_id)
             query = self._index.parse_query(
-                query=f'workspace_id:"{escaped_workspace_id}" AND is_deleted:[1 TO 1]',
+                query=f'workspace_id:"{escaped_workspace_id}"',
                 default_field_names=["workspace_id"],
             )
 
             top_docs = self.searcher.search(query=query, limit=doc_limit)
-            tombstoned: set[str] = set()
-            # Per-project tombstone limit to prevent memory exhaustion
+            live_counts: dict[str, int] = {}
+            tomb_counts: dict[str, int] = {}
             max_tombstones_per_project = 10000
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
                 memory = doc.get_first("content")
-                if memory is not None:
-                    # Enforce per-project tombstone limit
-                    if len(tombstoned) >= max_tombstones_per_project:
-                        if self.logger:
-                            self.logger.warning(
-                                "Tombstone cache per-project limit reached, truncating",
-                                extra={
-                                    "workspace_id": workspace_id,
-                                    "tombstone_count": len(tombstoned),
-                                    "max_per_project": max_tombstones_per_project,
-                                },
-                            )
+                if memory is None:
+                    continue
+                is_deleted_val = doc.get_first("is_deleted")
+                is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+                if is_deleted == 1:
+                    if len(tomb_counts) >= max_tombstones_per_project:
                         break
-                    tombstoned.add(memory)
+                    tomb_counts[memory] = tomb_counts.get(memory, 0) + 1
+                else:
+                    live_counts[memory] = live_counts.get(memory, 0) + 1
 
-            tombstoned -= self._revived_contents.get(workspace_id, set())
+            tombstoned = {
+                memory
+                for memory, tombs in tomb_counts.items()
+                if tombs >= live_counts.get(memory, 0)
+            }
 
             # Store in cache with LRU eviction (thread-safe write)
             with self._tombstone_cache_lock:
@@ -866,7 +846,6 @@ class TantivyEngine(BaseModel):
         Returns:
             True if tombstone was added, False if memory wasn't found.
         """
-        self._forget_revived(workspace_id, content)
         if verify_exists:
             existing = self.find_by_exact_match(workspace_id, content)
             if not existing:
@@ -1212,8 +1191,11 @@ class TantivyEngine(BaseModel):
                     if memory is not None:
                         active_memories.add(memory)
 
-            # Unique active memories = active memories NOT in tombstoned set
-            unique_active = active_memories - tombstoned_memories
+            unique_active = {
+                memory
+                for memory in active_memories
+                if memory not in tombstoned_memories
+            }
 
             return {
                 "total_docs": total_docs,
@@ -1381,7 +1363,8 @@ class TantivyEngine(BaseModel):
         top_docs = self.searcher.search(query=query, limit=100000)
 
         all_docs: list[tuple[str, str, int]] = []
-        tombstoned_memories: set[str] = set()
+        live_counts: dict[tuple[str, str], int] = {}
+        tomb_counts: dict[tuple[str, str], int] = {}
 
         for _, doc_addr in top_docs.hits:
             doc = self.searcher.doc(doc_addr)
@@ -1392,24 +1375,28 @@ class TantivyEngine(BaseModel):
 
             if workspace_id is not None and memory is not None:
                 all_docs.append((workspace_id, memory, is_deleted))
+                key = (workspace_id, memory)
                 if is_deleted == 1:
-                    tombstoned_memories.add(memory)
+                    tomb_counts[key] = tomb_counts.get(key, 0) + 1
+                else:
+                    live_counts[key] = live_counts.get(key, 0) + 1
 
         docs_to_keep: list[tuple[str, str]] = []
         removed_originals = 0
         removed_tombstones = 0
+        kept_live: dict[tuple[str, str], int] = {}
 
         for workspace_id, memory, is_deleted in all_docs:
-            revived = self._revived_contents.get(workspace_id, set())
-            if memory in tombstoned_memories and memory not in revived:
-                if is_deleted == 1:
-                    removed_tombstones += 1
-                else:
-                    removed_originals += 1
-            elif is_deleted == 1:
+            key = (workspace_id, memory)
+            if is_deleted == 1:
                 removed_tombstones += 1
-            else:
-                docs_to_keep.append((workspace_id, memory))
+                continue
+            surplus = live_counts.get(key, 0) - tomb_counts.get(key, 0)
+            if surplus <= 0 or kept_live.get(key, 0) >= surplus:
+                removed_originals += 1
+                continue
+            kept_live[key] = kept_live.get(key, 0) + 1
+            docs_to_keep.append((workspace_id, memory))
 
         return docs_to_keep, removed_tombstones, removed_originals
 

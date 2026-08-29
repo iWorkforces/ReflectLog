@@ -705,7 +705,7 @@ class TestDeleteOperations:
     def test_delete_memories_uses_verify_exists_on_batch(
         self, mock_config, mock_logger
     ):
-        """Production delete_batch is called with verify_exists=False after identity."""
+        """Production delete_batch probes FTS so it does not plant phantom tombstones."""
         manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 7
 
@@ -728,7 +728,7 @@ class TestDeleteOperations:
         deleted = manager.delete_memories(["hello"])
 
         assert deleted == ["hello"]
-        assert fake.calls == [("test_project", ["hello"], False)]
+        assert fake.calls == [("test_project", ["hello"], True)]
 
 
 # ---------------------------------------------------------------------------

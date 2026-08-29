@@ -638,7 +638,7 @@ class TestStoragePhase:
         mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once()
         mock_semantic_engine.delete.assert_called_once_with(memory_id="42")
         mock_tantivy_engine.delete.assert_called_once_with(
-            "test_project", "old msg", verify_exists=False
+            "test_project", "old msg", verify_exists=True
         )
         mock_semantic_engine.memory_store.complete_replacement_transition.assert_called_once_with(
             9
