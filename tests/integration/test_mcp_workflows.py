@@ -31,7 +31,7 @@ class TestMCPWorkflows:
 
         add_func: Callable[..., Any] | None = None
         get_all_func: Callable[..., Any] | None = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "get_all":
@@ -70,7 +70,7 @@ class TestMCPWorkflows:
         # Get tool functions
         add_func = None
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "search":
@@ -136,7 +136,7 @@ class TestMCPWorkflows:
         add_func = None
         remove_func = None
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "remove":
@@ -210,7 +210,7 @@ class TestMCPWorkflows:
         add_func = None
         search_func = None
         remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "search":
@@ -259,7 +259,7 @@ class TestMCPWorkflows:
         # Get tool functions
         add_func = None
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "get_all":
@@ -285,7 +285,7 @@ class TestMCPWorkflows:
         get_all_func = None
         search_func = None
         remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
             elif tool.name == "search":
@@ -352,7 +352,7 @@ class TestMCPWorkflows:
         add_func = None
         remove_func = None
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "remove":
@@ -382,7 +382,7 @@ class TestMCPWorkflows:
         mcp_server.memory_manager.memory.search.return_value = []
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -417,7 +417,7 @@ class TestMCPWorkflows:
         add_func = None
         get_all_func = None
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "get_all":
@@ -476,7 +476,7 @@ class TestMCPWorkflows:
 
         add_func = None
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "search":
@@ -534,7 +534,7 @@ class TestMCPWorkflows:
 
         add_func = None
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
             elif tool.name == "search":

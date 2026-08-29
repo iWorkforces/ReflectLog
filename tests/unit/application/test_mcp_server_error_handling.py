@@ -110,13 +110,15 @@ class TestAddToolErrorHandling:
         mock_cached_embedder_class.return_value = mock_cached_embedder
 
         # Configure mock to raise exception on add
+        mock_usearch_engine.get_id_by_content.return_value = None
         mock_usearch_engine.add_batch.side_effect = Exception("Storage failure")
+        mock_usearch_engine.add.side_effect = Exception("Storage failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
-        add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
+        add_tool = mcp_server.registered_tools["add"].fn
 
         with pytest.raises(StorageError) as exc_info:
             await add_tool(["Test message"])
@@ -147,7 +149,7 @@ class TestAddToolErrorHandling:
         from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
-        add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
+        add_tool = mcp_server.registered_tools["add"].fn
 
         with pytest.raises(ValueError) as exc_info:
             await add_tool([123, "Valid message"])
@@ -177,7 +179,7 @@ class TestAddToolErrorHandling:
         from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
-        add_tool = mcp_server.mcp._tool_manager._tools["add"].fn
+        add_tool = mcp_server.registered_tools["add"].fn
 
         with pytest.raises(ValueError) as exc_info:
             await add_tool([""])
@@ -214,7 +216,7 @@ class TestGetAllToolErrorHandling:
         from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
-        get_all_tool = mcp_server.mcp._tool_manager._tools["get_all"].fn
+        get_all_tool = mcp_server.registered_tools["get_all"].fn
 
         with pytest.raises(StorageError) as exc_info:
             await get_all_tool()
@@ -252,7 +254,7 @@ class TestSearchToolErrorHandling:
         from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
-        search_tool = mcp_server.mcp._tool_manager._tools["search"].fn
+        search_tool = mcp_server.registered_tools["search"].fn
 
         result = await search_tool("test query")
 
@@ -286,7 +288,7 @@ class TestRemoveToolErrorHandling:
         from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
-        remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
+        remove_tool = mcp_server.registered_tools["remove"].fn
 
         # Should not raise any errors
         await remove_tool([])
@@ -320,7 +322,7 @@ class TestRemoveToolErrorHandling:
         from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
-        remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
+        remove_tool = mcp_server.registered_tools["remove"].fn
 
         with pytest.raises(StorageError) as exc_info:
             await remove_tool(["Test message"])
@@ -347,12 +349,13 @@ class TestRemoveToolErrorHandling:
         mock_cached_embedder_class.return_value = mock_cached_embedder
 
         mock_usearch_engine.get_id_by_memory.return_value = None
+        mock_usearch_engine.get_id_by_content.return_value = None
         mock_usearch_engine_class.return_value = mock_usearch_engine
 
         from reflectlog.application.mcp_server import FastMCPServer
 
         mcp_server = FastMCPServer()
-        remove_tool = mcp_server.mcp._tool_manager._tools["remove"].fn
+        remove_tool = mcp_server.registered_tools["remove"].fn
 
         # Should not raise any errors, just silently skip
         await remove_tool(["Nonexistent memory"])

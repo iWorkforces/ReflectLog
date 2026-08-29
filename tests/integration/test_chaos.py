@@ -22,6 +22,8 @@ from io import StringIO
 from unittest.mock import patch, Mock, MagicMock, AsyncMock
 
 from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.memory.search_strategies import SearchPipeline
+from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
 from reflectlog.application.config.settings import Config
 
 
@@ -39,12 +41,15 @@ def manager(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setenv("SEARCH_LIMIT", "10")
     monkeypatch.setenv("EMBEDDING_DIMS", "1536")
+    monkeypatch.setenv("RERANKER_ENGINE", "none")
 
     mock_semantic_engine = MagicMock()
     mock_semantic_engine.search.return_value = []
+    mock_semantic_engine.is_ready = MagicMock(return_value=False)
 
     mock_tantivy_engine = MagicMock()
     mock_tantivy_engine.search.return_value = []
+    mock_tantivy_engine.is_ready = MagicMock(return_value=False)
 
     mock_embedder = MagicMock()
 
@@ -59,16 +64,21 @@ def manager(monkeypatch):
     mgr.is_hybrid_search = True
     mgr._lock = MagicMock()
     mgr._write_lock = MagicMock()
-    mgr._search_pipeline = MagicMock()
-    mock_search_result = MagicMock()
-    mock_search_result.memories = []
-    mgr._search_pipeline.execute = AsyncMock(return_value=mock_search_result)
+    mgr._fusion_engine = RanxFusionEngine()
+    mgr.logger = MagicMock()
+    mgr._cross_encoder_reranker = None
+    mgr._search_pipeline = SearchPipeline(
+        semantic_engine=mock_semantic_engine,
+        tantivy_engine=mock_tantivy_engine,
+        fusion_engine=mgr._fusion_engine,
+        config=config,
+        logger=mgr.logger,
+        memory_manager=mgr,
+    )
     mgr._add_pipeline = MagicMock()
     mgr._add_pipeline.execute = AsyncMock(
         return_value=MagicMock(stored_count=0, skipped_count=0)
     )
-    mgr._fusion_engine = MagicMock()
-    mgr.logger = MagicMock()
 
     yield mgr
 
@@ -86,7 +96,7 @@ class TestEngineFailure:
         Should fallback to USearch-only search.
         '''
 
-        async def mock_tantivy_error():
+        def mock_tantivy_error(*_args: object, **_kwargs: object) -> list[object]:
             raise ConnectionError("Tantivy connection failed")
 
         monkeypatch.setattr(
@@ -107,7 +117,7 @@ class TestEngineFailure:
         Should return empty results with graceful error.
         '''
 
-        async def mock_usearch_error():
+        def mock_usearch_error(*_args: object, **_kwargs: object) -> list[object]:
             raise ConnectionError("USearch connection failed")
 
         monkeypatch.setattr(
@@ -128,7 +138,7 @@ class TestEngineFailure:
         Real implementation would propagate errors from engines.
         '''
 
-        async def mock_both_error():
+        def mock_both_error(*_args: object, **_kwargs: object) -> list[object]:
             raise ConnectionError("Both search engines unavailable")
 
         monkeypatch.setattr(
@@ -268,8 +278,8 @@ class TestResourceExhaustion:
         '''
         from unittest.mock import AsyncMock
 
-        mock_search = AsyncMock()
-        mock_search.side_effect = ConnectionError("Connection pool exhausted")
+        def mock_search(*_args: object, **_kwargs: object) -> list[object]:
+            raise ConnectionError("Connection pool exhausted")
 
         monkeypatch.setattr(
             manager._semantic_engine,

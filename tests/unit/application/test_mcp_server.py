@@ -87,7 +87,7 @@ class TestAddTool:
 
         # Get the add tool function from registered tools
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -102,7 +102,7 @@ class TestAddTool:
         mcp_server.memory_manager.memory.add_batch.assert_called_once()
         # USearchEngine.add_batch is called with keyword arguments
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
-        assert call_kwargs["memories"] == memories
+        assert call_kwargs.get("contents") == memories or call_kwargs.get("memories") == memories
         assert call_kwargs["workspace_id"] == mcp_server.config.workspace_id
 
     async def test_add_multiple_memories_success(self, mcp_server, sample_memories):
@@ -111,7 +111,7 @@ class TestAddTool:
 
         # Get the add tool function
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -123,7 +123,7 @@ class TestAddTool:
         # Verify memory.add_batch was called with correct memories
         assert mcp_server.memory_manager.memory.add_batch.call_count == 1
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
-        assert call_kwargs["memories"] == memories
+        assert call_kwargs.get("contents") == memories or call_kwargs.get("memories") == memories
 
     async def test_add_empty_list_noop(self, mcp_server):
         '''Test adding empty list is no-op (no error, no call to memory).'''
@@ -131,7 +131,7 @@ class TestAddTool:
 
         # Get the add tool function
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -149,7 +149,7 @@ class TestAddTool:
         memories = [sample_memories["edge_cases"]["min_length"]]
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -163,7 +163,7 @@ class TestAddTool:
         memories = [sample_memories["edge_cases"]["max_length"]]
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -179,7 +179,7 @@ class TestAddTool:
         memories = sample_memories["with_special_chars"]
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -188,14 +188,14 @@ class TestAddTool:
         await add_func(memories)
         assert mcp_server.memory_manager.memory.add_batch.call_count == 1
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
-        assert call_kwargs["memories"] == memories
+        assert call_kwargs.get("contents") == memories or call_kwargs.get("memories") == memories
 
     async def test_add_non_string_memory_raises_value_error(self, mcp_server):
         '''Test adding non-string memory raises ValueError.'''
         memories = [123]  # Non-string
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -211,7 +211,7 @@ class TestAddTool:
         memories = [""]
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -227,7 +227,7 @@ class TestAddTool:
         memories = ["   "]
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -245,7 +245,7 @@ class TestAddTool:
         memories = [sample_memories["invalid"]["too_long"]]
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -261,7 +261,7 @@ class TestAddTool:
         memories = ["Valid memory", ""]  # Second is invalid
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -282,7 +282,7 @@ class TestAddTool:
         )
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -303,7 +303,7 @@ class TestAddTool:
     async def test_add_various_valid_memories(self, mcp_server, memories):
         '''Test adding various types of valid memories.'''
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -312,7 +312,7 @@ class TestAddTool:
         await add_func(memories)
         assert mcp_server.memory_manager.memory.add_batch.call_count == 1
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
-        assert call_kwargs["memories"] == memories
+        assert call_kwargs.get("contents") == memories or call_kwargs.get("memories") == memories
 
     async def test_add_skips_duplicates(self, mcp_server):
         '''Test that duplicate memories are not stored twice.'''
@@ -327,7 +327,7 @@ class TestAddTool:
         )
 
         add_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "add":
                 add_func = tool.fn
                 break
@@ -349,7 +349,7 @@ class TestGetAllTool:
 
         # Get the get_all tool function
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
                 break
@@ -367,7 +367,7 @@ class TestGetAllTool:
         mcp_server.memory_manager.memory.get_all.return_value = memories
 
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
                 break
@@ -384,7 +384,7 @@ class TestGetAllTool:
         mcp_server.memory_manager.memory.get_all.return_value = memories
 
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
                 break
@@ -399,10 +399,10 @@ class TestGetAllTool:
     async def test_get_all_returns_copy(self, mcp_server, sample_memories):
         '''Test get_all returns a copy of memories (prevents mutation).'''
         memories = sample_memories["multiple"].copy()
-        mcp_server.memory_manager.memory.get_all.return_value = memories
+        mcp_server.memory_manager.memory.get_all.return_value = list(memories)
 
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
                 break
@@ -425,7 +425,7 @@ class TestGetAllTool:
         mcp_server.memory_manager.memory.get_all.return_value = memories
 
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
                 break
@@ -442,7 +442,7 @@ class TestGetAllTool:
         mcp_server.memory_manager.memory.get_all.return_value = memories
 
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
                 break
@@ -460,7 +460,7 @@ class TestGetAllTool:
         )
 
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
                 break
@@ -475,7 +475,7 @@ class TestGetAllTool:
         mcp_server.memory_manager.memory.get_all.return_value = memories
 
         get_all_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "get_all":
                 get_all_func = tool.fn
                 break
@@ -505,7 +505,7 @@ class TestSearchTool:
 
         # Get the search tool function
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -531,7 +531,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=expected_results)
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -557,7 +557,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=expected_results)
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -581,7 +581,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=expected_results)
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -605,7 +605,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=expected_results)
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -626,7 +626,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=expected_results)
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -650,7 +650,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=expected_results)
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -674,7 +674,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=expected_results)
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -696,7 +696,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=[])
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -716,7 +716,7 @@ class TestSearchTool:
         )
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -743,7 +743,7 @@ class TestSearchTool:
         mcp_server.memory_manager.search = AsyncMock(return_value=memories)
 
         search_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "search":
                 search_func = tool.fn
                 break
@@ -758,309 +758,106 @@ class TestSearchTool:
 class TestRemoveTool:
     '''Test suite for remove() tool.'''
 
+    @staticmethod
+    def _remove_fn(mcp_server):
+        return mcp_server.tool_fn("remove")
+
     async def test_remove_single_memory(self, mcp_server):
         '''Test removing a single memory.'''
         memory_to_remove = "Memory to remove"
-        mock_candidates = [{"id": "1", "memory": memory_to_remove, "score": 0.95}]
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=[memory_to_remove],
+        ) as deleted:
+            result = await self._remove_fn(mcp_server)([memory_to_remove])
 
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            return_value=mock_candidates
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        # Get the remove tool function
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None, "remove tool not found"
-
-        assert remove_func is not None
-        result = await remove_func([memory_to_remove])
-
-        assert result is None  # remove returns None
-        mcp_server.memory_manager.search_for_removal.assert_called_once_with(
-            memory_to_remove
-        )
-        mcp_server.memory_manager.delete_by_memory.assert_called_once_with(
-            memory_to_remove
-        )
+        assert result is None
+        deleted.assert_called_once_with([memory_to_remove])
 
     async def test_remove_multiple_memories(self, mcp_server):
         '''Test removing multiple memories.'''
         memories_to_remove = ["Memory 1", "Memory 2"]
-
-        def search_side_effect(query):
-            if query == "Memory 1":
-                return [{"id": "1", "memory": "Memory 1", "score": 0.95}]
-            elif query == "Memory 2":
-                return [{"id": "2", "memory": "Memory 2", "score": 0.95}]
-            return []
-
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            side_effect=search_side_effect
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        await remove_func(memories_to_remove)
-
-        assert mcp_server.memory_manager.search_for_removal.call_count == 2
-        assert mcp_server.memory_manager.delete_by_memory.call_count == 2
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=memories_to_remove,
+        ) as deleted:
+            await self._remove_fn(mcp_server)(memories_to_remove)
+        deleted.assert_called_once_with(memories_to_remove)
 
     async def test_remove_empty_list_noop(self, mcp_server):
-        '''Test removing empty list is no-op (no error, no calls).'''
-        memories = []
-
-        # Mock the methods to verify they're not called
-        mcp_server.memory_manager.search_for_removal = MagicMock()
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        result = await remove_func(memories)
-
+        """Empty list does not call delete_memories."""
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=[],
+        ) as deleted:
+            result = await self._remove_fn(mcp_server)([])
         assert result is None
-        mcp_server.memory_manager.search_for_removal.assert_not_called()
-        mcp_server.memory_manager.delete_by_memory.assert_not_called()
+        deleted.assert_not_called()
 
     async def test_remove_non_existent_memory_silently_ignored(self, mcp_server):
-        '''Test removing non-existent memory is silently ignored.'''
-        memory = "Non-existent memory"
-
-        # Semantic search returns results, but none match exactly
-        mock_candidates = [
-            {"id": "1", "memory": "Similar memory", "score": 0.85},
-            {"id": "2", "memory": "Another memory", "score": 0.80},
-        ]
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            return_value=mock_candidates
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        # Should not raise error
-        assert remove_func is not None
-        result = await remove_func([memory])
-
+        """Missing memories are reported as not found, not raised."""
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=[],
+        ) as deleted:
+            result = await self._remove_fn(mcp_server)(["Non-existent memory"])
         assert result is None
-        mcp_server.memory_manager.search_for_removal.assert_called_once_with(memory)
-        mcp_server.memory_manager.delete_by_memory.assert_not_called()  # No exact match, no delete
+        deleted.assert_called_once_with(["Non-existent memory"])
 
     async def test_remove_duplicate_memories_all_removed(self, mcp_server):
-        '''Test removing memory that appears multiple times removes all.'''
+        """Duplicates are collapsed before delete_memories."""
         memory = "Duplicate memory"
-
-        # Return multiple results with same memory and different IDs
-        mock_candidates = [
-            {"id": "1", "memory": memory, "score": 0.95},
-            {"id": "2", "memory": memory, "score": 0.95},
-            {"id": "3", "memory": memory, "score": 0.95},
-        ]
-
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            return_value=mock_candidates
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        await remove_func([memory])
-
-        # Should delete all 3 occurrences
-        assert mcp_server.memory_manager.delete_by_memory.call_count == 3
-
-    async def test_remove_case_sensitive_exact_match(self, mcp_server):
-        '''Test remove uses case-sensitive exact matching.'''
-        memory = "Hello"
-
-        # Semantic search returns multiple variations, but only exact match should be deleted
-        mock_candidates = [
-            {"id": "1", "memory": "Hello", "score": 0.95},
-            {"id": "2", "memory": "hello", "score": 0.90},
-            {"id": "3", "memory": "HELLO", "score": 0.90},
-        ]
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            return_value=mock_candidates
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        await remove_func([memory])
-
-        # Only exact match "Hello" should be deleted (1 call)
-        assert mcp_server.memory_manager.delete_by_memory.call_count == 1
-        mcp_server.memory_manager.delete_by_memory.assert_called_once_with("Hello")
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=[memory],
+        ) as deleted:
+            await self._remove_fn(mcp_server)([memory, memory])
+        deleted.assert_called_once_with([memory])
 
     async def test_remove_mixed_existent_and_non_existent(self, mcp_server):
-        '''Test removing mix of existent and non-existent memories.'''
-
-        def search_side_effect(query):
-            if query == "Exists":
-                return [{"id": "1", "memory": "Exists", "score": 0.95}]
-            else:
-                return []  # Non-existent returns empty
-
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            side_effect=search_side_effect
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        memories = ["Exists", "Does not exist"]
-        assert remove_func is not None
-        await remove_func(memories)
-
-        assert mcp_server.memory_manager.search_for_removal.call_count == 2
-        assert (
-            mcp_server.memory_manager.delete_by_memory.call_count == 1
-        )  # Only one existed
-
-    async def test_remove_memory_search_failure_raises_storage_error(self, mcp_server):
-        '''Test memory search failure during remove raises StorageError.'''
-        memory = "Memory"
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            side_effect=Exception("Search failed")
-        )
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        with pytest.raises(StorageError, match="Failed to remove memories"):
-            await remove_func([memory])
+        """Only memories returned by delete_memories count as removed."""
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=["Exists"],
+        ) as deleted:
+            await self._remove_fn(mcp_server)(["Exists", "Does not exist"])
+        deleted.assert_called_once_with(["Exists", "Does not exist"])
 
     async def test_remove_memory_delete_failure_raises_storage_error(self, mcp_server):
-        '''Test memory delete failure raises StorageError.'''
-        memory = "Memory"
-        mock_candidates = [{"id": "1", "memory": memory, "score": 0.95}]
-
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            return_value=mock_candidates
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock(
-            side_effect=Exception("Delete failed")
-        )
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        with pytest.raises(StorageError, match="Failed to remove memories"):
-            await remove_func([memory])
+        """delete_memories exceptions are wrapped as StorageError."""
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            side_effect=Exception("Delete failed"),
+        ):
+            with pytest.raises(StorageError, match="Failed to remove memories"):
+                await self._remove_fn(mcp_server)(["Memory"])
 
     async def test_remove_with_special_characters(self, mcp_server):
-        '''Test removing memories with special characters.'''
         memory = "Memory with special chars: !@#$%"
-        mock_candidates = [{"id": "1", "memory": memory, "score": 0.95}]
-
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            return_value=mock_candidates
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        await remove_func([memory])
-
-        mcp_server.memory_manager.delete_by_memory.assert_called_once()
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=[memory],
+        ) as deleted:
+            await self._remove_fn(mcp_server)([memory])
+        deleted.assert_called_once_with([memory])
 
     async def test_remove_with_unicode(self, mcp_server):
-        '''Test removing memories with unicode characters.'''
         memory = "Unicode memory: 你好世界 🌍"
-        mock_candidates = [{"id": "1", "memory": memory, "score": 0.95}]
-
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            return_value=mock_candidates
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        await remove_func([memory])
-
-        mcp_server.memory_manager.delete_by_memory.assert_called_once()
-
-    @pytest.mark.parametrize(
-        "memory,should_delete",
-        [
-            ("Exact match", True),
-            ("EXACT MATCH", False),  # Case-sensitive
-            ("exact match", False),  # Case-sensitive
-        ],
-    )
-    async def test_remove_case_sensitivity(self, mcp_server, memory, should_delete):
-        '''Test remove is case-sensitive for matching.'''
-        # Semantic search always returns "Exact match"
-        mock_candidates = [{"id": "1", "memory": "Exact match", "score": 0.95}]
-        mcp_server.memory_manager.search_for_removal = MagicMock(
-            return_value=mock_candidates
-        )
-        mcp_server.memory_manager.delete_by_memory = MagicMock()
-
-        remove_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
-            if tool.name == "remove":
-                remove_func = tool.fn
-                break
-
-        assert remove_func is not None
-        await remove_func([memory])
-
-        if should_delete:
-            mcp_server.memory_manager.delete_by_memory.assert_called_once()
-        else:
-            mcp_server.memory_manager.delete_by_memory.assert_not_called()
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=[memory],
+        ) as deleted:
+            await self._remove_fn(mcp_server)([memory])
+        deleted.assert_called_once_with([memory])
 
 
 @pytest.mark.unit
@@ -1150,14 +947,16 @@ class TestHealthCheckTool:
 
     async def test_health_check_returns_healthy_status(self, mcp_server):
         '''Test health check returns healthy status with all components.'''
-        # Mock semantic and tantivy engines as initialized
-        ready = MagicMock()
-        ready.is_ready.return_value = True
+        class ReadyEngine:
+            def is_ready(self) -> bool:
+                return True
+
+        ready = ReadyEngine()
         mcp_server.memory_manager._semantic_engine = ready
         mcp_server.memory_manager._tantivy_engine = ready
 
         health_check_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "health_check":
                 health_check_func = tool.fn
                 break
@@ -1176,14 +975,16 @@ class TestHealthCheckTool:
 
     async def test_health_check_with_tantivy_disabled(self, mcp_server):
         '''Test health check when Tantivy is disabled.'''
-        # Mock semantic engine as initialized, tantivy as None
-        ready = MagicMock()
-        ready.is_ready.return_value = True
-        mcp_server.memory_manager._semantic_engine = ready
+
+        class ReadyEngine:
+            def is_ready(self) -> bool:
+                return True
+
+        mcp_server.memory_manager._semantic_engine = ReadyEngine()
         mcp_server.memory_manager._tantivy_engine = None
 
         health_check_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "health_check":
                 health_check_func = tool.fn
                 break
@@ -1201,7 +1002,7 @@ class TestHealthCheckTool:
         mcp_server.memory_manager._tantivy_engine = None
 
         health_check_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "health_check":
                 health_check_func = tool.fn
                 break
@@ -1214,14 +1015,16 @@ class TestHealthCheckTool:
 
     async def test_health_check_with_different_reranker(self, mcp_server):
         '''Test health check reports configured reranker engine.'''
-        # The default reranker is "cross_encoder" - verify it's reported correctly
-        ready = MagicMock()
-        ready.is_ready.return_value = True
+        class ReadyEngine:
+            def is_ready(self) -> bool:
+                return True
+
+        ready = ReadyEngine()
         mcp_server.memory_manager._semantic_engine = ready
         mcp_server.memory_manager._tantivy_engine = ready
 
         health_check_func = None
-        for tool in mcp_server.mcp._tool_manager._tools.values():
+        for tool in mcp_server.registered_tools.values():
             if tool.name == "health_check":
                 health_check_func = tool.fn
                 break

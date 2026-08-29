@@ -141,6 +141,21 @@ class FastMCPServer:
             f"Registered {len(self.tools)} tools with FastMCP",
             extra={"tool_count": len(self.tools)},
         )
+        from types import SimpleNamespace
+
+        self.registered_tools = {
+            tool.get_name(): SimpleNamespace(
+                name=tool.get_name(), fn=tool.get_handler()
+            )
+            for tool in self.tools
+        }
+
+    def tool_fn(self, name: str):
+        """Return the registered handler for an MCP tool name."""
+        for tool in self.tools:
+            if tool.get_name() == name:
+                return tool.get_handler()
+        raise KeyError(name)
 
     def _build_dynamic_instructions(self) -> str:
         """Build MCP instructions dynamically from registered tools.
