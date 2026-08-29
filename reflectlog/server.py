@@ -178,9 +178,15 @@ def main() -> None:
     print(f"Transport: {transport_mode}", file=output_stream)
 
     startup_start_time = time.time()
-    startup_phases = _run_numba_warmup(output_stream)
-
-    server = _start_server(output_stream, startup_start_time, startup_phases)
+    server = _start_server(output_stream, startup_start_time, {})
+    # Warmup after signal handlers so Ctrl-C during JIT still closes cleanly.
+    extra_phases = _run_numba_warmup(output_stream)
+    existing = getattr(server, "_startup_metrics", None)
+    if isinstance(existing, dict):
+        existing.update(extra_phases)
+        server.set_startup_metrics(existing)
+    else:
+        server.set_startup_metrics(extra_phases)
     server.run()
 
 
@@ -206,8 +212,7 @@ def _run_numba_warmup(
 ) -> dict[str, float]:
     """Run numba JIT warmup phase and return startup phases dict."""
     numba_warmup_enabled = os.environ.get("NUMBA_WARMUP", "true").lower() == "true"
-    transport = os.environ.get("MCP_TRANSPORT", "stdio")
-    default_warmup_mode = "sync" if transport == "stdio" else "background"
+    default_warmup_mode = "background"
     numba_warmup_mode = os.environ.get("NUMBA_WARMUP_MODE", default_warmup_mode).lower()
 
     startup_phases: dict[str, float] = {}

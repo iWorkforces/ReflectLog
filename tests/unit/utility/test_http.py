@@ -261,3 +261,16 @@ class TestCloseAll:
         assert client is HttpClientFactory._httpx_client
         HttpClientFactory.close_all_sync()
         assert HttpClientFactory._httpx_client is None
+
+    def test_close_all_sync_closes_async_client_from_running_loop(self) -> None:
+        """close_all_sync must join aclose even when a loop is already running."""
+        import asyncio
+
+        async def _exercise() -> None:
+            client = HttpClientFactory.get_async_httpx_client()
+            assert client is HttpClientFactory._async_httpx_client
+            HttpClientFactory.close_all_sync()
+            assert HttpClientFactory._async_httpx_client is None
+            assert client.is_closed
+
+        asyncio.run(_exercise())

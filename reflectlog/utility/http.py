@@ -49,7 +49,6 @@ class HttpClientFactory:
     _async_httpx_client: httpx.AsyncClient | None = None
     _aiohttp_client: aiohttp.ClientSession | None = None
     _create_lock: threading.Lock = threading.Lock()
-    _pending_aclose: object | None = None
 
     @classmethod
     def get_max_connections(cls) -> int:
@@ -135,23 +134,18 @@ class HttpClientFactory:
             if cls._httpx_client is not None:
                 return cls._httpx_client
 
-            limits = httpx.Limits(
-                max_connections=max_connections or cls.get_max_connections(),
-                max_keepalive_connections=max_keepalive_connections
-                or cls.get_max_keepalive_connections(),
+            _ = (
+                max_connections,
+                max_keepalive_connections,
+                connect_timeout,
+                read_timeout,
+                write_timeout,
+                http2,
             )
-
-            timeout = httpx.Timeout(
-                connect=connect_timeout or cls.get_connect_timeout(),
-                read=read_timeout or cls.get_read_timeout(),
-                write=write_timeout or cls.get_write_timeout(),
-                pool=connect_timeout or cls.get_connect_timeout(),
-            )
-
             cls._httpx_client = httpx.Client(
-                limits=limits,
-                timeout=timeout,
-                http2=http2,
+                limits=cls.get_httpx_limits(),
+                timeout=cls.get_httpx_timeout(),
+                http2=True,
             )
 
             return cls._httpx_client
@@ -189,23 +183,18 @@ class HttpClientFactory:
             if cls._async_httpx_client is not None:
                 return cls._async_httpx_client
 
-            limits = httpx.Limits(
-                max_connections=max_connections or cls.get_max_connections(),
-                max_keepalive_connections=max_keepalive_connections
-                or cls.get_max_keepalive_connections(),
+            _ = (
+                max_connections,
+                max_keepalive_connections,
+                connect_timeout,
+                read_timeout,
+                write_timeout,
+                http2,
             )
-
-            timeout = httpx.Timeout(
-                connect=connect_timeout or cls.get_connect_timeout(),
-                read=read_timeout or cls.get_read_timeout(),
-                write=write_timeout or cls.get_write_timeout(),
-                pool=connect_timeout or cls.get_connect_timeout(),
-            )
-
             cls._async_httpx_client = httpx.AsyncClient(
-                limits=limits,
-                timeout=timeout,
-                http2=http2,
+                limits=cls.get_httpx_limits(),
+                timeout=cls.get_httpx_timeout(),
+                http2=True,
             )
 
             return cls._async_httpx_client
@@ -268,17 +257,20 @@ class HttpClientFactory:
 
         Should be called on application shutdown to release resources.
         """
-        if cls._httpx_client is not None:
-            cls._httpx_client.close()
+        with cls._create_lock:
+            sync_client = cls._httpx_client
+            async_client = cls._async_httpx_client
+            aiohttp_client = cls._aiohttp_client
             cls._httpx_client = None
-
-        if cls._async_httpx_client is not None:
-            await cls._async_httpx_client.aclose()
             cls._async_httpx_client = None
-
-        if cls._aiohttp_client is not None:
-            await cls._aiohttp_client.close()
             cls._aiohttp_client = None
+
+        if sync_client is not None:
+            sync_client.close()
+        if async_client is not None:
+            await async_client.aclose()
+        if aiohttp_client is not None:
+            await aiohttp_client.close()
 
     @classmethod
     def close_all_sync(cls) -> None:
@@ -304,12 +296,13 @@ class HttpClientFactory:
 
         if async_client is None and aiohttp_client is None:
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
+
+        def _run_aclose() -> None:
             asyncio.run(_aclose())
-            return
-        cls._pending_aclose = loop.create_task(_aclose())
+
+        closer = threading.Thread(target=_run_aclose, name="http-aclose", daemon=False)
+        closer.start()
+        closer.join(timeout=5.0)
 
 
 def get_pooled_httpx_client(**kwargs: Any) -> httpx.Client:
