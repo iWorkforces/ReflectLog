@@ -473,7 +473,7 @@ class USearchEngine(BaseModel):
             # Add vectors to USearch index
             indexed_ids: list[int] = []
             try:
-                indexed_ids = self._index_vectors(inserted, computed)
+                self._index_vectors(inserted, computed, indexed_ids)
                 self._dirty = True
             except Exception:
                 self._rollback_batch_inserts(inserted_ids, indexed_ids)
@@ -505,20 +505,16 @@ class USearchEngine(BaseModel):
         self,
         inserted: list[tuple[str, int]],
         vectors: list[list[float]],
-    ) -> list[int]:
-        """Add a batch of vectors to the HNSW index."""
+        indexed_ids: list[int],
+    ) -> None:
+        """Add vectors one by one, appending each key before the next add."""
         keys = [mem_id for _, mem_id in inserted]
         matrix = np.asarray(vectors, dtype=np.float32)
         with self._index_lock:
-            add_many = getattr(self.index, "add_many", None)
-            if callable(add_many) and len(keys) >= 16:
-                _ = add_many(keys, matrix)
-                return keys
-            indexed_ids: list[int] = []
             for mem_id, vector in zip(keys, matrix, strict=True):
-                self.index.add(int(mem_id), vector)
-                indexed_ids.append(int(mem_id))
-            return indexed_ids
+                key = int(mem_id)
+                self.index.add(key, vector)
+                indexed_ids.append(key)
 
     def _rollback_batch_inserts(
         self, inserted_ids: list[int], indexed_ids: list[int]

@@ -1,5 +1,6 @@
 '''Unit tests for USearchEngine.'''
 
+import gc
 import os
 import tempfile
 from typing import Generator, cast
@@ -896,9 +897,11 @@ class TestUSearchEngineAddBatch:
         '''add_batch where insert_many returns empty should return empty list.'''
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
+        real_store = None
 
         try:
             engine.ensure_initialized()
+            real_store = engine._memory_store
             mock_store = MagicMock()
             mock_store.insert_many.return_value = []
             object.__setattr__(engine, "_memory_store", mock_store)
@@ -906,6 +909,8 @@ class TestUSearchEngineAddBatch:
             result = engine.add_batch("user1", ["dup1", "dup2"], infer=False)
             assert result == []
         finally:
+            if real_store is not None:
+                real_store.close()
             engine.close()
 
     def test_add_batch_embedding_failure_rolls_back(
@@ -949,8 +954,48 @@ class TestUSearchEngineAddBatch:
             with pytest.raises(RuntimeError, match="Failed to add memory batch"):
                 _ = engine.add_batch("user1", ["idx1", "idx2"], infer=False)
             assert engine.get_all("user1") == []
+            assert len(engine.index) == 0
         finally:
             engine.close()
+
+    def test_add_batch_vectors_remap_after_unique_skip(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """Precomputed vectors must follow remaining rows after UNIQUE skip."""
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        try:
+            engine.ensure_initialized()
+            first = [0.11] * 128
+            second = [0.22] * 128
+            third = [0.33] * 128
+            _ = engine.add_batch("user1", ["keep-a"], infer=False, vectors=[first])
+
+            captured: dict[str, object] = {}
+            original = engine._index_vectors
+
+            def wrap(
+                inserted: list[tuple[str, int]],
+                vectors: list[list[float]],
+                indexed_ids: list[int],
+            ) -> None:
+                captured["contents"] = [content for content, _mem_id in inserted]
+                captured["vectors"] = [list(vector) for vector in vectors]
+                original(inserted, vectors, indexed_ids)
+
+            with patch.object(engine, "_index_vectors", wrap):
+                stored = engine.add_batch(
+                    "user1",
+                    ["keep-a", "keep-b", "keep-c"],
+                    infer=False,
+                    vectors=[first, second, third],
+                )
+            assert stored == ["keep-b", "keep-c"]
+            assert captured["contents"] == ["keep-b", "keep-c"]
+            assert captured["vectors"] == [second, third]
+        finally:
+            engine.close()
+            gc.collect()
 
     def test_add_batch_embedding_size_mismatch(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
