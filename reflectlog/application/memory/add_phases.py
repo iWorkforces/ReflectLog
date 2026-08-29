@@ -466,7 +466,7 @@ class SmartReplacementPhase:
         new_memory: str,
         smart_replacer: SmartReplacer,
     ) -> list[ReplacementInfo]:
-        """Step 3: Check candidates in parallel with LLM (rate-limited).
+        """Step 3: Check candidates in parallel with LLM.
 
         Args:
             filtered_candidates: Pre-filtered (content, score) tuples.

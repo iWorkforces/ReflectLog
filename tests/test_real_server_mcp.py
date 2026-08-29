@@ -81,13 +81,13 @@ async def test_real_server_with_mcp_client():
                     try:
                         all_memories = json.loads(content.text)
                         for i, msg in enumerate(all_memories, 1):
-                            print(f"  {i}. {mem}")
+                            print(f"  {i}. {msg}")
                         print(f"\n📊 Total: {len(all_memories)} messages")
                     except Exception:
                         if isinstance(content.text, list):
                             all_memories = content.text
                             for i, msg in enumerate(all_memories, 1):
-                                print(f"  {i}. {mem}")
+                                print(f"  {i}. {msg}")
                             print(f"\n📊 Total: {len(all_memories)} messages")
                         else:
                             print(f"   {content.text}")

@@ -1,5 +1,6 @@
 '''Real server integration test using fastmcp.Client - SIMPLIFIED APPROACH.'''
 
+import json
 import os
 
 import anyio
@@ -85,8 +86,6 @@ async def test_real_server_with_fastmcp_client():
             for content in get_all_result.content:
                 if hasattr(content, "text"):
                     # Parse the text content
-                    import json
-
                     try:
                         all_memories = json.loads(content.text)
                         for i, mem in enumerate(all_memories, 1):
