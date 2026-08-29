@@ -46,7 +46,7 @@ core/
 
 **Factory Functions** - Adapter creation via `create_*_adapter()` factory functions.
 
-**RerankerEngine** - `Literal["cross_encoder", "none"]`. Unknown strings coerce to `none`.
+**RerankerEngine** - `Literal["cross_encoder", "none"]`. Unknown strings raise `ConfigurationError`.
 
 **Prompts** - `prompts.py` is replacement + MCP instructions only. Scoring/rerank prompts are gone.
 

@@ -24,7 +24,7 @@ fusion/
 ## CONVENTIONS
 
 - Methods: `rrf` (default), `sum`, `mnz`, `max`, `bordafuse` (not `borda`).
-- Unweighted RRF → Numba `_fuse_rrf_numba`. Weighted/other methods → ranx; `TypeError` on `weights` retries without them.
+- RRF (weighted or not) → Numba. Other methods → ranx; `TypeError` on `weights` fails closed.
 - One non-empty list: convert to/from run and **return original scores** (no min-max).
 - Ranx path averages duplicate scores; Numba RRF keeps first rank.
 
