@@ -97,19 +97,30 @@ class RemoveTool(BaseTool):
                     },
                 )
 
+            unique_memories = list(dict.fromkeys(memories))
             actual_removed = 0
             memories_not_found: list[str] = []
 
             try:
-                for memory_idx, memory in enumerate(memories, 1):
-                    removed_count = await self._remove_single_memory_async(
-                        memory, memory_idx, len(memories)
+                delete_memories = type(self.memory).__dict__.get("delete_memories")
+                if callable(delete_memories):
+                    actual_removed = await asyncify(self.memory.delete_memories)(
+                        unique_memories
                     )
-
-                    if removed_count == 0:
-                        memories_not_found.append(truncate_memory(memory, 50))
-                    else:
-                        actual_removed += removed_count
+                    if actual_removed < len(unique_memories):
+                        memories_not_found = [
+                            truncate_memory(memory, 50)
+                            for memory in unique_memories[actual_removed:]
+                        ]
+                else:
+                    for memory_idx, memory in enumerate(unique_memories, 1):
+                        removed_count = await self._remove_single_memory_async(
+                            memory, memory_idx, len(unique_memories)
+                        )
+                        if removed_count == 0:
+                            memories_not_found.append(truncate_memory(memory, 50))
+                        else:
+                            actual_removed += removed_count
 
                 # Log final summary
                 self.logger.info(

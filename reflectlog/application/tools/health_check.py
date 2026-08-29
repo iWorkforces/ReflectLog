@@ -2,8 +2,6 @@
 
 from typing import Any, override
 
-from asyncer import asyncify
-
 from .base import BaseTool
 
 
@@ -81,12 +79,6 @@ class HealthCheckTool(BaseTool):
                 engine_status = self.memory.search_engine_status()
                 semantic_engine_status = engine_status["semantic_engine"]
                 tantivy_engine_status = engine_status["tantivy_engine"]
-
-                reconcile_fn = getattr(
-                    self.memory, "reconcile_pending_replacements", None
-                )
-                if callable(reconcile_fn):
-                    _ = await asyncify(reconcile_fn)()
 
                 pending_count_fn = getattr(
                     self.memory, "pending_replacement_count", None
