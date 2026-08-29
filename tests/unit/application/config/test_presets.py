@@ -311,7 +311,7 @@ class TestApplyPresetToEnv:
 
         assert os.environ["SEARCH_LIMIT"] == "10"
         assert os.environ["ENABLE_HYBRID_SEARCH"] == "true"
-        assert os.environ["SEARCH_SCORE_THRESHOLD"] == "0.3"
+        assert "SEARCH_SCORE_THRESHOLD" not in os.environ
         assert os.environ["FUSION_RRF_K"] == "40"
         assert os.environ["OVERFETCH_MULTIPLIER"] == "2"
         assert os.environ["RERANKER_ENGINE"] == "none"
@@ -329,7 +329,7 @@ class TestApplyPresetToEnv:
 
         assert os.environ["SEARCH_LIMIT"] == "5"
         assert os.environ["ENABLE_HYBRID_SEARCH"] == "true"
-        assert os.environ["SEARCH_SCORE_THRESHOLD"] == "0.7"
+        assert "SEARCH_SCORE_THRESHOLD" not in os.environ
         assert os.environ["FUSION_RRF_K"] == "80"
         assert os.environ["OVERFETCH_MULTIPLIER"] == "5"
         assert os.environ["RERANKER_ENGINE"] == "cross_encoder"

@@ -1,7 +1,7 @@
 """Base class for OpenAI-compatible LLM providers.
 
 This module provides BaseOpenAIProvider, which extracts common functionality
-shared between OpenAIRerankerProvider and OpenAIReplacementProvider:
+shared by OpenAIReplacementProvider:
 
 - AsyncOpenAI client initialization with DefaultAioHttpClient (HTTP/2 support)
 - Structured output with json_schema fallback to json_object

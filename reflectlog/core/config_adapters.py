@@ -41,6 +41,7 @@ from reflectlog.core.config import (
     IServerConfig,
     IStorageConfig,
 )
+from reflectlog.core.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from reflectlog.application.config.settings import Config
@@ -59,10 +60,12 @@ def _validated_reranker_engine(reranker_engine: RerankerEngine) -> RerankerEngin
 
 def _coerce_reranker_engine(value: str) -> RerankerEngine:
     if value == "cross_encoder":
-        reranker_engine: RerankerEngine = "cross_encoder"
-    else:
-        reranker_engine = "none"
-    return _validated_reranker_engine(reranker_engine)
+        return _validated_reranker_engine("cross_encoder")
+    if value == "none":
+        return _validated_reranker_engine("none")
+    raise ConfigurationError(
+        f"Invalid RERANKER_ENGINE: '{value}'. Valid options: cross_encoder, none"
+    )
 
 
 @final
@@ -199,7 +202,7 @@ class ConfigAdapter(IAppConfig):
     # IRerankerConfig properties
     @property
     def llm_model(self) -> str:
-        """LLM model for reranking."""
+        """LLM model for smart replacement."""
         return self._config.llm_model
 
     @property
