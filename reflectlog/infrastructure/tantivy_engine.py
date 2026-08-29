@@ -910,7 +910,6 @@ class TantivyEngine(BaseModel):
             result = self.soft_delete(workspace_id, content, verify_exists=verify_exists)
             if result:
                 self.commit()
-                self._compact_if_needed()
             return result
 
         # Fall back to rebuild approach when soft-delete disabled
@@ -951,20 +950,7 @@ class TantivyEngine(BaseModel):
                 deleted += 1
         if deleted:
             self.commit()
-            self._compact_if_needed()
         return deleted
-
-    def _compact_if_needed(self) -> None:
-        """Rebuild the index when tombstone thresholds are exceeded."""
-        try:
-            if self.needs_compaction():
-                _ = self.compact()
-        except Exception as e:
-            if self.logger:
-                self.logger.warning(
-                    "Tantivy compaction skipped",
-                    extra={"workspace_id": self.config.workspace_id, "error": str(e)},
-                )
 
     def _delete_via_rebuild(self, workspace_id: str, content: str) -> bool:
         """Delete a document using the full index rebuild approach."""

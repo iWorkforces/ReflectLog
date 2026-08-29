@@ -764,6 +764,29 @@ class TestTantivySoftDelete:
 
             engine.close()
 
+    def test_delete_does_not_compact(self) -> None:
+        """Request-path delete must not rebuild the index."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                workspace_id="test",
+                index_path=tmpdir,
+                soft_delete_enabled=True,
+                compaction_threshold_ratio=0.01,
+                compaction_max_tombstones=1,
+            )
+            engine = TantivyEngine(config)
+            try:
+                engine.add("test", "keep")
+                engine.add("test", "drop")
+                engine.commit()
+                with patch.object(TantivyEngine, "compact") as compact:
+                    assert engine.delete("test", "drop") is True
+                    compact.assert_not_called()
+                stats = engine.get_tombstone_stats()
+                assert stats["tombstones"] >= 1
+            finally:
+                engine.close()
+
 
 @pytest.mark.unit
 class TestTantivyCompaction:
