@@ -786,7 +786,7 @@ class TestUSearchEngineAddErrorPaths:
         try:
             engine.ensure_initialized()
             mock_store = MagicMock()
-            mock_store.insert.side_effect = StorageError("Duplicate message detected")
+            mock_store.insert.side_effect = StorageError("Duplicate memory detected")
             object.__setattr__(engine, "_memory_store", mock_store)
 
             engine.add("user1", "dup msg", infer=False)
@@ -809,7 +809,7 @@ class TestUSearchEngineAddErrorPaths:
             mock_store.insert.side_effect = TypeError("unexpected type error")
             object.__setattr__(engine, "_memory_store", mock_store)
 
-            with pytest.raises(RuntimeError, match="Failed to add content"):
+            with pytest.raises(RuntimeError, match="Failed to add memory"):
                 engine.add("user1", "error msg", infer=False)
 
             logger.error.assert_called()  # type: ignore

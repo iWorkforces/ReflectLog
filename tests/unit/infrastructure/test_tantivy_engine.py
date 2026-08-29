@@ -1440,11 +1440,10 @@ class TestGetAllDocsErrorHandling:
             assert result == []
 
     def test_get_all_docs_exception_with_logger(self) -> None:
-        '''Test _get_all_docs logs warning on exception.'''
+        '''Test _get_all_docs fails closed on exception.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_logger = MagicMock()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config, logger=mock_logger)
+            engine = TantivyEngine(config)
 
             # Force exception by making searcher raise
             with patch.object(
@@ -1454,12 +1453,8 @@ class TestGetAllDocsErrorHandling:
                     lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
                 ),
             ):
-                result = engine._get_all_docs("test")
-
-            assert result == []
-            mock_logger.warning.assert_called()
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("Failed to get all docs" in c for c in calls)
+                with pytest.raises(RuntimeError, match="Failed to get all docs"):
+                    engine._get_all_docs("test")
 
     def test_get_all_docs_exception_without_logger(self) -> None:
         '''Test _get_all_docs returns [] on exception even without logger.'''
@@ -1474,9 +1469,8 @@ class TestGetAllDocsErrorHandling:
                     lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
                 ),
             ):
-                result = engine._get_all_docs("test")
-
-            assert result == []
+                with pytest.raises(RuntimeError, match="Failed to get all docs"):
+                    engine._get_all_docs("test")
 
 
 @pytest.mark.unit

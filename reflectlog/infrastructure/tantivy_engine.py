@@ -119,6 +119,7 @@ class TantivyEngine(BaseModel):
     )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
+    _revived_contents: dict[str, set[str]] = PrivateAttr(default_factory=dict)
 
     def __init__(
         self,
@@ -329,7 +330,9 @@ class TantivyEngine(BaseModel):
                         "error": str(e),
                     },
                 )
-            return []
+            raise RuntimeError(
+                f"Failed to get all docs from Tantivy: {e}"
+            ) from e
 
     def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]:
         """Find all memories that exactly match the given memory text.
@@ -416,6 +419,7 @@ class TantivyEngine(BaseModel):
             doc.add_integer("deleted_at", 0)  # 0 = not deleted
 
             _ = self.writer.add_document(doc)
+        self._revive_contents(workspace_id, [content])
 
     def add_batch(self, workspace_id: str, contents: list[str]) -> None:
         """Add multiple documents under a single writer lock."""
@@ -429,6 +433,7 @@ class TantivyEngine(BaseModel):
                 doc.add_unsigned("is_deleted", 0)
                 doc.add_integer("deleted_at", 0)
                 _ = self.writer.add_document(doc)
+        self._revive_contents(workspace_id, contents)
 
     def commit(self) -> None:
         """Commit pending changes and refresh searcher (thread-safe).
@@ -499,6 +504,22 @@ class TantivyEngine(BaseModel):
                         "Tantivy index flushed (writer invalidated)",
                         extra={"workspace_id": self.config.workspace_id},
                     )
+
+    def _revive_contents(self, workspace_id: str, contents: list[str]) -> None:
+        """Mark re-added texts as live so content-addressed tombstones do not hide them."""
+        if not contents:
+            return
+        revived = self._revived_contents.setdefault(workspace_id, set())
+        revived.update(contents)
+        with self._tombstone_cache_lock:
+            cached = self._tombstone_cache.get(workspace_id)
+            if cached is not None:
+                cached.difference_update(contents)
+
+    def _forget_revived(self, workspace_id: str, content: str) -> None:
+        revived = self._revived_contents.get(workspace_id)
+        if revived is not None:
+            revived.discard(content)
 
     def _invalidate_tombstone_cache(self, workspace_id: str | None = None) -> None:
         """Invalidate tombstone cache for a workspace or all workspaces.
@@ -575,6 +596,8 @@ class TantivyEngine(BaseModel):
                             )
                         break
                     tombstoned.add(memory)
+
+            tombstoned -= self._revived_contents.get(workspace_id, set())
 
             # Store in cache with LRU eviction (thread-safe write)
             with self._tombstone_cache_lock:
@@ -843,6 +866,7 @@ class TantivyEngine(BaseModel):
         Returns:
             True if tombstone was added, False if memory wasn't found.
         """
+        self._forget_revived(workspace_id, content)
         if verify_exists:
             existing = self.find_by_exact_match(workspace_id, content)
             if not existing:
@@ -937,7 +961,7 @@ class TantivyEngine(BaseModel):
         workspace_id: str,
         contents: list[str],
         *,
-        verify_exists: bool = False,
+        verify_exists: bool = True,
     ) -> int:
         """Soft-delete many memories and commit once."""
         if not contents:
@@ -1376,11 +1400,14 @@ class TantivyEngine(BaseModel):
         removed_tombstones = 0
 
         for workspace_id, memory, is_deleted in all_docs:
-            if memory in tombstoned_memories:
+            revived = self._revived_contents.get(workspace_id, set())
+            if memory in tombstoned_memories and memory not in revived:
                 if is_deleted == 1:
                     removed_tombstones += 1
                 else:
                     removed_originals += 1
+            elif is_deleted == 1:
+                removed_tombstones += 1
             else:
                 docs_to_keep.append((workspace_id, memory))
 

@@ -357,10 +357,19 @@ class USearchEngine(BaseModel):
                     f"Failed to generate embedding: {embed_error}"
                 ) from embed_error
 
-            # Add to USearch index
-            with self._index_lock:
-                self.index.add(mem_id, vector_np)
-            self._dirty = True
+            if len(vector_np) == 0:
+                _ = self.memory_store.delete(mem_id)
+                raise RuntimeError("Embedding produced an empty vector")
+
+            try:
+                with self._index_lock:
+                    self.index.add(mem_id, vector_np)
+                self._dirty = True
+            except Exception as index_error:
+                _ = self.memory_store.delete(mem_id)
+                raise RuntimeError(
+                    f"Failed to add vector to USearch index: {index_error}"
+                ) from index_error
 
             if self.logger:
                 self.logger.debug(
@@ -452,6 +461,10 @@ class USearchEngine(BaseModel):
                 if len(computed) != len(inserted_contents):
                     raise RuntimeError(
                         "Embedding batch size mismatch for USearch add_batch"
+                    )
+                if any(not vector for vector in computed):
+                    raise RuntimeError(
+                        "Embedding batch contained an empty vector"
                     )
             except Exception as embed_error:
                 # Rollback all SQLite inserts if embedding fails
@@ -674,9 +687,9 @@ class USearchEngine(BaseModel):
         """Generate query embedding and execute index search with overfetch."""
         query_vector = self.embedder.embed_query(query)
         query_np = np.array(query_vector, dtype=np.float32)
-        search_limit = min(max(limit, 1), len(self.index))
+        overfetch_limit = min(max(limit * 3, 1), len(self.index))
         with self._index_lock:
-            return self.index.search(query_np, search_limit, exact=use_exact)
+            return self.index.search(query_np, overfetch_limit, exact=use_exact)
 
     def _filter_matches_by_workspace(
         self,
@@ -852,8 +865,12 @@ class USearchEngine(BaseModel):
         self.memory_store.ensure_initialized()
 
     def is_ready(self) -> bool:
-        """Return True if the USearch index has already been loaded."""
-        return self._index is not None
+        """Return True if the USearch index and SQLite store are loaded."""
+        return (
+            self._index is not None
+            and self._memory_store is not None
+            and self._memory_store.is_ready()
+        )
 
     def get_id_by_content(self, workspace_id: str, content: str) -> int | None:
         """Get the ID of a memory by its content.
