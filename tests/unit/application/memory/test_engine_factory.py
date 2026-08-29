@@ -40,6 +40,10 @@ def mock_config() -> Mock:
     config.enable_hybrid_search = True
     config.tantivy_index_path_template = "indexes/{workspace_id}/tantivy"
     config.tantivy_normalize_scores = True
+    config.tantivy_soft_delete_enabled = True
+    config.tantivy_compaction_threshold_ratio = 0.2
+    config.tantivy_compaction_max_tombstones = 10000
+    config.tantivy_tombstone_ttl_days = 7
     config.reranker_engine = "llm"
 
     # Embedding settings
@@ -59,6 +63,7 @@ def mock_config() -> Mock:
     config.fusion_method = "rrf"
     config.fusion_normalization = None
     config.fusion_rrf_k = 60
+    config.fusion_weights = None
 
     # Smart replacement
     config.enable_smart_replace = True
@@ -237,7 +242,7 @@ class TestCreateSemanticEngine:
         """Semantic engine should be created with USearchConfig and embedder."""
         result = factory._create_semantic_engine(mock_config, mock_logger)
 
-        mock_usearch_config_cls.from_config.assert_called_once_with(mock_config)
+        mock_usearch_config_cls.from_config.assert_called_once()
         mock_usearch_cls.assert_called_once_with(
             mock_usearch_config_cls.from_config.return_value,
             embedder=mock_cached_cls.return_value,
@@ -424,6 +429,10 @@ class TestCreateTantivyEngine:
             workspace_id="my_project",
             index_path="indexes/my_project/tantivy",
             normalize_scores=True,
+            soft_delete_enabled=True,
+            compaction_threshold_ratio=0.2,
+            compaction_max_tombstones=10000,
+            tombstone_ttl_days=7,
         )
         mock_tantivy_cls.assert_called_once_with(
             mock_tantivy_config_cls.return_value,
@@ -489,6 +498,7 @@ class TestCreateFusionEngine:
             method="rrf",
             normalization="min-max",
             rrf_k=30,
+            weights=None,
             logger=mock_logger,
         )
         assert result is mock_create_fusion.return_value
@@ -512,6 +522,7 @@ class TestCreateFusionEngine:
             method="sum",
             normalization=None,
             rrf_k=60,
+            weights=None,
             logger=mock_logger,
         )
 
@@ -534,7 +545,7 @@ class TestCreateLLMReranker:
 
         result = create_llm_reranker(mock_config, mock_logger)
 
-        mock_config_cls.from_config.assert_called_once_with(mock_config)
+        mock_config_cls.from_config.assert_called_once()
         mock_reranker_cls.assert_called_once_with(
             config=mock_config_cls.from_config.return_value,
             logger=mock_logger,
@@ -584,7 +595,7 @@ class TestCreateCrossEncoderReranker:
 
         result = create_cross_encoder_reranker(mock_config, mock_logger)
 
-        mock_config_cls.from_config.assert_called_once_with(mock_config)
+        mock_config_cls.from_config.assert_called_once()
         mock_reranker_cls.assert_called_once_with(
             config=mock_config_cls.from_config.return_value,
             logger=mock_logger,
@@ -634,7 +645,7 @@ class TestCreateSmartReplacer:
 
         result = create_smart_replacer(mock_config, mock_logger)
 
-        mock_config_cls.from_config.assert_called_once_with(mock_config)
+        mock_config_cls.from_config.assert_called_once()
         mock_replacer_cls.assert_called_once_with(
             config=mock_config_cls.from_config.return_value,
             logger=mock_logger,

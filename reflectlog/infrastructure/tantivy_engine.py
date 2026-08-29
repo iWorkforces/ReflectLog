@@ -417,6 +417,19 @@ class TantivyEngine(BaseModel):
 
             _ = self.writer.add_document(doc)
 
+    def add_batch(self, workspace_id: str, contents: list[str]) -> None:
+        """Add multiple documents under a single writer lock."""
+        if not contents:
+            return
+        with self._writer_lock:
+            for content in contents:
+                doc = tantivy.Document()
+                doc.add_text("workspace_id", workspace_id)
+                doc.add_text("content", content)
+                doc.add_unsigned("is_deleted", 0)
+                doc.add_integer("deleted_at", 0)
+                _ = self.writer.add_document(doc)
+
     def commit(self) -> None:
         """Commit pending changes and refresh searcher (thread-safe).
 
@@ -649,7 +662,8 @@ class TantivyEngine(BaseModel):
                 return []
 
             tombstoned_memories = self._get_tombstoned_memories(workspace_id)
-            search_limit = limit * 3 if tombstoned_memories else limit
+            extra = min(len(tombstoned_memories), limit) if tombstoned_memories else 0
+            search_limit = limit + extra
 
             parsed_query = self._build_search_query(query, workspace_id)
             results = self._collect_search_results(
@@ -809,7 +823,9 @@ class TantivyEngine(BaseModel):
             # but we clear the reference for consistency
             self._index = None
 
-    def soft_delete(self, workspace_id: str, content: str) -> bool:
+    def soft_delete(
+        self, workspace_id: str, content: str, *, verify_exists: bool = True
+    ) -> bool:
         """Mark a document as deleted by adding a tombstone (O(1) operation).
 
         Thread-safe. This is much faster than rebuilding the entire index (O(n) for rebuild vs O(1)).
@@ -827,18 +843,18 @@ class TantivyEngine(BaseModel):
         Returns:
             True if tombstone was added, False if memory wasn't found.
         """
-        # First, verify the memory exists (only check non-deleted documents)
-        existing = self.find_by_exact_match(workspace_id, content)
-        if not existing:
-            if self.logger:
-                self.logger.debug(
-                    "Soft-delete: memory not found",
-                    extra={
-                        "workspace_id": workspace_id,
-                        "memory_preview": content[:50] if content else "",
-                    },
-                )
-            return False
+        if verify_exists:
+            existing = self.find_by_exact_match(workspace_id, content)
+            if not existing:
+                if self.logger:
+                    self.logger.debug(
+                        "Soft-delete: memory not found",
+                        extra={
+                            "workspace_id": workspace_id,
+                            "memory_preview": content[:50] if content else "",
+                        },
+                    )
+                return False
 
         # Add tombstone document
         with self._writer_lock:
@@ -861,7 +877,9 @@ class TantivyEngine(BaseModel):
 
         return True
 
-    def delete(self, workspace_id: str, content: str) -> bool:
+    def delete(
+        self, workspace_id: str, content: str, *, verify_exists: bool = True
+    ) -> bool:
         """Delete a document from the Tantivy index by exact memory match (thread-safe).
 
         When soft-delete is enabled (default), uses O(1) tombstone marking.
@@ -889,9 +907,10 @@ class TantivyEngine(BaseModel):
         """
         # Use soft-delete if enabled (O(1) vs O(n))
         if self.config.soft_delete_enabled:
-            result = self.soft_delete(workspace_id, content)
+            result = self.soft_delete(workspace_id, content, verify_exists=verify_exists)
             if result:
                 self.commit()
+                self._compact_if_needed()
             return result
 
         # Fall back to rebuild approach when soft-delete disabled
@@ -913,6 +932,39 @@ class TantivyEngine(BaseModel):
         except Exception as e:
             self._log_delete_error(workspace_id, content, e, "error", type(e).__name__)
             return False
+
+    def delete_batch(
+        self,
+        workspace_id: str,
+        contents: list[str],
+        *,
+        verify_exists: bool = False,
+    ) -> int:
+        """Soft-delete many memories and commit once."""
+        if not contents:
+            return 0
+        deleted = 0
+        for content in contents:
+            if self.soft_delete(
+                workspace_id, content, verify_exists=verify_exists
+            ):
+                deleted += 1
+        if deleted:
+            self.commit()
+            self._compact_if_needed()
+        return deleted
+
+    def _compact_if_needed(self) -> None:
+        """Rebuild the index when tombstone thresholds are exceeded."""
+        try:
+            if self.needs_compaction():
+                _ = self.compact()
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(
+                    "Tantivy compaction skipped",
+                    extra={"workspace_id": self.config.workspace_id, "error": str(e)},
+                )
 
     def _delete_via_rebuild(self, workspace_id: str, content: str) -> bool:
         """Delete a document using the full index rebuild approach."""

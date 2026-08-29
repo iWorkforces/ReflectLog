@@ -161,6 +161,10 @@ class EngineFactory:
                 workspace_id=config.workspace_id
             ).lower(),
             normalize_scores=config.tantivy_normalize_scores,
+            soft_delete_enabled=config.tantivy_soft_delete_enabled,
+            compaction_threshold_ratio=config.tantivy_compaction_threshold_ratio,
+            compaction_max_tombstones=config.tantivy_compaction_max_tombstones,
+            tombstone_ttl_days=config.tantivy_tombstone_ttl_days,
         )
         return TantivyEngine(tantivy_config, logger=logger)
 
@@ -178,11 +182,12 @@ class EngineFactory:
         Returns:
             Configured FusionEngine instance.
         """
+        fusion_weights = config.fusion_weights
         return create_fusion_engine(
             method=config.fusion_method,
             normalization=config.fusion_normalization,
             rrf_k=config.fusion_rrf_k,
-            weights=config.fusion_weights,
+            weights=fusion_weights if isinstance(fusion_weights, list) else None,
             logger=logger,
         )
 
