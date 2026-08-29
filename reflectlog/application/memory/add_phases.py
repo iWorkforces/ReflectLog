@@ -256,12 +256,8 @@ class DuplicateDetectionPhase:
     def _has_exact_match(self, content: str) -> bool:
         """Check whether the exact memory already exists in storage.
 
-        Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
-        falling back to direct database lookup otherwise. Both paths are O(log n)
-        avoiding the ~100-500ms embedding API call overhead.
-
-        Sprint 2.1 Optimization: Fallback now uses get_id_by_content() for direct
-        indexed database lookup instead of semantic search with embedding API call.
+        Uses the unique SQLite (workspace_id, content) index. Tantivy is not
+        consulted for identity because stemming cannot do exact match.
         """
         return has_exact_match(
             semantic_engine=self._semantic_engine,
@@ -923,7 +919,7 @@ class StoragePhase:
                     self._tantivy_engine,
                     self._workspace_id,
                     contents,
-                    verify_exists=False,
+                    verify_exists=True,
                 )
             else:
                 for content in contents:

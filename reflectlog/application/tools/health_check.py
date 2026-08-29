@@ -41,7 +41,8 @@ class HealthCheckTool(BaseTool):
                 Dictionary containing health status information with keys:
                 - status: Overall status string ("healthy", "degraded", or
                   "unhealthy"). Degraded means leftover replacement transitions
-                  remain after this check attempted to finish them.
+                  are still pending. This check is read-only; leftovers are
+                  finished on startup or the next add persist.
                 - workspace_id: The configured workspace identifier
                 - semantic_engine: "initialized", "pending", or "not_initialized"
                 - tantivy_engine: "initialized", "pending", or "disabled"
@@ -59,7 +60,7 @@ class HealthCheckTool(BaseTool):
                     "workspace_id": "my-project",
                     "semantic_engine": "initialized",
                     "tantivy_engine": "initialized",
-                    "reranker_engine": "llm",
+                    "reranker_engine": "cross_encoder",
                     "hybrid_search_enabled": True,
                     "rrf_fusion_enabled": True,
                     "recency_boost_enabled": True,

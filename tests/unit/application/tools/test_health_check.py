@@ -26,7 +26,7 @@ class TestHealthCheckToolStatus:
         mock_memory_manager.search_engine_status.assert_called_once()
         mock_memory_manager.reconcile_pending_replacements.assert_not_called()
 
-    async def test_degraded_when_replacements_remain_after_reconcile(
+    async def test_degraded_when_pending_replacements_remain(
         self, mock_config, mock_memory_manager, mock_tool_logger
     ) -> None:
         mock_memory_manager.search_engine_status.return_value = {
@@ -43,7 +43,7 @@ class TestHealthCheckToolStatus:
         mock_memory_manager.reconcile_pending_replacements.assert_not_called()
         mock_memory_manager.pending_replacement_count.assert_called_once()
 
-    async def test_healthy_when_reconcile_clears_pending(
+    async def test_healthy_when_no_pending_replacements(
         self, mock_config, mock_memory_manager, mock_tool_logger
     ) -> None:
         mock_memory_manager.search_engine_status.return_value = {

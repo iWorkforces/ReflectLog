@@ -857,6 +857,27 @@ class TestStoragePhase:
         with pytest.raises(StorageError, match="Failed to add memory batch"):
             phase._add_memories_batch(["msg1"])
 
+    def test_add_memories_unlocked_passes_vectors(
+        self, mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+    ):
+        """Precomputed vectors are forwarded to semantic add_batch."""
+        mock_semantic_engine.add_batch.return_value = ["a", "b"]
+        vectors = [[0.1, 0.2], [0.3, 0.4]]
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = phase._add_memories_unlocked(["a", "b"], vectors)
+        assert result == ["a", "b"]
+        mock_semantic_engine.add_batch.assert_called_once_with(
+            workspace_id="test_project",
+            contents=["a", "b"],
+            infer=False,
+            vectors=vectors,
+        )
+
     # -----------------------------------------------------------------------
     # _delete_memory Tests (lines 757-768)
     # -----------------------------------------------------------------------

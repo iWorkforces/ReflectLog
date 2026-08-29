@@ -104,14 +104,16 @@ class RemoveTool(BaseTool):
             try:
                 delete_memories = type(self.memory).__dict__.get("delete_memories")
                 if callable(delete_memories):
-                    actual_removed = await asyncify(self.memory.delete_memories)(
+                    deleted = await asyncify(self.memory.delete_memories)(
                         unique_memories
                     )
-                    if actual_removed < len(unique_memories):
-                        memories_not_found = [
-                            truncate_memory(memory, 50)
-                            for memory in unique_memories[actual_removed:]
-                        ]
+                    deleted_set = set(deleted) if isinstance(deleted, list) else set()
+                    actual_removed = len(deleted_set)
+                    memories_not_found = [
+                        truncate_memory(memory, 50)
+                        for memory in unique_memories
+                        if memory not in deleted_set
+                    ]
                 else:
                     for memory_idx, memory in enumerate(unique_memories, 1):
                         removed_count = await self._remove_single_memory_async(

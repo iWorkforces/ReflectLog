@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from reflectlog.application.tools.remove import RemoveTool
 from reflectlog.core.exceptions import StorageError
 
 
@@ -197,6 +198,29 @@ class TestRemoveToolPartialRemoval:
         ]
         summary_logged = any("not found" in msg.lower() for msg in info_calls)
         assert summary_logged
+
+    async def test_batch_delete_reports_missing_by_content(
+        self, mock_config, mock_tool_logger
+    ):
+        """delete_memories results are compared by content, not list suffix."""
+
+        class FakeManager:
+            def delete_memories(self, memories: list[str]) -> list[str]:
+                return [memory for memory in memories if memory == "Exists"]
+
+        tool = RemoveTool(
+            config=mock_config,
+            memory_manager=FakeManager(),
+            logger=mock_tool_logger,
+        )
+        handler = tool.get_handler()
+        await handler(["Exists", "Ghost"])
+
+        info_calls = [
+            str(c.args[0]) for c in mock_tool_logger.info.call_args_list if c.args
+        ]
+        summary = next(msg for msg in info_calls if "not found" in msg.lower())
+        assert "1 memory" in summary
 
 
 @pytest.mark.unit

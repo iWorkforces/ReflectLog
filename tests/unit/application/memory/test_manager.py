@@ -722,6 +722,67 @@ class TestDeleteOperations:
             mock_usearch.delete.assert_called_once_with(memory_id="42")
 
 
+    def test_delete_memories_returns_found_contents(self, mock_config, mock_logger):
+        """delete_memories returns only contents that existed."""
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+
+        def lookup(_workspace_id: str, content: str) -> int | None:
+            return {"keep": 1, "also": 2}.get(content)
+
+        mock_usearch.get_id_by_content.side_effect = lookup
+
+        deleted = manager.delete_memories(["keep", "missing", "also"])
+
+        assert deleted == ["keep", "also"]
+        assert mock_usearch.delete.call_count == 2
+        mock_usearch.commit.assert_called_once()
+        assert mock_tantivy.delete.call_count == 2
+
+    def test_delete_memories_tantivy_failure_inconsistent_state(
+        self, mock_config, mock_logger
+    ):
+        """Tantivy failure after USearch batch delete raises InconsistentStateError."""
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.get_id_by_content.return_value = 42
+        mock_tantivy.delete.side_effect = RuntimeError("tantivy broken")
+
+        with pytest.raises(
+            InconsistentStateError,
+            match="USearch deletion succeeded but Tantivy deletion failed",
+        ):
+            manager.delete_memories(["test memory"])
+
+        mock_usearch.delete.assert_called_once_with(memory_id="42")
+
+    def test_delete_memories_uses_verify_exists_on_batch(
+        self, mock_config, mock_logger
+    ):
+        """Production delete_batch is called with verify_exists=True."""
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.get_id_by_content.return_value = 7
+
+        class FakeTantivy:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, list[str], bool]] = []
+
+            def delete_batch(
+                self,
+                workspace_id: str,
+                contents: list[str],
+                verify_exists: bool = False,
+            ) -> int:
+                self.calls.append((workspace_id, contents, verify_exists))
+                return len(contents)
+
+        fake = FakeTantivy()
+        manager._tantivy_engine = fake
+
+        deleted = manager.delete_memories(["hello"])
+
+        assert deleted == ["hello"]
+        assert fake.calls == [("test_project", ["hello"], True)]
+
+
 # ---------------------------------------------------------------------------
 # Tests: close error paths  (lines 983-984, 1002-1003)
 # ---------------------------------------------------------------------------

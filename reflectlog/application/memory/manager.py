@@ -285,8 +285,8 @@ class MemoryManager:
     def reconcile_pending_replacements(self) -> int:
         """Finish replacements interrupted by a previous process stop.
 
-        Safe to call from health checks and later persists. Acquires
-        ``_write_lock`` then ``_lock``.
+        Called at startup and at the start of the next add persist.
+        Not invoked by health_check. Acquires ``_write_lock`` then ``_lock``.
         """
         return apply_pending_replacements(
             semantic_engine=self._semantic_engine,
@@ -398,6 +398,9 @@ class MemoryManager:
             )
             reranker = self.get_reranker()
             if reranker is not None:
+                model = getattr(reranker, "model", None)
+                if model is not None:
+                    _ = model
                 engines_initialized.append(f"reranker_{self.config.reranker_engine}")
             else:
                 self.logger.warning(
@@ -1032,35 +1035,49 @@ class MemoryManager:
     def delete_by_message(self, message: str) -> bool:
         return self.delete_by_memory(message)
 
-    def delete_memories(self, memories: list[str]) -> int:
-        """Delete many memories under one write lock and one Tantivy commit."""
+    def delete_memories(self, memories: list[str]) -> list[str]:
+        """Delete many memories under one write lock and one Tantivy commit.
+
+        Returns:
+            Contents that were found and deleted.
+        """
         unique = list(dict.fromkeys(memories))
         if not unique:
-            return 0
+            return []
         with self._write_lock, self._lock:
             found: list[tuple[int, str]] = []
             for memory in unique:
                 mem_id = self.get_id_by_content(memory)
                 if mem_id is not None:
                     found.append((mem_id, memory))
+            contents = [memory for _mem_id, memory in found]
             for mem_id, _memory in found:
                 self._semantic_engine.delete(memory_id=str(mem_id))
             if found and self._tantivy_engine is not None:
-                delete_batch = type(self._tantivy_engine).__dict__.get("delete_batch")
-                contents = [memory for _mem_id, memory in found]
-                if callable(delete_batch):
-                    _ = delete_batch(
-                        self._tantivy_engine,
-                        self.workspace_id,
-                        contents,
-                        verify_exists=False,
+                try:
+                    delete_batch = type(self._tantivy_engine).__dict__.get(
+                        "delete_batch"
                     )
-                else:
-                    for content in contents:
-                        _ = self._tantivy_engine.delete(self.workspace_id, content)
+                    if callable(delete_batch):
+                        _ = delete_batch(
+                            self._tantivy_engine,
+                            self.workspace_id,
+                            contents,
+                            verify_exists=True,
+                        )
+                    else:
+                        for content in contents:
+                            _ = self._tantivy_engine.delete(
+                                self.workspace_id, content
+                            )
+                except Exception as tantivy_error:
+                    raise InconsistentStateError(
+                        "USearch deletion succeeded but Tantivy deletion failed: "
+                        f"{tantivy_error}"
+                    ) from tantivy_error
             if found:
                 self._semantic_engine.commit()
-            return len(found)
+            return contents
 
     def get_id_by_content(self, content: str) -> int | None:
         """Get SQLite ID for exact memory content match.
@@ -1076,12 +1093,8 @@ class MemoryManager:
     def _has_exact_match(self, content: str) -> bool:
         """Check whether the exact memory already exists in storage.
 
-        Uses Tantivy for fast exact phrase matching when hybrid search is enabled,
-        falling back to direct database lookup otherwise. Both paths are O(log n)
-        avoiding the ~100-500ms embedding API call overhead.
-
-        Sprint 2.1 Optimization: Fallback now uses get_id_by_content() for direct
-        indexed database lookup instead of semantic search with embedding API call.
+        Uses the unique SQLite (workspace_id, content) index. Tantivy is not
+        consulted for identity because stemming cannot do exact match.
         """
         return has_exact_match(
             semantic_engine=self._semantic_engine,
