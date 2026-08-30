@@ -67,6 +67,8 @@ class ReplacementTransitionRequest:
 
 
 class IArchiveMemoryStore(Protocol):
+    def get(self, memory_id: int) -> object | None: ...
+
     def archive(
         self,
         memory_id: int,
@@ -91,7 +93,26 @@ class IArchiveMemoryStore(Protocol):
         self, requests: list[ReplacementTransitionRequest]
     ) -> list[ReplacementTransition]: ...
 
+    def begin_add_intents(
+        self, workspace_id: str, contents: list[str]
+    ) -> list[ReplacementTransition]: ...
+
+    def begin_delete_intents(
+        self, workspace_id: str, items: list[tuple[int, str]]
+    ) -> list[ReplacementTransition]: ...
+
     def list_pending_transitions(self) -> list[ReplacementTransition]: ...
+
+    def has_later_intent(
+        self,
+        *,
+        workspace_id: str,
+        kind: str,
+        content: str,
+        after_id: int,
+    ) -> bool: ...
+
+    def exists_many(self, workspace_id: str, contents: list[str]) -> set[str]: ...
 
     def get_transition_for_old_memory(
         self, workspace_id: str, old_memory_id: int
@@ -345,6 +366,14 @@ class ISemanticSearchEngine(Protocol):
 
     def is_ready(self) -> bool:
         """Return True if lazy initialization has already completed."""
+        ...
+
+    def count(self, workspace_id: str) -> int:
+        """Return how many memories exist for a workspace."""
+        ...
+
+    def contains_id(self, memory_id: int) -> bool | None:
+        """Return whether the index contains ``memory_id``, or None if unknown."""
         ...
 
     def get_id_by_content(self, workspace_id: str, content: str) -> int | None:

@@ -145,6 +145,31 @@ class IStorageConfig(Protocol):
         """Index size below which USearch switches to exact search."""
         ...
 
+    @property
+    def tantivy_normalize_scores(self) -> bool:
+        """Whether Tantivy scores are normalized."""
+        ...
+
+    @property
+    def tantivy_soft_delete_enabled(self) -> bool:
+        """Whether Tantivy uses tombstones instead of rebuilds."""
+        ...
+
+    @property
+    def tantivy_compaction_threshold_ratio(self) -> float:
+        """Tombstone ratio that triggers compaction."""
+        ...
+
+    @property
+    def tantivy_compaction_max_tombstones(self) -> int:
+        """Tombstone count that forces compaction."""
+        ...
+
+    @property
+    def tantivy_tombstone_ttl_days(self) -> int:
+        """Days before tombstones are eligible for removal."""
+        ...
+
 
 @runtime_checkable
 class IRerankerConfig(Protocol):

@@ -253,6 +253,18 @@ class IMemoryManager(Protocol):
         """Synchronous add used by tests and recovery seeding."""
         ...
 
+    def count(self) -> int:
+        """Return how many memories exist in this workspace."""
+        ...
+
+    def pending_intent_count(self) -> int:
+        """Return how many add/delete/replace intents are still pending."""
+        ...
+
+    def search_engine_status(self) -> dict[str, str]:
+        """Return public readiness of search engines for health checks."""
+        ...
+
     def get_all(
         self, limit: int | None = None, offset: int = 0
     ) -> list[str]:

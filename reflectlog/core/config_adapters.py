@@ -202,6 +202,31 @@ class ConfigAdapter(IAppConfig):
         return self._config.usearch_exact_search_threshold
 
     @property
+    def tantivy_normalize_scores(self) -> bool:
+        """Whether Tantivy scores are normalized."""
+        return self._config.tantivy_normalize_scores
+
+    @property
+    def tantivy_soft_delete_enabled(self) -> bool:
+        """Whether Tantivy uses tombstones instead of rebuilds."""
+        return self._config.tantivy_soft_delete_enabled
+
+    @property
+    def tantivy_compaction_threshold_ratio(self) -> float:
+        """Tombstone ratio that triggers compaction."""
+        return self._config.tantivy_compaction_threshold_ratio
+
+    @property
+    def tantivy_compaction_max_tombstones(self) -> int:
+        """Tombstone count that forces compaction."""
+        return self._config.tantivy_compaction_max_tombstones
+
+    @property
+    def tantivy_tombstone_ttl_days(self) -> int:
+        """Days before tombstones are eligible for removal."""
+        return self._config.tantivy_tombstone_ttl_days
+
+    @property
     def embedding_dims(self) -> int:
         """Embedding vector dimensions."""
         return self._config.embedding_dims
@@ -492,6 +517,26 @@ class StorageConfigAdapter(IStorageConfig):
     @property
     def usearch_exact_search_threshold(self) -> int:
         return self._config.usearch_exact_search_threshold
+
+    @property
+    def tantivy_normalize_scores(self) -> bool:
+        return self._config.tantivy_normalize_scores
+
+    @property
+    def tantivy_soft_delete_enabled(self) -> bool:
+        return self._config.tantivy_soft_delete_enabled
+
+    @property
+    def tantivy_compaction_threshold_ratio(self) -> float:
+        return self._config.tantivy_compaction_threshold_ratio
+
+    @property
+    def tantivy_compaction_max_tombstones(self) -> int:
+        return self._config.tantivy_compaction_max_tombstones
+
+    @property
+    def tantivy_tombstone_ttl_days(self) -> int:
+        return self._config.tantivy_tombstone_ttl_days
 
 
 @final

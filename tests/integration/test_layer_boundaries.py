@@ -180,11 +180,17 @@ class TestProtocolConformanceUSearch:
             "name",
             "search",
             "add",
+            "add_batch",
             "delete",
             "commit",
             "close",
             "ensure_initialized",
             "is_ready",
+            "count",
+            "contains_id",
+            "get_id_by_content",
+            "get_all",
+            "memory_store",
         ):
             assert hasattr(USearchEngine, attr), (
                 f"USearchEngine missing ISemanticSearchEngine.{attr}"
@@ -309,6 +315,9 @@ class TestProtocolConformanceConfigAdapter:
             # IStorageConfig
             "storage_path", "usearch_index_path", "tantivy_index_path",
             "embedding_dims", "metric",
+            "tantivy_normalize_scores", "tantivy_soft_delete_enabled",
+            "tantivy_compaction_threshold_ratio",
+            "tantivy_compaction_max_tombstones", "tantivy_tombstone_ttl_days",
             # IRerankerConfig
             "llm_model", "llm_api_base_url", "cross_encoder_model",
             "cross_encoder_device", "reranker_batch_normalize", "llm_api_key",
@@ -354,6 +363,9 @@ class TestProtocolConformanceConfigAdapter:
             (StorageConfigAdapter, [
                 "storage_path", "usearch_index_path", "tantivy_index_path",
                 "embedding_dims", "metric",
+                "tantivy_normalize_scores", "tantivy_soft_delete_enabled",
+                "tantivy_compaction_threshold_ratio",
+                "tantivy_compaction_max_tombstones", "tantivy_tombstone_ttl_days",
             ]),
             (RerankerConfigAdapter, [
                 "llm_model", "llm_api_base_url", "cross_encoder_model",
