@@ -4,8 +4,18 @@ from dataclasses import dataclass
 import os
 import re
 import threading
-from typing import Literal, TypedDict
+from typing import TypedDict
 
+from reflectlog.core.enums import (
+    CrossEncoderDevice,
+    EmbedderProvider,
+    FusionMethod,
+    FusionNormalization,
+    LlmProvider,
+    RerankerEngine,
+    TransportMode,
+    parse_str_enum,
+)
 from reflectlog.core.exceptions import ConfigurationError
 
 from ..utils.security import SecretString
@@ -13,9 +23,6 @@ from .presets import apply_preset_to_env, get_active_preset
 
 # Note: LangchainQwenEmbeddings is imported lazily in MemoryManager
 # to avoid unnecessary initialization when not using langchain provider
-
-# Type definitions
-type TransportMode = Literal["stdio", "http", "sse", "streamable-http"]
 
 
 class TransportConfigDict(TypedDict):
@@ -48,8 +55,8 @@ class SearchConfigDict(TypedDict):
     overfetch_max_multiplier: float
     usearch_exact_search: bool
     usearch_exact_search_threshold: int
-    fusion_method: str
-    fusion_normalization: str | None
+    fusion_method: FusionMethod
+    fusion_normalization: FusionNormalization | None
     fusion_rrf_k: int
     fusion_ranking_threshold: float
     enable_rrf_fusion: bool
@@ -57,14 +64,14 @@ class SearchConfigDict(TypedDict):
 
 
 class RerankerConfigDict(TypedDict):
-    reranker_engine: str
-    llm_provider: str
+    reranker_engine: RerankerEngine
+    llm_provider: LlmProvider
     llm_model: str
     search_score_threshold: float
     rerank_max_concurrency: int
     cross_encoder_model: str
     cross_encoder_top_k: int
-    cross_encoder_device: str
+    cross_encoder_device: CrossEncoderDevice
     cross_encoder_batch_size: int
     cross_encoder_score_threshold: float
     cross_encoder_use_fp16: bool
@@ -153,7 +160,7 @@ class Config:
     openrouter_api_key: SecretString  # Wrapped for security - use .get_secret_value()
 
     # Transport settings
-    transport: TransportMode = "stdio"
+    transport: TransportMode = TransportMode.STDIO
     port: int = 9103
     host: str = "127.0.0.1"
     path: str = "/mcp"
@@ -162,7 +169,7 @@ class Config:
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # Embedding settings
-    embedder_provider: str = "openai"
+    embedder_provider: str = EmbedderProvider.OPENAI
     embedding_model: str = "openai/text-embedding-3-large"
     embedding_dims: int = 3072
     qwen_embedding_dims: int = 4096
@@ -205,8 +212,8 @@ class Config:
     )
 
     # Fusion settings (ranx-based)
-    fusion_method: str = "rrf"  # rrf, sum, mnz, max, bordafuse
-    fusion_normalization: str | None = None  # min-max, max, sum, zmuv, rank, borda
+    fusion_method: FusionMethod = FusionMethod.RRF
+    fusion_normalization: FusionNormalization | None = None
     fusion_rrf_k: int = 60  # RRF k parameter (lower = more weight to top ranks)
     fusion_ranking_threshold: float = 0.0  # Raw RRF cutoff; 0.0 keeps all fused hits
     enable_rrf_fusion: bool = True  # Enable RRF fusion (false = concatenate results)
@@ -220,7 +227,7 @@ class Config:
     get_all_limit: int = 1000
 
     # Reranker engine selection
-    reranker_engine: str = "cross_encoder"  # "cross_encoder" or "none"
+    reranker_engine: RerankerEngine = RerankerEngine.CROSS_ENCODER
 
     # LLM settings used by smart replacement (not search reranking)
     llm_model: str = "x-ai/grok-4.1-fast"
@@ -231,7 +238,7 @@ class Config:
     # Uses FlagEmbedding's FlagReranker for BGE reranker models
     cross_encoder_model: str = "BAAI/bge-reranker-v2-m3"  # HuggingFace model
     cross_encoder_top_k: int = 20  # Max results to return after reranking
-    cross_encoder_device: str = "cpu"  # "cpu", "cuda", "mps"
+    cross_encoder_device: CrossEncoderDevice = CrossEncoderDevice.CPU
     cross_encoder_batch_size: int = 32  # Batch size for inference
     cross_encoder_score_threshold: float = 0.5
     cross_encoder_use_fp16: bool = True  # Enable FP16 for faster inference
@@ -263,7 +270,7 @@ class Config:
     smart_replace_retry_delay: float = (
         1.0  # Base delay (seconds) for exponential backoff
     )
-    llm_provider: str = "anthropic"  # LLM provider: "openai" or "anthropic"
+    llm_provider: LlmProvider = LlmProvider.ANTHROPIC
 
     # Concurrency settings
     add_max_concurrency: int = 4  # Max concurrent memory additions
@@ -299,15 +306,12 @@ class Config:
     @staticmethod
     def _parse_transport_config() -> TransportConfigDict:
         """Parse transport-related configuration from environment variables."""
-        transport_raw = os.environ.get("MCP_TRANSPORT", "stdio")
-        if transport_raw == "http":
-            transport: TransportMode = "http"
-        elif transport_raw == "sse":
-            transport = "sse"
-        elif transport_raw == "streamable-http":
-            transport = "streamable-http"
-        else:
-            transport = "stdio"
+        transport = parse_str_enum(
+            TransportMode,
+            os.environ.get("MCP_TRANSPORT", TransportMode.STDIO),
+            field="MCP_TRANSPORT",
+            default=TransportMode.STDIO,
+        )
 
         return {
             "transport": transport,
@@ -323,7 +327,9 @@ class Config:
     def _parse_embedding_config() -> EmbeddingConfigDict:
         """Parse embedding-related configuration from environment variables."""
         return {
-            "embedder_provider": os.environ.get("EMBEDDER_PROVIDER", "openai"),
+            "embedder_provider": os.environ.get(
+                "EMBEDDER_PROVIDER", EmbedderProvider.OPENAI
+            ),
             "embedding_model": os.environ.get(
                 "EMBEDDING_MODEL", "openai/text-embedding-3-large"
             ),
@@ -373,8 +379,20 @@ class Config:
             "usearch_exact_search_threshold": max(
                 0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "256"))
             ),
-            "fusion_method": os.environ.get("FUSION_METHOD", "rrf").lower(),
-            "fusion_normalization": os.environ.get("FUSION_NORMALIZATION") or None,
+            "fusion_method": parse_str_enum(
+                FusionMethod,
+                os.environ.get("FUSION_METHOD", FusionMethod.RRF),
+                field="FUSION_METHOD",
+            ),
+            "fusion_normalization": (
+                parse_str_enum(
+                    FusionNormalization,
+                    fusion_normalization_raw,
+                    field="FUSION_NORMALIZATION",
+                )
+                if (fusion_normalization_raw := os.environ.get("FUSION_NORMALIZATION"))
+                else None
+            ),
             "fusion_rrf_k": int(os.environ.get("FUSION_RRF_K", "60")),
             "fusion_ranking_threshold": float(
                 os.environ.get("FUSION_RANKING_THRESHOLD", "0.0")
@@ -421,25 +439,16 @@ class Config:
     @staticmethod
     def _parse_reranker_config() -> RerankerConfigDict:
         """Parse reranker-related configuration from environment variables."""
-        # Determine reranker engine
-        reranker_engine_raw = os.environ.get("RERANKER_ENGINE", "cross_encoder")
-        reranker_engine = reranker_engine_raw.lower()
-        valid_engines = ("cross_encoder", "none")
-        if reranker_engine not in valid_engines:
-            raise ConfigurationError(
-                f"Invalid RERANKER_ENGINE: '{reranker_engine}'. "
-                f"Valid options: {', '.join(valid_engines)}"
-            )
-
-        # Determine LLM provider (used by SmartReplacer)
-        llm_provider_raw = os.environ.get("LLM_PROVIDER", "anthropic")
-        llm_provider = llm_provider_raw.lower()
-        valid_llm_providers = ("openai", "anthropic")
-        if llm_provider not in valid_llm_providers:
-            raise ConfigurationError(
-                f"Invalid LLM_PROVIDER: '{llm_provider}'. "
-                f"Valid options: {', '.join(valid_llm_providers)}"
-            )
+        reranker_engine = parse_str_enum(
+            RerankerEngine,
+            os.environ.get("RERANKER_ENGINE", RerankerEngine.CROSS_ENCODER),
+            field="RERANKER_ENGINE",
+        )
+        llm_provider = parse_str_enum(
+            LlmProvider,
+            os.environ.get("LLM_PROVIDER", LlmProvider.ANTHROPIC),
+            field="LLM_PROVIDER",
+        )
 
         return {
             "reranker_engine": reranker_engine,
@@ -455,7 +464,11 @@ class Config:
                 "CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
             ),
             "cross_encoder_top_k": int(os.environ.get("CROSS_ENCODER_TOP_K", "20")),
-            "cross_encoder_device": os.environ.get("CROSS_ENCODER_DEVICE", "cpu"),
+            "cross_encoder_device": parse_str_enum(
+                CrossEncoderDevice,
+                os.environ.get("CROSS_ENCODER_DEVICE", CrossEncoderDevice.CPU),
+                field="CROSS_ENCODER_DEVICE",
+            ),
             "cross_encoder_batch_size": int(
                 os.environ.get("CROSS_ENCODER_BATCH_SIZE", "32")
             ),

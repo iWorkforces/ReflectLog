@@ -15,6 +15,8 @@ Individual settings can override preset values if specified.
 from dataclasses import dataclass
 import os
 
+from reflectlog.core.enums import ConfigProfile, RerankerEngine
+
 
 @dataclass
 class ConfigPreset:
@@ -30,7 +32,7 @@ class ConfigPreset:
     search_score_threshold: float | None = None
     fusion_rrf_k: int | None = None
     overfetch_multiplier: int | None = None
-    reranker_engine: str | None = None
+    reranker_engine: RerankerEngine | None = None
     enable_recency_boost: bool | None = None
     recency_decay_rate: float | None = None
     enable_smart_replace: bool | None = None
@@ -47,7 +49,7 @@ SIMPLE_PRESET = ConfigPreset(
     name="simple",
     search_limit=3,
     enable_hybrid_search=False,
-    reranker_engine="none",
+    reranker_engine=RerankerEngine.NONE,
     enable_recency_boost=False,
     enable_smart_replace=False,
     embedding_batch_size=128,
@@ -83,7 +85,7 @@ PERFORMANCE_PRESET = ConfigPreset(
     search_score_threshold=0.3,
     fusion_rrf_k=40,
     overfetch_multiplier=2,
-    reranker_engine="none",
+    reranker_engine=RerankerEngine.NONE,
     enable_recency_boost=False,
     enable_smart_replace=False,
     embedding_batch_size=1024,
@@ -100,7 +102,7 @@ QUALITY_PRESET = ConfigPreset(
     search_score_threshold=0.7,
     fusion_rrf_k=80,
     overfetch_multiplier=5,
-    reranker_engine="cross_encoder",
+    reranker_engine=RerankerEngine.CROSS_ENCODER,
     enable_recency_boost=True,
     enable_smart_replace=True,
     smart_replace_threshold=0.9,
@@ -113,10 +115,10 @@ QUALITY_PRESET = ConfigPreset(
 
 
 PRESETS: dict[str, ConfigPreset] = {
-    "simple": SIMPLE_PRESET,
-    "balanced": BALANCED_PRESET,
-    "performance": PERFORMANCE_PRESET,
-    "quality": QUALITY_PRESET,
+    ConfigProfile.SIMPLE: SIMPLE_PRESET,
+    ConfigProfile.BALANCED: BALANCED_PRESET,
+    ConfigProfile.PERFORMANCE: PERFORMANCE_PRESET,
+    ConfigProfile.QUALITY: QUALITY_PRESET,
 }
 
 
@@ -128,7 +130,7 @@ def get_active_preset() -> ConfigPreset | None:
     """
     profile_name = os.getenv("REFLECTLOG_PROFILE", "").lower()
 
-    if not profile_name or profile_name == "custom":
+    if not profile_name or profile_name == ConfigProfile.CUSTOM:
         return None
 
     return PRESETS.get(profile_name.lower())

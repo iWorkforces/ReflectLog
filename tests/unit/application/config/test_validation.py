@@ -1122,9 +1122,7 @@ class TestValidateConfig:
         assert errors == []
 
     def test_circuit_breaker_enabled_falsy_values_get_defaults(self):
-        '''Enabled circuit breaker with falsy values uses or-defaults (valid).'''
-        # validate_config uses `or` defaults: 0 -> 5, 0.0 -> 60.0, 0 -> 2
-        # So falsy values produce NO errors because defaults are valid.
+        '''Enabled circuit breaker rejects zero thresholds instead of coercing.'''
         cfg = self._make_config(
             circuit_breaker_enabled=True,
             circuit_breaker_failure_threshold=0,
@@ -1132,8 +1130,9 @@ class TestValidateConfig:
             circuit_breaker_success_threshold=0,
         )
         errors = validate_config(cfg)
-        # The or-defaults (5, 60.0, 2) are all valid, so no errors
-        assert not any("CIRCUIT_BREAKER" in e.field for e in errors)
+        assert any("CIRCUIT_BREAKER_FAILURE_THRESHOLD" in e.field for e in errors)
+        assert any("CIRCUIT_BREAKER_TIMEOUT" in e.field for e in errors)
+        assert any("CIRCUIT_BREAKER_SUCCESS_THRESHOLD" in e.field for e in errors)
 
     def test_openrouter_api_key_validated(self):
         '''OpenRouter API key format is validated when present.'''

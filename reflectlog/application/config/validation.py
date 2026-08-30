@@ -8,6 +8,14 @@ from dataclasses import dataclass
 import re
 from typing import Any, ClassVar, cast
 
+from reflectlog.core.enums import (
+    CrossEncoderDevice,
+    FusionMethod,
+    LlmProvider,
+    RerankerEngine,
+    TransportMode,
+)
+
 
 @dataclass
 class ValidationError:
@@ -41,11 +49,11 @@ class ConfigurationValidator:
     WORKSPACE_ID_PATTERN: ClassVar = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
     # Valid values for enums
-    VALID_TRANSPORTS: ClassVar = {"stdio", "http", "sse", "streamable-http"}
-    VALID_RERANKER_ENGINES: ClassVar = {"cross_encoder", "none"}
-    VALID_LLM_PROVIDERS: ClassVar = {"openai", "anthropic"}
-    VALID_CROSS_ENCODER_DEVICES: ClassVar = {"cpu", "cuda", "mps"}
-    VALID_FUSION_METHODS: ClassVar = {"rrf", "sum", "mnz", "max", "bordafuse"}
+    VALID_TRANSPORTS: ClassVar = frozenset(TransportMode)
+    VALID_RERANKER_ENGINES: ClassVar = frozenset(RerankerEngine)
+    VALID_LLM_PROVIDERS: ClassVar = frozenset(LlmProvider)
+    VALID_CROSS_ENCODER_DEVICES: ClassVar = frozenset(CrossEncoderDevice)
+    VALID_FUSION_METHODS: ClassVar = frozenset(FusionMethod)
 
     def __init__(self) -> None:
         """Initialize validator with an empty list of errors."""
@@ -734,7 +742,7 @@ def _validate_storage_config(
         enable_rrf_fusion if isinstance(enable_rrf_fusion, bool) else True,
         reranker_engine
         if isinstance(reranker_engine, str) and reranker_engine
-        else "cross_encoder",
+        else RerankerEngine.CROSS_ENCODER,
     )
 
 
