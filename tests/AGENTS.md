@@ -4,7 +4,7 @@
 
 ## OVERVIEW
 
-Comprehensive test suite covering unit and integration tests for the ReflectLog memory system. Coverage is reported, but the current runner has no enforced fail-under gate.
+Comprehensive test suite covering unit and integration tests for the ReflectLog memory system. Coverage fail-under is 90% (`[tool.coverage.report] fail_under` and `COVERAGE_MIN` in `start-unittest.sh`).
 
 ## STRUCTURE
 

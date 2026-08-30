@@ -14,8 +14,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.14",
-    "Topic :: Software Development :: Code Generators",
-    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
 ]
 dependencies = [
     "fastmcp>=3.4.7",
@@ -82,7 +82,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration", "tests/security"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -121,6 +121,7 @@ omit = [
 precision = 2
 show_missing = true
 skip_covered = false
+fail_under = 90
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

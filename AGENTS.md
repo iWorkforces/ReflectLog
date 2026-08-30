@@ -87,7 +87,7 @@ Python 3.14 MCP memory server. USearch semantic + Tantivy FTS + RRF fusion, opti
 - Tantivy delete is tombstone+commit only; compact when ratio/count thresholds fire.
 - The source of truth for `get_all()` is the USearch semantic backend; maintain backend consistency.
 - Plugin support covers entry points, directory scanning, and static registration.
-- Test configuration treats warnings as errors; coverage is reported by the wrapper but has no enforced fail-under gate.
+- Test configuration treats warnings as errors; coverage fail-under is 90% (`[tool.coverage.report] fail_under` and `COVERAGE_MIN` in `start-unittest.sh`).
 
 ## COMMANDS
 
