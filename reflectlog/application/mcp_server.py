@@ -1,10 +1,13 @@
 """ReflectLog Server - Refactored modular implementation."""
 
+import os
+
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
 
 from reflectlog.application import config
 from reflectlog.application.config.settings import Config, get_config
+from reflectlog.core.exceptions import ConfigurationError
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.tools.add import AddTool
 from reflectlog.application.tools.base import BaseTool
@@ -15,6 +18,37 @@ from reflectlog.application.tools.search import SearchTool
 from reflectlog.core.prompts import build_instructions
 
 from .utils.logging import create_logger
+
+
+class _BearerTokenMiddleware:
+    """Reject HTTP MCP requests that lack the configured bearer token."""
+
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    async def on_request(self, context: object, call_next: object) -> object:
+        from fastmcp.exceptions import ToolError
+        from fastmcp.server.dependencies import get_http_request
+
+        try:
+            request = get_http_request()
+            auth = request.headers.get("authorization", "")
+        except Exception:
+            return await _call_next(call_next, context)
+        if auth != f"Bearer {self._token}":
+            raise ToolError("Unauthorized")
+        return await _call_next(call_next, context)
+
+
+async def _call_next(call_next: object, context: object) -> object:
+    import inspect
+
+    if not callable(call_next):
+        raise RuntimeError("invalid middleware chain")
+    result = call_next(context)
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 # Canonical registry of available MCP tool implementations.
 AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {
@@ -78,6 +112,10 @@ class FastMCPServer:
 
         # Initialize FastMCP with dynamic instructions
         self.mcp = FastMCP(name="reflectlog", instructions=instructions)
+        auth_token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
+        add_middleware = getattr(self.mcp, "add_middleware", None)
+        if auth_token and self.config.transport != "stdio" and callable(add_middleware):
+            _ = add_middleware(_BearerTokenMiddleware(auth_token))
 
         # Register tools with FastMCP
         self._register_tools()
@@ -247,21 +285,33 @@ class FastMCPServer:
         if transport == "stdio":
             self.logger.info("Running MCP server with stdio transport")
             self.mcp.run(transport="stdio")
-        else:
-            self.logger.info(
-                f"Running MCP server with {transport} transport",
-                extra={
-                    "host": self.config.host,
-                    "port": self.config.port,
-                    "path": self.config.path,
-                },
+            return
+
+        public_hosts = {"0.0.0.0", "::", "[::]"}
+        allow_public = os.environ.get("ALLOW_PUBLIC_BIND", "false").lower() == "true"
+        if self.config.host in public_hosts and not allow_public:
+            raise ConfigurationError(
+                f"Refusing to bind {self.config.host} without ALLOW_PUBLIC_BIND=true"
             )
-            self.mcp.run(
-                transport=transport,
-                port=self.config.port,
-                host=self.config.host,
-                path=self.config.path,
+        auth_token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
+        if not auth_token:
+            raise ConfigurationError(
+                "MCP_AUTH_TOKEN is required for non-stdio transports"
             )
+        self.logger.info(
+            f"Running MCP server with {transport} transport",
+            extra={
+                "host": self.config.host,
+                "port": self.config.port,
+                "path": self.config.path,
+            },
+        )
+        self.mcp.run(
+            transport=transport,
+            port=self.config.port,
+            host=self.config.host,
+            path=self.config.path,
+        )
 
     def close(self) -> None:
         """Gracefully shutdown the server and persist all data.

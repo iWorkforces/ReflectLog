@@ -261,17 +261,30 @@ def _start_server(
     """
     server: FastMCPServer | None = None
 
+    shutting_down = {"value": False}
+
     def graceful_shutdown(signum: int, frame: object) -> None:
         """Signal handler for graceful shutdown."""
+        if shutting_down["value"]:
+            return
+        shutting_down["value"] = True
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         print(
             f"\nReceived {signal_name}, initiating graceful shutdown...",
             file=output_stream,
         )
+        persist_ok = True
         if server is not None:
-            server.close()
-        print("Shutdown complete.", file=output_stream)
-        sys.exit(0)
+            try:
+                server.close()
+            except Exception as exc:
+                persist_ok = False
+                print(f"Shutdown persist failed: {exc}", file=output_stream)
+        if persist_ok:
+            print("Shutdown complete.", file=output_stream)
+            sys.exit(0)
+        print("Shutdown incomplete; persist failed.", file=output_stream)
+        sys.exit(1)
 
     _ = signal.signal(signal.SIGINT, graceful_shutdown)
     _ = signal.signal(signal.SIGTERM, graceful_shutdown)
