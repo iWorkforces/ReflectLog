@@ -259,6 +259,8 @@ class USearchEngine(BaseModel):
             return self._index
 
         with self._init_lock:
+            if self._closed:
+                raise StorageError("USearchEngine is closed")
             if self._index is None:
                 try:
                     # Ensure directory exists
@@ -330,6 +332,7 @@ class USearchEngine(BaseModel):
                             expansion_add=self.config.expansion_add,
                             expansion_search=self.config.expansion_search,
                         )
+                        new_index.save(self.config.index_path)
                         self._index = new_index
                         if self.logger:
                             self.logger.info(
@@ -368,10 +371,14 @@ class USearchEngine(BaseModel):
         Returns:
             MemoryStore instance.
         """
+        if self._closed:
+            raise StorageError("USearchEngine is closed")
         if self._memory_store is not None:
             return self._memory_store
 
         with self._init_lock:
+            if self._closed:
+                raise StorageError("USearchEngine is closed")
             if self._memory_store is None:
                 from reflectlog.infrastructure.memory_store import MemoryStore
 
@@ -982,10 +989,11 @@ class USearchEngine(BaseModel):
 
         Closes the MemoryStore SQLite connection.
         """
-        self._closed = True
-        if self._memory_store is not None:
-            self._memory_store.close()
-        self._index = None
+        with self._init_lock:
+            self._closed = True
+            if self._memory_store is not None:
+                self._memory_store.close()
+            self._index = None
 
     def __enter__(self) -> Self:
         """Enter context manager.
