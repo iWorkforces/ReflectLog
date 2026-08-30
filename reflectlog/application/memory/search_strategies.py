@@ -819,9 +819,9 @@ class SearchPipeline:
                 )
             )
         except (AttributeError, TypeError):
-            return results
+            return []
         if present is None:
-            return results
+            return []
         return [
             (memory, score) for memory, score in results if memory in present
         ]

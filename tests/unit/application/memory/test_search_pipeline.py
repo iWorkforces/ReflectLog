@@ -100,6 +100,15 @@ def _make_pipeline(
         manager = memory_manager
     if isinstance(semantic, MagicMock):
         semantic.is_ready.return_value = False
+        exists_many = semantic.memory_store.exists_many
+        if (
+            isinstance(exists_many, MagicMock)
+            and exists_many.side_effect is None
+            and isinstance(exists_many.return_value, MagicMock)
+        ):
+            exists_many.side_effect = (
+                lambda _workspace_id, contents: set(contents)
+            )
     if isinstance(tantivy, MagicMock):
         tantivy.is_ready.return_value = False
     return SearchPipeline(
@@ -144,6 +153,14 @@ class ControllableBackend:
         self.block_on_init = block_on_init
         self.finished = finished
         self.search_calls: list[tuple[str, str, int]] = []
+
+    @property
+    def memory_store(self) -> object:
+        return self
+
+    def exists_many(self, workspace_id: str, contents: list[str]) -> set[str]:
+        _ = workspace_id
+        return set(contents)
 
     def is_ready(self) -> bool:
         return False
@@ -670,7 +687,7 @@ class TestBackendFailureContracts:
     ) -> None:
         semantic = MagicMock()
         semantic.search.side_effect = RuntimeError("embed fail")
-        semantic.memory_store.exists_many.return_value = set()
+        semantic.memory_store.exists_many.side_effect = lambda *_args: set()
         tantivy = MagicMock()
         tantivy.search.return_value = []
         pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
@@ -689,12 +706,33 @@ class TestBackendFailureContracts:
     async def test_fts_hits_missing_from_sqlite_are_dropped(self) -> None:
         semantic = MagicMock()
         semantic.search.return_value = []
-        semantic.memory_store.exists_many.return_value = set()
+        semantic.memory_store.exists_many.side_effect = lambda *_args: set()
         tantivy = MagicMock()
         tantivy.search.return_value = [("deleted text", 4.0)]
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("deleted text", 0.01)]
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion
+        )
+
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert result.tantivy_results == []
+        fusion.fuse.assert_called_once_with([], [])
+        assert result.memories == []
+
+    async def test_fts_hits_dropped_when_exists_many_is_not_a_string_set(
+        self,
+    ) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = []
+        semantic.memory_store.exists_many.side_effect = None
+        semantic.memory_store.exists_many.return_value = ["not", "a", "set"]
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("maybe live", 4.0)]
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("maybe live", 0.01)]
         pipeline = _make_pipeline(
             semantic=semantic, tantivy=tantivy, fusion=fusion
         )
@@ -1206,6 +1244,14 @@ class TestSearchResponsiveness:
 
             def is_ready(self) -> bool:
                 return False
+
+            @property
+            def memory_store(self) -> object:
+                return self
+
+            def exists_many(self, workspace_id: str, contents: list[str]) -> set[str]:
+                _ = workspace_id
+                return set(contents)
 
             def count(self, workspace_id: str) -> int:
                 _ = workspace_id
