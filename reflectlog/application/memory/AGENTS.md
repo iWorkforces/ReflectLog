@@ -35,9 +35,9 @@ memory/
 
 **Embed-then-lock persist** - `_embed_for_persist()` then `_write_lock`. `delete_memories` returns `list[str]` of deleted contents; Tantivy fail → `InconsistentStateError`.
 **Identity** - SQLite unique `(workspace_id, content)` only. Tantivy stemming is not exact match.
-**Unified Threshold Semantics** - Batch min-max maps CE scores to [0,1]. Equal scores become 0.5.
+**CE Threshold Semantics** - When sigmoid is on, do not batch min-max. Gate on calibrated CE scores. `reranker_min_results` keeps at least the best hit.
 
-**RRF Formula** - `score(doc) = sum(1/(k+rank))` with `k=60` default, normalized to 0-1.
+**RRF Formula** - `score(doc) = sum(1/(k+rank))` with `k=60` default. Raw RRF is used for the fusion gate (default threshold 0.0).
 
 **Recency Decay** - Applied after normalization: `decayed = normalized * exp(-rate * hours_old)`.
 

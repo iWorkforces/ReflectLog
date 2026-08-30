@@ -44,7 +44,7 @@ class TestCrossEncoderConfig:
         assert config.top_k == 20
         assert config.device == "cpu"
         assert config.batch_size == 32
-        assert config.score_threshold == 0.0
+        assert config.score_threshold == 0.5
         # FlagReranker-specific defaults
         assert config.use_fp16 is True
         assert config.normalize is True
@@ -79,7 +79,7 @@ class TestCrossEncoderConfig:
         config = CrossEncoderConfig()
 
         assert config.batch_normalize is True
-        assert config.min_results == 0
+        assert config.min_results == 1
 
     def test_from_app_config_enabled(self) -> None:
         '''Test factory method from application config when enabled.'''
@@ -108,7 +108,7 @@ class TestCrossEncoderConfig:
         assert config.normalize is True
         assert config.max_length == 512
         assert config.min_results == 2
-        assert config.batch_normalize is True
+        assert config.batch_normalize is False
 
     def test_from_app_config_disabled(self) -> None:
         '''Test factory method from application config when disabled.'''

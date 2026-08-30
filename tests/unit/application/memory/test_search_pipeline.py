@@ -43,7 +43,7 @@ def _make_config(
     config.workspace_id = "test_project"
     config.fusion_ranking_threshold = fusion_ranking_threshold
     config.reranker_engine = reranker_engine
-    config.search_score_threshold = 0.5
+    config.search_score_threshold = 0.0
     config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
     config.overfetch_multiplier = 3
     config.overfetch_adaptive = True
@@ -474,7 +474,7 @@ class TestHybridFusionAndFilter:
             _make_context(enable_rrf_fusion=False, limit=2, overfetch_limit=2)
         )
 
-        assert result.memories == ["shared", "s2"]
+        assert result.memories == ["shared", "t2"]
 
     @pytest.mark.asyncio
     async def test_empty_backends_return_empty(self) -> None:
@@ -730,6 +730,7 @@ class TestRerankerSettings:
             "test query",
             [("a", 0.4), ("b", 0.3)],
             {"a": _TS, "b": _TS},
+            top_k=5,
         )
         assert result.memories == ["b", "a"]
 

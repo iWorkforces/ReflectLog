@@ -263,18 +263,19 @@ class RanxFusionEngine(FusionEngine):
             scores = compute_rrf_scores_batch(ranks, k=self._rrf_k)
         paired = [(docs[idx], float(scores[idx])) for idx in range(len(docs))]
         paired.sort(key=lambda item: item[1], reverse=True)
-        normalized = self._normalize_output_scores(paired)
+        # Raw RRF stays on the 1/(k+rank) scale. Min-max stretch plus a
+        # 0-1 gate drops near-ties (rank-2 becomes ~0.49).
         if self.logger:
             self.logger.debug(
-                f"Fusion completed: {len(normalized)} unique results "
+                f"Fusion completed: {len(paired)} unique results "
                 f"from {len(result_sets)} result sets",
                 extra={
                     "method": self._method,
                     "input_sets": len(result_sets),
-                    "unique_count": len(normalized),
+                    "unique_count": len(paired),
                 },
             )
-        return normalized
+        return paired
 
     @override
     def fuse(

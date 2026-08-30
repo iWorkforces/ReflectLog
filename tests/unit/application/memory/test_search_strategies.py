@@ -266,7 +266,7 @@ class TestConcatenateResults:
 
         assert len(combined) == 2
         assert combined[0][0] == "s1"
-        assert combined[1][0] == "s2"
+        assert combined[1][0] == "t1"
 
     def test_limit_reached_during_tantivy(self, pipeline: SearchPipeline) -> None:
         """Stops adding tantivy results once limit is reached (lines 374-378)."""
@@ -424,7 +424,9 @@ class TestRerankCrossEncoder:
         )
 
         assert reranked == [("msg1", 0.95)]
-        mock_reranker.rerank_async.assert_awaited_once_with(ctx.query, results)
+        mock_reranker.rerank_async.assert_awaited_once_with(
+            ctx.query, results, top_k=ctx.limit
+        )
 
         # Verify logging calls happened
         assert mock_logger.info.call_count >= 2
@@ -511,6 +513,16 @@ class TestCalculateAdaptiveOverfetch:
 
         result = calculate_adaptive_overfetch(10, 10000, mock_config)
         assert result == max(int(10 * 1.5), MIN_OVERFETCH_LIMIT)
+
+    def test_quality_multiplier_raises_adaptive_max(self, mock_config: Config) -> None:
+        """QUALITY overfetch_multiplier=5 must raise the adaptive max."""
+        mock_config.overfetch_adaptive = True
+        mock_config.overfetch_multiplier = 5
+        mock_config.overfetch_max_multiplier = 3.0
+        mock_config.overfetch_min_multiplier = 1.5
+
+        result = calculate_adaptive_overfetch(10, 50, mock_config)
+        assert result == int(10 * 5)
 
 
 # ---------------------------------------------------------------------------

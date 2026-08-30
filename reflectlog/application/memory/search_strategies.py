@@ -197,13 +197,19 @@ class SearchPipeline:
         # matching hybrid search (asyncify alone does not).
         soon_results = None
         async with create_task_group() as tg:
+            fetch_limit = (
+                context.overfetch_limit
+                if context.reranker_engine == "cross_encoder"
+                else context.limit
+            )
             soon_results = tg.soonify(asyncify(self._semantic_engine.search))(
                 query=context.query,
                 workspace_id=context.workspace_id,
-                limit=context.limit,
+                limit=fetch_limit,
             )
         assert soon_results is not None
         results: list[tuple[str, float, str]] = soon_results.value or []
+        results = self._filter_semantic_threshold(results)
 
         timestamp_map = {msg: created_at for msg, _, created_at in results}
         paired = [(msg, score) for msg, score, _ in results]
@@ -222,6 +228,7 @@ class SearchPipeline:
         """Execute 4-step hybrid search pipeline."""
         # Step 1: Parallel Search
         semantic_results, tantivy_results = await self._step1_parallel_search(context)
+        semantic_results = self._filter_semantic_threshold(semantic_results)
 
         timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
@@ -458,9 +465,11 @@ class SearchPipeline:
         seen_memories: set[str] = set()
         combined: list[tuple[str, float]] = []
 
-        # Add semantic results first (higher priority)
+        reserved_lexical = min(len(tantivy_results), max(1, (limit + 1) // 2))
+        semantic_budget = max(0, limit - reserved_lexical)
+
         for msg, score in semantic_results:
-            if len(combined) >= limit:
+            if len(combined) >= semantic_budget:
                 break
             if msg not in seen_memories:
                 seen_memories.add(msg)
@@ -468,8 +477,14 @@ class SearchPipeline:
 
         semantic_count = len(combined)
 
-        # Add tantivy results (skip duplicates)
         for msg, score in tantivy_results:
+            if len(combined) >= limit:
+                break
+            if msg not in seen_memories:
+                seen_memories.add(msg)
+                combined.append((msg, score))
+
+        for msg, score in semantic_results:
             if len(combined) >= limit:
                 break
             if msg not in seen_memories:
@@ -506,6 +521,25 @@ class SearchPipeline:
         return self._filter_by_fusion_threshold(
             results, self.config.fusion_ranking_threshold, context.query
         )
+
+    def _filter_semantic_threshold(
+        self, results: list[tuple[str, float, str]]
+    ) -> list[tuple[str, float, str]]:
+        """Drop USearch hits below search_score_threshold before fusion."""
+        threshold = self.config.search_score_threshold
+        try:
+            if float(threshold) <= 0 or not results:
+                return results
+        except (TypeError, ValueError):
+            return results
+        kept: list[tuple[str, float, str]] = []
+        for item in results:
+            try:
+                if float(item[1]) >= float(threshold):
+                    kept.append(item)
+            except (TypeError, ValueError):
+                kept.append(item)
+        return kept
 
     def _filter_by_fusion_threshold(
         self, results: list[tuple[str, float]], threshold: float, query: str
@@ -610,11 +644,11 @@ class SearchPipeline:
 
         if timestamp_map is None:
             reranked_results = await cross_encoder_reranker.rerank_async(
-                context.query, results
+                context.query, results, top_k=context.limit
             )
         else:
             reranked_results = await cross_encoder_reranker.rerank_async(
-                context.query, results, timestamp_map
+                context.query, results, timestamp_map, top_k=context.limit
             )
         results = reranked_results
 
@@ -765,7 +799,7 @@ def calculate_adaptive_overfetch(limit: int, index_size: int, config: Config) ->
     large_index = 10000  # At or above this: use min multiplier
 
     min_mult = config.overfetch_min_multiplier
-    max_mult = config.overfetch_max_multiplier
+    max_mult = max(config.overfetch_max_multiplier, float(config.overfetch_multiplier))
 
     if index_size <= small_index:
         multiplier = max_mult

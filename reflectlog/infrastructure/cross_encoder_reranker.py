@@ -52,14 +52,14 @@ class CrossEncoderConfig:
     top_k: int = 20
     device: str = "cpu"
     batch_size: int = 32
-    score_threshold: float = 0.0
+    score_threshold: float = 0.5
     use_fp16: bool = True
     normalize: bool = True
     max_length: int = 512
-    min_results: int = 0  # Safety net: min results to return (0 = disabled)
-    batch_normalize: bool = True  # Enable batch min-max normalization
+    min_results: int = 1  # Safety net: keep at least the best CE hit
+    batch_normalize: bool = True  # Ignored when normalize (sigmoid) is on
     enable_recency_boost: bool = True  # Include memory age in recency decay calculation
-    recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
+    recency_decay_rate: float = 0.001  # Decay rate per hour: exp(-rate * hours_old)
 
     @classmethod
     def from_config(cls, config: IAppConfig) -> CrossEncoderConfig:
@@ -82,7 +82,9 @@ class CrossEncoderConfig:
             normalize=config.cross_encoder_normalize,
             max_length=config.cross_encoder_max_length,
             min_results=config.reranker_min_results,
-            batch_normalize=config.reranker_batch_normalize,
+            batch_normalize=(
+                config.reranker_batch_normalize and not config.cross_encoder_normalize
+            ),
             enable_recency_boost=config.enable_recency_boost,
             recency_decay_rate=config.recency_decay_rate,
         )
@@ -245,6 +247,7 @@ class CrossEncoderReranker(BaseModel):
         query: str,
         candidates: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None = None,
+        top_k: int | None = None,
     ) -> list[tuple[str, float]]:
         """Rerank candidates using FlagReranker scores with optional recency decay.
 
@@ -293,7 +296,8 @@ class CrossEncoderReranker(BaseModel):
         # top_k is applied after decay so recency can promote later ranks.
         scored = self._apply_threshold(scored)
         scored = self._apply_recency_reorder(scored, timestamp_map)
-        return scored[: self.config.top_k]
+        limit = self.config.top_k if top_k is None else max(self.config.top_k, top_k)
+        return scored[:limit]
 
     def _compute_scores(
         self,
@@ -403,6 +407,7 @@ class CrossEncoderReranker(BaseModel):
         query: str,
         candidates: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None = None,
+        top_k: int | None = None,
     ) -> list[tuple[str, float]]:
         """Async wrapper for cross-encoder reranking.
 
@@ -419,4 +424,6 @@ class CrossEncoderReranker(BaseModel):
             List of (document, cross_encoder_score) tuples, sorted by score
             descending, filtered by score_threshold, and limited to top_k results.
         """
-        return await asyncify(self.rerank)(query, candidates, timestamp_map)
+        return await asyncify(self.rerank)(
+            query, candidates, timestamp_map, top_k
+        )
