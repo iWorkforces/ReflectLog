@@ -311,7 +311,10 @@ def _start_server(
             server.close()
         raise
     except Exception as e:
-        print(f"Error during server operation: {e}", file=output_stream)
+        print(
+            f"Error during server operation: {type(e).__name__}",
+            file=output_stream,
+        )
         if server is not None:
             server.close()
         raise
