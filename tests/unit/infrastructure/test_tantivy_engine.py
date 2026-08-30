@@ -2284,6 +2284,65 @@ class TestRebuildIndexWithDocs:
             assert "keep from bak" in docs
             restored.close()
 
+    def test_rebuild_restores_leftover_backup_when_live_is_empty_openable(
+        self,
+    ) -> None:
+        '''An empty but openable live index must not hide leftover bak docs.'''
+        import shutil
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            live_path = os.path.join(tmpdir, "idx")
+            bak_path = f"{live_path}.rebuild-bak"
+            config = TantivyConfig(workspace_id="test", index_path=live_path)
+            engine = TantivyEngine(config)
+            engine.add("test", "keep from bak")
+            engine.commit()
+            shutil.copytree(live_path, bak_path)
+            shutil.rmtree(live_path)
+            engine._closed = False
+            engine._index = None
+            engine._writer = None
+            engine._searcher = None
+            engine._initialize_index(restore_backup=False)
+            engine.close()
+
+            restored = TantivyEngine(config)
+            docs = restored._get_all_docs("test")
+            assert "keep from bak" in docs
+            restored.close()
+
+    def test_restore_does_not_replace_populated_live_with_bak(self) -> None:
+        import shutil
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            live_path = os.path.join(tmpdir, "idx")
+            bak_path = f"{live_path}.rebuild-bak"
+            config = TantivyConfig(workspace_id="test", index_path=live_path)
+            engine = TantivyEngine(config)
+            engine.add("test", "live docs")
+            engine.commit()
+            engine.close()
+
+            shutil.copytree(live_path, bak_path)
+            live = TantivyEngine(config)
+            live.add("test", "newer live")
+            live.commit()
+            live.close()
+
+            opened = TantivyEngine(config)
+            docs = opened._get_all_docs("test")
+            assert "live docs" in docs
+            assert "newer live" in docs
+            opened.close()
+
+    def test_add_after_close_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
+            engine = TantivyEngine(config)
+            engine.close()
+            with pytest.raises(SearchError, match="closed"):
+                engine.add("test", "too late")
+
     def test_search_after_close_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)

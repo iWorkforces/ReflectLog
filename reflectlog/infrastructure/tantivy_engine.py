@@ -200,20 +200,33 @@ class TantivyEngine(BaseModel):
 
     def _index_is_openable(self, index_path: str) -> bool:
         """Return True when Tantivy can open the directory as an index."""
+        return self._index_num_docs(index_path) is not None
+
+    def _index_num_docs(self, index_path: str) -> int | None:
+        """Return committed document count, or None when the path is unopenable."""
         try:
-            _ = tantivy.Index.open(index_path)
+            index = tantivy.Index.open(index_path)
+            return int(index.searcher().num_docs())
         except Exception:
-            return False
-        return True
+            return None
 
     def _restore_rebuild_backup_if_needed(self, index_path: str) -> None:
-        """Move leftover rebuild backup into place when the live index is unusable."""
+        """Move leftover rebuild backup into place when the live index is unusable.
+
+        Restore when live is missing, unopenable, or an empty schema left by a
+        crashed rebuild. Never destroy a populated live index, and never move
+        a backup that cannot be opened.
+        """
         import shutil
 
         backup_path = self._rebuild_backup_path(index_path)
         if not os.path.exists(backup_path):
             return
-        if self._index_is_openable(index_path):
+        live_docs = self._index_num_docs(index_path)
+        if live_docs is not None and live_docs > 0:
+            return
+        bak_meta = os.path.join(backup_path, "meta.json")
+        if not os.path.exists(bak_meta):
             return
         if os.path.exists(index_path):
             shutil.rmtree(index_path)
@@ -337,6 +350,7 @@ class TantivyEngine(BaseModel):
         Returns:
             List of memory strings for the given project (excluding tombstoned).
         """
+        self._require_open()
         if self._index is None:
             return []
 
@@ -483,6 +497,7 @@ class TantivyEngine(BaseModel):
             workspace_id: Workspace identifier for filtering.
             content: Memory content to index.
         """
+        self._require_open()
         with self._writer_lock:
             doc = tantivy.Document()
             doc.add_text("workspace_id", workspace_id)
@@ -498,6 +513,7 @@ class TantivyEngine(BaseModel):
         """Add multiple documents under a single writer lock."""
         if not contents:
             return
+        self._require_open()
         with self._writer_lock:
             for content in contents:
                 doc = tantivy.Document()
@@ -659,7 +675,7 @@ class TantivyEngine(BaseModel):
                 if tombs >= live_counts.get(memory, 0)
             }
 
-            if use_cache:
+            if searcher is None or searcher is self._searcher:
                 with self._tombstone_cache_lock:
                     if len(self._tombstone_cache) >= self.config.tombstone_cache_max_size:
                         _ = self._tombstone_cache.popitem(last=False)
@@ -739,8 +755,7 @@ class TantivyEngine(BaseModel):
             Empty list if search fails or no results found.
         """
         try:
-            if self._closed:
-                raise SearchError("TantivyEngine is closed")
+            self._require_open()
             if self._index is None:
                 if self.logger:
                     self.logger.warning(
@@ -866,6 +881,11 @@ class TantivyEngine(BaseModel):
                 break
 
         return results
+
+    def _require_open(self) -> None:
+        """Reject operations after close() has released the index."""
+        if self._closed:
+            raise SearchError("TantivyEngine is closed")
 
     def ensure_initialized(self) -> None:
         """Ensure the engine is fully initialized (thread-safe).
