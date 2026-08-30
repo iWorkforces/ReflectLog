@@ -7,15 +7,11 @@ Cross-cutting utilities for logging, metrics, resilience, security, and performa
 
 ```
 utils/
-├── logging.py           # StructuredLogger, auto-redaction, operation context
-├── metrics.py           # MetricsRegistry (counters/gauges/histograms), Prometheus export
-├── retry.py            # async_retry_with_backoff (exponential + jitter)
-├── circuit_breaker.py   # CircuitBreaker (CLOSED/OPEN/HALF_OPEN states)
+├── logging.py           # StructuredLogger + sanitize_for_logging
 ├── security.py         # SecretString, redact_dict_secrets, validate_workspace_id
-├── http_client.py       # HttpClientFactory (pooled httpx/aiohttp)
-├── validation.py       # validate_messages, truncate_message, SQL injection detection
-├── config_reload.py    # ConfigReloadManager (SIGHUP-based runtime reload)
-└── __init__.py         # Package exports
+├── validation.py       # validate_memories, validate_add_batch
+├── config_reload.py    # unused SIGHUP helper (not registered at startup)
+└── __init__.py
 ```
 
 ## WHERE TO LOOK
@@ -55,7 +51,7 @@ utils/
 - Never create new HTTP clients per request - use factory singleton
 - Never use bare `except:` in retry/circuit breaker - catch specific exceptions
 - Never validate workspace_id without `validate_workspace_id()` - path traversal risk
-- Never allow SQL injection patterns - `validate_messages()` checks them
+- SQLite is parameterized; do not reject memory text with SQL-like words
 - Never acquire locks out of order - `_write_lock` before `_lock` (root-level, relevant here)
 - Never use circuit breaker for local operations - only external services
 - Never forget `close_all()` on shutdown - releases HTTP connections
