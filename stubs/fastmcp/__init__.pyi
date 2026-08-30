@@ -97,7 +97,7 @@ class Client:
     async def call_tool(
         self,
         tool_name: str,
-        arguments: dict[str, JSONValue] | None = None,
+        arguments: dict[str, JSONValue] | dict[str, object] | None = None,
     ) -> CallToolResult: ...
 
 __all__ = ["Client", "FastMCP", "Tool", "ToolManager"]

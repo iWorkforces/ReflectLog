@@ -1,5 +1,6 @@
 """ReflectLog Server - Refactored modular implementation."""
 
+from collections.abc import Callable
 import hmac
 from ipaddress import ip_address
 import os
@@ -33,7 +34,9 @@ class _BearerTokenMiddleware(Middleware):
         super().__init__()
         self._token = token
 
-    async def on_request(self, context: object, call_next: object) -> object:
+    async def on_request(
+        self, context: object, call_next: Callable[..., object]
+    ) -> object:
         try:
             request = get_http_request()
         except Exception as exc:
@@ -42,8 +45,6 @@ class _BearerTokenMiddleware(Middleware):
         expected = f"Bearer {self._token}"
         if not hmac.compare_digest(auth.encode("utf-8"), expected.encode("utf-8")):
             raise ToolError("Unauthorized")
-        if not callable(call_next):
-            raise RuntimeError("invalid middleware chain")
         import inspect
 
         result = call_next(context)

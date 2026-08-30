@@ -325,8 +325,28 @@ class TestTransitionRowParse:
     """Corrupt journal kinds must fail closed."""
 
     def test_unknown_kind_raises_storage_error(self) -> None:
-        store = MemoryStore.__new__(MemoryStore)
-        with pytest.raises(StorageError, match="Invalid replacement transition"):
-            _ = store._row_to_transition(
-                (1, "proj1", 11, "old", "new", 8, "r", 0.9, "pending", "bogus")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            _ = store.connection.execute(
+                """
+                INSERT INTO replacement_transitions
+                    (workspace_id, old_memory_id, old_content, new_content,
+                     archive_id, reason, confidence, status, kind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "proj1",
+                    11,
+                    "old",
+                    "new",
+                    0,
+                    "r",
+                    0.9,
+                    TRANSITION_PENDING,
+                    "bogus",
+                ),
             )
+            store.connection.commit()
+            with pytest.raises(StorageError, match="Invalid replacement transition"):
+                _ = store.list_pending_transitions()
+            store.close()

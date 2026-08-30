@@ -68,7 +68,8 @@ class LangchainQwenEmbeddings(BaseModel):
             )
 
         # Initialize synchronous client for sync methods
-        httpx_client = HttpClientFactory.get_httpx_client(http2=True)
+        # OpenAI stubs type http_client as typeshed's httpx2; we pass real httpx.
+        httpx_client: Any = HttpClientFactory.get_httpx_client(http2=True)
         self._client = OpenAI(
             api_key=api_key,
             base_url=base_url,
@@ -80,7 +81,7 @@ class LangchainQwenEmbeddings(BaseModel):
 
     def _get_async_client(self) -> AsyncOpenAI:
         if self._async_client is None:
-            httpx_client = HttpClientFactory.get_async_httpx_client(http2=True)
+            httpx_client: Any = HttpClientFactory.get_async_httpx_client(http2=True)
             self._async_client = AsyncOpenAI(
                 api_key=self.config.api_key,
                 base_url=self.config.openai_base_url,
@@ -301,7 +302,7 @@ class LangchainQwenEmbeddings(BaseModel):
         # Note: If one batch fails, others continue
         async with anyio.create_task_group() as tg:
             for start_idx, batch_texts in batches:
-                tg.start_soon(embed_batch, start_idx, batch_texts)
+                _ = tg.start_soon(embed_batch, start_idx, batch_texts)
 
         return results
 

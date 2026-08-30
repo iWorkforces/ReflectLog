@@ -102,7 +102,7 @@ async def _get_all(server: WorkflowServer) -> list[str]:
         if isinstance(page, list):
             return [str(item) for item in cast(list[object], page)]
         return []
-    return cast(list[str], result)
+    return result
 
 
 async def _search(server: WorkflowServer, query: str) -> list[str]:

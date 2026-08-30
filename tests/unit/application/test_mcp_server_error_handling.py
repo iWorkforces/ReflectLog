@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from reflectlog.core.enums import TransportMode
 from reflectlog.core.exceptions import ConfigurationError, SearchError, StorageError
 
 
@@ -552,7 +553,7 @@ class TestHttpAuthAndBind:
             Config(
                 workspace_id="test",
                 openrouter_api_key=SecretString("k"),
-                transport="http",
+                transport=TransportMode.HTTP,
                 host="127.0.0.1",
             )
         )
@@ -579,7 +580,7 @@ class TestHttpAuthAndBind:
             Config(
                 workspace_id="test",
                 openrouter_api_key=SecretString("k"),
-                transport="http",
+                transport=TransportMode.HTTP,
                 host="0.0.0.0",
             )
         )
@@ -610,7 +611,7 @@ class TestHttpAuthAndBind:
             Config(
                 workspace_id="test",
                 openrouter_api_key=SecretString("k"),
-                transport="http",
+                transport=TransportMode.HTTP,
                 host="::0",
             )
         )

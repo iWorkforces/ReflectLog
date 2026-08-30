@@ -263,7 +263,9 @@ class TestProtocolConformanceEmbeddings:
     """Embedding providers satisfy the Embeddings protocol."""
 
     def test_cached_embeddings_interface(self) -> None:
-        from reflectlog.infrastructure.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import (
+            CachedEmbeddings,
+        )
 
         for attr in (
             "embed_query",
@@ -276,7 +278,7 @@ class TestProtocolConformanceEmbeddings:
             )
 
     def test_qwen_embeddings_interface(self) -> None:
-        from reflectlog.infrastructure.qwen3_embedding import (
+        from reflectlog.infrastructure.embeddings.qwen3_embedding import (
             LangchainQwenEmbeddings,
         )
 

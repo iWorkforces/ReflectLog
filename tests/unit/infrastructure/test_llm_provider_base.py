@@ -13,6 +13,8 @@ from reflectlog.infrastructure.llm_provider_base import (
     IStructuredOutputSchema,
 )
 
+assert IStructuredOutputSchema is not None
+
 
 def create_mock_logger() -> IStructuredLogger:
     """Create a properly typed mock logger for testing."""

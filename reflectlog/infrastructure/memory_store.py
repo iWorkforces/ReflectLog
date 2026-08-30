@@ -7,11 +7,12 @@ and the SQLite row ID is used as the USearch key.
 Uses SQLite with WAL mode for improved concurrent write performance via MVCC.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import os
 import sqlite3
 import threading
-from typing import Any, final
+from typing import Any, TypeGuard, final
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -26,6 +27,21 @@ from reflectlog.core.types import (
 TRANSITION_PENDING = TransitionStatus.PENDING
 TRANSITION_COMPLETED = TransitionStatus.COMPLETED
 _KIND_COALESCE = f"COALESCE(kind, '{TransitionKind.REPLACE}')"
+
+
+def _is_object_sequence(row: object) -> TypeGuard[Sequence[object]]:
+    """Return True when ``row`` can be copied as ``Sequence[object]``."""
+    return isinstance(row, Sequence) and not isinstance(row, (str, bytes))
+
+
+def _transition_row_cells(row: object) -> list[object]:
+    """Copy a SQLite row into a list so index access is well-typed."""
+    if not _is_object_sequence(row):
+        raise StorageError("Replacement transition row is not a sequence")
+    cells = [row[index] for index in range(len(row))]
+    if len(cells) < 9:
+        raise StorageError("Replacement transition row is incomplete")
+    return cells
 
 
 @dataclass(frozen=True)
@@ -1431,24 +1447,25 @@ class MemoryStore(BaseModel):
         row = cursor.fetchone()
         return self._row_to_transition(row) if row is not None else None
 
-    def _row_to_transition(self, row: tuple[object, ...]) -> ReplacementTransition:
+    def _row_to_transition(self, row: object) -> ReplacementTransition:
         """Map a replacement_transitions SELECT row to a dataclass."""
-        status_value = str(row[8])
-        kind_value = str(row[9]) if len(row) > 9 else TransitionKind.REPLACE
+        cells: list[object] = _transition_row_cells(row)
+        status_value = str(cells[8])
+        kind_value = str(cells[9]) if len(cells) > 9 else TransitionKind.REPLACE
         try:
             transition_status = TransitionStatus.from_stored(status_value)
             kind = TransitionKind.from_stored(kind_value)
         except ValueError as e:
             raise StorageError(f"Invalid replacement transition row: {e}") from e
         return ReplacementTransition(
-            id=int(str(row[0])),
-            workspace_id=str(row[1]),
-            old_memory_id=int(str(row[2])),
-            old_content=str(row[3]),
-            new_content=str(row[4]),
-            archive_id=int(str(row[5])),
-            reason=str(row[6]),
-            confidence=float(str(row[7])),
+            id=int(str(cells[0])),
+            workspace_id=str(cells[1]),
+            old_memory_id=int(str(cells[2])),
+            old_content=str(cells[3]),
+            new_content=str(cells[4]),
+            archive_id=int(str(cells[5])),
+            reason=str(cells[6]),
+            confidence=float(str(cells[7])),
             status=transition_status,
             kind=kind,
         )
