@@ -772,6 +772,27 @@ class TestUSearchEngineIndexInit:
             with pytest.raises(InitializationError, match="missing"):
                 _ = engine.index
 
+    def test_restore_success_with_missing_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        restored = MagicMock()
+        restored.__len__.return_value = 3
+        with (
+            patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls,
+            patch(
+                "reflectlog.infrastructure.usearch_engine.os.path.exists",
+                return_value=False,
+            ),
+        ):
+            mock_index_cls.restore.return_value = restored
+            with pytest.raises(InitializationError, match="missing"):
+                _ = engine.index
+            mock_index_cls.assert_not_called()
+
     def test_index_init_failure_raises_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:

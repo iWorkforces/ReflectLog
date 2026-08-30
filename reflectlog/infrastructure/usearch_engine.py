@@ -48,9 +48,7 @@ def _sqlite_memory_count(db_path: str) -> int | None:
         connection = sqlite3.connect(db_path, timeout=5.0)
         try:
             _ = connection.execute("PRAGMA busy_timeout = 5000")
-            row = connection.execute(
-                "SELECT COUNT(*) FROM memories"
-            ).fetchone()
+            row = connection.execute("SELECT COUNT(*) FROM memories").fetchone()
         finally:
             connection.close()
     except sqlite3.Error:
@@ -218,6 +216,27 @@ class USearchEngine(BaseModel):
 
         super().__init__(config=config, embedder=embedder, logger=logger, **kwargs)
 
+    def _reject_populated_hnsw_without_db(self, hnsw_size: int) -> None:
+        """Refuse a loaded HNSW when SQLite is missing, empty, or unreadable."""
+        if hnsw_size <= 0:
+            return
+        db_missing = not os.path.exists(self.config.db_path)
+        sqlite_rows = _sqlite_memory_count(self.config.db_path)
+        if sqlite_rows is not None and sqlite_rows > 0:
+            return
+        detail = (
+            "missing"
+            if db_missing
+            else "unreadable"
+            if sqlite_rows is None
+            else "empty"
+        )
+        raise InitializationError(
+            f"USearch index has {hnsw_size} vectors but SQLite is {detail} "
+            f"at {self.config.db_path}. Refusing to load HNSW without a "
+            "readable memory store."
+        )
+
     @property
     def name(self) -> str:
         """Engine name for identification."""
@@ -252,6 +271,7 @@ class USearchEngine(BaseModel):
                             raise RuntimeError(
                                 f"Index.restore() returned None for {self.config.index_path}"
                             )
+                        self._reject_populated_hnsw_without_db(len(loaded_index))
                         self._index = loaded_index
                         if self.logger:
                             self.logger.info(
@@ -498,15 +518,15 @@ class USearchEngine(BaseModel):
                     computed = self.embedder.embed_documents(inserted_contents)
                 else:
                     content_to_vector = dict(zip(contents, vectors, strict=True))
-                    computed = [content_to_vector[content] for content in inserted_contents]
+                    computed = [
+                        content_to_vector[content] for content in inserted_contents
+                    ]
                 if len(computed) != len(inserted_contents):
                     raise RuntimeError(
                         "Embedding batch size mismatch for USearch add_batch"
                     )
                 if any(not vector for vector in computed):
-                    raise RuntimeError(
-                        "Embedding batch contained an empty vector"
-                    )
+                    raise RuntimeError("Embedding batch contained an empty vector")
             except Exception as embed_error:
                 # Rollback all SQLite inserts if embedding fails
                 if self.logger:
