@@ -736,8 +736,11 @@ class TestUSearchEngineIndexInit:
 
         config, embedder, _ = temp_engine
         os.makedirs(os.path.dirname(config.index_path), exist_ok=True)
+        os.makedirs(os.path.dirname(config.db_path), exist_ok=True)
         with open(config.index_path, "wb") as handle:
             handle.write(b"not-an-index")
+        with open(config.db_path, "wb") as handle:
+            handle.write(b"")
 
         engine = USearchEngine(config=config, embedder=embedder)
         with (
@@ -749,6 +752,24 @@ class TestUSearchEngineIndexInit:
         ):
             mock_index_cls.restore.side_effect = RuntimeError("corrupt")
             with pytest.raises(InitializationError, match="unreadable"):
+                _ = engine.index
+
+    def test_corrupt_index_with_missing_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _ = temp_engine
+        os.makedirs(os.path.dirname(config.index_path), exist_ok=True)
+        with open(config.index_path, "wb") as handle:
+            handle.write(b"not-an-index")
+        if os.path.exists(config.db_path):
+            os.remove(config.db_path)
+
+        engine = USearchEngine(config=config, embedder=embedder)
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.side_effect = RuntimeError("corrupt")
+            with pytest.raises(InitializationError, match="missing"):
                 _ = engine.index
 
     def test_index_init_failure_raises_runtime_error(
@@ -841,6 +862,8 @@ class TestUSearchEngineAddErrorPaths:
 
         try:
             engine.ensure_initialized()
+            original_store = engine.memory_store
+            original_store.close()
             mock_store = MagicMock()
             mock_store.insert.side_effect = StorageError("Duplicate memory detected")
             object.__setattr__(engine, "_memory_store", mock_store)
@@ -861,6 +884,8 @@ class TestUSearchEngineAddErrorPaths:
 
         try:
             engine.ensure_initialized()
+            original_store = engine.memory_store
+            original_store.close()
             mock_store = MagicMock()
             mock_store.insert.side_effect = TypeError("unexpected type error")
             object.__setattr__(engine, "_memory_store", mock_store)
@@ -882,6 +907,8 @@ class TestUSearchEngineAddErrorPaths:
 
         try:
             engine.ensure_initialized()
+            original_store = engine.memory_store
+            original_store.close()
             mock_store = MagicMock()
             mock_store.insert.side_effect = RuntimeError("connection lost")
             object.__setattr__(engine, "_memory_store", mock_store)
@@ -1258,7 +1285,7 @@ class TestUSearchEngineGetAllErrorPaths:
             mock_store.get_all.side_effect = OSError("disk read error")
             object.__setattr__(engine, "_memory_store", mock_store)
 
-            with pytest.raises(RuntimeError, match="Failed to retrieve contents"):
+            with pytest.raises(RuntimeError, match="Failed to retrieve memories"):
                 engine.get_all("user1")
 
             logger.error.assert_called()  # type: ignore
@@ -1320,7 +1347,7 @@ class TestUSearchEngineDeleteErrorPaths:
                 side_effect=OSError("corrupted index")
             )
 
-            with pytest.raises(RuntimeError, match="Failed to delete content"):
+            with pytest.raises(RuntimeError, match="Failed to delete memory"):
                 engine.delete("42")
 
             logger.error.assert_called()  # type: ignore
@@ -1371,6 +1398,7 @@ class TestUSearchEngineCommitErrorPaths:
         try:
             engine.ensure_initialized()
             engine._index = MagicMock()
+            engine._dirty = True
             engine._index.save = MagicMock(side_effect=OSError("disk full"))
 
             with pytest.raises(RuntimeError, match="Failed to save USearch index"):

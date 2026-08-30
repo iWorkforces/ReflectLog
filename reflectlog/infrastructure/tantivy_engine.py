@@ -19,6 +19,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
 
+from reflectlog.core.access import optional_attr
 from reflectlog.core.config import IAppConfig
 from reflectlog.core.exceptions import InitializationError, SearchError
 from reflectlog.core.logging import IStructuredLogger
@@ -85,15 +86,11 @@ class TantivyConfig:
         return cls(
             workspace_id=config.workspace_id,
             index_path=config.tantivy_index_path,
-            normalize_scores=getattr(config, "tantivy_normalize_scores", True),
-            soft_delete_enabled=getattr(config, "tantivy_soft_delete_enabled", True),
-            compaction_threshold_ratio=getattr(
-                config, "tantivy_compaction_threshold_ratio", 0.2
-            ),
-            compaction_max_tombstones=getattr(
-                config, "tantivy_compaction_max_tombstones", 10000
-            ),
-            tombstone_ttl_days=getattr(config, "tantivy_tombstone_ttl_days", 7),
+            normalize_scores=config.tantivy_normalize_scores,
+            soft_delete_enabled=config.tantivy_soft_delete_enabled,
+            compaction_threshold_ratio=config.tantivy_compaction_threshold_ratio,
+            compaction_max_tombstones=config.tantivy_compaction_max_tombstones,
+            tombstone_ttl_days=config.tantivy_tombstone_ttl_days,
         )
 
 
@@ -1162,7 +1159,7 @@ class TantivyEngine(BaseModel):
         num_docs: int | None = None
 
         try:
-            num_docs_attr = getattr(searcher, "num_docs", None)
+            num_docs_attr = optional_attr(searcher, "num_docs")
             if callable(num_docs_attr):
                 num_docs_result = num_docs_attr()
                 if isinstance(num_docs_result, (int, float)):

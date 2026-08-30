@@ -263,12 +263,17 @@ class USearchEngine(BaseModel):
                             )
                     except (RuntimeError, FileNotFoundError, OSError) as restore_error:
                         index_exists = os.path.exists(self.config.index_path)
+                        db_missing = not os.path.exists(self.config.db_path)
                         sqlite_rows = _sqlite_memory_count(self.config.db_path)
                         sqlite_unknown = sqlite_rows is None
                         sqlite_populated = sqlite_rows is not None and sqlite_rows > 0
-                        if index_exists and (sqlite_populated or sqlite_unknown):
+                        if index_exists and (
+                            sqlite_populated or sqlite_unknown or db_missing
+                        ):
                             detail = (
-                                "unreadable"
+                                "missing"
+                                if db_missing
+                                else "unreadable"
                                 if sqlite_unknown
                                 else f"{sqlite_rows} memories"
                             )
@@ -763,6 +768,10 @@ class USearchEngine(BaseModel):
             (record.content, float(similarities[i]), record.created_at)
             for i, (record, _) in enumerate(filtered_matches)
         ]
+
+    def count(self, workspace_id: str) -> int:
+        """Return how many memories exist for a workspace."""
+        return self.memory_store.count(workspace_id)
 
     def get_all(
         self,
