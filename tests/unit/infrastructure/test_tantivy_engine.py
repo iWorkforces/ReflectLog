@@ -2262,6 +2262,58 @@ class TestRebuildIndexWithDocs:
             docs = engine._get_all_docs("test")
             assert "rebuilt" in docs
 
+    def test_rebuild_restores_leftover_backup_when_live_unreadable(self) -> None:
+        '''A leftover rebuild bak is restored instead of discarded.'''
+        import shutil
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            live_path = os.path.join(tmpdir, "idx")
+            bak_path = f"{live_path}.rebuild-bak"
+            config = TantivyConfig(workspace_id="test", index_path=live_path)
+            engine = TantivyEngine(config)
+            engine.add("test", "keep from bak")
+            engine.commit()
+            engine.close()
+
+            shutil.copytree(live_path, bak_path)
+            shutil.rmtree(live_path)
+            os.makedirs(live_path, exist_ok=True)
+
+            restored = TantivyEngine(config)
+            docs = restored._get_all_docs("test")
+            assert "keep from bak" in docs
+            restored.close()
+
+    def test_search_after_close_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
+            engine = TantivyEngine(config)
+            engine.add("test", "visible")
+            engine.commit()
+            engine.close()
+            with pytest.raises(SearchError, match="closed"):
+                _ = engine.search("visible", "test", limit=5)
+
+    def test_all_workspaces_keeps_surplus_live_copies(self) -> None:
+        '''Rebuild keep-list uses live-minus-tomb surplus, not any-tomb hide.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                workspace_id="test",
+                index_path=tmpdir,
+                soft_delete_enabled=True,
+            )
+            engine = TantivyEngine(config)
+            engine.add("proj-a", "twice")
+            engine.commit()
+            assert engine.soft_delete("proj-a", "twice")
+            engine.commit()
+            engine.add("proj-a", "twice")
+            engine.commit()
+            results = engine._get_all_docs_all_workspaces()
+            copies = [content for _workspace, content in results if content == "twice"]
+            assert len(copies) == 1
+            engine.close()
+
 
 @pytest.mark.unit
 class TestGetDocLimitEdgeCases:

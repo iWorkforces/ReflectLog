@@ -133,6 +133,7 @@ class TantivyEngine(BaseModel):
     )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
+    _closed: bool = PrivateAttr(default=False)
 
     def __init__(
         self,
@@ -193,7 +194,32 @@ class TantivyEngine(BaseModel):
 
         return schema_builder.build()
 
-    def _initialize_index(self) -> None:
+    def _rebuild_backup_path(self, index_path: str) -> str:
+        """Return the sibling rebuild-backup directory for ``index_path``."""
+        return f"{index_path}.rebuild-bak"
+
+    def _index_is_openable(self, index_path: str) -> bool:
+        """Return True when Tantivy can open the directory as an index."""
+        try:
+            _ = tantivy.Index.open(index_path)
+        except Exception:
+            return False
+        return True
+
+    def _restore_rebuild_backup_if_needed(self, index_path: str) -> None:
+        """Move leftover rebuild backup into place when the live index is unusable."""
+        import shutil
+
+        backup_path = self._rebuild_backup_path(index_path)
+        if not os.path.exists(backup_path):
+            return
+        if self._index_is_openable(index_path):
+            return
+        if os.path.exists(index_path):
+            shutil.rmtree(index_path)
+        _ = shutil.move(backup_path, index_path)
+
+    def _initialize_index(self, *, restore_backup: bool = True) -> None:
         """Initialize or load persistent Tantivy index.
 
         Creates the index directory if it doesn't exist.
@@ -204,6 +230,8 @@ class TantivyEngine(BaseModel):
         """
         index_path = self.config.index_path
         os.makedirs(index_path, exist_ok=True)
+        if restore_backup:
+            self._restore_rebuild_backup_if_needed(index_path)
 
         try:
             # Try to open existing index
@@ -217,6 +245,21 @@ class TantivyEngine(BaseModel):
                     },
                 )
         except Exception as open_error:
+            if restore_backup:
+                self._restore_rebuild_backup_if_needed(index_path)
+                try:
+                    self._index = tantivy.Index.open(index_path)
+                    if self.logger:
+                        self.logger.info(
+                            "Restored Tantivy index from rebuild backup",
+                            extra={
+                                "workspace_id": self.config.workspace_id,
+                                "tantivy_index_path": index_path,
+                            },
+                        )
+                    return
+                except Exception:
+                    pass
             meta_path = os.path.join(index_path, "meta.json")
             if os.path.exists(meta_path):
                 raise InitializationError(
@@ -396,7 +439,8 @@ class TantivyEngine(BaseModel):
             top_docs = searcher.search(query=query, limit=doc_limit)
 
             live: list[tuple[str, str]] = []
-            tombs: set[tuple[str, str]] = set()
+            live_counts: dict[tuple[str, str], int] = {}
+            tomb_counts: dict[tuple[str, str], int] = {}
             for _, doc_addr in top_docs.hits:
                 doc = searcher.doc(doc_addr)
                 workspace_id = doc.get_first("workspace_id")
@@ -405,12 +449,22 @@ class TantivyEngine(BaseModel):
                     continue
                 is_deleted_val = doc.get_first("is_deleted")
                 is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+                key = (workspace_id, memory)
                 if is_deleted == 1:
-                    tombs.add((workspace_id, memory))
+                    tomb_counts[key] = tomb_counts.get(key, 0) + 1
                     continue
-                live.append((workspace_id, memory))
+                live.append(key)
+                live_counts[key] = live_counts.get(key, 0) + 1
 
-            return [item for item in live if item not in tombs]
+            kept: list[tuple[str, str]] = []
+            kept_live: dict[tuple[str, str], int] = {}
+            for item in live:
+                surplus = live_counts.get(item, 0) - tomb_counts.get(item, 0)
+                if surplus <= 0 or kept_live.get(item, 0) >= surplus:
+                    continue
+                kept_live[item] = kept_live.get(item, 0) + 1
+                kept.append(item)
+            return kept
 
         except Exception as e:
             if self.logger:
@@ -560,12 +614,13 @@ class TantivyEngine(BaseModel):
         Returns:
             Set of memory strings that have tombstones.
         """
-        # Fast path: check cache first (thread-safe read)
-        with self._tombstone_cache_lock:
-            if workspace_id in self._tombstone_cache:
-                # Move to end (most recently used)
-                self._tombstone_cache.move_to_end(workspace_id)
-                return set(self._tombstone_cache[workspace_id])
+        use_cache = searcher is None or searcher is self._searcher
+        if use_cache:
+            with self._tombstone_cache_lock:
+                if workspace_id in self._tombstone_cache:
+                    # Move to end (most recently used)
+                    self._tombstone_cache.move_to_end(workspace_id)
+                    return set(self._tombstone_cache[workspace_id])
 
         if self._index is None:
             return set()
@@ -604,15 +659,12 @@ class TantivyEngine(BaseModel):
                 if tombs >= live_counts.get(memory, 0)
             }
 
-            # Store in cache with LRU eviction (thread-safe write)
-            with self._tombstone_cache_lock:
-                # Remove oldest entry if cache is at max capacity
-                if len(self._tombstone_cache) >= self.config.tombstone_cache_max_size:
-                    _ = self._tombstone_cache.popitem(last=False)
-                # Add new entry and move to end (most recently used)
-                self._tombstone_cache[workspace_id] = tombstoned
-                # Ensure this entry is at the end (most recent)
-                self._tombstone_cache.move_to_end(workspace_id)
+            if use_cache:
+                with self._tombstone_cache_lock:
+                    if len(self._tombstone_cache) >= self.config.tombstone_cache_max_size:
+                        _ = self._tombstone_cache.popitem(last=False)
+                    self._tombstone_cache[workspace_id] = tombstoned
+                    self._tombstone_cache.move_to_end(workspace_id)
 
             return tombstoned
 
@@ -687,6 +739,8 @@ class TantivyEngine(BaseModel):
             Empty list if search fails or no results found.
         """
         try:
+            if self._closed:
+                raise SearchError("TantivyEngine is closed")
             if self._index is None:
                 if self.logger:
                     self.logger.warning(
@@ -748,6 +802,8 @@ class TantivyEngine(BaseModel):
                 )
             raise SearchError(f"Tantivy file system error during search: {e}") from e
 
+        except SearchError:
+            raise
         except Exception as e:
             raise SearchError(f"Tantivy search failed: {e}") from e
 
@@ -834,6 +890,7 @@ class TantivyEngine(BaseModel):
         If not called, resources will be released by Python's garbage collector,
         but file locks may persist until GC runs.
         """
+        self._closed = True
         with self._writer_lock:
             if self._writer is not None:
                 try:
@@ -927,10 +984,11 @@ class TantivyEngine(BaseModel):
         )
         live_count = 0
         tomb_count = 0
-        for _, doc_addr in self.searcher.search(
+        pinned = self.searcher
+        for _, doc_addr in pinned.search(
             query=query, limit=self._get_doc_limit()
         ).hits:
-            doc = self.searcher.doc(doc_addr)
+            doc = pinned.doc(doc_addr)
             memory = doc.get_first("content")
             if memory != content:
                 continue
@@ -1140,7 +1198,7 @@ class TantivyEngine(BaseModel):
         import shutil
 
         index_path = self.config.index_path
-        backup_path = f"{index_path}.rebuild-bak"
+        backup_path = self._rebuild_backup_path(index_path)
 
         # Step 1: Properly finalize existing writer before destroying index
         with self._writer_lock:
@@ -1159,15 +1217,16 @@ class TantivyEngine(BaseModel):
         # Clear tombstone cache since index is being destroyed
         self._invalidate_tombstone_cache()
 
-        if os.path.exists(backup_path):
-            shutil.rmtree(backup_path)
-        if os.path.exists(index_path):
+        self._restore_rebuild_backup_if_needed(index_path)
+        if os.path.exists(index_path) and self._index_is_openable(index_path):
+            if os.path.exists(backup_path):
+                shutil.rmtree(backup_path)
             _ = shutil.copytree(index_path, backup_path)
 
         try:
             if os.path.exists(index_path):
                 shutil.rmtree(index_path)
-            self._initialize_index()
+            self._initialize_index(restore_backup=False)
             for workspace_id, content in docs_to_keep:
                 self.add(workspace_id, content)
             self.commit()
@@ -1176,7 +1235,7 @@ class TantivyEngine(BaseModel):
                 if os.path.exists(index_path):
                     shutil.rmtree(index_path)
                 _ = shutil.move(backup_path, index_path)
-                self._initialize_index()
+                self._initialize_index(restore_backup=False)
             raise
         if os.path.exists(backup_path):
             shutil.rmtree(backup_path)
@@ -1256,7 +1315,8 @@ class TantivyEngine(BaseModel):
                 query="*",
                 default_field_names=["content"],
             )
-            top_docs = self.searcher.search(query=query, limit=doc_limit)
+            pinned = self.searcher
+            top_docs = pinned.search(query=query, limit=doc_limit)
 
             total_docs = 0
             active_docs = 0
@@ -1265,7 +1325,7 @@ class TantivyEngine(BaseModel):
             tomb_counts: dict[str, int] = {}
 
             for _, doc_addr in top_docs.hits:
-                doc = self.searcher.doc(doc_addr)
+                doc = pinned.doc(doc_addr)
                 total_docs += 1
                 memory = doc.get_first("content")
 
@@ -1449,14 +1509,15 @@ class TantivyEngine(BaseModel):
             query="*",
             default_field_names=["content"],
         )
-        top_docs = self.searcher.search(query=query, limit=self._get_doc_limit())
+        pinned = index.searcher()
+        top_docs = pinned.search(query=query, limit=self._get_doc_limit())
 
         all_docs: list[tuple[str, str, int]] = []
         live_counts: dict[tuple[str, str], int] = {}
         tomb_counts: dict[tuple[str, str], int] = {}
 
         for _, doc_addr in top_docs.hits:
-            doc = self.searcher.doc(doc_addr)
+            doc = pinned.doc(doc_addr)
             workspace_id = doc.get_first("workspace_id")
             memory = doc.get_first("content")
             is_deleted_val = doc.get_first("is_deleted")
