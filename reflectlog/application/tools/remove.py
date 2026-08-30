@@ -7,7 +7,7 @@ from asyncer import asyncify
 from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import StorageError
 
-from ..utils.validation import validate_memories, validate_remove_batch
+from ..utils.validation import validate_remove_batch, validate_remove_memories
 from .base import BaseTool
 
 
@@ -75,9 +75,7 @@ class RemoveTool(BaseTool):
                 return
 
             unique_memories = list(dict.fromkeys(memories))
-            is_valid, error_msg = validate_memories(
-                unique_memories, 0, self.config.max_memory_length
-            )
+            is_valid, error_msg = validate_remove_memories(unique_memories)
             if is_valid:
                 is_valid, error_msg = validate_remove_batch(
                     unique_memories,

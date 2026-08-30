@@ -822,7 +822,7 @@ class TestRemoveTool:
             "delete_memories",
             return_value=[],
         ) as deleted:
-            with pytest.raises(ValueError, match="non-empty strings"):
+            with pytest.raises(ValueError, match="whitespace"):
                 await self._remove_fn(mcp_server)(["   "])
         deleted.assert_not_called()
 

@@ -154,6 +154,25 @@ class TestRemoveToolHappyPath:
         await handler([memory])
         assert recording_manager.calls == [[memory]]
 
+    async def test_remove_allows_oversize_stored_row(
+        self,
+        mock_config: Config,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        """Delete does not apply max_memory_length from add validation."""
+        config = replace(mock_config, max_memory_length=8)
+        tool = RemoveTool(
+            config=config,
+            memory_manager=cast(MemoryManager, recording_manager),
+            logger=mock_tool_logger,
+        )
+        memory = "this stored row is longer than the current cap"
+        recording_manager.present = {memory}
+        handler = tool.get_handler()
+        await handler([memory])
+        assert recording_manager.calls == [[memory]]
+
 
 @pytest.mark.unit
 class TestRemoveToolEmptyInput:
