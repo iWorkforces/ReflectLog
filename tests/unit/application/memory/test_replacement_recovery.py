@@ -75,7 +75,10 @@ class TestApplyPendingTransition:
 
     def test_skips_insert_when_replacement_already_present(self) -> None:
         semantic = MagicMock()
-        semantic.get_id_by_content.side_effect = [None, 99, 99, None]
+        def get_id(_workspace_id: str, content: str) -> int | None:
+            return 99 if content == "new convention" else None
+
+        semantic.get_id_by_content.side_effect = get_id
         semantic.index = {99}
         tantivy = MagicMock()
         def find_existing(_workspace_id: str, content: str) -> list[str]:

@@ -53,7 +53,7 @@ from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngin
 
 from ...core.config_adapters import ConfigAdapter
 from ...core.logging import IStructuredLogger
-from ...core.types import Embeddings, ISemanticSearchEngine
+from ...core.types import Embeddings, ISemanticSearchEngine, ReplacementTransition
 from ..config.settings import Config
 from ..utils.validation import (
     truncate_memory,
@@ -107,7 +107,13 @@ class MemoryManager:
         self._init_smart_replacer()
         self._init_pipelines()
         self._log_configuration()
-        _ = self.reconcile_pending_replacements()
+        try:
+            _ = self.reconcile_pending_replacements()
+        except Exception as exc:
+            self.logger.error(
+                "Startup replacement reconcile failed; continuing with pending rows",
+                extra={"error": str(exc)},
+            )
 
         if config.eager_initialization:
             self._eager_initialize_engines()
@@ -147,8 +153,6 @@ class MemoryManager:
                 "max_concurrent_batches": config.embedding_max_concurrent_batches,
             }
         )
-
-        # Wrap embedder with LRU cache for query embeddings (reduces API calls)
         if config.embedding_cache_enabled:
             embedder = CachedEmbeddings(
                 embedder=base_embedder,
@@ -158,7 +162,6 @@ class MemoryManager:
             )
         else:
             embedder = base_embedder
-
         self._semantic_engine: ISemanticSearchEngine = USearchEngine(
             usearch_config, embedder=embedder, logger=self.logger
         )
@@ -299,7 +302,11 @@ class MemoryManager:
         )
 
     def pending_replacement_count(self) -> int:
-        """Return how many replacement transitions are still pending."""
+        """Return how many journal intents are still pending (all kinds)."""
+        return self.pending_intent_count()
+
+    def pending_intent_count(self) -> int:
+        """Return how many add/delete/replace intents are still pending."""
         return len(self._semantic_engine.memory_store.list_pending_transitions())
 
     def _log_configuration(self) -> None:
@@ -901,9 +908,18 @@ class MemoryManager:
         Raises:
             StorageError: If deletion fails.
         """
-        with self._write_lock:
+        with self._write_lock, self._lock:
             try:
+                content = None
+                store = getattr(self._semantic_engine, "memory_store", None)
+                getter = getattr(store, "get", None) if store is not None else None
+                if callable(getter):
+                    record = getter(int(memory_id))
+                    content = getattr(record, "content", None) if record is not None else None
                 self._semantic_engine.delete(memory_id=memory_id)
+                self._semantic_engine.commit()
+                if content is not None and self._tantivy_engine is not None:
+                    _ = self._tantivy_engine.delete(self.workspace_id, content)
             except Exception as e:
                 raise StorageError(f"Failed to delete memory: {e}") from e
 
@@ -941,8 +957,10 @@ class MemoryManager:
                     )
                     return False
 
+                delete_intents = self._record_delete_intents([(mem_id, memory)])
                 # 2. Delete from USearch semantic engine using the numeric ID
                 self._semantic_engine.delete(memory_id=str(mem_id))
+                self._semantic_engine.commit()
 
                 # 3. Delete from Tantivy full-text engine
                 # If this fails after USearch deletion, we have inconsistent state
@@ -973,6 +991,7 @@ class MemoryManager:
                             f"{tantivy_error}"
                         ) from tantivy_error
 
+                self._complete_delete_intents(delete_intents)
                 self.logger.debug(
                     "Memory deleted from hybrid storage",
                     extra={
@@ -1010,6 +1029,7 @@ class MemoryManager:
                 if mem_id is not None:
                     found.append((mem_id, memory))
             contents = [memory for _mem_id, memory in found]
+            delete_intents = self._record_delete_intents(found)
             for mem_id, _memory in found:
                 self._semantic_engine.delete(memory_id=str(mem_id))
             if found and self._tantivy_engine is not None:
@@ -1053,7 +1073,41 @@ class MemoryManager:
                     ) from tantivy_error
             if found:
                 self._semantic_engine.commit()
+                self._complete_delete_intents(delete_intents)
             return contents
+
+    def _record_delete_intents(
+        self, items: list[tuple[int, str]]
+    ) -> list[ReplacementTransition]:
+        """Persist delete intents before either backend mutates."""
+        if not items:
+            return []
+        store = getattr(self._semantic_engine, "memory_store", None)
+        begin_delete = type(store).__dict__.get("begin_delete_intents") if store else None
+        if not callable(begin_delete) or store is None:
+            return []
+        recorded = begin_delete(store, self.workspace_id, items)
+        if not isinstance(recorded, list):
+            return []
+        return [row for row in recorded if isinstance(row, ReplacementTransition)]
+
+    def _complete_delete_intents(self, intents: list[ReplacementTransition]) -> None:
+        """Mark delete intents complete when the recorded id is gone."""
+        store = getattr(self._semantic_engine, "memory_store", None)
+        complete = type(store).__dict__.get("complete_replacement_transition") if store else None
+        if not callable(complete) or store is None:
+            return
+        index = getattr(self._semantic_engine, "index", None)
+        for intent in intents:
+            if self.get_id_by_content(intent.old_content) == intent.old_memory_id:
+                continue
+            if index is not None:
+                try:
+                    if intent.old_memory_id in index:
+                        continue
+                except TypeError:
+                    continue
+            _ = complete(store, intent.id)
 
     def get_id_by_content(self, content: str) -> int | None:
         """Get SQLite ID for exact memory content match.
@@ -1092,6 +1146,7 @@ class MemoryManager:
         Should be called during graceful shutdown (e.g., on SIGINT/SIGTERM)
         to prevent data loss.
         """
+        persist_ok = True
         with self._write_lock, self._lock:
             self.logger.info(
                 "Closing MemoryManager - persisting data to disk...",
@@ -1109,6 +1164,7 @@ class MemoryManager:
                         extra={"workspace_id": self.workspace_id, "engine": "tantivy"},
                     )
                 except Exception as e:
+                    persist_ok = False
                     self.logger.error(
                         f"Error closing Tantivy engine: {e}",
                         extra={
@@ -1128,6 +1184,7 @@ class MemoryManager:
                     extra={"workspace_id": self.workspace_id, "engine": "usearch"},
                 )
             except Exception as e:
+                persist_ok = False
                 self.logger.error(
                     f"Error closing USearch engine: {e}",
                     extra={
@@ -1137,7 +1194,13 @@ class MemoryManager:
                     },
                 )
 
-            self.logger.info(
-                "MemoryManager closed - all data persisted",
-                extra={"workspace_id": self.workspace_id},
-            )
+            if persist_ok:
+                self.logger.info(
+                    "MemoryManager closed - all data persisted",
+                    extra={"workspace_id": self.workspace_id},
+                )
+            else:
+                self.logger.error(
+                    "MemoryManager closed - persist incomplete",
+                    extra={"workspace_id": self.workspace_id},
+                )

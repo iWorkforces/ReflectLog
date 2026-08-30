@@ -199,3 +199,44 @@ class TestPendingTransitionLifecycle:
             with pytest.raises(StorageError, match="was not pending"):
                 store.complete_replacement_transition(999)
             store.close()
+
+
+@pytest.mark.unit
+class TestAddAndDeleteIntents:
+    """Ordinary add/delete intents share the replacement_transitions table."""
+
+    def test_begin_add_intents_are_pending_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            first = store.begin_add_intents("proj1", ["hello", "hello"])
+            second = store.begin_add_intents("proj1", ["hello"])
+            assert len(first) == 1
+            assert first[0].kind == "add"
+            assert first[0].new_content == "hello"
+            assert second[0].id == first[0].id
+            assert len(store.list_pending_transitions()) == 1
+            store.close()
+
+    def test_begin_delete_intents_are_id_scoped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            rows = store.begin_delete_intents("proj1", [(11, "hello")])
+            assert len(rows) == 1
+            assert rows[0].kind == "delete"
+            assert rows[0].old_memory_id == 11
+            assert rows[0].old_content == "hello"
+            store.close()
+
+    def test_has_later_intent_sees_completed_delete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            added = store.begin_add_intents("proj1", ["hello"])[0]
+            deleted = store.begin_delete_intents("proj1", [(11, "hello")])[0]
+            store.complete_replacement_transition(deleted.id)
+            assert store.has_later_intent(
+                workspace_id="proj1",
+                kind="delete",
+                content="hello",
+                after_id=added.id,
+            )
+            store.close()

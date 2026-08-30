@@ -199,30 +199,35 @@ class DuplicateDetectionPhase:
                 },
             )
 
-        # Step 2: Parallel duplicate detection against existing storage
+        # Step 2: Batch duplicate detection against existing storage
         duplicate_flags: dict[str, bool] = {}
-        semaphore = anyio.Semaphore(self.config.add_max_concurrency)
-
-        async def check_duplicate(memory: str) -> tuple[str, bool]:
-            """Check if memory is duplicate (with semaphore for concurrency control)."""
-            async with semaphore:
-                is_dup = await asyncify(self._has_exact_match)(memory)
-                return (memory, is_dup)
-
-        # asyncer task group required: soonify captures SoonValue results from parallel checks
-        results: list[tuple[str, bool]] = []
-        async with create_task_group() as tg:
-
-            async def collect_result(memory: str) -> None:
-                res = await check_duplicate(memory)
-                results.append(res)
-
+        store = getattr(self._semantic_engine, "memory_store", None)
+        exists_many = type(store).__dict__.get("exists_many") if store is not None else None
+        if callable(exists_many) and store is not None:
+            present = exists_many(store, self._workspace_id, unique_memories)
+            present_set = present if isinstance(present, set) else set()
             for memory in unique_memories:
-                _ = tg.soonify(collect_result)(memory)
+                duplicate_flags[memory] = memory in present_set
+        else:
+            semaphore = anyio.Semaphore(self.config.add_max_concurrency)
 
-        # Process results
-        for memory, is_dup in results:
-            duplicate_flags[memory] = is_dup
+            async def check_duplicate(memory: str) -> tuple[str, bool]:
+                async with semaphore:
+                    is_dup = await asyncify(self._has_exact_match)(memory)
+                    return (memory, is_dup)
+
+            results: list[tuple[str, bool]] = []
+            async with create_task_group() as tg:
+
+                async def collect_result(memory: str) -> None:
+                    res = await check_duplicate(memory)
+                    results.append(res)
+
+                for memory in unique_memories:
+                    _ = tg.soonify(collect_result)(memory)
+
+            for memory, is_dup in results:
+                duplicate_flags[memory] = is_dup
 
         # Separate duplicates from non-duplicates
         storage_duplicates: list[str] = []
@@ -753,11 +758,13 @@ class StoragePhase:
         """Mutate indexes while the caller already holds ``_write_lock``."""
         planned, replacements = self._plan_replacements(memories, replacement_map)
         transitions = self._record_planned_transitions(planned)
-        self._delete_recorded_olds(transitions)
+        add_intents = self._record_add_intents(memories)
         stored_count = self._store_and_commit(
             memories, dry_run=False, locked=True, vectors=vectors
         )
+        self._delete_recorded_olds(transitions)
         self._complete_if_converged(transitions)
+        self._complete_add_intents(add_intents)
         return stored_count, replacements
 
     def _plan_replacements(
@@ -1118,6 +1125,43 @@ class StoragePhase:
             content=content,
             logger=self.logger,
         )
+
+    def _record_add_intents(self, memories: list[str]) -> list[ReplacementTransition]:
+        """Persist add intents before mutating either index."""
+        if not memories:
+            return []
+        store = self._semantic_engine.memory_store
+        begin_add = type(store).__dict__.get("begin_add_intents")
+        if not callable(begin_add):
+            return []
+        recorded = begin_add(store, self._workspace_id, memories)
+        if not isinstance(recorded, list):
+            return []
+        intents: list[ReplacementTransition] = []
+        for row in recorded:
+            if isinstance(row, ReplacementTransition):
+                intents.append(row)
+        return intents
+
+    def _complete_add_intents(self, intents: list[ReplacementTransition]) -> None:
+        """Mark add intents complete when both backends have the content."""
+        store = self._semantic_engine.memory_store
+        complete = type(store).__dict__.get("complete_replacement_transition")
+        if not callable(complete):
+            return
+        for intent in intents:
+            new_id = self._semantic_engine.get_id_by_content(
+                self._workspace_id, intent.new_content
+            )
+            if new_id is None:
+                continue
+            if self._tantivy_engine is not None:
+                finder = getattr(self._tantivy_engine, "find_by_exact_match", None)
+                if callable(finder):
+                    matches = finder(self._workspace_id, intent.new_content)
+                    if not isinstance(matches, list) or intent.new_content not in matches:
+                        continue
+            _ = complete(store, intent.id)
 
     def _record_replacement_transition(
         self, replacement_info: ReplacementInfo, new_memory: str

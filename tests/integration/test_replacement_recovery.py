@@ -133,14 +133,22 @@ def _crash_after_semantic_delete(_manager: MemoryManager) -> Generator[None]:
 
 @contextmanager
 def _crash_after_tantivy_delete(_manager: MemoryManager) -> Generator[None]:
-    original = TantivyEngine.delete
+    original = TantivyEngine.delete_batch
 
-    def boom(self: TantivyEngine, workspace_id: str, content: str) -> bool:
-        deleted = original(self, workspace_id, content)
+    def boom(
+        self: TantivyEngine,
+        workspace_id: str,
+        contents: list[str],
+        *,
+        verify_exists: bool = True,
+    ) -> int:
+        deleted = original(
+            self, workspace_id, contents, verify_exists=verify_exists
+        )
         raise RuntimeError("crash after tantivy delete")
         return deleted
 
-    with patch.object(TantivyEngine, "delete", boom):
+    with patch.object(TantivyEngine, "delete_batch", boom):
         yield
 
 
@@ -161,13 +169,13 @@ def _crash_after_insert(_manager: MemoryManager) -> Generator[None]:
 
 @contextmanager
 def _crash_after_tantivy_add(_manager: MemoryManager) -> Generator[None]:
-    original = TantivyEngine.add
+    original = TantivyEngine.add_batch
 
-    def boom(self: TantivyEngine, workspace_id: str, content: str) -> None:
-        original(self, workspace_id, content)
+    def boom(self: TantivyEngine, workspace_id: str, contents: list[str]) -> None:
+        original(self, workspace_id, contents)
         raise RuntimeError("crash after tantivy add")
 
-    with patch.object(TantivyEngine, "add", boom):
+    with patch.object(TantivyEngine, "add_batch", boom):
         yield
 
 

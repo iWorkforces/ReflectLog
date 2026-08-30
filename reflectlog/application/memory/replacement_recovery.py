@@ -54,13 +54,22 @@ def reconcile_pending_replacements(
     inner_lock = lock if lock is not None else nullcontext()
     with write_lock, inner_lock:
         for transition in _pending_rows(store.list_pending_transitions()):
-            if apply_pending_transition(
-                transition,
-                semantic_engine=semantic_engine,
-                tantivy_engine=tantivy_engine,
-                logger=logger,
-            ):
-                completed += 1
+            try:
+                if apply_pending_transition(
+                    transition,
+                    semantic_engine=semantic_engine,
+                    tantivy_engine=tantivy_engine,
+                    logger=logger,
+                ):
+                    completed += 1
+            except Exception as exc:
+                logger.error(
+                    "Skipping pending replacement after recovery error",
+                    extra={
+                        "transition_id": transition.id,
+                        "error": str(exc),
+                    },
+                )
 
     if completed:
         logger.info(
@@ -82,12 +91,27 @@ def apply_pending_transition(
     Returns:
         True when the transition was marked complete.
     """
-    _remove_recorded_old(transition, semantic_engine, tantivy_engine)
+    if transition.kind == "add":
+        return _apply_pending_add(
+            transition,
+            semantic_engine=semantic_engine,
+            tantivy_engine=tantivy_engine,
+            logger=logger,
+        )
+    if transition.kind == "delete":
+        return _apply_pending_delete(
+            transition,
+            semantic_engine=semantic_engine,
+            tantivy_engine=tantivy_engine,
+            logger=logger,
+        )
+
     _ensure_replacement_present(
         transition,
         semantic_engine=semantic_engine,
         tantivy_engine=tantivy_engine,
     )
+    _remove_recorded_old(transition, semantic_engine, tantivy_engine)
 
     if tantivy_engine is not None:
         tantivy_engine.commit()
@@ -171,6 +195,149 @@ def _sqlite_id_for(
 ) -> int | None:
     """Look up the live SQLite id for ``content`` in this transition's workspace."""
     return semantic_engine.get_id_by_content(transition.workspace_id, content)
+
+
+def _apply_pending_add(
+    transition: ReplacementTransition,
+    *,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+    logger: IStructuredLogger,
+) -> bool:
+    """Ensure NEW content exists unless a later delete of that text won."""
+    store = semantic_engine.memory_store
+    if _later_intent_exists(store, transition, kind="delete", content=transition.new_content):
+        store.complete_replacement_transition(transition.id)
+        logger.info(
+            "Completed add intent superseded by a later delete",
+            extra={"transition_id": transition.id},
+        )
+        return True
+
+    existing_id = semantic_engine.get_id_by_content(
+        transition.workspace_id, transition.new_content
+    )
+    if existing_id is None:
+        semantic_engine.add(
+            workspace_id=transition.workspace_id,
+            content=transition.new_content,
+            infer=False,
+        )
+    else:
+        _reindex_if_vector_missing(semantic_engine, existing_id, transition)
+
+    if tantivy_engine is not None and not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.new_content
+    ):
+        tantivy_engine.add(transition.workspace_id, transition.new_content)
+
+    if tantivy_engine is not None:
+        tantivy_engine.commit()
+    semantic_engine.commit()
+
+    if not _add_converged(transition, semantic_engine, tantivy_engine):
+        logger.warning(
+            "Add intent not complete; indexes have not converged",
+            extra={"transition_id": transition.id},
+        )
+        return False
+    store.complete_replacement_transition(transition.id)
+    return True
+
+
+def _apply_pending_delete(
+    transition: ReplacementTransition,
+    *,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+    logger: IStructuredLogger,
+) -> bool:
+    """Remove the recorded old id; do not wipe a later re-add of the same text."""
+    store = semantic_engine.memory_store
+    later_add = _later_intent_exists(
+        store, transition, kind="add", content=transition.old_content
+    )
+    semantic_engine.delete(memory_id=str(transition.old_memory_id))
+    if (
+        tantivy_engine is not None
+        and not later_add
+        and not _old_text_live_under_new_id(transition, semantic_engine)
+    ):
+        _ = tantivy_engine.delete(transition.workspace_id, transition.old_content)
+
+    if tantivy_engine is not None:
+        tantivy_engine.commit()
+    semantic_engine.commit()
+
+    if not _delete_converged(transition, semantic_engine):
+        logger.warning(
+            "Delete intent not complete; old id still present",
+            extra={"transition_id": transition.id},
+        )
+        return False
+    store.complete_replacement_transition(transition.id)
+    return True
+
+
+def _add_converged(
+    transition: ReplacementTransition,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+) -> bool:
+    """Return True when the added content is live in every required backend."""
+    new_id = semantic_engine.get_id_by_content(
+        transition.workspace_id, transition.new_content
+    )
+    if new_id is None or not _vector_present(semantic_engine, new_id):
+        return False
+    if tantivy_engine is None:
+        return True
+    return _tantivy_has(tantivy_engine, transition.workspace_id, transition.new_content)
+
+
+def _delete_converged(
+    transition: ReplacementTransition, semantic_engine: ISemanticSearchEngine
+) -> bool:
+    """Return True when the recorded old id is gone from SQLite and HNSW."""
+    return _old_id_gone(transition, semantic_engine)
+
+
+def _later_intent_exists(
+    store: object,
+    transition: ReplacementTransition,
+    *,
+    kind: str,
+    content: str,
+) -> bool:
+    """Return True when a later add/delete intent for the same text exists."""
+    lister = getattr(store, "list_pending_transitions", None)
+    if not callable(lister):
+        return False
+    try:
+        pending = lister()
+    except Exception:
+        return False
+    for other in pending:
+        if not isinstance(other, ReplacementTransition):
+            continue
+        if other.id <= transition.id or other.kind != kind:
+            continue
+        if kind == "delete" and other.old_content == content:
+            return True
+        if kind == "add" and other.new_content == content:
+            return True
+    # Also honor completed later deletes/adds still sitting in the table.
+    finder = getattr(store, "has_later_intent", None)
+    if callable(finder):
+        return bool(
+            finder(
+                workspace_id=transition.workspace_id,
+                kind=kind,
+                content=content,
+                after_id=transition.id,
+            )
+        )
+    return False
 
 
 def _remove_recorded_old(

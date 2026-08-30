@@ -20,6 +20,7 @@ from typing import (
 )
 
 ReplacementTransitionStatus = Literal["pending", "completed"]
+IndexIntentKind = Literal["add", "delete", "replace"]
 
 
 class MemoryRecord(TypedDict, total=False):
@@ -50,6 +51,7 @@ class ReplacementTransition:
     reason: str
     confidence: float
     status: ReplacementTransitionStatus
+    kind: IndexIntentKind = "replace"
 
 
 @dataclass(frozen=True)
