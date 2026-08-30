@@ -1,38 +1,47 @@
 # ReflectLog Application Layer
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-Orchestration layer implementing 3-phase add pipeline and 4-step search pipeline with MCP tool bindings.
+Orchestration: MCP + `MemoryManager`. Tools never touch engines. Pipeline math lives in `memory/` and `utility/scoring.py`.
+
+## STRUCTURE
+
+```
+application/
+├── mcp_server.py        # FastMCPServer, AVAILABLE_TOOL_CLASSES, HTTP bearer
+├── constants.py         # MIN_OVERFETCH_LIMIT, log truncate
+├── config/              # Frozen Config; settings.setup_config_reload unused
+├── memory/
+│   ├── manager.py       # Public API; inlines USearch/Tantivy/fusion
+│   ├── engine_factory.py # EngineFactory exists; unused at runtime
+│   ├── add_phases.py    # AddPipeline + DuplicateDetection/SmartReplacement/Storage
+│   ├── search_strategies.py # SearchPipeline / SearchContext / SearchResult
+│   └── replacement_recovery.py
+├── tools/               # BaseTool subclasses
+└── utils/               # logging, security.SecretString, validation
+```
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
-|-------|-----------|--------|
-| Search pipeline | `memory/search_strategies.py` | 4-step staged architecture |
-| Add pipeline | `memory/add_phases.py` | 3-phase parallel execution |
-| Fusion algorithms | `memory/fusion/` | RRF, CombSUM, Borda variants |
-| MCP tools | `tools/` | FastMCP tool implementations |
-| Config management | `config/settings.py` | 60+ env vars, validation |
-| Reranking | `memory/reranking/` | Score normalization + recency decay |
+|------|----------|-------|
+| Tool wiring | `mcp_server.py` | Injects `MemoryManager`; `ALLOWED_TOOLS` filter |
+| Facade | `memory/manager.py` | `_write_lock` then `_lock`; lazy CE/replacer |
+| Add | `memory/add_phases.py` | Phase classes above; embed outside write lock |
+| Search | `memory/search_strategies.py` | 4-step; skip CE if ≤1 hit |
+| Config reload | `config/settings.py` `setup_config_reload` | SIGHUP helper; not called at startup |
+| App utils | `utils/` | Not HTTP/scoring — those are `utility/` |
 
 ## CONVENTIONS
 
-**Pipeline Architecture** - Search uses `search_strategies.SearchPipeline` with a `SearchContext`. Add uses `AddPipeline` with pluggable phases.
-**3-Phase Add** - Phase 1: duplicate detection (parallel batch), Phase 2: smart replacement (LLM checks), Phase 3: sequential storage.
-
-**4-Step Search** - Step 1: parallel dual-search, Step 2: RRF fusion, Step 3: threshold filter, Step 4: cross-encoder only (`none` disables).
-
-**Adaptive Overfetch** - Multiplier adjusts 1.5-3x based on index size.
-
-**Lazy Reranker** - Cross-encoder reranker initialized on-demand with double-checked locking.
-
-**Canonical Type Locations** - Core domain types (`MemoryRecord`, `Embeddings`, `ISemanticSearchEngine`) live in `core/types.py`. Pipeline `SearchContext` / `SearchResult` live in `memory/search_strategies.py`.
-
-**Tool Base Class** - All tools extend BaseTool with common logging and error handling.
+- Engines: manager calls `USearchConfig.from_config(ConfigAdapter(config))` (CE/replacer same). Do not route startup through `EngineFactory`.
+- Tools: `AddTool` / `SearchTool` / `GetAllTool` / `RemoveTool` / `HealthCheckTool` only.
+- `application/utils/` has no `http_client.py` / `metrics.py` / `retry.py` / `circuit_breaker.py`.
+- `access.py` deleted. No `getattr` / `optional_attr` / `invoke_if_callable` / `type(obj).__dict__`.
 
 ## ANTI-PATTERNS
 
-- Never bypass pipeline for direct engine access
-- Never use synchronous LLM calls in add pipeline
-- Never assume both search engines return same number of results
+- Tools must not import engines or fusion.
+- Do not call `setup_config_reload()` from `server.py` / `FastMCPServer`.
+- Do not treat leftover `utils/*.pyc` (`http_client`, `metrics`, `circuit_breaker`) as APIs.
