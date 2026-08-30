@@ -750,7 +750,7 @@ class _LazyConfig:
     """
 
     def __getattr__(self, name: str) -> object:
-        return getattr(get_config(), name)
+        return object.__getattribute__(get_config(), name)
 
     def __repr__(self) -> str:
         return f"_LazyConfig(initialized={_config is not None})"

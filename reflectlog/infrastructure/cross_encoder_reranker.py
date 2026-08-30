@@ -23,6 +23,7 @@ import warnings
 from asyncer import asyncify
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
+from reflectlog.core.access import optional_attr
 from reflectlog.core.config import IAppConfig
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.reranker_post_processor import (
@@ -226,12 +227,12 @@ class CrossEncoderReranker(BaseModel):
         # This is the cleanest solution if the tokenizer is accessible
         if self._model is not None:
             # FlagReranker may store tokenizer in different attributes
-            tokenizer = getattr(self._model, "tokenizer", None)
+            tokenizer = optional_attr(self._model, "tokenizer")
             if tokenizer is None:
                 # Try accessing via the model's internal structure
-                model_obj = getattr(self._model, "model", None)
+                model_obj = optional_attr(self._model, "model")
                 if model_obj is not None:
-                    tokenizer = getattr(model_obj, "tokenizer", None)
+                    tokenizer = optional_attr(model_obj, "tokenizer")
 
             if tokenizer is not None and hasattr(tokenizer, "deprecation_warnings"):
                 tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True

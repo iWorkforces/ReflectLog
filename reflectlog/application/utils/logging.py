@@ -179,7 +179,7 @@ def create_logger(
     logger = get_logger(name)
     # Set log level: fastmcp logger may have its own level management
     # We set it here to ensure our configuration is respected
-    logger.setLevel(getattr(logging, log_level.upper()))
+    logger.setLevel(logging.getLevelNamesMapping()[log_level.upper()])
 
     return StructuredLogger(logger, default_extra={"workspace_id": workspace_id})
 

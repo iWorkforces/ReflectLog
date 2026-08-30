@@ -154,8 +154,9 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
 
                     # Try to find plugin classes in the module
                     module = importlib.import_module(name)
+                    namespace = vars(module)
                     for attr_name in dir(module):
-                        attr = getattr(module, attr_name, None)
+                        attr = namespace.get(attr_name)
                         if (
                             isinstance(attr, type)
                             and issubclass(attr, self._plugin_base_class)
@@ -250,7 +251,10 @@ async def load_plugin(plugin: DiscoveredPlugin) -> object:
     module = importlib.import_module(plugin.module_path)
 
     if plugin.class_name:
-        plugin_class = getattr(module, plugin.class_name)
+        try:
+            plugin_class = vars(module)[plugin.class_name]
+        except KeyError as exc:
+            raise AttributeError(plugin.class_name) from exc
         return plugin_class()
     else:
         # Return the module itself if no class specified

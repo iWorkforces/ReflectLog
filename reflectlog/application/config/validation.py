@@ -652,7 +652,9 @@ class ConfigurationValidator:
 
 def _get_attr(config: object, name: str) -> object | None:
     """Get an attribute from a config object, returning None if not found."""
-    return getattr(config, name, None)
+    from reflectlog.core.access import optional_attr
+
+    return optional_attr(config, name)
 
 
 def _validate_server_config(

@@ -5,6 +5,7 @@ from collections.abc import Callable, Coroutine
 from functools import wraps
 import logging
 import random
+from types import FunctionType, MethodType
 from typing import Any, ParamSpec, TypeVar
 
 P = ParamSpec("P")
@@ -12,6 +13,13 @@ T = TypeVar("T")
 
 # Default logger for retry operations
 _retry_logger = logging.getLogger(__name__)
+
+
+def _callable_name(func: object) -> str:
+    """Return a function name without using getattr."""
+    if isinstance(func, (FunctionType, MethodType)):
+        return func.__name__
+    return type(func).__name__
 
 # Transient exceptions that are safe to retry
 # Connection errors, timeouts, and temporary server issues
@@ -90,7 +98,7 @@ def async_retry_with_backoff(
                     # If this is the last attempt, raise the exception
                     if attempt >= max_retries:
                         if logger:
-                            func_name = getattr(func, "__name__", "<unknown>")
+                            func_name = _callable_name(func)
                             logger.warning(
                                 f"All {max_retries} retry attempts exhausted for {func_name}",
                                 extra={
@@ -113,7 +121,7 @@ def async_retry_with_backoff(
 
                     # Log retry attempt
                     if logger:
-                        func_name = getattr(func, "__name__", "<unknown>")
+                        func_name = _callable_name(func)
                         logger.info(
                             f"Retry attempt {attempt + 1}/{max_retries} for {func_name} after {delay:.2f}s delay",
                             extra={
