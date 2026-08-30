@@ -848,6 +848,29 @@ class TestCloseErrorPaths:
         mock_usearch.close.assert_called_once()
         mock_tantivy.close.assert_called_once()
 
+    def test_failed_close_can_retry_persist(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        """A persist failure must not stick closed so a later close can retry."""
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.commit.side_effect = [RuntimeError("usearch commit error"), None]
+
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
+        manager.close()
+        assert mock_usearch.commit.call_count == 2
+        mock_usearch.close.assert_called_once()
+
+    def test_search_after_close_is_rejected(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, _, _ = _make_manager(mock_config, mock_logger)
+        manager.close()
+        import asyncio
+
+        with pytest.raises(StorageError, match="closed"):
+            asyncio.run(manager.search("query"))
+
     def test_writes_after_close_are_rejected(
         self, mock_config: Config, mock_logger: LogCapture
     ):

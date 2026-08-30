@@ -297,6 +297,7 @@ class MemoryManager:
             logger=self.logger,
             write_lock=self._write_lock,
             lock=self._lock,
+            ensure_open=self._ensure_open,
         )
         self._add_pipeline = AddPipeline(
             duplicate_detection_phase=self._duplicate_detection_phase,
@@ -563,6 +564,7 @@ class MemoryManager:
         Raises:
             RuntimeError: If storage operation fails.
         """
+        self._ensure_open()
         try:
             _ = self.reconcile_pending_replacements()
         except InitializationError:
@@ -616,6 +618,7 @@ class MemoryManager:
             raise StorageError("Embedding batch size mismatch or empty vector")
 
         with self._write_lock, self._lock:
+            self._ensure_open()
             persist_memories: list[str] = []
             persist_vectors: list[list[float]] = []
             for memory, vector in zip(memories_to_add, vectors, strict=True):
@@ -702,6 +705,7 @@ class MemoryManager:
 
     def count(self) -> int:
         """Return how many memories exist in this workspace."""
+        self._ensure_open()
         return self._semantic_engine.count(self.workspace_id)
 
     def get_all(self, limit: int | None = None, offset: int = 0) -> list[str]:
@@ -715,6 +719,7 @@ class MemoryManager:
         Raises:
             RuntimeError: If retrieval operation fails.
         """
+        self._ensure_open()
         try:
             with self._lock:
                 memories = self._semantic_engine.get_all(
@@ -1270,16 +1275,16 @@ class MemoryManager:
                     },
                 )
 
-            self._closed = True
             self._closing = False
             if persist_ok:
+                self._closed = True
                 self.logger.info(
                     "MemoryManager closed - all data persisted",
                     extra={"workspace_id": self.workspace_id},
                 )
                 return
             self.logger.error(
-                "MemoryManager closed - persist incomplete",
+                "MemoryManager persist incomplete; close not finalized",
                 extra={"workspace_id": self.workspace_id},
             )
             raise StorageError("MemoryManager persist incomplete during close")

@@ -10,6 +10,7 @@ Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
 """
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 import time
@@ -601,6 +602,7 @@ class StoragePhase:
         logger: IStructuredLogger | None,
         write_lock: AbstractContextManager[object] | None = None,
         lock: AbstractContextManager[object] | None = None,
+        ensure_open: Callable[[], None] | None = None,
     ):
         """Initialize storage phase.
 
@@ -611,6 +613,7 @@ class StoragePhase:
             logger: Structured logger instance.
             write_lock: Exclusive write lock shared with MemoryManager.
             lock: Inner read lock; acquired after ``write_lock`` during reconcile.
+            ensure_open: Optional closed-manager check run under the write lock.
         """
         if logger is None:
             raise ValueError("logger is required")
@@ -622,6 +625,7 @@ class StoragePhase:
         self._workspace_id = config.workspace_id
         self._write_lock = write_lock
         self._lock = lock
+        self._ensure_open = ensure_open
 
     async def execute(
         self,
@@ -690,18 +694,26 @@ class StoragePhase:
         """Embed outside the write lock, then record, delete, add, and commit."""
         vectors = self._embed_for_persist(memories)
         if self._write_lock is None:
+            self._require_open()
             return self._persist_replacements_unlocked(
                 memories, replacement_map, vectors
             )
         if self._lock is not None:
             with self._write_lock, self._lock:
+                self._require_open()
                 return self._persist_replacements_unlocked(
                     memories, replacement_map, vectors
                 )
         with self._write_lock:
+            self._require_open()
             return self._persist_replacements_unlocked(
                 memories, replacement_map, vectors
             )
+
+    def _require_open(self) -> None:
+        """Reject persist after MemoryManager.close() has started."""
+        if self._ensure_open is not None:
+            self._ensure_open()
 
     def _embed_for_persist(self, memories: list[str]) -> list[list[float]] | None:
         """Compute document embeddings before taking the write lock."""
