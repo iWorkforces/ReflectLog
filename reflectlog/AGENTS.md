@@ -1,58 +1,46 @@
 # reflectlog Package
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-MCP server providing persistent, project-based semantic memory storage. Combines USearch + Tantivy with RRF fusion and optional cross-encoder reranking.
+Installed hatch package. CLI is `server.py:main`. Children own pipelines, protocols, engines.
 
 ## STRUCTURE
 
 ```
 reflectlog/
-├── core/              # Protocols + canonical types (ISemanticSearchEngine, IReranker, IMemoryStore)
-│                      # types.py: ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore
-├── application/       # Business logic
-│   ├── memory/        # MemoryManager, search/add pipelines, fusion
-│   ├── tools/         # MCP tool implementations (add, search, get_all, remove)
-│   ├── config/        # Config dataclass, validation, prompts
-│   └── utils/         # Logging, metrics, retry, circuit breaker
-├── infrastructure/    # USearchEngine, TantivyEngine, cross-encoder reranker, embeddings
-├── plugins/          # Plugin discovery, registry, loading
-└── utility/          # Platform utilities, scoring.py (JIT-compiled RRF, normalization, filtering)
+├── server.py            # CLI, Numba warmup, SIGINT/SIGTERM persist
+├── version.py           # CLI version; may diverge from pyproject
+├── application/         # MCP, Config, MemoryManager, tools
+│   └── utils/           # logging, SecretString, validation, unused SIGHUP
+├── core/                # Protocols + StrEnums + adapters
+├── infrastructure/      # Engines at root; embeddings/ is the only full child
+│   └── embeddings/      # Qwen client + LRU cache (not infrastructure root)
+├── plugins/             # discovery/registry/loading; not imported at startup
+└── utility/             # HttpClientFactory, Numba scoring, retry, OS credentials
 ```
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
-|-------|-----------|--------|
-| Memory operations | `application/memory/manager.py` | Facade for all memory ops |
-| Search pipeline | `application/memory/search_strategies.py` | 4-step hybrid search with RRF |
-| Add pipeline | `application/memory/add_phases.py` | 3-phase parallel add with smart replacement |
-| Config | `application/config/settings.py` | 60+ env vars, dataclass |
-| Protocol interfaces | `core/` | ISemanticSearchEngine, IReranker, IMemoryStore, types.py |
-| Infrastructure | `infrastructure/` | USearch, Tantivy, CE reranker, LLM for replace only |
+|------|----------|-------|
+| Startup | `server.py` | Warmup; no plugin load; no `setup_config_reload` |
+| MCP tools | `application/mcp_server.py` | `AVAILABLE_TOOL_CLASSES`; injects `MemoryManager` |
+| Engines | `application/memory/manager.py` | Inlines `from_config()`; `EngineFactory` unused at runtime |
+| Embeddings | `infrastructure/embeddings/` | `LangchainQwenEmbeddings`, `CachedEmbeddings` |
+| HTTP | `utility/http.py` | `HttpClientFactory`; no leftover `http_client.py` |
+| Enums | `core/enums.py` | `RerankerEngine` StrEnum, not Literal |
+| Types | `core/types.py` | `IStoredMemory`; `ISemanticSearchEngine.embedder` |
 
 ## CONVENTIONS
 
-**Factory Pattern** - Use `from_config()` class methods (not `from_app_config()`). Applied throughout for engine, reranker, and fusion creation.
-
-**Canonical Type Locations** - Core domain types live in `core/types.py` (MemoryRecord, Embeddings, ISemanticSearchEngine, IArchiveMemoryStore). Pipeline `SearchContext` / `SearchResult` live in `application/memory/search_strategies.py`.
-
-**Triple Double Quotes** - Docstrings use `"""` not `'''`. Enforced by ruff.
-
-**Adaptive Overfetch** - Multiplier adjusts 1.5-3x based on index size.
-
-**Temporal Scoring** - Recency decay with configurable rate (`0.01` = ~69hr half-life).
-
-**Plugin Discovery** - Three mechanisms: entry points, directory scan, static registration.
-
-**Exception Hierarchy** - All custom exceptions chain with `from e` to preserve tracebacks.
+- Factories: `from_config()` (not `from_app_config()`).
+- Two utility layers: `utility/` = HTTP/scoring/retry/credentials; `application/utils/` = logging/`SecretString`/validation.
+- `access.py` deleted. No `getattr` / `optional_attr` / `invoke_if_callable` / `type(obj).__dict__`.
 
 ## ANTI-PATTERNS
 
-- Never use triple single quotes in docstrings - use `"""` only
-- Never suppress type errors in CI - build fails on type violations
-- Never use bare `except:` - catch specific exceptions
-- Never use `@type: ignore`, `@ts-expect-error`, `as any` - type safety strict
-- Never acquire locks in wrong order - always `_write_lock` before `_lock`
-- Never use legacy typing imports (`List`, `Optional`, `Union`) - use native syntax
+- Do not treat `plugins/` as live at startup.
+- Do not construct engines via `EngineFactory` in production paths.
+- Do not put embedding modules back on `infrastructure/` root.
+- Do not resurrect `http_client.py`, `metrics.py`, or `circuit_breaker.py` as APIs.
