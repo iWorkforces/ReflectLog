@@ -178,7 +178,7 @@ class SearchPipeline:
                 "Search pipeline failed",
                 extra={
                     "workspace_id": context.workspace_id,
-                    "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "query_length": len(context.query),
                     "error": str(e),
                 },
             )
@@ -277,7 +277,7 @@ class SearchPipeline:
             f"SEARCH COMPLETE: {len(memories)} result(s) returned",
             extra={
                 "workspace_id": context.workspace_id,
-                "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
+                "query_length": len(context.query),
                 "result_count": len(memories),
                 "top_score": hybrid_results[0][1] if hybrid_results else 0.0,
             },
@@ -329,7 +329,7 @@ class SearchPipeline:
             f"Both engines completed (semantic: {len(semantic_results)}, tantivy: {len(tantivy_results)})",
             extra={
                 "workspace_id": context.workspace_id,
-                "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
+                "query_length": len(context.query),
                 "semantic_count": len(semantic_results),
                 "tantivy_count": len(tantivy_results),
             },
@@ -364,7 +364,7 @@ class SearchPipeline:
                 "Semantic search failed - falling back to Tantivy full-text only",
                 extra={
                     "workspace_id": workspace_id,
-                    "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "query_length": len(query),
                     "error_type": type(e).__name__,
                     "error": str(e),
                     "fallback_behavior": "empty_semantic_results",
@@ -392,7 +392,7 @@ class SearchPipeline:
                 "Tantivy search failed - continuing with semantic results only",
                 extra={
                     "workspace_id": workspace_id,
-                    "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "query_length": len(query),
                     "error_type": type(e).__name__,
                     "error": str(e),
                 },
@@ -440,7 +440,7 @@ class SearchPipeline:
                 f"Combined {len(hybrid_results)} unique result(s) using {self._fusion_engine.method.upper()} algorithm",
                 extra={
                     "workspace_id": context.workspace_id,
-                    "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "query_length": len(context.query),
                     "engine": "fusion",
                     "result_count": len(hybrid_results),
                     "method": self._fusion_engine.method,
@@ -465,7 +465,7 @@ class SearchPipeline:
         seen_memories: set[str] = set()
         combined: list[tuple[str, float]] = []
 
-        reserved_lexical = min(len(tantivy_results), max(1, (limit + 1) // 2))
+        reserved_lexical = 1 if tantivy_results else 0
         semantic_budget = max(0, limit - reserved_lexical)
 
         for msg, score in semantic_results:
@@ -510,17 +510,39 @@ class SearchPipeline:
         self, context: SearchContext, results: list[tuple[str, float]]
     ) -> list[tuple[str, float]]:
         """Step 3: Filter by fusion threshold."""
+        threshold = self._effective_fusion_threshold(results)
         self.logger.info(
-            f"STEP 3: Filtering (threshold >= {self.config.fusion_ranking_threshold})...",
+            f"STEP 3: Filtering (threshold >= {threshold})...",
             extra={
                 "step": "filtering",
-                "threshold": self.config.fusion_ranking_threshold,
+                "threshold": threshold,
             },
         )
 
         return self._filter_by_fusion_threshold(
-            results, self.config.fusion_ranking_threshold, context.query
+            results, threshold, context.query
         )
+
+    def _effective_fusion_threshold(
+        self, results: list[tuple[str, float]]
+    ) -> float:
+        """Ignore leftover 0-1 gates when the fused scores are raw RRF."""
+        try:
+            threshold = float(self.config.fusion_ranking_threshold)
+            k = max(1, int(self.config.fusion_rrf_k))
+        except (TypeError, ValueError):
+            return 0.0
+        if not results:
+            return threshold
+        max_score = max(score for _msg, score in results)
+        max_raw = 2.0 / (k + 1)
+        if threshold > max_raw and max_score <= max_raw:
+            self.logger.warning(
+                "Ignoring leftover 0-1 fusion_ranking_threshold against raw RRF",
+                extra={"configured": threshold, "max_raw_rrf": max_raw},
+            )
+            return 0.0
+        return threshold
 
     def _filter_semantic_threshold(
         self, results: list[tuple[str, float, str]]
@@ -642,14 +664,21 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        if timestamp_map is None:
-            reranked_results = await cross_encoder_reranker.rerank_async(
-                context.query, results, top_k=context.limit
+        try:
+            if timestamp_map is None:
+                reranked_results = await cross_encoder_reranker.rerank_async(
+                    context.query, results, top_k=context.limit
+                )
+            else:
+                reranked_results = await cross_encoder_reranker.rerank_async(
+                    context.query, results, timestamp_map, top_k=context.limit
+                )
+        except Exception as exc:
+            self.logger.warning(
+                "CrossEncoder failed; returning fused results",
+                extra={"error": str(exc), "candidate_count": len(results)},
             )
-        else:
-            reranked_results = await cross_encoder_reranker.rerank_async(
-                context.query, results, timestamp_map, top_k=context.limit
-            )
+            return results
         results = reranked_results
 
         rerank_duration = (time.time() - rerank_start) * 1000

@@ -7,8 +7,8 @@ production search path used by MemoryManager.
 from __future__ import annotations
 
 import asyncio
-import threading
 from contextlib import suppress
+import threading
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -24,7 +24,6 @@ from reflectlog.application.memory.search_strategies import (
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.exceptions import SearchError
 from reflectlog.core.logging import IStructuredLogger
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -42,6 +41,7 @@ def _make_config(
     config = Mock(spec=Config)
     config.workspace_id = "test_project"
     config.fusion_ranking_threshold = fusion_ranking_threshold
+    config.fusion_rrf_k = 60
     config.reranker_engine = reranker_engine
     config.search_score_threshold = 0.0
     config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
@@ -518,7 +518,7 @@ class TestHybridFusionAndFilter:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("low", 0.01)]
-        config = _make_config(fusion_ranking_threshold=0.5)
+        config = _make_config(fusion_ranking_threshold=0.02)
         pipeline = _make_pipeline(
             semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
         )
@@ -775,7 +775,7 @@ class TestRerankerSettings:
         fusion.method = "rrf"
         fusion.fuse.return_value = [("low", 0.01)]
         config = _make_config(
-            fusion_ranking_threshold=0.5, reranker_engine="cross_encoder"
+            fusion_ranking_threshold=0.02, reranker_engine="cross_encoder"
         )
         encoder = AsyncMock()
         manager = MagicMock()

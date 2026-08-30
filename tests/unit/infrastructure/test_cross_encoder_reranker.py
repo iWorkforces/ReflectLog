@@ -78,7 +78,7 @@ class TestCrossEncoderConfig:
         '''Test default values for batch_normalize and min_results.'''
         config = CrossEncoderConfig()
 
-        assert config.batch_normalize is True
+        assert config.batch_normalize is False
         assert config.min_results == 1
 
     def test_from_app_config_enabled(self) -> None:
@@ -551,6 +551,7 @@ class TestBatchNormalization:
             enabled=True,
             top_k=10,
             score_threshold=0.0,  # No threshold filtering
+            normalize=False,
             batch_normalize=True,
         )
 
@@ -610,6 +611,7 @@ class TestBatchNormalization:
             enabled=True,
             top_k=10,
             score_threshold=0.5,  # 50% threshold
+            normalize=False,
             batch_normalize=True,
             min_results=0,
         )
@@ -791,6 +793,7 @@ class TestBatchNormalizationWithLogger:
             enabled=True,
             top_k=10,
             score_threshold=0.0,
+            normalize=False,
             batch_normalize=True,
         )
 
@@ -881,6 +884,7 @@ class TestRecencyDecay:
             enabled=True,
             top_k=10,
             score_threshold=0.5,
+            normalize=False,
             batch_normalize=True,
             enable_recency_boost=True,
             recency_decay_rate=0.01,
@@ -1022,6 +1026,7 @@ class TestMinResultsSafetyNet:
             enabled=True,
             top_k=10,
             score_threshold=0.9,  # Very high threshold
+            normalize=False,
             batch_normalize=True,
             min_results=2,  # Safety net: return at least 2
         )
@@ -1051,6 +1056,7 @@ class TestMinResultsSafetyNet:
             enabled=True,
             top_k=10,
             score_threshold=0.9,  # Very high threshold
+            normalize=False,
             batch_normalize=True,
             min_results=0,  # No safety net
         )
@@ -1079,6 +1085,7 @@ class TestMinResultsSafetyNet:
             enabled=True,
             top_k=10,
             score_threshold=0.3,  # Low threshold
+            normalize=False,
             batch_normalize=True,
             min_results=1,
         )

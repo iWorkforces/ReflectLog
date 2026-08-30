@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from reflectlog.application.config.settings import Config
-from reflectlog.core.exceptions import SearchError
 from reflectlog.application.memory.search_strategies import (
     MIN_OVERFETCH_LIMIT,
     SearchContext,
@@ -18,7 +17,7 @@ from reflectlog.application.memory.search_strategies import (
     calculate_adaptive_overfetch,
 )
 from reflectlog.application.utils.logging import StructuredLogger
-
+from reflectlog.core.exceptions import SearchError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -31,6 +30,7 @@ def mock_config() -> Config:
     config = Mock(spec=Config)
     config.workspace_id = "test_project"
     config.fusion_ranking_threshold = 0.1
+    config.fusion_rrf_k = 60
     config.reranker_engine = "none"
     config.search_score_threshold = 0.5
     config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
@@ -523,6 +523,32 @@ class TestCalculateAdaptiveOverfetch:
 
         result = calculate_adaptive_overfetch(10, 50, mock_config)
         assert result == int(10 * 5)
+
+
+@pytest.mark.unit
+class TestEffectiveFusionThreshold:
+    def test_leftover_zero_one_gate_is_ignored(
+        self, mock_config: Config, pipeline: SearchPipeline
+    ) -> None:
+        mock_config.fusion_ranking_threshold = 0.8
+        mock_config.fusion_rrf_k = 60
+        raw = [("a", 1.0 / 61), ("b", 1.0 / 62)]
+        assert pipeline._effective_fusion_threshold(raw) == 0.0
+
+    def test_raw_rrf_scale_threshold_is_kept(
+        self, mock_config: Config, pipeline: SearchPipeline
+    ) -> None:
+        mock_config.fusion_ranking_threshold = 0.01
+        mock_config.fusion_rrf_k = 60
+        raw = [("a", 1.0 / 61), ("b", 1.0 / 62)]
+        assert pipeline._effective_fusion_threshold(raw) == 0.01
+
+    def test_normalized_mock_scores_keep_configured_gate(
+        self, mock_config: Config, pipeline: SearchPipeline
+    ) -> None:
+        mock_config.fusion_ranking_threshold = 0.5
+        mock_config.fusion_rrf_k = 60
+        assert pipeline._effective_fusion_threshold([("a", 0.5), ("b", 0.3)]) == 0.5
 
 
 # ---------------------------------------------------------------------------

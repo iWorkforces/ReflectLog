@@ -61,6 +61,10 @@ class CrossEncoderConfig:
     enable_recency_boost: bool = True  # Include memory age in recency decay calculation
     recency_decay_rate: float = 0.001  # Decay rate per hour: exp(-rate * hours_old)
 
+    def __post_init__(self) -> None:
+        if self.normalize and self.batch_normalize:
+            object.__setattr__(self, "batch_normalize", False)
+
     @classmethod
     def from_config(cls, config: IAppConfig) -> CrossEncoderConfig:
         """Create CrossEncoderConfig from IAppConfig protocol.
@@ -296,7 +300,7 @@ class CrossEncoderReranker(BaseModel):
         # top_k is applied after decay so recency can promote later ranks.
         scored = self._apply_threshold(scored)
         scored = self._apply_recency_reorder(scored, timestamp_map)
-        limit = self.config.top_k if top_k is None else max(self.config.top_k, top_k)
+        limit = self.config.top_k if top_k is None else max(1, top_k)
         return scored[:limit]
 
     def _compute_scores(
