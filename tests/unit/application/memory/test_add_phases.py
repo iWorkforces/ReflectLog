@@ -70,6 +70,9 @@ def mock_semantic_engine():
     engine.contains_id = MagicMock(return_value=False)
     engine.count = MagicMock(return_value=0)
     engine.is_ready = MagicMock(return_value=True)
+    engine.embedder.embed_documents.side_effect = (
+        lambda texts: [[0.1] * 4 for _ in texts]
+    )
     engine.memory_store = MagicMock()
     engine.memory_store.exists_many = MagicMock(return_value=set())
     engine.memory_store.begin_add_intents = MagicMock(return_value=[])
@@ -951,89 +954,6 @@ class TestStoragePhase:
         mock_semantic_engine.delete.assert_called_once_with(memory_id="8")
 
     # -----------------------------------------------------------------------
-    # _add_memory Tests (lines 770-815)
-    # -----------------------------------------------------------------------
-
-    def test_add_memory_success_no_tantivy(
-        self,
-        mock_semantic_engine: MagicMock,
-        mock_config: Config,
-        mock_logger: Mock,
-    ) -> None:
-        """Single add stores on USearch when Tantivy is off."""
-        mock_config.deduplicate_memories = False
-        phase = StoragePhase(
-            semantic_engine=mock_semantic_engine,
-            tantivy_engine=None,
-            config=mock_config,
-            logger=mock_logger,
-            write_lock=None,
-        )
-        assert phase._add_memory("hello") is True
-        mock_semantic_engine.add.assert_called_once()
-
-    def test_add_memory_duplicate_skipped(
-        self,
-        mock_semantic_engine: MagicMock,
-        mock_tantivy_engine: MagicMock,
-        mock_config: Config,
-        mock_logger: Mock,
-    ) -> None:
-        """Exact matches are skipped when dedup is on."""
-        mock_config.deduplicate_memories = True
-        mock_semantic_engine.get_id_by_content.return_value = 1
-        phase = StoragePhase(
-            semantic_engine=mock_semantic_engine,
-            tantivy_engine=mock_tantivy_engine,
-            config=mock_config,
-            logger=mock_logger,
-            write_lock=None,
-        )
-        assert phase._add_memory("hello") is False
-        mock_semantic_engine.add.assert_not_called()
-
-    def test_add_memory_dedup_disabled(
-        self,
-        mock_semantic_engine: MagicMock,
-        mock_tantivy_engine: MagicMock,
-        mock_config: Config,
-        mock_logger: Mock,
-    ) -> None:
-        """Dedup off writes even when an exact match exists."""
-        mock_config.deduplicate_memories = False
-        mock_semantic_engine.get_id_by_content.return_value = 1
-        phase = StoragePhase(
-            semantic_engine=mock_semantic_engine,
-            tantivy_engine=mock_tantivy_engine,
-            config=mock_config,
-            logger=mock_logger,
-            write_lock=None,
-        )
-        assert phase._add_memory("hello") is True
-        mock_semantic_engine.add.assert_called_once()
-        mock_tantivy_engine.add.assert_called_once_with("test_project", "hello")
-
-    def test_add_memory_exception_raises_storage_error(
-        self,
-        mock_semantic_engine: MagicMock,
-        mock_tantivy_engine: MagicMock,
-        mock_config: Config,
-        mock_logger: Mock,
-    ) -> None:
-        """Single-add engine failures become StorageError."""
-        mock_config.deduplicate_memories = False
-        mock_semantic_engine.add.side_effect = RuntimeError("disk")
-        phase = StoragePhase(
-            semantic_engine=mock_semantic_engine,
-            tantivy_engine=mock_tantivy_engine,
-            config=mock_config,
-            logger=mock_logger,
-            write_lock=None,
-        )
-        with pytest.raises(StorageError, match="Failed to add memory"):
-            phase._add_memory("hello")
-
-    # -----------------------------------------------------------------------
     # _has_exact_match Tests (line 824)
     # -----------------------------------------------------------------------
 
@@ -1318,6 +1238,7 @@ class TestStoragePhase:
             workspace_id="test_project",
             contents=["low", "high"],
             infer=False,
+            vectors=[[0.1, 0.1, 0.1, 0.1], [0.1, 0.1, 0.1, 0.1]],
         )
 
     async def test_dry_run_collapses_two_successors(self, mock_semantic_engine: MagicMock, mock_tantivy_engine: MagicMock, mock_config: Config, mock_logger: Mock):
@@ -1398,6 +1319,7 @@ class TestStoragePhase:
             workspace_id="test_project",
             contents=["new msg", "other"],
             infer=False,
+            vectors=[[0.1, 0.1, 0.1, 0.1], [0.1, 0.1, 0.1, 0.1]],
         )
 
     async def test_reconcile_runs_at_persist_start_when_write_lock_set(self, mock_semantic_engine: MagicMock, mock_tantivy_engine: MagicMock, mock_config: Config, mock_logger: Mock):

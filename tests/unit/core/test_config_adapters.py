@@ -26,7 +26,6 @@ from reflectlog.core.config_adapters import (
     ServerConfigAdapter,
     StorageConfigAdapter,
     _coerce_reranker_engine,
-    _validated_reranker_engine,
     create_config_adapter,
     create_embedder_config_adapter,
     create_replacement_config_adapter,
@@ -34,6 +33,11 @@ from reflectlog.core.config_adapters import (
     create_search_config_adapter,
     create_server_config_adapter,
     create_storage_config_adapter,
+)
+from reflectlog.core.enums import (
+    CrossEncoderDevice,
+    RerankerEngine,
+    TransportMode,
 )
 
 # ---------------------------------------------------------------------------
@@ -56,7 +60,7 @@ def custom_config() -> Config:
     return Config(
         workspace_id="custom-proj",
         openrouter_api_key=SecretString("sk-custom-key-99999"),
-        transport="http",
+        transport=TransportMode.HTTP,
         host="0.0.0.0",
         port=8080,
         path="/custom-mcp",
@@ -66,7 +70,7 @@ def custom_config() -> Config:
         enable_rrf_fusion=False,
         fusion_rrf_k=30,
         fusion_ranking_threshold=0.5,
-        reranker_engine="cross_encoder",
+        reranker_engine=RerankerEngine.CROSS_ENCODER,
         search_score_threshold=0.8,
         enable_recency_boost=False,
         recency_decay_rate=0.05,
@@ -74,7 +78,7 @@ def custom_config() -> Config:
         llm_model="openai/gpt-4o",
         openrouter_base_url="https://api.example.com/v1",
         cross_encoder_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
-        cross_encoder_device="cuda",
+        cross_encoder_device=CrossEncoderDevice.CUDA,
         reranker_batch_normalize=False,
         embedding_model="openai/text-embedding-3-small",
         embedder_provider="langchain",
@@ -91,23 +95,20 @@ def custom_config() -> Config:
 
 
 # ---------------------------------------------------------------------------
-# Helper: _validated_reranker_engine / _coerce_reranker_engine
+# Helper: _coerce_reranker_engine (includes exhaustiveness validation)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestRerankerEngineHelpers:
-    """Tests for _validated_reranker_engine and _coerce_reranker_engine."""
+    """Tests for _coerce_reranker_engine."""
 
-    @pytest.mark.parametrize("engine", ["cross_encoder", "none"])
-    def test_validated_reranker_engine_valid(self, engine: str) -> None:
-        """Valid literals pass through unchanged."""
-        result = _validated_reranker_engine(engine)  # ty: ignore[invalid-argument-type]
-        assert result == engine
-
-    @pytest.mark.parametrize("engine", ["cross_encoder", "none"])
+    @pytest.mark.parametrize(
+        "engine",
+        [RerankerEngine.CROSS_ENCODER, RerankerEngine.NONE, "cross_encoder", "none"],
+    )
     def test_coerce_reranker_engine_valid(self, engine: str) -> None:
-        """Valid string values coerce correctly."""
+        """Valid string and enum values coerce to RerankerEngine."""
         result = _coerce_reranker_engine(engine)
         assert result == engine
 
@@ -116,9 +117,9 @@ class TestRerankerEngineHelpers:
         from reflectlog.core.exceptions import ConfigurationError
 
         with pytest.raises(ConfigurationError, match="Invalid RERANKER_ENGINE"):
-            _coerce_reranker_engine("llm")
+            _ = _coerce_reranker_engine("llm")
         with pytest.raises(ConfigurationError, match="Invalid RERANKER_ENGINE"):
-            _coerce_reranker_engine("unknown")
+            _ = _coerce_reranker_engine("unknown")
 
 
 # ---------------------------------------------------------------------------
@@ -529,8 +530,8 @@ class TestSearchConfigAdapter:
         config = Config(
             workspace_id="test",
             openrouter_api_key=SecretString("sk-key"),
-            reranker_engine="invalid_engine",
         )
+        object.__setattr__(config, "reranker_engine", "invalid_engine")
         adapter = SearchConfigAdapter(config)
         with pytest.raises(ConfigurationError, match="Invalid RERANKER_ENGINE"):
             _ = adapter.reranker_engine
@@ -899,18 +900,18 @@ class TestEdgeCases:
         config = Config(
             workspace_id="test",
             openrouter_api_key=SecretString("sk-key"),
-            reranker_engine="none",
+            reranker_engine=RerankerEngine.NONE,
         )
         adapter = ConfigAdapter(config)
         assert adapter.reranker_engine == "none"
 
     def test_all_transport_modes(self) -> None:
         """All transport literal values are supported."""
-        for transport in ("stdio", "http", "sse", "streamable-http"):
+        for transport in TransportMode:
             config = Config(
                 workspace_id="test",
                 openrouter_api_key=SecretString("sk-key"),
-                transport=transport,  # type: ignore[arg-type]
+                transport=transport,
             )
             adapter = ConfigAdapter(config)
             assert adapter.transport == transport

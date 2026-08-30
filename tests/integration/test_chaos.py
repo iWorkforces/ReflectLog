@@ -51,14 +51,11 @@ def manager(monkeypatch):
     mock_tantivy_engine.search.return_value = []
     mock_tantivy_engine.is_ready = MagicMock(return_value=False)
 
-    mock_embedder = MagicMock()
-
     config = Config.from_environment()
 
     mgr = MemoryManager.__new__(MemoryManager)
     mgr._semantic_engine = mock_semantic_engine
     mgr._tantivy_engine = mock_tantivy_engine
-    mgr._embedder = mock_embedder
     mgr.config = config
     mgr.workspace_id = config.workspace_id
     mgr.is_hybrid_search = True
@@ -270,7 +267,6 @@ class TestResourceExhaustion:
         With mocked pipeline, search completes without calling underlying engine.
         Real implementation would queue requests when pool is exhausted.
         '''
-        from unittest.mock import AsyncMock
 
         from reflectlog.core.exceptions import SearchError
 

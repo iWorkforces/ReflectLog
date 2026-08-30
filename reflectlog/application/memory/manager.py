@@ -28,7 +28,6 @@ Example:
     )
 """
 
-from collections.abc import Sized
 from contextlib import suppress
 import threading
 import time
@@ -54,7 +53,6 @@ from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplace
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
-from ...core.access import optional_attr
 from ...core.config_adapters import ConfigAdapter
 from ...core.enums import (
     EmbedderProvider,
@@ -63,7 +61,7 @@ from ...core.enums import (
     TransitionKind,
 )
 from ...core.logging import IStructuredLogger
-from ...core.types import Embeddings, ISemanticSearchEngine, ReplacementTransition
+from ...core.types import ISemanticSearchEngine, ReplacementTransition
 from ..config.settings import Config
 from .add_phases import (
     AddPipeline,
@@ -329,17 +327,10 @@ class MemoryManager:
     def pending_intent_count(self) -> int:
         """Return how many add/delete/replace intents are still pending.
 
-        A missing engine or store is treated as zero leftover intents.
         Listing failures propagate so health cannot report a healthy zero
         while the journal is unreadable.
         """
-        store = optional_attr(self._semantic_engine, "memory_store")
-        if store is None:
-            return 0
-        list_pending = optional_attr(store, "list_pending_transitions")
-        if not callable(list_pending):
-            raise StorageError("Journal store cannot list pending transitions")
-        return len(list_pending())
+        return len(self._semantic_engine.memory_store.list_pending_transitions())
 
     def _log_configuration(self) -> None:
         """Log the final configuration state after initialization."""
@@ -430,7 +421,7 @@ class MemoryManager:
             )
             reranker = self.get_reranker()
             if reranker is not None:
-                _ = optional_attr(reranker, "model")
+                _ = reranker.model
                 engines_initialized.append(f"reranker_{self.config.reranker_engine}")
             else:
                 self.logger.warning(
@@ -558,56 +549,6 @@ class MemoryManager:
             return self.cross_encoder_reranker
         return None
 
-    def _add_memory(self, memory: str) -> bool:
-        """Add a single memory to BOTH USearch semantic and Tantivy full-text engines if not duplicate.
-
-        Args:
-            memory: The memory to store.
-
-        Returns:
-            True if the memory was stored, False if it was skipped as a duplicate.
-
-        Raises:
-            RuntimeError: If storage operation fails.
-        """
-        if self.config.deduplicate_memories and self._has_exact_match(memory):
-            self.logger.info(
-                "Duplicate memory detected, skipping storage",
-                extra={
-                    "workspace_id": self.workspace_id,
-                    "memory_length": len(memory),
-                },
-            )
-            return False
-
-        try:
-            # 1. Add to USearch semantic engine
-            self._semantic_engine.add(
-                workspace_id=self.workspace_id,
-                content=memory,
-                infer=self.config.enable_llm_infer,
-            )
-
-            # 2. Add to Tantivy full-text search engine
-            if self._tantivy_engine is not None:
-                self._tantivy_engine.add(self.workspace_id, memory)
-
-            self.logger.debug(
-                "Memory added to hybrid storage",
-                extra={
-                    "workspace_id": self.workspace_id,
-                    "memory_length": len(memory),
-                    "engines": ["semantic", "tantivy"],
-                },
-            )
-            return True
-
-        except Exception as e:
-            raise StorageError(f"Failed to add memory to hybrid storage: {e}") from e
-
-    def _add_message(self, message: str) -> bool:
-        return self._add_memory(message)
-
     def add_memories(self, memories: list[str]) -> int:
         """Add multiple memories to memory store (thread-safe).
 
@@ -669,30 +610,18 @@ class MemoryManager:
         if not memories_to_add:
             return 0
 
-        vectors: list[list[float]] | None = None
-        embedder = optional_attr(self._semantic_engine, "embedder")
-        if isinstance(embedder, Embeddings):
-            vectors = embedder.embed_documents(memories_to_add)
-            if len(vectors) != len(memories_to_add) or any(
-                not item for item in vectors
-            ):
-                raise StorageError("Embedding batch size mismatch or empty vector")
+        vectors = self._semantic_engine.embedder.embed_documents(memories_to_add)
+        if len(vectors) != len(memories_to_add) or any(not item for item in vectors):
+            raise StorageError("Embedding batch size mismatch or empty vector")
 
         with self._write_lock, self._lock:
             add_intents = self._record_add_intents(memories_to_add)
-            if vectors is None:
-                inserted_memories = self._semantic_engine.add_batch(
-                    workspace_id=self.workspace_id,
-                    contents=memories_to_add,
-                    infer=self.config.enable_llm_infer,
-                )
-            else:
-                inserted_memories = self._semantic_engine.add_batch(
-                    workspace_id=self.workspace_id,
-                    contents=memories_to_add,
-                    infer=self.config.enable_llm_infer,
-                    vectors=vectors,
-                )
+            inserted_memories = self._semantic_engine.add_batch(
+                workspace_id=self.workspace_id,
+                contents=memories_to_add,
+                infer=self.config.enable_llm_infer,
+                vectors=vectors,
+            )
 
             if self._tantivy_engine is not None:
                 self._tantivy_engine.add_batch(self.workspace_id, inserted_memories)
@@ -847,14 +776,9 @@ class MemoryManager:
         return result.memories
 
     def _semantic_index_size(self) -> int:
-        """Return the semantic index size, or 0 if it cannot be read."""
+        """Return the workspace memory count used to size overfetch."""
         try:
-            raw_index = optional_attr(self._semantic_engine, "_index")
-            if raw_index is None:
-                raw_index = optional_attr(self._semantic_engine, "index")
-            if isinstance(raw_index, Sized):
-                return len(raw_index)
-            return 0
+            return self._semantic_engine.count(self.workspace_id)
         except Exception:
             return 0
 
@@ -945,12 +869,8 @@ class MemoryManager:
         """
         with self._write_lock, self._lock:
             try:
-                content = None
                 record = self._semantic_engine.memory_store.get(int(memory_id))
-                raw_content = (
-                    optional_attr(record, "content") if record is not None else None
-                )
-                content = raw_content if isinstance(raw_content, str) else None
+                content = record.content if record is not None else None
                 delete_intents: list[ReplacementTransition] = []
                 if isinstance(content, str) and content:
                     delete_intents = self._record_delete_intents(
@@ -1167,9 +1087,6 @@ class MemoryManager:
         legacy ID lookup API for compatibility.
         """
         return self._semantic_engine.get_id_by_content(self.workspace_id, content)
-
-    def get_id_by_message(self, message: str) -> int | None:
-        return self.get_id_by_content(message)
 
     def _has_exact_match(self, content: str) -> bool:
         """Check whether the exact memory already exists in storage.

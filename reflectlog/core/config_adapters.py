@@ -63,7 +63,9 @@ def _validated_reranker_engine(reranker_engine: RerankerEngine) -> RerankerEngin
 
 
 def _coerce_reranker_engine(value: str) -> RerankerEngine:
-    return parse_str_enum(RerankerEngine, value, field="RERANKER_ENGINE")
+    return _validated_reranker_engine(
+        parse_str_enum(RerankerEngine, value, field="RERANKER_ENGINE")
+    )
 
 
 @final

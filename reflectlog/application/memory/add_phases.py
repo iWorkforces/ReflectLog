@@ -24,10 +24,8 @@ from asyncer import asyncify, create_task_group
 
 from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
-from ...core.access import optional_attr
 from ...core.logging import IStructuredLogger
 from ...core.types import (
-    Embeddings,
     ISemanticSearchEngine,
     ReplacementTransition,
     ReplacementTransitionRequest,
@@ -708,10 +706,7 @@ class StoragePhase:
         """Compute document embeddings before taking the write lock."""
         if not memories:
             return None
-        embedder = optional_attr(self._semantic_engine, "embedder")
-        if not isinstance(embedder, Embeddings):
-            return None
-        computed = embedder.embed_documents(memories)
+        computed = self._semantic_engine.embedder.embed_documents(memories)
         if len(computed) != len(memories):
             raise StorageError("Embedding batch size mismatch for persist")
         typed: list[list[float]] = []
@@ -997,52 +992,6 @@ class StoragePhase:
         self._semantic_engine.delete(memory_id=memory_id)
         if self._tantivy_engine is not None:
             _ = self._tantivy_engine.delete(self._workspace_id, content)
-
-    def _add_memory(self, content: str) -> bool:
-        """Add a single memory to BOTH USearch semantic and Tantivy full-text engines.
-
-        Args:
-            content: The memory to store.
-
-        Returns:
-            True if the memory was stored, False if it was skipped as a duplicate.
-
-        Raises:
-            RuntimeError: If storage operation fails.
-        """
-        if self.config.deduplicate_memories and self._has_exact_match(content):
-            self.logger.info(
-                "Duplicate memory detected, skipping storage",
-                extra={
-                    "workspace_id": self._workspace_id,
-                    "memory_length": len(content),
-                },
-            )
-            return False
-
-        try:
-            self._semantic_engine.add(
-                workspace_id=self._workspace_id,
-                content=content,
-                infer=self.config.enable_llm_infer,
-            )
-
-            # 2. Add to Tantivy full-text search engine
-            if self._tantivy_engine is not None:
-                self._tantivy_engine.add(self._workspace_id, content)
-
-            self.logger.debug(
-                "Memory added to hybrid storage",
-                extra={
-                    "workspace_id": self._workspace_id,
-                    "memory_length": len(content),
-                    "engines": ["semantic", "tantivy"],
-                },
-            )
-            return True
-
-        except Exception as e:
-            raise StorageError(f"Failed to add memory to hybrid storage: {e}") from e
 
     def _has_exact_match(self, content: str) -> bool:
         """Check whether the exact memory already exists in storage.

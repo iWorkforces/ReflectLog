@@ -40,14 +40,11 @@ def manager(monkeypatch: MonkeyPatch):
     mock_tantivy_engine = MagicMock()
     mock_tantivy_engine.search.return_value = []
 
-    mock_embedder = MagicMock()
-
     config = Config.from_environment()
 
     mgr = MemoryManager.__new__(MemoryManager)
     mgr._semantic_engine = mock_semantic_engine
     mgr._tantivy_engine = mock_tantivy_engine
-    mgr._embedder = mock_embedder
     mgr.config = config
     mgr.workspace_id = config.workspace_id
     mgr.is_hybrid_search = True
