@@ -522,6 +522,45 @@ class TestGracefulShutdown:
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
+    def test_second_sigint_re_raises_default_signal(
+        self, mock_server_class: MagicMock, mock_warmup: MagicMock
+    ) -> None:
+        '''A second SIGINT restores SIG_DFL and re-raises the signal.'''
+        from reflectlog.server import main
+
+        mock_server = MagicMock()
+        mock_server_class.return_value = mock_server
+
+        registered_handlers: dict[int, Callable[[int, object], None]] = {}
+
+        def capture_signal(signum: int, handler: Callable[[int, object], None]) -> None:
+            registered_handlers[signum] = handler
+
+        with (
+            patch("sys.argv", ["reflectlog", "--transport", "http"]),
+            patch("reflectlog.server.signal.signal", side_effect=capture_signal),
+        ):
+            try:
+                main()
+            except SystemExit:
+                pass
+
+        handler = registered_handlers[signal.SIGINT]
+        with pytest.raises(SystemExit):
+            handler(signal.SIGINT, None)
+
+        with (
+            patch("reflectlog.server.signal.signal") as mock_signal,
+            patch("reflectlog.server.signal.raise_signal") as mock_raise,
+        ):
+            handler(signal.SIGINT, None)
+            mock_signal.assert_any_call(signal.SIGINT, signal.SIG_DFL)
+            mock_signal.assert_any_call(signal.SIGTERM, signal.SIG_DFL)
+            mock_raise.assert_called_once_with(signal.SIGINT)
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("reflectlog.server.warmup_numba_functions")
+    @patch("reflectlog.server.FastMCPServer")
     def test_sigterm_triggers_graceful_shutdown(self, mock_server_class: MagicMock, mock_warmup: MagicMock) -> None:
         '''Test SIGTERM calls server.close() and sys.exit(0).'''
         from reflectlog.server import main
