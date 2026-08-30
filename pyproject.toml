@@ -169,6 +169,12 @@ redundant-cast = "error"
 # Unused / unknown — keep fail-closed (pyright owns unused-function and unknown-var)
 unused-awaitable = "error"
 
+# Attribute access — getattr is banned; missing members must fail closed
+unresolved-attribute = "error"
+possibly-missing-attribute = "error"
+invalid-attribute-access = "error"
+unknown-argument = "error"
+
 # Module-specific rules for third-party libraries without stubs
 possibly-missing-import = "error"
 
@@ -189,7 +195,7 @@ select = [
     "I",     # isort
     "N",     # pep8-naming
     "UP",    # pyupgrade - Python 3.14+ modernizations
-    "B",     # flake8-bugbear
+    "B",     # flake8-bugbear (B009 forbids getattr with a constant name)
     "C4",    # flake8-comprehensions
     "SIM",   # flake8-simplify
     "RUF",   # Ruff-specific rules
