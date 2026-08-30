@@ -128,6 +128,43 @@ show_config() {
     echo ""
 }
 
+# Fail closed if getattr() or class-dict probes remain in project sources.
+check_no_dynamic_attr_probes() {
+    echo -e "${BLUE}🔍 Checking for banned dynamic attribute probes...${NC}"
+    if uv run python - <<'PY'
+import re
+import sys
+from pathlib import Path
+
+patterns = (
+    re.compile(r"\bggetattr\s*\("),
+    re.compile(r"\boptional_attr\s*\("),
+    re.compile(r"\binvoke_if_callable\s*\("),
+    re.compile(r"type\([^)]+\)\.__dict__"),
+    re.compile(r"\bclass_callable\s*\("),
+)
+hits: list[str] = []
+for root in (Path("reflectlog"), Path("tests")):
+    for path in root.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if any(pattern.search(line) for pattern in patterns):
+                hits.append(f"{path}:{line_no}:{line}")
+if hits:
+    print("\n".join(hits))
+    sys.exit(1)
+PY
+    then
+        echo -e "${GREEN}✅ No getattr() / optional_attr() / type().__dict__ probes found${NC}"
+        echo ""
+        return 0
+    fi
+    echo ""
+    echo -e "${RED}❌ Dynamic attribute probes are banned. Use typed protocol methods.${NC}"
+    return 1
+}
+
 # Function to run ty type check
 run_type_check() {
     echo -e "${BLUE}🔍 Running ty type check...${NC}"
@@ -279,6 +316,11 @@ main() {
 
     case $ACTION in
         "check")
+            GETATTR_EXIT_CODE=0
+            if ! check_no_dynamic_attr_probes; then
+                GETATTR_EXIT_CODE=1
+            fi
+
             if [ "$OUTPUT_FORMAT" = "concise" ]; then
                 TY_EXIT_CODE=0
                 PYRIGHT_EXIT_CODE=0
@@ -291,7 +333,7 @@ main() {
                     PYRIGHT_EXIT_CODE=1
                 fi
 
-                if [ $TY_EXIT_CODE -eq 0 ] && [ $PYRIGHT_EXIT_CODE -eq 0 ]; then
+                if [ $GETATTR_EXIT_CODE -eq 0 ] && [ $TY_EXIT_CODE -eq 0 ] && [ $PYRIGHT_EXIT_CODE -eq 0 ]; then
                     if [ "$SHOW_STATS" = true ]; then
                         show_stats
                     fi
@@ -316,7 +358,7 @@ main() {
                     PYRIGHT_EXIT_CODE=1
                 fi
 
-                if [ $TY_EXIT_CODE -eq 0 ] && [ $PYRIGHT_EXIT_CODE -eq 0 ]; then
+                if [ $GETATTR_EXIT_CODE -eq 0 ] && [ $TY_EXIT_CODE -eq 0 ] && [ $PYRIGHT_EXIT_CODE -eq 0 ]; then
                     if [ "$SHOW_STATS" = true ]; then
                         show_stats
                     fi

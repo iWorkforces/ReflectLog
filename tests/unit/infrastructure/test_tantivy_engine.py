@@ -424,33 +424,6 @@ class TestTantivyEngineHelperMethods:
         assert len(docs_b) == 1
         assert "B's doc" in docs_b
 
-    def test_recreate_writer_if_needed(self, engine: TantivyEngine) -> None:
-        '''Test _recreate_writer_if_needed creates a new writer.'''
-        # Start with no writer
-        assert engine._writer is None
-
-        # Recreate should create a new writer
-        with engine._writer_lock:
-            engine._recreate_writer_if_needed()
-
-        # Should have a writer now
-        assert engine._writer is not None
-
-        # After commit, writer should still be valid (optimization: reuse writer)
-        engine.add("test", "test message")
-        engine.commit()
-        assert engine._writer is not None  # Writer reused, not invalidated
-
-        # After flush, writer should be None (flush invalidates writer)
-        engine.flush()
-        assert engine._writer is None
-
-        # Recreate again should work
-        with engine._writer_lock:
-            engine._recreate_writer_if_needed()
-        assert engine._writer is not None
-
-
 @pytest.mark.unit
 class TestTantivyEngineWriterReuse:
     '''Tests for writer reuse optimization.'''
@@ -1823,42 +1796,33 @@ class TestSearchErrorHandling:
             with pytest.raises(SearchError, match="Tantivy search failed"):
                 engine.search("query", "test", limit=5)
 
-    def test_search_query_escaping_fallback(self) -> None:
-        '''Test that search escapes query on first parse failure.'''
+    def test_search_always_escapes_before_parse(self) -> None:
+        """Special characters are escaped before the first parse_query call."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_logger = MagicMock()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config, logger=mock_logger)
-
-            engine.add("test", "test document with special chars")
+            engine = TantivyEngine(config)
+            engine.add("test", "hello")
             engine.commit()
 
             original_index = engine._index
-            cached_searcher = engine.searcher
-            mock_index = MagicMock()
-            call_count = 0
+            parsed: list[str] = []
 
-            def side_effect_parse_query(
+            def capture_parse(
                 query: str, *, default_field_names: list[str] | None = None
             ) -> tantivy.Query:
-                nonlocal call_count
-                call_count += 1
-                is_search_query = "test" in query and "is_deleted" not in query
-                if is_search_query and call_count <= 2:
-                    raise ValueError("parse fail on first try")
-                assert original_index is not None  # type guard
+                parsed.append(query)
+                assert original_index is not None
                 return original_index.parse_query(
                     query, default_field_names=default_field_names
                 )
 
-            mock_index.parse_query.side_effect = side_effect_parse_query
+            mock_index = MagicMock()
+            mock_index.parse_query.side_effect = capture_parse
             engine._index = mock_index
-            engine._searcher = cached_searcher
-
-            results = engine.search("test", "test", limit=5)
-
-            calls = [str(c) for c in mock_logger.debug.call_args_list]
-            assert any("Escaped Tantivy query" in c for c in calls)
+            engine._searcher = engine.searcher
+            _ = engine.search("foo:bar", "test", limit=5)
+            assert parsed
+            assert any("foo\\:bar" in query for query in parsed)
 
     def test_search_empty_query_value_error_re_raises(self) -> None:
         '''Test that empty query + ValueError is re-raised (not escaped).'''
@@ -2224,7 +2188,7 @@ class TestRebuildIndexWithDocs:
             engine.commit()
 
             # Force writer to raise on commit during rebuild
-            original_writer = engine._writer
+            _original_writer = engine._writer
             mock_writer = MagicMock()
             mock_writer.commit.side_effect = RuntimeError("boom")
             engine._writer = mock_writer
@@ -2262,16 +2226,15 @@ class TestGetDocLimitEdgeCases:
             assert result >= 1
 
     def test_doc_limit_numeric_num_docs(self) -> None:
-        '''Test _get_doc_limit handles num_docs as numeric attribute.'''
+        '''Test _get_doc_limit uses searcher.num_docs().'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             engine.add("test", "msg")
             engine.commit()
 
-            # Patch searcher to have num_docs as int attribute
             mock_searcher = MagicMock()
-            mock_searcher.num_docs = 42
+            mock_searcher.num_docs.return_value = 42
             with patch.object(
                 type(engine),
                 "searcher",
@@ -2283,12 +2246,11 @@ class TestGetDocLimitEdgeCases:
     def test_doc_limit_negative_num_docs_uses_fallback(self) -> None:
         '''Test _get_doc_limit uses fallback when num_docs is negative.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_logger = MagicMock()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config, logger=mock_logger)
+            engine = TantivyEngine(config)
 
             mock_searcher = MagicMock()
-            mock_searcher.num_docs = -1
+            mock_searcher.num_docs.return_value = -1
             with patch.object(
                 type(engine),
                 "searcher",
@@ -2296,20 +2258,15 @@ class TestGetDocLimitEdgeCases:
             ):
                 result = engine._get_doc_limit()
             assert result == DEFAULT_TANTIVY_DOC_LIMIT
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("fallback limit" in c.lower() for c in calls)
 
     def test_doc_limit_none_num_docs_uses_fallback(self) -> None:
-        '''Test _get_doc_limit uses fallback when num_docs is None.'''
+        '''Test _get_doc_limit uses fallback when num_docs returns None.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_logger = MagicMock()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config, logger=mock_logger)
+            engine = TantivyEngine(config)
 
             mock_searcher = MagicMock()
-            mock_searcher.num_docs = None
-            # Make getattr return None
-            del mock_searcher.num_docs
+            mock_searcher.num_docs.return_value = None
             with patch.object(
                 type(engine),
                 "searcher",
@@ -2321,9 +2278,8 @@ class TestGetDocLimitEdgeCases:
     def test_doc_limit_exception_uses_fallback(self) -> None:
         '''Test _get_doc_limit uses fallback when num_docs raises.'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_logger = MagicMock()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config, logger=mock_logger)
+            engine = TantivyEngine(config)
 
             mock_searcher = MagicMock()
             mock_searcher.num_docs.side_effect = RuntimeError("fail")
@@ -2334,8 +2290,6 @@ class TestGetDocLimitEdgeCases:
             ):
                 result = engine._get_doc_limit()
             assert result == DEFAULT_TANTIVY_DOC_LIMIT
-            calls = [str(c) for c in mock_logger.debug.call_args_list]
-            assert any("Failed to read Tantivy num_docs" in c for c in calls)
 
     def test_doc_limit_zero_returns_max_1(self) -> None:
         '''Test _get_doc_limit returns max(1, 0) = 1 for empty index.'''

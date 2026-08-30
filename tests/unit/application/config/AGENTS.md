@@ -1,51 +1,35 @@
 # Config Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Unit tests for configuration presets and validation logic. Mocked environment, no real config loading.
+Unit tests for presets, frozen `Config`, and `ConfigurationValidator`. Env is monkeypatched.
 
 ## STRUCTURE
-
 ```
 tests/unit/application/config/
-├── test_presets.py         # Preset profiles (simple/balanced/performance/quality)
-└── test_validation.py      # 60+ env var validation, SQL injection, path traversal
+├── test_presets.py       # simple / balanced / performance / quality
+├── test_settings.py      # Config.from_environment, get_config, SecretString
+└── test_validation.py    # env bounds, SQL / path / workspace_id
 ```
 
 ## WHERE TO LOOK
-
 | Test | Purpose |
 |------|---------|
-| test_presets.py | Config preset switching via `REFLECTLOG_PROFILE` |
-| test_validation.py | `ConfigurationValidator` with edge cases |
+| `test_presets.py` | `REFLECTLOG_PROFILE` + `apply_preset_to_env` |
+| `test_settings.py` | Frozen dataclass, lazy singleton, `_parse_optional_bool` |
+| `test_validation.py` | `ConfigurationValidator` / `validate_config` |
 
-## KEY PATTERNS
-
-### Preset Override
-```python
-def test_preset_override(monkeypatch):
-    monkeypatch.setenv("REFLECTLOG_PROFILE", "performance")
-    config = Config.from_environment()
-    assert config.search_limit == 10  # performance preset
-```
-
-### SQL Injection Tests
-```python
-injection_patterns = [
-    "'; DROP TABLE memories; --",
-    "' OR '1' = '1",
-    "1; DELETE FROM messages",
-]
-```
+## CONVENTIONS
+- Monkeypatch env; reset Config singleton between tests.
+- Secrets stay in `SecretString`; never assert raw tokens in logs.
+- Native 3.14 unions. Double quotes.
 
 ## ANTI-PATTERNS
-
-- Never test with real environment variables
-- Never skip validation edge cases
+- Never leak real environment into tests.
+- Never skip validation edge cases (SQL, `../`, overlong workspace_id).
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
+- No `type: ignore`.
 
 ## NOTES
-
-- **NUMBA disabled**: Required for coverage compatibility
-- **Config reset**: autouse fixture clears singleton between tests
+NUMBA may be disabled in sibling utils tests for coverage; config tests should not depend on JIT.

@@ -1,5 +1,6 @@
 """Tests for AddTool implementation."""
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,11 +15,12 @@ class TestAddToolHappyPath:
     """Tests for successful add operations."""
 
     async def test_add_single_memory(self, add_tool_instance: AddTool, mock_memory_manager: MagicMock) -> None:
-        """Adding a single valid memory calls add_memories_async and returns None."""
+        """Adding a single valid memory calls add_memories_async and returns counts."""
         handler = add_tool_instance.get_handler()
         result = await handler(["Remember this"])
 
-        assert result is None
+        assert result["stored_count"] == 1
+        assert result["dry_run"] is False
         mock_memory_manager.add_memories_async.assert_awaited_once_with(
             ["Remember this"], dry_run=False
         )
@@ -82,7 +84,7 @@ class TestAddToolHappyPath:
 
         # Verify replacement was logged
         info_calls = [str(c) for c in mock_tool_logger.info.call_args_list]
-        replacement_logged = any("Replaced" in c for c in info_calls)
+        replacement_logged = any("replacement" in c.lower() for c in info_calls)
         assert replacement_logged
 
 
@@ -93,11 +95,12 @@ class TestAddToolEmptyInput:
     async def test_add_empty_list_returns_none(
         self, add_tool_instance: AddTool, mock_memory_manager: MagicMock
     ) -> None:
-        """Empty list is a no-op that returns None without calling storage."""
+        """Empty list is a no-op that returns zero counts without calling storage."""
         handler = add_tool_instance.get_handler()
         result = await handler([])
 
-        assert result is None
+        assert result["stored_count"] == 0
+        assert result["replacements"] == []
         mock_memory_manager.add_memories_async.assert_not_awaited()
 
     async def test_add_empty_list_logs_noop(self, add_tool_instance: AddTool, mock_tool_logger: MagicMock) -> None:
@@ -139,7 +142,7 @@ class TestAddToolValidation:
         """Non-string item in memories raises ValueError."""
         handler = add_tool_instance.get_handler()
         with pytest.raises(ValueError):
-            await handler([123])
+            await handler(cast(list[str], [123]))
 
     async def test_add_validation_does_not_call_storage(
         self, add_tool_instance: AddTool, mock_memory_manager: MagicMock
@@ -207,4 +210,4 @@ class TestAddToolMetadata:
     def test_get_instruction_snippet(self, add_tool_instance: AddTool) -> None:
         """get_instruction_snippet contains expected signature."""
         snippet = add_tool_instance.get_instruction_snippet()
-        assert "add(memories: list[str])" in snippet
+        assert "add(memories: list[str]" in snippet

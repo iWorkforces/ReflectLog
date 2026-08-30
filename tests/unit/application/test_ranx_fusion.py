@@ -4,7 +4,6 @@ from typing import List, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
-from ranx import Run
 
 from reflectlog.application.memory.fusion import create_fusion_engine
 from reflectlog.application.memory.fusion.ranx_fusion import (
@@ -118,17 +117,32 @@ class TestRanxFusionEngineAlgorithm:
         assert fused[1][1] == pytest.approx(0.89)
         assert all(score >= 0.8 for _name, score in fused)
 
-    def test_disjoint_rank1_ties_normalize_to_one(
+    def test_disjoint_rank1_ties_keep_raw_rrf(
         self, engine: RanxFusionEngine
     ) -> None:
-        """Equal RRF scores must become 1.0 so the default 0.8 gate keeps them."""
+        """Disjoint rank-1s keep raw RRF instead of being min-maxed to 1.0."""
         results1: List[Tuple[str, float]] = [("semantic-only", 0.65)]
         results2: List[Tuple[str, float]] = [("lexical-only", 0.40)]
 
         fused = engine.fuse(results1, results2)
 
         assert {name for name, _score in fused} == {"semantic-only", "lexical-only"}
-        assert all(score == pytest.approx(1.0) for _name, score in fused)
+        raw = 1.0 / (60 + 1)
+        assert all(score == pytest.approx(raw) for _name, score in fused)
+
+    def test_disjoint_rank2_survives_without_minmax(
+        self, engine: RanxFusionEngine
+    ) -> None:
+        """Rank-2 unique hit stays above a raw-RRF 0.0 gate (was dropped at 0.8)."""
+        semantic: List[Tuple[str, float]] = [("A", 0.9), ("C", 0.7)]
+        lexical: List[Tuple[str, float]] = [("B", 0.8)]
+
+        fused = engine.fuse(semantic, lexical)
+        names = [name for name, _score in fused]
+        assert set(names) == {"A", "B", "C"}
+        scores = {name: score for name, score in fused}
+        assert scores["C"] > 0.0
+        assert scores["C"] == pytest.approx(1.0 / (60 + 2))
 
     def test_weighted_rrf_uses_numba_weights(
         self, engine: RanxFusionEngine

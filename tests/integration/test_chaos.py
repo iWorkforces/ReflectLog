@@ -17,13 +17,14 @@ Usage:
 '''
 
 import asyncio
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.memory.search_strategies import SearchPipeline
-from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
-from reflectlog.application.config.settings import Config
 
 
 @pytest.fixture
@@ -50,14 +51,11 @@ def manager(monkeypatch):
     mock_tantivy_engine.search.return_value = []
     mock_tantivy_engine.is_ready = MagicMock(return_value=False)
 
-    mock_embedder = MagicMock()
-
     config = Config.from_environment()
 
     mgr = MemoryManager.__new__(MemoryManager)
     mgr._semantic_engine = mock_semantic_engine
     mgr._tantivy_engine = mock_tantivy_engine
-    mgr._embedder = mock_embedder
     mgr.config = config
     mgr.workspace_id = config.workspace_id
     mgr.is_hybrid_search = True
@@ -166,10 +164,8 @@ class TestEngineFailure:
     async def test_cross_encoder_reranker_failure(self, manager, monkeypatch):
         '''Test search when the cross-encoder reranker fails.
 
-        Should raise SearchError so callers do not get a silent empty list.
+        Should return fused hits instead of failing the search.
         '''
-
-        from reflectlog.core.exceptions import SearchError
 
         class BoomReranker:
             async def rerank_async(self, *_args: object, **_kwargs: object) -> list[object]:
@@ -184,8 +180,8 @@ class TestEngineFailure:
         ]
         manager._tantivy_engine.search.return_value = [("a", 0.7), ("b", 0.6)]
 
-        with pytest.raises(SearchError, match="cross-encoder"):
-            await manager.search("test query")
+        results = await manager.search("test query")
+        assert results == ["a", "b"]
 
     @pytest.mark.asyncio
     async def test_network_timeout(self, manager, monkeypatch):
@@ -271,7 +267,6 @@ class TestResourceExhaustion:
         With mocked pipeline, search completes without calling underlying engine.
         Real implementation would queue requests when pool is exhausted.
         '''
-        from unittest.mock import AsyncMock
 
         from reflectlog.core.exceptions import SearchError
 
@@ -317,8 +312,8 @@ class TestDataCorruption:
 
         Should reload cleanly without data loss.
         '''
-        from reflectlog.application.utils.config_reload import ConfigReloadManager
         from reflectlog.application.config.settings import Config
+        from reflectlog.application.utils.config_reload import ConfigReloadManager
 
         reload_manager = ConfigReloadManager(lambda: Config.from_environment())
         reloaded = reload_manager.reload_config()

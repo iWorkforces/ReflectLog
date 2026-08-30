@@ -18,7 +18,15 @@ Example:
         ...
 """
 
-from typing import Literal, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
+
+from reflectlog.core.enums import (
+    CrossEncoderDevice,
+    DistanceMetric,
+    LlmProvider,
+    RerankerEngine,
+    TransportMode,
+)
 
 
 @runtime_checkable
@@ -26,7 +34,7 @@ class IServerConfig(Protocol):
     """Protocol for server-level configuration."""
 
     @property
-    def transport(self) -> Literal["stdio", "http", "sse", "streamable-http"]:
+    def transport(self) -> TransportMode:
         """Transport mode for MCP server."""
         ...
 
@@ -86,7 +94,7 @@ class ISearchConfig(Protocol):
         ...
 
     @property
-    def reranker_engine(self) -> Literal["cross_encoder", "none"]:
+    def reranker_engine(self) -> RerankerEngine:
         """Reranking engine type."""
         ...
 
@@ -131,8 +139,43 @@ class IStorageConfig(Protocol):
         ...
 
     @property
-    def metric(self) -> Literal["cosine", "euclidean", "inner_product"]:
+    def metric(self) -> DistanceMetric:
         """Similarity metric for vector search."""
+        ...
+
+    @property
+    def usearch_exact_search(self) -> bool:
+        """Whether USearch should use exact search."""
+        ...
+
+    @property
+    def usearch_exact_search_threshold(self) -> int:
+        """Index size below which USearch switches to exact search."""
+        ...
+
+    @property
+    def tantivy_normalize_scores(self) -> bool:
+        """Whether Tantivy scores are normalized."""
+        ...
+
+    @property
+    def tantivy_soft_delete_enabled(self) -> bool:
+        """Whether Tantivy uses tombstones instead of rebuilds."""
+        ...
+
+    @property
+    def tantivy_compaction_threshold_ratio(self) -> float:
+        """Tombstone ratio that triggers compaction."""
+        ...
+
+    @property
+    def tantivy_compaction_max_tombstones(self) -> int:
+        """Tombstone count that forces compaction."""
+        ...
+
+    @property
+    def tantivy_tombstone_ttl_days(self) -> int:
+        """Days before tombstones are eligible for removal."""
         ...
 
 
@@ -151,7 +194,7 @@ class IRerankerConfig(Protocol):
         ...
 
     @property
-    def llm_provider(self) -> str:
+    def llm_provider(self) -> LlmProvider:
         """LLM provider: openai or anthropic."""
         ...
 
@@ -206,7 +249,7 @@ class IRerankerConfig(Protocol):
         ...
 
     @property
-    def cross_encoder_device(self) -> str:
+    def cross_encoder_device(self) -> CrossEncoderDevice:
         """Device for cross-encoder: cpu, cuda, mps."""
         ...
 

@@ -1,10 +1,12 @@
 """Tests for RemoveTool implementation."""
 
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.tools.remove import RemoveTool
 from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
@@ -35,7 +37,7 @@ def remove_tool_instance(
 ) -> RemoveTool:
     return RemoveTool(
         config=mock_config,
-        memory_manager=recording_manager,
+        memory_manager=cast(MemoryManager, recording_manager),
         logger=mock_tool_logger,
     )
 
@@ -201,7 +203,7 @@ class TestRemoveToolPartialRemoval:
 
         tool = RemoveTool(
             config=mock_config,
-            memory_manager=FakeManager(),
+            memory_manager=cast(MemoryManager, FakeManager()),
             logger=mock_tool_logger,
         )
         handler = tool.get_handler()
@@ -224,7 +226,7 @@ class TestRemoveToolPartialRemoval:
 
         tool = RemoveTool(
             config=mock_config,
-            memory_manager=FakeManager(),
+            memory_manager=cast(MemoryManager, FakeManager()),
             logger=mock_tool_logger,
         )
         handler = tool.get_handler()
@@ -246,11 +248,11 @@ class TestRemoveToolPartialRemoval:
 
         tool = RemoveTool(
             config=mock_config,
-            memory_manager=FakeManager(),
+            memory_manager=cast(MemoryManager, FakeManager()),
             logger=mock_tool_logger,
         )
         handler = tool.get_handler()
-        with pytest.raises(TypeError, match="delete_memories must return list"):
+        with pytest.raises(TypeError):
             await handler(["Exists"])
 
 

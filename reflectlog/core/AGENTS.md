@@ -1,59 +1,46 @@
-# ReflectLog Knowledge Base - Core Protocols
+# ReflectLog Core Protocols
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Protocol definitions layer defining all abstractions for protocol-based dependency injection throughout the system.
+Protocols, StrEnums, adapters, exceptions, replacement prompts. No engines.
 
 ## STRUCTURE
 
 ```
 core/
-├── config.py            # Configuration protocols (IServerConfig, ISearchConfig, IStorageConfig, IRerankerConfig, IEmbedderConfig, IReplacementConfig, IAppConfig)
-├── config_adapters.py   # Protocol adapters wrapping Config dataclass (ConfigAdapter + 6 fine-grained adapters)
-├── memory.py            # Memory protocols (IMemoryStore, IMemoryBackend, IMemoryManager)
-├── reranking.py         # Reranking protocols (IReranker, IRerankerProvider, IRankingResult, IRerankerConfig)
-├── tools.py             # Tool protocols (ITool, IToolRegistry, IToolLoader, ToolParameter, ToolDefinition)
-├── logging.py           # Logging protocols (ILoggingService, ILogSink, LogLevel)
-└── types.py             # Canonical types (ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore)
+├── types.py             # MemoryRecord, Embeddings, IStoredMemory, ISemanticSearchEngine, IArchiveMemoryStore
+├── enums.py             # StrEnums: RerankerEngine, FusionMethod, TransportMode, TransitionKind
+├── config.py            # IServerConfig … IAppConfig (6 sub-protocols)
+├── config_adapters.py   # ConfigAdapter + fine-grained + create_*_adapter()
+├── memory.py            # IMemoryStore, IMemoryBackend, IMemoryManager
+├── reranking.py         # IReranker, IRerankerProvider, IRankingResult
+├── tools.py             # ITool, IToolRegistry, ToolParameter, ToolDefinition
+├── logging.py           # ILoggingService, ILogSink
+├── prompts.py           # replacement + MCP instructions only
+└── exceptions.py        # ReflectLogError → ConfigurationError, SearchError, …
 ```
 
 ## WHERE TO LOOK
 
-| Task | File | Key Protocols |
-|------|------|---------------|
-| Server configuration | config.py | IServerConfig, IAppConfig |
-| Live search | application/memory/search_strategies.py | SearchPipeline, SearchContext, SearchResult |
-| Semantic engine | types.py | ISemanticSearchEngine (sync tuple search) |
-| Fusion | application/memory/fusion/base.py | FusionEngine |
-| Memory operations | memory.py | IMemoryStore, IMemoryManager |
-| Reranking interfaces | reranking.py | IReranker, IRerankerProvider |
-| Config adaptation | config_adapters.py | ConfigAdapter, SearchConfigAdapter, etc. |
-| Tool registration | tools.py | ITool, IToolRegistry |
-| Logging abstraction | logging.py | ILoggingService, ILogSink |
-| Canonical types | types.py | ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore |
+| Task | File | Notes |
+|------|------|-------|
+| Semantic contract | types.py | `ISemanticSearchEngine.embedder: Embeddings`; `search` → `(memory, score, created_at)` |
+| Stored row | types.py | `IStoredMemory`: id, workspace_id, content, created_at |
+| Closed sets | enums.py | `RerankerEngine.CROSS_ENCODER` / `NONE`; `parse_str_enum` |
+| Config wrap | config_adapters.py | wraps frozen `Config`; `_coerce_reranker_engine` |
+| Journal kinds | enums.py | `TransitionKind` add\|delete\|replace |
 
 ## CONVENTIONS
 
-**Protocol-Based DI** - Components depend on protocols from `core/`, not concrete implementations. Enables runtime substitution and test mocking via `@runtime_checkable`.
-
-**Structural Typing** - Use protocols (not ABCs) for duck typing. Runtime verification enabled with `@runtime_checkable`.
-
-**Adapter Pattern** - `ConfigAdapter` wraps `Config` dataclass to satisfy `IAppConfig`. Fine-grained adapters (`SearchConfigAdapter`, `StorageConfigAdapter`, etc.) expose subset interfaces.
-
-**Protocol Composition** - `IAppConfig` combines 6 sub-protocols: `IServerConfig`, `ISearchConfig`, `IStorageConfig`, `IRerankerConfig`, `IEmbedderConfig`, `IReplacementConfig`.
-
-**Factory Functions** - Adapter creation via `create_*_adapter()` factory functions.
-
-**RerankerEngine** - `Literal["cross_encoder", "none"]`. Unknown strings raise `ConfigurationError`.
-
-**Prompts** - `prompts.py` is replacement + MCP instructions only. Scoring/rerank prompts are gone.
+- `RerankerEngine` is `StrEnum`, not `Literal["cross_encoder", "none"]`. Unknown → `ConfigurationError` via `parse_str_enum`.
+- `IAppConfig` = `IServerConfig` + `ISearchConfig` + `IStorageConfig` + `IRerankerConfig` + `IEmbedderConfig` + `IReplacementConfig`.
+- Adapters: `ConfigAdapter(config)` or `create_*_adapter()`.
+- `access.py` gone. No `getattr` / `optional_attr` / `invoke_if_callable` / `type(obj).__dict__`.
+- `prompts.py` is replacement + MCP instructions only.
 
 ## ANTI-PATTERNS
 
-- Never depend on concrete `Config` class in application layer - use protocols
-- Never create direct instances of protocols - use concrete implementations
-- Never mix `Protocol` and `ABC` - choose one pattern per abstraction
-- Never skip `@runtime_checkable` if runtime isinstance() checks needed
-- Never expose implementation details through protocol interfaces
+- Do not depend on concrete `Config` below the composition root — use `IAppConfig`.
+- Do not add scoring/rerank prompts here.
+- Do not treat `ISemanticSearchEngine` as embedder-less.

@@ -1,7 +1,7 @@
 """Integration tests for MCP server workflows."""
 
 from collections.abc import Awaitable, Callable
-from typing import Protocol, TypedDict
+from typing import Protocol, TypedDict, cast
 
 import pytest
 
@@ -96,7 +96,13 @@ async def _add(server: WorkflowServer, memories: list[str]) -> None:
 
 
 async def _get_all(server: WorkflowServer) -> list[str]:
-    return await _tool_handler(server, "get_all")()
+    result: object = await _tool_handler(server, "get_all")()
+    if isinstance(result, dict):
+        page = cast(dict[str, object], result).get("memories")
+        if isinstance(page, list):
+            return [str(item) for item in cast(list[object], page)]
+        return []
+    return result
 
 
 async def _search(server: WorkflowServer, query: str) -> list[str]:

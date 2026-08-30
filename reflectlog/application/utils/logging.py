@@ -49,9 +49,16 @@ class StructuredLogger(IStructuredLogger):
         Returns:
             Dictionary with sensitive values redacted.
         """
-        from .security import redact_dict_secrets
+        from .security import redact_dict_secrets, sanitize_for_logging
 
-        return redact_dict_secrets(data)
+        redacted = redact_dict_secrets(data)
+        sanitized: dict[str, Any] = {}
+        for key, value in redacted.items():
+            if isinstance(value, str):
+                sanitized[key] = sanitize_for_logging(value)
+            else:
+                sanitized[key] = value
+        return sanitized
 
     @override
     def is_enabled_for(self, level: int) -> bool:
@@ -73,7 +80,13 @@ class StructuredLogger(IStructuredLogger):
         exc_info: bool = False,
     ) -> None:
         """Log info message with structured data."""
-        self.logger.info(message, extra=self._merge_extra(extra), exc_info=exc_info)
+        from .security import sanitize_for_logging
+
+        self.logger.info(
+            sanitize_for_logging(message),
+            extra=self._merge_extra(extra),
+            exc_info=exc_info,
+        )
 
     @override
     def error(
@@ -166,7 +179,7 @@ def create_logger(
     logger = get_logger(name)
     # Set log level: fastmcp logger may have its own level management
     # We set it here to ensure our configuration is respected
-    logger.setLevel(getattr(logging, log_level.upper()))
+    logger.setLevel(logging.getLevelNamesMapping()[log_level.upper()])
 
     return StructuredLogger(logger, default_extra={"workspace_id": workspace_id})
 

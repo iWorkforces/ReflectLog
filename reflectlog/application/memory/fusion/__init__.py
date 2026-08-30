@@ -5,13 +5,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from reflectlog.core.logging import IStructuredLogger
 
+from reflectlog.core.enums import FusionMethod, FusionNormalization
+
 from .base import FusionEngine
 from .ranx_fusion import RanxFusionEngine
 
 
 def create_fusion_engine(
-    method: str = "rrf",
-    normalization: str | None = None,
+    method: FusionMethod | str = FusionMethod.RRF,
+    normalization: FusionNormalization | str | None = None,
     rrf_k: int = 60,
     weights: list[float] | None = None,
     logger: IStructuredLogger | None = None,

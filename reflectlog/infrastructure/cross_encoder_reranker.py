@@ -24,6 +24,7 @@ from asyncer import asyncify
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.core.config import IAppConfig
+from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.reranker_post_processor import (
     RerankerPostProcessor,
@@ -52,14 +53,18 @@ class CrossEncoderConfig:
     top_k: int = 20
     device: str = "cpu"
     batch_size: int = 32
-    score_threshold: float = 0.0
+    score_threshold: float = 0.5
     use_fp16: bool = True
     normalize: bool = True
     max_length: int = 512
-    min_results: int = 0  # Safety net: min results to return (0 = disabled)
-    batch_normalize: bool = True  # Enable batch min-max normalization
+    min_results: int = 1  # Safety net: keep at least the best CE hit
+    batch_normalize: bool = True  # Ignored when normalize (sigmoid) is on
     enable_recency_boost: bool = True  # Include memory age in recency decay calculation
-    recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
+    recency_decay_rate: float = 0.001  # Decay rate per hour: exp(-rate * hours_old)
+
+    def __post_init__(self) -> None:
+        if self.normalize and self.batch_normalize:
+            object.__setattr__(self, "batch_normalize", False)
 
     @classmethod
     def from_config(cls, config: IAppConfig) -> CrossEncoderConfig:
@@ -73,7 +78,7 @@ class CrossEncoderConfig:
         """
         return cls(
             model_name=config.cross_encoder_model,
-            enabled=config.reranker_engine == "cross_encoder",
+            enabled=config.reranker_engine == RerankerEngine.CROSS_ENCODER,
             top_k=config.cross_encoder_top_k,
             device=config.cross_encoder_device,
             batch_size=config.cross_encoder_batch_size,
@@ -82,7 +87,9 @@ class CrossEncoderConfig:
             normalize=config.cross_encoder_normalize,
             max_length=config.cross_encoder_max_length,
             min_results=config.reranker_min_results,
-            batch_normalize=config.reranker_batch_normalize,
+            batch_normalize=(
+                config.reranker_batch_normalize and not config.cross_encoder_normalize
+            ),
             enable_recency_boost=config.enable_recency_boost,
             recency_decay_rate=config.recency_decay_rate,
         )
@@ -211,28 +218,8 @@ class CrossEncoderReranker(BaseModel):
 
         The warning "You're using a XLMRobertaTokenizerFast tokenizer..."
         is informational and not actionable since FlagReranker handles
-        tokenization internally. This method suppresses it via two approaches:
-
-        1. Set the tokenizer's deprecation_warnings flag (if accessible)
-        2. Add a global warnings filter for this specific message
+        tokenization internally.
         """
-        # Approach 1: Try to set the tokenizer's deprecation flag directly
-        # This is the cleanest solution if the tokenizer is accessible
-        if self._model is not None:
-            # FlagReranker may store tokenizer in different attributes
-            tokenizer = getattr(self._model, "tokenizer", None)
-            if tokenizer is None:
-                # Try accessing via the model's internal structure
-                model_obj = getattr(self._model, "model", None)
-                if model_obj is not None:
-                    tokenizer = getattr(model_obj, "tokenizer", None)
-
-            if tokenizer is not None and hasattr(tokenizer, "deprecation_warnings"):
-                tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
-                return
-
-        # Approach 2: Use warnings filter as fallback
-        # This catches the warning regardless of tokenizer accessibility
         warnings.filterwarnings(
             "ignore",
             message=r"You're using a \w+TokenizerFast tokenizer.*using the `__call__` method is faster",
@@ -245,6 +232,7 @@ class CrossEncoderReranker(BaseModel):
         query: str,
         candidates: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None = None,
+        top_k: int | None = None,
     ) -> list[tuple[str, float]]:
         """Rerank candidates using FlagReranker scores with optional recency decay.
 
@@ -293,7 +281,8 @@ class CrossEncoderReranker(BaseModel):
         # top_k is applied after decay so recency can promote later ranks.
         scored = self._apply_threshold(scored)
         scored = self._apply_recency_reorder(scored, timestamp_map)
-        return scored[: self.config.top_k]
+        limit = self.config.top_k if top_k is None else max(1, top_k)
+        return scored[:limit]
 
     def _compute_scores(
         self,
@@ -403,6 +392,7 @@ class CrossEncoderReranker(BaseModel):
         query: str,
         candidates: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None = None,
+        top_k: int | None = None,
     ) -> list[tuple[str, float]]:
         """Async wrapper for cross-encoder reranking.
 
@@ -419,4 +409,6 @@ class CrossEncoderReranker(BaseModel):
             List of (document, cross_encoder_score) tuples, sorted by score
             descending, filtered by score_threshold, and limited to top_k results.
         """
-        return await asyncify(self.rerank)(query, candidates, timestamp_map)
+        return await asyncify(self.rerank)(
+            query, candidates, timestamp_map, top_k
+        )

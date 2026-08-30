@@ -6,7 +6,6 @@ Tests plugin discovery, loading, registry, and lifecycle management.
 import importlib
 import pkgutil
 import types
-from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,7 +34,6 @@ from reflectlog.plugins.registry import (
     ToolRegistry,
     utc_now,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers / stubs
@@ -1513,10 +1511,28 @@ class TestPluginsInit:
             ToolRegistry,
         )
 
-        # Just verify they are the expected types
-        assert PluginRegistry is not None
-        assert PluginLoader is not None
-        assert load_plugin is not None
+        assert all(
+            item is not None
+            for item in (
+                CompositeDiscovery,
+                DirectoryScanDiscovery,
+                DiscoveredPlugin,
+                EntryPointDiscovery,
+                PluginDiscoverer,
+                PluginDiscoveryStrategy,
+                StaticRegistration,
+                load_plugin,
+                IPluginLifecycle,
+                LifecycleHooks,
+                PluginLoader,
+                IPluggable,
+                PluginCapability,
+                PluginMetadata,
+                PluginRegistry,
+                PluginState,
+                ToolRegistry,
+            )
+        )
 
 # ---------------------------------------------------------------------------
 # Edge case: deactivate_plugin when registry.deactivate returns False

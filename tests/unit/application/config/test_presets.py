@@ -16,7 +16,7 @@ from reflectlog.application.config.presets import (
     get_active_preset,
     get_preset_summary,
 )
-
+from reflectlog.core.enums import RerankerEngine
 
 # ---------------------------------------------------------------------------
 # ConfigPreset dataclass
@@ -55,7 +55,7 @@ class TestConfigPreset:
             search_score_threshold=0.5,
             fusion_rrf_k=60,
             overfetch_multiplier=3,
-            reranker_engine="cross_encoder",
+            reranker_engine=RerankerEngine.CROSS_ENCODER,
             enable_recency_boost=True,
             recency_decay_rate=0.02,
             enable_smart_replace=True,
@@ -316,7 +316,7 @@ class TestApplyPresetToEnv:
 
         assert os.environ["SEARCH_LIMIT"] == "10"
         assert os.environ["ENABLE_HYBRID_SEARCH"] == "true"
-        assert "SEARCH_SCORE_THRESHOLD" not in os.environ
+        assert os.environ["SEARCH_SCORE_THRESHOLD"] == "0.3"
         assert os.environ["FUSION_RRF_K"] == "40"
         assert os.environ["OVERFETCH_MULTIPLIER"] == "2"
         assert os.environ["RERANKER_ENGINE"] == "none"
@@ -334,7 +334,7 @@ class TestApplyPresetToEnv:
 
         assert os.environ["SEARCH_LIMIT"] == "5"
         assert os.environ["ENABLE_HYBRID_SEARCH"] == "true"
-        assert "SEARCH_SCORE_THRESHOLD" not in os.environ
+        assert os.environ["SEARCH_SCORE_THRESHOLD"] == "0.7"
         assert os.environ["FUSION_RRF_K"] == "80"
         assert os.environ["OVERFETCH_MULTIPLIER"] == "5"
         assert os.environ["RERANKER_ENGINE"] == "cross_encoder"

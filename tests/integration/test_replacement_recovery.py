@@ -58,9 +58,8 @@ def _manager(tmpdir: str, *, hybrid: bool = True) -> Generator[MemoryManager]:
 def _abandon_without_persist(manager: MemoryManager) -> None:
     """Drop in-memory indexes without commit, like a SIGKILL."""
     engine = manager._semantic_engine
-    store = getattr(engine, "memory_store", None)
-    if store is not None:
-        store.close()
+    store = engine.memory_store
+    store.close()
     if isinstance(engine, USearchEngine) and engine._index is not None:
         engine._index = None
     tantivy = manager._tantivy_engine
@@ -77,7 +76,9 @@ def _assert_converged(manager: MemoryManager) -> None:
     assert memories == [NEW]
     new_id = manager.get_id_by_content(NEW)
     assert new_id is not None
-    index = getattr(manager._semantic_engine, "index", None)
+    engine = manager._semantic_engine
+    assert isinstance(engine, USearchEngine)
+    index = engine.index
     assert index is not None
     assert new_id in index
     assert manager.get_id_by_content(OLD) is None
@@ -133,14 +134,20 @@ def _crash_after_semantic_delete(_manager: MemoryManager) -> Generator[None]:
 
 @contextmanager
 def _crash_after_tantivy_delete(_manager: MemoryManager) -> Generator[None]:
-    original = TantivyEngine.delete
+    original = TantivyEngine.delete_batch
 
-    def boom(self: TantivyEngine, workspace_id: str, content: str) -> bool:
-        deleted = original(self, workspace_id, content)
+    def boom(
+        self: TantivyEngine,
+        workspace_id: str,
+        contents: list[str],
+        *,
+        verify_exists: bool = True,
+    ) -> int:
+        deleted = original(self, workspace_id, contents, verify_exists=verify_exists)
         raise RuntimeError("crash after tantivy delete")
         return deleted
 
-    with patch.object(TantivyEngine, "delete", boom):
+    with patch.object(TantivyEngine, "delete_batch", boom):
         yield
 
 
@@ -149,9 +156,13 @@ def _crash_after_insert(_manager: MemoryManager) -> Generator[None]:
     original = USearchEngine.add_batch
 
     def boom(
-        self: USearchEngine, workspace_id: str, contents: list[str], infer: bool
+        self: USearchEngine,
+        workspace_id: str,
+        contents: list[str],
+        infer: bool,
+        vectors: list[list[float]] | None = None,
     ) -> list[str]:
-        stored = original(self, workspace_id, contents, infer)
+        stored = original(self, workspace_id, contents, infer, vectors=vectors)
         raise RuntimeError("crash after insert")
         return stored
 
@@ -161,13 +172,13 @@ def _crash_after_insert(_manager: MemoryManager) -> Generator[None]:
 
 @contextmanager
 def _crash_after_tantivy_add(_manager: MemoryManager) -> Generator[None]:
-    original = TantivyEngine.add
+    original = TantivyEngine.add_batch
 
-    def boom(self: TantivyEngine, workspace_id: str, content: str) -> None:
-        original(self, workspace_id, content)
+    def boom(self: TantivyEngine, workspace_id: str, contents: list[str]) -> None:
+        original(self, workspace_id, contents)
         raise RuntimeError("crash after tantivy add")
 
-    with patch.object(TantivyEngine, "add", boom):
+    with patch.object(TantivyEngine, "add_batch", boom):
         yield
 
 
@@ -406,7 +417,9 @@ class TestReplacementRecoveryIntegration:
                 assert manager.get_id_by_content(OLD) is None
                 loser_id = manager.get_id_by_content(loser)
                 winner_id = manager.get_id_by_content(winner)
-                index = getattr(manager._semantic_engine, "index", None)
+                engine = manager._semantic_engine
+                assert isinstance(engine, USearchEngine)
+                index = engine.index
                 assert loser_id is not None
                 assert winner_id is not None
                 assert index is not None

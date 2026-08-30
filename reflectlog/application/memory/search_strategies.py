@@ -8,11 +8,10 @@ concern-focused module. It implements the 4-step search pipeline:
 4. Reranking (CrossEncoder)
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass
 import math
 import time
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
     from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
@@ -23,13 +22,13 @@ from asyncer import (
     create_task_group,
 )
 
+from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.exceptions import SearchError
 
 from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine
+from ...core.types import ISemanticSearchEngine, IStoredMemory
 from ..config.settings import Config
 from ..utils.logging import format_fusion_score_status
-from ..utils.validation import truncate_memory
 from .fusion.base import FusionEngine
 
 # Constants for magic numbers (documented for maintainability)
@@ -38,24 +37,6 @@ TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize t
 LOG_QUERY_TRUNCATE_LENGTH = 100
 
 
-def _class_callable(obj: object, name: str) -> Callable[..., object] | None:
-    """Return a class-defined callable, walking the MRO.
-
-    Instance attributes and MagicMock auto-attrs are ignored so tests cannot
-    skip ``ensure_initialized`` by planting a truthy ``is_ready``.
-    """
-    for cls in type(obj).__mro__:
-        attr = cls.__dict__.get(name)
-        if callable(attr):
-            return attr
-    return None
-
-
-def _call_predicate(fn: Callable[..., object] | None, obj: object) -> bool:
-    """Invoke a class-defined predicate, treating a missing method as False."""
-    if fn is None:
-        return False
-    return bool(fn(obj))
 
 
 @dataclass
@@ -77,7 +58,7 @@ class SearchContext:
     overfetch_limit: int
     enable_hybrid_search: bool
     enable_rrf_fusion: bool
-    reranker_engine: str
+    reranker_engine: RerankerEngine | str
     workspace_id: str
 
 
@@ -178,7 +159,7 @@ class SearchPipeline:
                 "Search pipeline failed",
                 extra={
                     "workspace_id": context.workspace_id,
-                    "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "query_length": len(context.query),
                     "error": str(e),
                 },
             )
@@ -197,13 +178,18 @@ class SearchPipeline:
         # matching hybrid search (asyncify alone does not).
         soon_results = None
         async with create_task_group() as tg:
-            soon_results = tg.soonify(asyncify(self._semantic_engine.search))(
-                query=context.query,
-                workspace_id=context.workspace_id,
-                limit=context.limit,
+            fetch_limit = (
+                context.overfetch_limit
+                if context.reranker_engine == RerankerEngine.CROSS_ENCODER
+                else context.limit
+            )
+            soon_results = tg.soonify(self._search_semantic)(
+                context.query, fetch_limit, context.workspace_id
             )
         assert soon_results is not None
-        results: list[tuple[str, float, str]] = soon_results.value or []
+        results, search_error = soon_results.value
+        if search_error is not None:
+            raise search_error
 
         timestamp_map = {msg: created_at for msg, _, created_at in results}
         paired = [(msg, score) for msg, score, _ in results]
@@ -240,7 +226,9 @@ class SearchPipeline:
         # not be compared to fusion_ranking_threshold=0.8.
         backends_used = int(bool(semantic_results)) + int(bool(tantivy_results))
         if context.enable_rrf_fusion and backends_used >= 2:
-            hybrid_results = await self._step3_fusion_threshold(context, hybrid_results)
+            hybrid_results = await self._step3_fusion_threshold(
+                context, hybrid_results, backends_used
+            )
             # Handle case where all results were filtered out
             if not hybrid_results:
                 return SearchResult(
@@ -256,7 +244,9 @@ class SearchPipeline:
             self._log_skip_reranking(len(hybrid_results), rerank_step_num)
         else:
             timestamp_map = await asyncify(self._complete_timestamp_map)(
-                timestamp_map, [msg for msg, _ in hybrid_results]
+                timestamp_map,
+                [msg for msg, _ in hybrid_results],
+                context.workspace_id,
             )
             hybrid_results = await self._step4_reranking(
                 context, hybrid_results, timestamp_map, rerank_step_num
@@ -270,7 +260,7 @@ class SearchPipeline:
             f"SEARCH COMPLETE: {len(memories)} result(s) returned",
             extra={
                 "workspace_id": context.workspace_id,
-                "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
+                "query_length": len(context.query),
                 "result_count": len(memories),
                 "top_score": hybrid_results[0][1] if hybrid_results else 0.0,
             },
@@ -322,7 +312,7 @@ class SearchPipeline:
             f"Both engines completed (semantic: {len(semantic_results)}, tantivy: {len(tantivy_results)})",
             extra={
                 "workspace_id": context.workspace_id,
-                "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
+                "query_length": len(context.query),
                 "semantic_count": len(semantic_results),
                 "tantivy_count": len(tantivy_results),
             },
@@ -341,8 +331,7 @@ class SearchPipeline:
         try:
             # Class-defined is_ready (MRO walk) so MagicMock auto-attrs
             # cannot skip init, but subclasses that inherit it still work.
-            is_ready = _class_callable(self._semantic_engine, "is_ready")
-            if not _call_predicate(is_ready, self._semantic_engine):
+            if not self._semantic_engine.is_ready():
                 await asyncify(self._semantic_engine.ensure_initialized)()
             results: list[tuple[str, float, str]] = await asyncify(
                 self._semantic_engine.search
@@ -357,7 +346,7 @@ class SearchPipeline:
                 "Semantic search failed - falling back to Tantivy full-text only",
                 extra={
                     "workspace_id": workspace_id,
-                    "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "query_length": len(query),
                     "error_type": type(e).__name__,
                     "error": str(e),
                     "fallback_behavior": "empty_semantic_results",
@@ -373,8 +362,7 @@ class SearchPipeline:
         if self._tantivy_engine is None:
             return [], None
         try:
-            is_ready = _class_callable(self._tantivy_engine, "is_ready")
-            if not _call_predicate(is_ready, self._tantivy_engine):
+            if not self._tantivy_engine.is_ready():
                 await asyncify(self._tantivy_engine.ensure_initialized)()
             tantivy_results: list[tuple[str, float]] = await asyncify(
                 self._tantivy_engine.search
@@ -385,7 +373,7 @@ class SearchPipeline:
                 "Tantivy search failed - continuing with semantic results only",
                 extra={
                     "workspace_id": workspace_id,
-                    "query": query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "query_length": len(query),
                     "error_type": type(e).__name__,
                     "error": str(e),
                 },
@@ -408,7 +396,10 @@ class SearchPipeline:
             )
         else:
             return self._concatenate_results(
-                semantic_results_2tuple, tantivy_results, context.overfetch_limit
+                semantic_results_2tuple,
+                tantivy_results,
+                context.overfetch_limit,
+                user_limit=context.limit,
             )
 
     async def _fuse_rrf(
@@ -433,7 +424,7 @@ class SearchPipeline:
                 f"Combined {len(hybrid_results)} unique result(s) using {self._fusion_engine.method.upper()} algorithm",
                 extra={
                     "workspace_id": context.workspace_id,
-                    "query": context.query[:LOG_QUERY_TRUNCATE_LENGTH],
+                    "query_length": len(context.query),
                     "engine": "fusion",
                     "result_count": len(hybrid_results),
                     "method": self._fusion_engine.method,
@@ -448,6 +439,7 @@ class SearchPipeline:
         semantic_results: list[tuple[str, float]],
         tantivy_results: list[tuple[str, float]],
         limit: int,
+        user_limit: int | None = None,
     ) -> list[tuple[str, float]]:
         """Concatenate semantic + tantivy results without RRF fusion."""
         self.logger.info(
@@ -458,9 +450,12 @@ class SearchPipeline:
         seen_memories: set[str] = set()
         combined: list[tuple[str, float]] = []
 
-        # Add semantic results first (higher priority)
+        page_limit = user_limit if user_limit is not None else limit
+        reserved_lexical = 1 if tantivy_results else 0
+        semantic_budget = max(0, page_limit - reserved_lexical)
+
         for msg, score in semantic_results:
-            if len(combined) >= limit:
+            if len(combined) >= semantic_budget:
                 break
             if msg not in seen_memories:
                 seen_memories.add(msg)
@@ -468,8 +463,28 @@ class SearchPipeline:
 
         semantic_count = len(combined)
 
-        # Add tantivy results (skip duplicates)
         for msg, score in tantivy_results:
+            if len(combined) >= page_limit:
+                break
+            if msg not in seen_memories:
+                seen_memories.add(msg)
+                combined.append((msg, score))
+
+        if limit > page_limit:
+            for msg, score in semantic_results:
+                if len(combined) >= limit:
+                    break
+                if msg not in seen_memories:
+                    seen_memories.add(msg)
+                    combined.append((msg, score))
+            for msg, score in tantivy_results:
+                if len(combined) >= limit:
+                    break
+                if msg not in seen_memories:
+                    seen_memories.add(msg)
+                    combined.append((msg, score))
+
+        for msg, score in semantic_results:
             if len(combined) >= limit:
                 break
             if msg not in seen_memories:
@@ -492,20 +507,57 @@ class SearchPipeline:
         return combined
 
     async def _step3_fusion_threshold(
-        self, context: SearchContext, results: list[tuple[str, float]]
+        self,
+        context: SearchContext,
+        results: list[tuple[str, float]],
+        n_backends: int = 2,
     ) -> list[tuple[str, float]]:
         """Step 3: Filter by fusion threshold."""
+        threshold = self._effective_fusion_threshold(results, n_backends)
         self.logger.info(
-            f"STEP 3: Filtering (threshold >= {self.config.fusion_ranking_threshold})...",
+            f"STEP 3: Filtering (threshold >= {threshold})...",
             extra={
                 "step": "filtering",
-                "threshold": self.config.fusion_ranking_threshold,
+                "threshold": threshold,
             },
         )
 
         return self._filter_by_fusion_threshold(
-            results, self.config.fusion_ranking_threshold, context.query
+            results, threshold, context.query
         )
+
+    def _effective_fusion_threshold(
+        self, results: list[tuple[str, float]], n_backends: int = 2
+    ) -> float:
+        """Ignore leftover 0-1 gates when the fused scores are raw RRF."""
+        try:
+            threshold = float(self.config.fusion_ranking_threshold)
+            k = max(1, int(self.config.fusion_rrf_k))
+        except (TypeError, ValueError):
+            return 0.0
+        if not results:
+            return threshold
+        max_score = max(score for _msg, score in results)
+        weights = self.config.fusion_weights
+        weight_sum = 0.0
+        if isinstance(weights, list) and weights:
+            try:
+                for weight in cast(list[object], weights):
+                    if not isinstance(weight, (int, float)):
+                        raise TypeError("fusion weight is not numeric")
+                    weight_sum += float(weight)
+            except (TypeError, ValueError):
+                weight_sum = 0.0
+        if weight_sum <= 0.0:
+            weight_sum = float(max(2, n_backends))
+        max_raw = weight_sum / (k + 1)
+        if threshold > max_raw and max_score <= max_raw:
+            self.logger.warning(
+                "Ignoring leftover 0-1 fusion_ranking_threshold against raw RRF",
+                extra={"configured": threshold, "max_raw_rrf": max_raw},
+            )
+            return 0.0
+        return threshold
 
     def _filter_by_fusion_threshold(
         self, results: list[tuple[str, float]], threshold: float, query: str
@@ -532,12 +584,11 @@ class SearchPipeline:
             return filtered
 
         # Show filtered results with status
-        for idx, (memory, score) in enumerate(results[: min(5, len(results))], 1):
+        for idx, (_memory, score) in enumerate(results[: min(5, len(results))], 1):
             status, interpretation = format_fusion_score_status(score, threshold)
-            preview = truncate_memory(memory, max_length=50)
             status_indicator = "[KEEP]" if score >= threshold else "[FILTER]"
             self.logger.info(
-                f"[{idx}] {status_indicator} score={score:.4f} ({interpretation}) -> {preview}",
+                f"[{idx}] {status_indicator} score={score:.4f} ({interpretation})",
                 extra={"fusion_score": score, "fusion_status": status},
             )
 
@@ -546,17 +597,17 @@ class SearchPipeline:
     def _get_cross_encoder_reranker(self) -> CrossEncoderReranker | None:
         if (
             self._memory_manager is None
-            or self.config.reranker_engine != "cross_encoder"
+            or self.config.reranker_engine != RerankerEngine.CROSS_ENCODER
         ):
             return None
         return self._memory_manager.cross_encoder_reranker
 
     def _get_reranker(
         self,
-    ) -> tuple[Literal["cross_encoder"], CrossEncoderReranker] | tuple[None, None]:
+    ) -> tuple[RerankerEngine, CrossEncoderReranker] | tuple[None, None]:
         cross_encoder_reranker = self._get_cross_encoder_reranker()
         if cross_encoder_reranker is not None:
-            return ("cross_encoder", cross_encoder_reranker)
+            return (RerankerEngine.CROSS_ENCODER, cross_encoder_reranker)
 
         return (None, None)
 
@@ -608,14 +659,21 @@ class SearchPipeline:
         rerank_start = time.time()
         pre_rerank_count = len(results)
 
-        if timestamp_map is None:
-            reranked_results = await cross_encoder_reranker.rerank_async(
-                context.query, results
+        try:
+            if timestamp_map is None:
+                reranked_results = await cross_encoder_reranker.rerank_async(
+                    context.query, results, top_k=context.limit
+                )
+            else:
+                reranked_results = await cross_encoder_reranker.rerank_async(
+                    context.query, results, timestamp_map, top_k=context.limit
+                )
+        except Exception as exc:
+            self.logger.warning(
+                "CrossEncoder failed; returning fused results",
+                extra={"error": str(exc), "candidate_count": len(results)},
             )
-        else:
-            reranked_results = await cross_encoder_reranker.rerank_async(
-                context.query, results, timestamp_map
-            )
+            return results
         results = reranked_results
 
         rerank_duration = (time.time() - rerank_start) * 1000
@@ -665,12 +723,11 @@ class SearchPipeline:
                 f"Found {len(semantic_results)} result(s), best score: {top_score:.4f}",
                 extra={"result_count": len(semantic_results), "top_score": top_score},
             )
-            for idx, (memory, score, _) in enumerate(
+            for idx, (_memory, score, _) in enumerate(
                 semantic_results[: min(3, len(semantic_results))], 1
             ):
-                preview = truncate_memory(memory, max_length=60)
                 self.logger.info(
-                    f"[{idx}] score={score:.4f} → {preview}",
+                    f"[{idx}] score={score:.4f}",
                     extra={"result_index": idx, "score": score},
                 )
         else:
@@ -684,12 +741,11 @@ class SearchPipeline:
                 f"Found {len(tantivy_results)} result(s), best BM25 score: {top_score:.4f}",
                 extra={"result_count": len(tantivy_results), "top_score": top_score},
             )
-            for idx, (memory, score) in enumerate(
+            for idx, (_memory, score) in enumerate(
                 tantivy_results[: min(3, len(tantivy_results))], 1
             ):
-                preview = truncate_memory(memory, max_length=60)
                 self.logger.info(
-                    f"[{idx}] score={score:.4f} → {preview}",
+                    f"[{idx}] score={score:.4f}",
                     extra={"result_index": idx, "score": score},
                 )
         else:
@@ -698,7 +754,10 @@ class SearchPipeline:
         self.logger.info("─" * 50, extra={"section": "fusion"})
 
     def _complete_timestamp_map(
-        self, timestamp_map: dict[str, str], contents: list[str]
+        self,
+        timestamp_map: dict[str, str],
+        contents: list[str],
+        workspace_id: str,
     ) -> dict[str, str]:
         """Resolve created_at for every candidate. Empty map disables recency."""
         completed = {
@@ -711,23 +770,15 @@ class SearchPipeline:
             return completed
 
         try:
-            get_id = getattr(self._semantic_engine, "get_id_by_content", None)
-            store = getattr(self._semantic_engine, "memory_store", None)
-            getter = getattr(store, "get", None)
-            workspace_id = getattr(
-                getattr(self._semantic_engine, "config", None), "workspace_id", None
-            )
-            if not callable(get_id) or not callable(getter) or workspace_id is None:
-                return completed
-
+            store = self._semantic_engine.memory_store
             for content in missing:
-                mem_id = get_id(workspace_id, content)
+                mem_id = self._semantic_engine.get_id_by_content(workspace_id, content)
                 if mem_id is None:
                     continue
-                record = getter(mem_id)
-                created_at = (
-                    getattr(record, "created_at", "") if record is not None else ""
-                )
+                stored = store.get(mem_id)
+                if not isinstance(stored, IStoredMemory):
+                    continue
+                created_at = stored.created_at
                 if not created_at:
                     continue
                 completed[content] = created_at
@@ -765,7 +816,7 @@ def calculate_adaptive_overfetch(limit: int, index_size: int, config: Config) ->
     large_index = 10000  # At or above this: use min multiplier
 
     min_mult = config.overfetch_min_multiplier
-    max_mult = config.overfetch_max_multiplier
+    max_mult = max(config.overfetch_max_multiplier, float(config.overfetch_multiplier))
 
     if index_size <= small_index:
         multiplier = max_mult

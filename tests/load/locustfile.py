@@ -14,10 +14,10 @@ Usage:
     locust -f locustfile.py --headless --host http://127.0.0.1:8089 --users 100
 '''
 
-import time
 from collections.abc import Callable, Sequence
 from datetime import timedelta
 from random import randint
+import time
 from typing import TYPE_CHECKING, ParamSpec, Protocol
 
 
@@ -165,15 +165,15 @@ def test_search_throughput(user: ReflectLogUser):
     under increasing query complexity.
     '''
     # Test with 50 character queries (simple)
-    for i in range(10):
+    for _i in range(10):
         user.search_memory()
 
     # Test with 200 character queries (moderate)
-    for i in range(10):
+    for _i in range(10):
         user.search_memory()
 
     # Test with 500 character queries (complex)
-    for i in range(5):
+    for _i in range(5):
         user.search_memory()
 
 
@@ -185,7 +185,7 @@ def test_add_performance(user: ReflectLogUser):
     '''
     start_time = events.request_time.get()
     total_memories = 0
-    for i in range(100):
+    for _i in range(100):
         user.add_memory()
         total_memories += 1
 
@@ -207,7 +207,7 @@ def test_mixed_workload(user: ReflectLogUser):
     Simulates concurrent users performing various operations.
     '''
     # Run operations synchronously for testing
-    for i in range(50):
+    for _i in range(50):
         if randint(1, 100) <= 60:
             # Skip - would use asyncio but not available in sync context
             pass
@@ -217,7 +217,7 @@ def test_mixed_workload(user: ReflectLogUser):
             user.search_memory()
 
     start_time = events.request_time.get()
-    duration = (events.request_time.get() - start_time).total_seconds()
+    _duration = (events.request_time.get() - start_time).total_seconds()
 
     events.request.fire(
         request_type="mixed_workload",
@@ -235,7 +235,7 @@ def test_concurrent_users(user_factory: Callable[[], ReflectLogUser]) -> None:
 
     start_time = events.request_time.get()
     run_locust_users(users, spawn_rate=50, run_time=30)
-    duration = (events.request_time.get() - start_time).total_seconds()
+    _duration = (events.request_time.get() - start_time).total_seconds()
 
     events.request.fire(
         request_type="concurrent_load",

@@ -1,33 +1,50 @@
-# Agent Guidelines for reflectlog/application/memory/reranking/
+# Reranking (pointer)
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30
+**Commit:** 062b44f
+**Branch:** develop
 
 ## OVERVIEW
-Recency decay scoring for rerankers. Score normalization and filtering functions live in `utility/scoring.py`.
+This directory is a pointer, not an implementation. Score math lives in `reflectlog/utility/scoring.py`. Search Step 4 calls `CrossEncoderReranker`; post-CE normalize / threshold / recency run in `infrastructure/reranker_post_processor.py`.
+
+## STRUCTURE
+```
+reranking/
+└── __init__.py          # Package marker only — no scoring exports
+```
 
 ## WHERE TO LOOK
 
-| Function | Location | Description |
-|----------|----------|-------------|
-| normalize_reranker_scores | `utility/scoring.py` | Batch min-max normalization to [0,1] |
-| apply_threshold_with_safety_net | `utility/scoring.py` | Threshold with guaranteed min_results |
-| calculate_recency_factor | `utility/scoring.py` | exp(-rate * hours_old), 1.0=newest |
-| apply_recency_decay | `utility/scoring.py` | score * exp(-rate * hours), re-sorts |
+| Need | Location | Notes |
+|------|----------|-------|
+| Batch min-max | `utility/scoring.py` | `normalize_reranker_scores` |
+| CE / fusion gate | `utility/scoring.py` | `apply_threshold_with_safety_net` |
+| Recency factor | `utility/scoring.py` | `calculate_recency_factor` = `exp(-rate * hours)` |
+| Recency apply | `utility/scoring.py` | `apply_recency_decay` re-sorts |
+| Step 4 skip | `search_strategies.py` | Skip CE when ≤1 hit |
+| Apply order | `reranker_post_processor.py` | normalize → threshold → recency |
+
+## CONVENTIONS
+
+- Do not add scoring functions here. Import from `utility/scoring.py`.
+- Recency runs only after CE normalize + threshold. Never decay first; never gate on decayed scores.
+- Threshold semantics assume a [0, 1] batch. Normalize the whole list, not each score.
+- `reranker_min_results` keeps at least the best hit when the gate would empty the list.
+- Pipeline order: raw RRF (threshold 0.0) → CE if >1 hit → recency → `top_k`.
+- An empty `timestamp_map` disables recency; do not invent stamps.
 
 ## ANTI-PATTERNS
 
-- Never normalize individually - batch normalization required for relative scores
-- Never apply recency decay before normalization
-- Never gate on decayed scores; CE thresholds first, then recency, then top_k
-- Never skip normalization - threshold semantics require [0,1] range
-- Never return empty results when safety net can provide minimum results
+- Never implement scoring in this package.
+- Never apply recency before CE normalize + threshold.
+- Never skip batch normalization so a raw CE score can be compared to a 0–1 gate.
+- Never return empty when the safety net can keep `min_results`.
+- Never move Numba RRF helpers here; fusion owns those imports.
 
 ## NOTES
 
-This package owns only the reranking integration point. The scoring functions remain in `reflectlog/utility/scoring.py` to preserve the dependency boundary.
-
-Use the parent memory guide for pipeline ordering and configuration ownership.
+Use the parent memory guide for `SearchPipeline` construction and CE skip rules. This folder stays empty on purpose so `utility/` remains importable from infrastructure without a cycle.
 
 ## LIMITS
 
-Do not move scoring helpers into this package.
+Do not add modules under `reranking/`. Do not re-export scoring symbols from `__init__.py`.

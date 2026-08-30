@@ -1,32 +1,33 @@
 # Core Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Unit tests for core protocol adapters. Verifies Config-to-protocol mapping correctness.
+Unit tests for `ConfigAdapter` protocol mapping and replacement prompt interpolation.
 
 ## STRUCTURE
-
 ```
 tests/unit/core/
-├── test_config_adapters.py   # ConfigAdapter protocol compliance
-└── test_prompts.py           # Replacement Template interpolation
+├── test_config_adapters.py   # ConfigAdapter + fine-grained adapters
+└── test_prompts.py           # format_replacement_detection_prompt
 ```
 
 ## WHERE TO LOOK
-
 | Test | Purpose |
 |------|---------|
-| test_config_adapters.py | ConfigAdapter wraps Config; `RerankerEngine` is `cross_encoder`\|`none` |
-| test_prompts.py | Live `$old_memory`/`$new_memory`; no `{{` doubling |
+| `test_config_adapters.py` | `Config` → `ISearchConfig` / `IRerankerConfig` / etc. `RerankerEngine` is `cross_encoder` or `none` |
+| `test_prompts.py` | Live `$old_memory` / `$new_memory`; single-brace JSON; no `{{` doubling |
+
+## CONVENTIONS
+- Build `Config` in-test; do not use the process singleton.
+- Protocol checks are explicit (`isinstance` / adapter factories), not reflection.
+- Native 3.14 unions. Double-quoted strings.
 
 ## ANTI-PATTERNS
-
-- Never test with real Config singleton
-- Never skip protocol compliance checks
+- Never test against the real Config singleton.
+- Never skip protocol compliance.
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
+- No `type: ignore`. No MagicMock auto-attrs as APIs.
 
 ## NOTES
-
-- **Protocol verification**: Ensures ConfigAdapter satisfies all fine-grained protocols
-- **Large test file**: Covers 10+ protocol interfaces
+`create_*_config_adapter` factories live in `reflectlog/core/config_adapters.py`. `_coerce_reranker_engine` is covered here.

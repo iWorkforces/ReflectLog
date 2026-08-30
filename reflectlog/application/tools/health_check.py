@@ -2,6 +2,8 @@
 
 from typing import Any, override
 
+from reflectlog.core.enums import EngineReadiness, HealthStatus, ToolName
+
 from .base import BaseTool
 
 
@@ -11,7 +13,7 @@ class HealthCheckTool(BaseTool):
     @override
     def get_name(self) -> str:
         """Get the tool name."""
-        return "health_check"
+        return ToolName.HEALTH_CHECK
 
     @override
     def get_instruction_snippet(self) -> str:
@@ -72,22 +74,40 @@ class HealthCheckTool(BaseTool):
                 }
             """
             engine_status = {
-                "semantic_engine": "unknown",
-                "tantivy_engine": "unknown",
+                "semantic_engine": EngineReadiness.UNKNOWN,
+                "tantivy_engine": EngineReadiness.UNKNOWN,
             }
             try:
-                self.log_invocation("health_check")
+                self.log_invocation(ToolName.HEALTH_CHECK)
                 engine_status = self.memory.search_engine_status()
                 semantic_engine_status = engine_status["semantic_engine"]
                 tantivy_engine_status = engine_status["tantivy_engine"]
 
-                pending_count_fn = getattr(
-                    self.memory, "pending_replacement_count", None
-                )
-                pending_raw = pending_count_fn() if callable(pending_count_fn) else 0
-                pending_count = pending_raw if isinstance(pending_raw, int) else 0
+                pending_count = self.memory.pending_intent_count()
+                status = HealthStatus.HEALTHY
+                if pending_count > 0:
+                    status = HealthStatus.DEGRADED
+                expected_up = {
+                    EngineReadiness.PENDING,
+                    EngineReadiness.NOT_INITIALIZED,
+                }
+                if semantic_engine_status in expected_up:
+                    status = (
+                        HealthStatus.UNHEALTHY
+                        if self.config.eager_initialization
+                        else HealthStatus.DEGRADED
+                    )
+                if (
+                    self.config.enable_hybrid_search
+                    and tantivy_engine_status in expected_up
+                ):
+                    status = (
+                        HealthStatus.UNHEALTHY
+                        if self.config.eager_initialization
+                        else HealthStatus.DEGRADED
+                    )
                 health_status: dict[str, Any] = {
-                    "status": "degraded" if pending_count > 0 else "healthy",
+                    "status": status,
                     "workspace_id": self.config.workspace_id,
                     "semantic_engine": semantic_engine_status,
                     "tantivy_engine": tantivy_engine_status,
@@ -95,7 +115,7 @@ class HealthCheckTool(BaseTool):
                     "hybrid_search_enabled": self.config.enable_hybrid_search,
                     "rrf_fusion_enabled": self.config.enable_rrf_fusion,
                     "recency_boost_enabled": self.config.enable_recency_boost,
-                    "pending_replacement_transitions": pending_count,
+                    "pending_intent_count": pending_count,
                 }
 
                 # Add startup metrics if available
@@ -107,15 +127,17 @@ class HealthCheckTool(BaseTool):
                     }
                     health_status["startup_metrics"] = startup_metrics_ms
 
-                self.log_completion("health_check", status=health_status["status"])
+                self.log_completion(
+                    ToolName.HEALTH_CHECK, status=health_status["status"]
+                )
 
                 return health_status
 
             except Exception as e:
-                self.log_error("health_check", e)
+                self.log_error(ToolName.HEALTH_CHECK, e)
                 # Return unhealthy status with diagnostic information
                 return {
-                    "status": "unhealthy",
+                    "status": HealthStatus.UNHEALTHY,
                     "workspace_id": self.config.workspace_id,
                     "error": str(e),
                     "error_type": type(e).__name__,

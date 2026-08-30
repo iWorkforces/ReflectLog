@@ -12,6 +12,7 @@ from contextlib import AbstractContextManager, nullcontext
 import os
 from typing import TYPE_CHECKING, cast
 
+from reflectlog.core.enums import TransitionKind
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import (
     IArchiveMemoryStore,
@@ -50,17 +51,29 @@ def reconcile_pending_replacements(
     if tantivy_engine is not None:
         tantivy_engine.ensure_initialized()
 
+    precomputed = _precompute_add_vectors(pending, semantic_engine, logger)
+
     completed = 0
     inner_lock = lock if lock is not None else nullcontext()
     with write_lock, inner_lock:
         for transition in _pending_rows(store.list_pending_transitions()):
-            if apply_pending_transition(
-                transition,
-                semantic_engine=semantic_engine,
-                tantivy_engine=tantivy_engine,
-                logger=logger,
-            ):
-                completed += 1
+            try:
+                if apply_pending_transition(
+                    transition,
+                    semantic_engine=semantic_engine,
+                    tantivy_engine=tantivy_engine,
+                    logger=logger,
+                    precomputed_vectors=precomputed,
+                ):
+                    completed += 1
+            except Exception as exc:
+                logger.error(
+                    "Skipping pending replacement after recovery error",
+                    extra={
+                        "transition_id": transition.id,
+                        "error": str(exc),
+                    },
+                )
 
     if completed:
         logger.info(
@@ -76,18 +89,51 @@ def apply_pending_transition(
     semantic_engine: ISemanticSearchEngine,
     tantivy_engine: TantivyEngine | None,
     logger: IStructuredLogger,
+    precomputed_vectors: dict[str, list[float]] | None = None,
 ) -> bool:
     """Converge both indexes to the replacement recorded in ``transition``.
 
     Returns:
         True when the transition was marked complete.
     """
-    _remove_recorded_old(transition, semantic_engine, tantivy_engine)
+    if transition.kind == TransitionKind.ADD:
+        return _apply_pending_add(
+            transition,
+            semantic_engine=semantic_engine,
+            tantivy_engine=tantivy_engine,
+            logger=logger,
+            precomputed_vectors=precomputed_vectors,
+        )
+    if transition.kind == TransitionKind.DELETE:
+        return _apply_pending_delete(
+            transition,
+            semantic_engine=semantic_engine,
+            tantivy_engine=tantivy_engine,
+            logger=logger,
+        )
+
+    store = semantic_engine.memory_store
+    if _later_intent_exists(
+        store, transition, kind=TransitionKind.DELETE, content=transition.new_content
+    ):
+        _remove_recorded_old(transition, semantic_engine, tantivy_engine)
+        if tantivy_engine is not None:
+            tantivy_engine.commit()
+        semantic_engine.commit()
+        store.complete_replacement_transition(transition.id)
+        logger.info(
+            "Completed replace intent superseded by a later delete or replace",
+            extra={"transition_id": transition.id},
+        )
+        return True
+
     _ensure_replacement_present(
         transition,
         semantic_engine=semantic_engine,
         tantivy_engine=tantivy_engine,
+        vector=(precomputed_vectors or {}).get(transition.new_content),
     )
+    _remove_recorded_old(transition, semantic_engine, tantivy_engine)
 
     if tantivy_engine is not None:
         tantivy_engine.commit()
@@ -138,9 +184,13 @@ def replacement_converged(
 
     if tantivy_engine is None:
         return True
-    if not _tantivy_has(tantivy_engine, transition.workspace_id, transition.new_content):
+    if not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.new_content
+    ):
         return False
-    if not _tantivy_has(tantivy_engine, transition.workspace_id, transition.old_content):
+    if not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.old_content
+    ):
         return True
     return _old_text_live_under_new_id(transition, semantic_engine)
 
@@ -173,6 +223,174 @@ def _sqlite_id_for(
     return semantic_engine.get_id_by_content(transition.workspace_id, content)
 
 
+def _apply_pending_add(
+    transition: ReplacementTransition,
+    *,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+    logger: IStructuredLogger,
+    precomputed_vectors: dict[str, list[float]] | None = None,
+) -> bool:
+    """Ensure NEW content exists unless a later delete/replace of that text won."""
+    store = semantic_engine.memory_store
+    if _later_intent_exists(
+        store, transition, kind=TransitionKind.DELETE, content=transition.new_content
+    ):
+        store.complete_replacement_transition(transition.id)
+        logger.info(
+            "Completed add intent superseded by a later delete or replace",
+            extra={"transition_id": transition.id},
+        )
+        return True
+
+    existing_id = semantic_engine.get_id_by_content(
+        transition.workspace_id, transition.new_content
+    )
+    if existing_id is None:
+        _insert_recovered_add(
+            semantic_engine,
+            transition,
+            vector=(precomputed_vectors or {}).get(transition.new_content),
+        )
+    else:
+        _reindex_if_vector_missing(semantic_engine, existing_id, transition)
+
+    if tantivy_engine is not None and not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.new_content
+    ):
+        tantivy_engine.add(transition.workspace_id, transition.new_content)
+
+    if tantivy_engine is not None:
+        tantivy_engine.commit()
+    semantic_engine.commit()
+
+    if not _add_converged(transition, semantic_engine, tantivy_engine):
+        logger.warning(
+            "Add intent not complete; indexes have not converged",
+            extra={"transition_id": transition.id},
+        )
+        return False
+    store.complete_replacement_transition(transition.id)
+    return True
+
+
+def _apply_pending_delete(
+    transition: ReplacementTransition,
+    *,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+    logger: IStructuredLogger,
+) -> bool:
+    """Remove the recorded old id; do not wipe a later re-add of the same text."""
+    store = semantic_engine.memory_store
+    later_add = _later_intent_exists(
+        store, transition, kind=TransitionKind.ADD, content=transition.old_content
+    )
+    semantic_engine.delete(memory_id=str(transition.old_memory_id))
+    if (
+        tantivy_engine is not None
+        and not later_add
+        and not _old_text_live_under_new_id(transition, semantic_engine)
+    ):
+        _ = tantivy_engine.delete(transition.workspace_id, transition.old_content)
+
+    if tantivy_engine is not None:
+        tantivy_engine.commit()
+    semantic_engine.commit()
+
+    if not _delete_converged(
+        transition,
+        semantic_engine,
+        tantivy_engine,
+        later_add=later_add,
+    ):
+        logger.warning(
+            "Delete intent not complete; old id or Tantivy copy still present",
+            extra={"transition_id": transition.id},
+        )
+        return False
+    store.complete_replacement_transition(transition.id)
+    return True
+
+
+def _add_converged(
+    transition: ReplacementTransition,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+) -> bool:
+    """Return True when the added content is live in every required backend."""
+    new_id = semantic_engine.get_id_by_content(
+        transition.workspace_id, transition.new_content
+    )
+    if new_id is None or not _vector_present(semantic_engine, new_id):
+        return False
+    if tantivy_engine is None:
+        return True
+    return _tantivy_has(tantivy_engine, transition.workspace_id, transition.new_content)
+
+
+def _delete_converged(
+    transition: ReplacementTransition,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+    *,
+    later_add: bool,
+) -> bool:
+    """Return True when the recorded old id is gone and Tantivy agrees."""
+    if not _old_id_gone(transition, semantic_engine):
+        return False
+    if tantivy_engine is None or later_add:
+        return True
+    if _old_text_live_under_new_id(transition, semantic_engine):
+        return True
+    return not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.old_content
+    )
+
+
+def _later_intent_exists(
+    store: IArchiveMemoryStore,
+    transition: ReplacementTransition,
+    *,
+    kind: TransitionKind,
+    content: str,
+) -> bool:
+    """Return True when a later add/delete/replace intent for the text exists.
+
+    Listing failures fall through to ``has_later_intent`` rather than treating
+    the later write as absent. Pending rows are workspace-scoped.
+    """
+    pending: list[ReplacementTransition] | None = None
+    try:
+        pending = store.list_pending_transitions()
+    except Exception:
+        pending = None
+    if pending is not None:
+        for other in pending:
+            if other.workspace_id != transition.workspace_id:
+                continue
+            if other.id <= transition.id:
+                continue
+            if (
+                kind == TransitionKind.DELETE
+                and other.kind in {TransitionKind.DELETE, TransitionKind.REPLACE}
+                and other.old_content == content
+            ):
+                return True
+            if (
+                kind == TransitionKind.ADD
+                and other.kind == TransitionKind.ADD
+                and other.new_content == content
+            ):
+                return True
+    return store.has_later_intent(
+        workspace_id=transition.workspace_id,
+        kind=kind,
+        content=content,
+        after_id=transition.id,
+    )
+
+
 def _remove_recorded_old(
     transition: ReplacementTransition,
     semantic_engine: ISemanticSearchEngine,
@@ -193,19 +411,10 @@ def _recovery_store(
     logger: IStructuredLogger,
 ) -> IArchiveMemoryStore | None:
     """Return a transition store when pending rows can be listed."""
-    store = getattr(semantic_engine, "memory_store", None)
-    list_pending = getattr(store, "list_pending_transitions", None)
-    if store is None or not callable(list_pending):
-        logger.warning(
-            "Skipping replacement recovery; memory store cannot list transitions",
-            extra={"store_type": type(store).__name__},
-        )
+    store = semantic_engine.memory_store
+    if store.db_path and not os.path.exists(store.db_path):
         return None
-
-    db_path = getattr(store, "db_path", None)
-    if isinstance(db_path, str) and db_path and not os.path.exists(db_path):
-        return None
-    return cast(IArchiveMemoryStore, store)
+    return store
 
 
 def _ensure_replacement_present(
@@ -213,23 +422,22 @@ def _ensure_replacement_present(
     *,
     semantic_engine: ISemanticSearchEngine,
     tantivy_engine: TantivyEngine | None,
+    vector: list[float] | None = None,
 ) -> None:
     """Insert the replacement when SQLite/USearch or Tantivy still lacks it."""
     existing_id = semantic_engine.get_id_by_content(
         transition.workspace_id, transition.new_content
     )
     if existing_id is None:
-        semantic_engine.add(
-            workspace_id=transition.workspace_id,
-            content=transition.new_content,
-            infer=False,
-        )
+        _insert_recovered_add(semantic_engine, transition, vector=vector)
     else:
         _reindex_if_vector_missing(semantic_engine, existing_id, transition)
 
     if tantivy_engine is None:
         return
-    if not _tantivy_has(tantivy_engine, transition.workspace_id, transition.new_content):
+    if not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.new_content
+    ):
         tantivy_engine.add(transition.workspace_id, transition.new_content)
 
 
@@ -252,30 +460,101 @@ def _reindex_if_vector_missing(
 
 def _vector_present(semantic_engine: ISemanticSearchEngine, memory_id: int) -> bool:
     """Return True only when a real index contains ``memory_id``."""
-    return _index_contains(semantic_engine, memory_id) is True
+    return semantic_engine.contains_id(memory_id) is True
 
 
 def _vector_absent(semantic_engine: ISemanticSearchEngine, memory_id: int) -> bool:
     """Return True only when a real index is missing ``memory_id``."""
-    return _index_contains(semantic_engine, memory_id) is False
+    return semantic_engine.contains_id(memory_id) is False
 
 
-def _index_contains(
-    semantic_engine: ISemanticSearchEngine, memory_id: int
-) -> bool | None:
-    """Return membership, or None when the index cannot be inspected."""
-    index = getattr(semantic_engine, "index", None)
-    if index is None:
-        return None
-    try:
-        return memory_id in index
-    except TypeError:
-        return None
+def _precompute_add_vectors(
+    pending: list[ReplacementTransition],
+    semantic_engine: ISemanticSearchEngine,
+    logger: IStructuredLogger,
+) -> dict[str, list[float]]:
+    """Embed missing add/replace text outside the write lock."""
+    embedder = semantic_engine.embedder
+    needed: list[str] = []
+    seen: set[str] = set()
+    for transition in pending:
+        if transition.kind not in {TransitionKind.ADD, TransitionKind.REPLACE}:
+            continue
+        content = transition.new_content
+        if not content or content in seen:
+            continue
+        if (
+            semantic_engine.get_id_by_content(transition.workspace_id, content)
+            is not None
+        ):
+            continue
+        seen.add(content)
+        needed.append(content)
+    vectors: dict[str, list[float]] = {}
+    for content in needed:
+        try:
+            raw = embedder.embed_query(content)
+        except Exception as exc:
+            logger.warning(
+                "Pre-embed for recovery add failed; will retry under lock",
+                extra={"error": str(exc)},
+            )
+            continue
+        converted = _as_floats(raw)
+        if converted is not None:
+            vectors[content] = converted
+    return vectors
 
 
-def _pending_rows(raw: list[ReplacementTransition]) -> list[ReplacementTransition]:
+def _insert_recovered_add(
+    semantic_engine: ISemanticSearchEngine,
+    transition: ReplacementTransition,
+    *,
+    vector: list[float] | None,
+) -> None:
+    """Insert recovered content, preferring a precomputed vector."""
+    if vector is not None:
+        _ = semantic_engine.add_batch(
+            transition.workspace_id,
+            [transition.new_content],
+            infer=False,
+            vectors=[vector],
+        )
+        return
+    semantic_engine.add(
+        workspace_id=transition.workspace_id,
+        content=transition.new_content,
+        infer=False,
+    )
+
+
+def _pending_rows(raw: object) -> list[ReplacementTransition]:
     """Accept only real transition rows from list_pending_transitions()."""
-    return raw
+    rows: list[ReplacementTransition] = []
+    for item in _as_objects(raw):
+        if isinstance(item, ReplacementTransition):
+            rows.append(item)
+    return rows
+
+
+def _as_objects(raw: object) -> list[object]:
+    """Treat a dynamic list result as ``list[object]``."""
+    if not isinstance(raw, list):
+        return []
+    return cast(list[object], raw)
+
+
+def _as_floats(raw: object) -> list[float] | None:
+    """Return a float list when ``raw`` is a non-empty sequence of numbers."""
+    items = _as_objects(raw)
+    if not items:
+        return None
+    values: list[float] = []
+    for item in items:
+        if not isinstance(item, (int, float)):
+            return None
+        values.append(float(item))
+    return values
 
 
 def _tantivy_has(engine: TantivyEngine, workspace_id: str, content: str) -> bool:

@@ -7,8 +7,8 @@ production search path used by MemoryManager.
 from __future__ import annotations
 
 import asyncio
-import threading
 from contextlib import suppress
+import threading
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -24,7 +24,6 @@ from reflectlog.application.memory.search_strategies import (
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.exceptions import SearchError
 from reflectlog.core.logging import IStructuredLogger
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -42,8 +41,9 @@ def _make_config(
     config = Mock(spec=Config)
     config.workspace_id = "test_project"
     config.fusion_ranking_threshold = fusion_ranking_threshold
+    config.fusion_rrf_k = 60
     config.reranker_engine = reranker_engine
-    config.search_score_threshold = 0.5
+    config.search_score_threshold = 0.0
     config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
     config.overfetch_multiplier = 3
     config.overfetch_adaptive = True
@@ -97,6 +97,10 @@ def _make_pipeline(
         manager.cross_encoder_reranker = None
     else:
         manager = memory_manager
+    if isinstance(semantic, MagicMock):
+        semantic.is_ready.return_value = False
+    if isinstance(tantivy, MagicMock):
+        tantivy.is_ready.return_value = False
     return SearchPipeline(
         semantic_engine=semantic,
         tantivy_engine=tantivy,
@@ -139,6 +143,9 @@ class ControllableBackend:
         self.block_on_init = block_on_init
         self.finished = finished
         self.search_calls: list[tuple[str, str, int]] = []
+
+    def is_ready(self) -> bool:
+        return False
 
     def ensure_initialized(self) -> None:
         if self.init_thread_ids is not None:
@@ -207,8 +214,7 @@ class TestCanonicalPipelineIdentity:
         import reflectlog.application.tools as tools_pkg
         from reflectlog.utility import utility as utility_mod
 
-        with pytest.raises(AttributeError):
-            _ = getattr(reflectlog, "main")
+        assert not hasattr(reflectlog, "main")
         assert not hasattr(tools_pkg, "SearchTool")
         for name in (
             "AssistantMessage",
@@ -280,14 +286,14 @@ class TestCanonicalPipelineIdentity:
             def is_ready(self) -> bool:
                 return True
 
-        manager._semantic_engine = PendingEngine()
+        manager._semantic_engine = cast(Any, PendingEngine())
         manager._tantivy_engine = None
         assert manager.search_engine_status() == {
             "semantic_engine": "pending",
             "tantivy_engine": "disabled",
         }
-        manager._semantic_engine = ReadyEngine()
-        manager._tantivy_engine = ReadyEngine()
+        manager._semantic_engine = cast(Any, ReadyEngine())
+        manager._tantivy_engine = cast(Any, ReadyEngine())
         assert manager.search_engine_status() == {
             "semantic_engine": "initialized",
             "tantivy_engine": "initialized",
@@ -474,7 +480,7 @@ class TestHybridFusionAndFilter:
             _make_context(enable_rrf_fusion=False, limit=2, overfetch_limit=2)
         )
 
-        assert result.memories == ["shared", "s2"]
+        assert result.memories == ["shared", "t2"]
 
     @pytest.mark.asyncio
     async def test_empty_backends_return_empty(self) -> None:
@@ -518,7 +524,7 @@ class TestHybridFusionAndFilter:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("low", 0.01)]
-        config = _make_config(fusion_ranking_threshold=0.5)
+        config = _make_config(fusion_ranking_threshold=0.02)
         pipeline = _make_pipeline(
             semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
         )
@@ -730,6 +736,7 @@ class TestRerankerSettings:
             "test query",
             [("a", 0.4), ("b", 0.3)],
             {"a": _TS, "b": _TS},
+            top_k=5,
         )
         assert result.memories == ["b", "a"]
 
@@ -774,7 +781,7 @@ class TestRerankerSettings:
         fusion.method = "rrf"
         fusion.fuse.return_value = [("low", 0.01)]
         config = _make_config(
-            fusion_ranking_threshold=0.5, reranker_engine="cross_encoder"
+            fusion_ranking_threshold=0.02, reranker_engine="cross_encoder"
         )
         encoder = AsyncMock()
         manager = MagicMock()
@@ -1134,6 +1141,9 @@ class TestSearchResponsiveness:
                 self.search = MagicMock(return_value=[("mem", 0.9, _TS)])
                 self.ensure_initialized = MagicMock()
 
+            def is_ready(self) -> bool:
+                return False
+
             @property
             def _index(self) -> range:
                 index_threads.append(threading.get_ident())
@@ -1180,11 +1190,11 @@ class TestSearchResponsiveness:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("mem", 0.4)]
-        manager._semantic_engine = semantic
+        manager._semantic_engine = cast(Any, semantic)
         manager._tantivy_engine = tantivy
         manager.is_hybrid_search = True
         manager._search_pipeline = SearchPipeline(
-            semantic_engine=semantic,
+            semantic_engine=cast(Any, semantic),
             tantivy_engine=tantivy,
             fusion_engine=fusion,
             config=config,

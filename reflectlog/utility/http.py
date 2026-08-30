@@ -147,6 +147,7 @@ class HttpClientFactory:
                 limits=cls.get_httpx_limits(),
                 timeout=cls.get_httpx_timeout(),
                 http2=True,
+                follow_redirects=False,
             )
 
             return cls._httpx_client
@@ -196,6 +197,7 @@ class HttpClientFactory:
                 limits=cls.get_httpx_limits(),
                 timeout=cls.get_httpx_timeout(),
                 http2=True,
+                follow_redirects=False,
             )
 
             return cls._async_httpx_client

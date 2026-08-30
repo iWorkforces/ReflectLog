@@ -4,9 +4,9 @@ from typing import Annotated, override
 
 from pydantic import Field
 
+from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import SearchError
 
-from ..utils.validation import truncate_memory
 from .base import BaseTool
 
 
@@ -16,7 +16,7 @@ class SearchTool(BaseTool):
     @override
     def get_name(self) -> str:
         """Get the tool name."""
-        return "search"
+        return ToolName.SEARCH
 
     @override
     def get_instruction_snippet(self) -> str:
@@ -36,6 +36,7 @@ class SearchTool(BaseTool):
                 str,
                 Field(
                     min_length=1,
+                    max_length=1000,
                     description="Search query for semantic matching",
                 ),
             ],
@@ -78,13 +79,13 @@ class SearchTool(BaseTool):
                 []  # No semantically similar content
             """
             try:
-                self.log_invocation("search", query=query[:100])
+                self.log_invocation(ToolName.SEARCH, query_length=len(query))
 
                 start_time = self._log_operation_header("search", "SEARCH OPERATION")
                 if self.config.log_search_results_verbose:
                     self.logger.info(
-                        f'   Query: "{query[:100]}"',
-                        extra={"tool": "search", "query": query[:100]},
+                        f"   Query length: {len(query)}",
+                        extra={"tool": "search", "query_length": len(query)},
                     )
 
                 # Perform async hybrid search directly (search is now async)
@@ -102,21 +103,13 @@ class SearchTool(BaseTool):
                                 "result_count": len(similar_memories),
                             },
                         )
-                        preview_limit = min(
-                            len(similar_memories),
-                            self.config.log_search_result_limit,
+                        self.logger.info(
+                            f"   Returning {len(similar_memories)} result(s)",
+                            extra={
+                                "tool": "search",
+                                "result_count": len(similar_memories),
+                            },
                         )
-                        for idx, memory in enumerate(
-                            similar_memories[:preview_limit], 1
-                        ):
-                            preview = truncate_memory(memory, max_length=70)
-                            self.logger.info(
-                                f"   [{idx}] {preview}",
-                                extra={
-                                    "tool": "search",
-                                    "result_index": idx,
-                                },
-                            )
                     else:
                         self.logger.info(
                             "FINAL RESULTS: No matching memories found",
@@ -127,7 +120,7 @@ class SearchTool(BaseTool):
 
                 self.log_completion(
                     "search",
-                    query=query[:100],
+                    query_length=len(query),
                     result_count=len(similar_memories),
                 )
 
@@ -139,7 +132,7 @@ class SearchTool(BaseTool):
                     e,
                     error_cls=SearchError,
                     message="Failed to search memory store",
-                    query=query[:100],
+                    query_length=len(query),
                 )
 
         return search

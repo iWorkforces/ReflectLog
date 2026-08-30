@@ -7,24 +7,41 @@ and the SQLite row ID is used as the USearch key.
 Uses SQLite with WAL mode for improved concurrent write performance via MVCC.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import os
 import sqlite3
 import threading
-from typing import Any, final
+from typing import Any, TypeGuard, final
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
+from reflectlog.core.enums import TransitionKind, TransitionStatus
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import (
     ReplacementTransition,
     ReplacementTransitionRequest,
-    ReplacementTransitionStatus,
 )
 
-TRANSITION_PENDING: ReplacementTransitionStatus = "pending"
-TRANSITION_COMPLETED: ReplacementTransitionStatus = "completed"
+TRANSITION_PENDING = TransitionStatus.PENDING
+TRANSITION_COMPLETED = TransitionStatus.COMPLETED
+_KIND_COALESCE = f"COALESCE(kind, '{TransitionKind.REPLACE}')"
+
+
+def _is_object_sequence(row: object) -> TypeGuard[Sequence[object]]:
+    """Return True when ``row`` can be copied as ``Sequence[object]``."""
+    return isinstance(row, Sequence) and not isinstance(row, (str, bytes))
+
+
+def _transition_row_cells(row: object) -> list[object]:
+    """Copy a SQLite row into a list so index access is well-typed."""
+    if not _is_object_sequence(row):
+        raise StorageError("Replacement transition row is not a sequence")
+    cells = [row[index] for index in range(len(row))]
+    if len(cells) < 9:
+        raise StorageError("Replacement transition row is incomplete")
+    return cells
 
 
 @dataclass(frozen=True)
@@ -225,19 +242,46 @@ class MemoryStore(BaseModel):
                 confidence REAL NOT NULL,
                 status TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                kind TEXT NOT NULL DEFAULT 'replace'
             )
         """
         )
+        self._ensure_transition_kind_column(cursor)
         self._dedupe_transition_old_ids(cursor)
         _ = cursor.execute("DROP INDEX IF EXISTS idx_transition_identity")
+        _ = cursor.execute("DROP INDEX IF EXISTS idx_transition_old_memory")
         _ = cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_old_memory "
-            "ON replacement_transitions(workspace_id, old_memory_id)"
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_old_replace "
+            "ON replacement_transitions(workspace_id, old_memory_id) "
+            "WHERE kind = 'replace'"
+        )
+        _ = cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_old_delete "
+            "ON replacement_transitions(workspace_id, old_memory_id) "
+            "WHERE kind = 'delete'"
+        )
+        _ = cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_add "
+            "ON replacement_transitions(workspace_id, new_content) "
+            "WHERE kind = 'add' AND status = 'pending'"
         )
         _ = cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_transition_pending "
             "ON replacement_transitions(status)"
+        )
+
+    def _ensure_transition_kind_column(self, cursor: sqlite3.Cursor) -> None:
+        """Add kind to databases created before add/delete intents existed."""
+        columns = {
+            str(row[1])
+            for row in cursor.execute("PRAGMA table_info(replacement_transitions)")
+        }
+        if "kind" in columns:
+            return
+        _ = cursor.execute(
+            "ALTER TABLE replacement_transitions "
+            "ADD COLUMN kind TEXT NOT NULL DEFAULT 'replace'"
         )
 
     def _dedupe_archive_pairs(self, cursor: sqlite3.Cursor) -> None:
@@ -253,13 +297,19 @@ class MemoryStore(BaseModel):
         )
 
     def _dedupe_transition_old_ids(self, cursor: sqlite3.Cursor) -> None:
-        """Keep one transition per old memory before exclusive uniquing."""
+        """Keep one delete/replace row per old id. Never group add intents.
+
+        Adds all use ``old_memory_id=0``. Deduping them by that key would drop
+        every later pending add on the next process start.
+        """
         _ = cursor.execute(
             """
             DELETE FROM replacement_transitions
-            WHERE id NOT IN (
+            WHERE kind IN ('delete', 'replace')
+              AND id NOT IN (
                 SELECT MIN(id) FROM replacement_transitions
-                GROUP BY workspace_id, old_memory_id
+                WHERE kind IN ('delete', 'replace')
+                GROUP BY workspace_id, old_memory_id, kind
             )
             """
         )
@@ -365,7 +415,10 @@ class MemoryStore(BaseModel):
                             if self.logger:
                                 self.logger.debug(
                                     "Duplicate memory skipped during batch insert",
-                                    extra={"workspace_id": workspace_id, "error": str(e)},
+                                    extra={
+                                        "workspace_id": workspace_id,
+                                        "error": str(e),
+                                    },
                                 )
                             continue
                         raise
@@ -489,11 +542,36 @@ class MemoryStore(BaseModel):
             finally:
                 cursor.close()
 
-    def get_all(self, workspace_id: str) -> list[str]:
-        """Get all memories for a workspace.
+    def count(self, workspace_id: str) -> int:
+        """Return how many memories exist for a workspace."""
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute(
+                    "SELECT COUNT(*) FROM memories WHERE workspace_id = ?",
+                    (workspace_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return 0
+                return int(row[0])
+            except sqlite3.Error as e:
+                raise StorageError(f"Failed to count memories: {e}") from e
+            finally:
+                cursor.close()
+
+    def get_all(
+        self,
+        workspace_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[str]:
+        """Get memories for a workspace, optionally paged in SQL.
 
         Args:
             workspace_id: Workspace identifier.
+            limit: Maximum rows to return. ``None`` returns the rest after offset.
+            offset: Rows to skip.
 
         Returns:
             List of memory strings.
@@ -501,13 +579,22 @@ class MemoryStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
+        start = max(0, offset)
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                _ = cursor.execute(
-                    "SELECT content FROM memories WHERE workspace_id = ? ORDER BY id",
-                    (workspace_id,),
-                )
+                if limit is None:
+                    _ = cursor.execute(
+                        "SELECT content FROM memories WHERE workspace_id = ? "
+                        "ORDER BY id LIMIT -1 OFFSET ?",
+                        (workspace_id, start),
+                    )
+                else:
+                    _ = cursor.execute(
+                        "SELECT content FROM memories WHERE workspace_id = ? "
+                        "ORDER BY id LIMIT ? OFFSET ?",
+                        (workspace_id, max(0, limit), start),
+                    )
                 rows = cursor.fetchall()
 
                 return [row[0] for row in rows]
@@ -645,6 +732,32 @@ class MemoryStore(BaseModel):
                         "Failed to check memory existence",
                         extra={"workspace_id": workspace_id, "error": str(e)},
                     )
+                raise StorageError(f"Failed to check memory existence: {e}") from e
+            finally:
+                cursor.close()
+
+    def exists_many(self, workspace_id: str, contents: list[str]) -> set[str]:
+        """Return the subset of contents that already exist in this workspace."""
+        unique = list(dict.fromkeys(contents))
+        if not unique:
+            return set()
+        found: set[str] = set()
+        chunk_size = 400
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                for start in range(0, len(unique), chunk_size):
+                    chunk = unique[start : start + chunk_size]
+                    placeholders = ",".join("?" for _ in chunk)
+                    _ = cursor.execute(
+                        "SELECT content FROM memories "
+                        f"WHERE workspace_id = ? AND content IN ({placeholders})",
+                        (workspace_id, *chunk),
+                    )
+                    for row in cursor.fetchall():
+                        found.add(str(row[0]))
+                return found
+            except sqlite3.Error as e:
                 raise StorageError(f"Failed to check memory existence: {e}") from e
             finally:
                 cursor.close()
@@ -876,6 +989,7 @@ class MemoryStore(BaseModel):
             archive_id=archive_id,
             reason=request.reason,
             confidence=request.confidence,
+            kind=TransitionKind.REPLACE,
         )
 
     def list_pending_transitions(self) -> list[ReplacementTransition]:
@@ -888,9 +1002,10 @@ class MemoryStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 _ = cursor.execute(
-                    """
+                    f"""
                     SELECT id, workspace_id, old_memory_id, old_content,
-                           new_content, archive_id, reason, confidence, status
+                           new_content, archive_id, reason, confidence, status,
+                           {_KIND_COALESCE}
                     FROM replacement_transitions
                     WHERE status = ?
                     ORDER BY id
@@ -932,6 +1047,118 @@ class MemoryStore(BaseModel):
                 raise StorageError(
                     f"Failed to look up replacement transition: {e}"
                 ) from e
+            finally:
+                cursor.close()
+
+    def begin_add_intents(
+        self, workspace_id: str, contents: list[str]
+    ) -> list[ReplacementTransition]:
+        """Record pending add intents for ordinary persist."""
+        unique = list(dict.fromkeys(contents))
+        if not unique:
+            return []
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute("BEGIN")
+                recorded = [
+                    self._insert_add_intent_row(cursor, workspace_id, content)
+                    for content in unique
+                ]
+                self.connection.commit()
+                return recorded
+            except (sqlite3.Error, StorageError) as e:
+                self.connection.rollback()
+                raise StorageError(f"Failed to record add intents: {e}") from e
+            finally:
+                cursor.close()
+
+    def begin_delete_intents(
+        self, workspace_id: str, items: list[tuple[int, str]]
+    ) -> list[ReplacementTransition]:
+        """Record pending delete intents keyed by old memory id."""
+        if not items:
+            return []
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute("BEGIN")
+                recorded = [
+                    self._insert_transition_row(
+                        cursor,
+                        workspace_id=workspace_id,
+                        old_memory_id=memory_id,
+                        old_content=content,
+                        new_content="",
+                        archive_id=0,
+                        reason="delete",
+                        confidence=1.0,
+                        kind=TransitionKind.DELETE,
+                    )
+                    for memory_id, content in items
+                ]
+                self.connection.commit()
+                return recorded
+            except (sqlite3.Error, StorageError) as e:
+                self.connection.rollback()
+                raise StorageError(f"Failed to record delete intents: {e}") from e
+            finally:
+                cursor.close()
+
+    def has_later_intent(
+        self,
+        *,
+        workspace_id: str,
+        kind: TransitionKind,
+        content: str,
+        after_id: int,
+    ) -> bool:
+        """Return True when a later add/delete/replace row exists for the text.
+
+        ``TransitionKind.DELETE`` also matches a later replace of the same old
+        text so a stale add cannot resurrect content that was replaced.
+        """
+        if kind == TransitionKind.ADD:
+            query = (
+                "SELECT 1 FROM replacement_transitions "
+                "WHERE workspace_id = ? AND kind = ? "
+                "AND new_content = ? AND id > ? LIMIT 1"
+            )
+            params: tuple[object, ...] = (
+                workspace_id,
+                TransitionKind.ADD,
+                content,
+                after_id,
+            )
+        elif kind == TransitionKind.DELETE:
+            query = (
+                "SELECT 1 FROM replacement_transitions "
+                "WHERE workspace_id = ? AND kind IN (?, ?) "
+                "AND old_content = ? AND id > ? LIMIT 1"
+            )
+            params = (
+                workspace_id,
+                TransitionKind.DELETE,
+                TransitionKind.REPLACE,
+                content,
+                after_id,
+            )
+        elif kind == TransitionKind.REPLACE:
+            query = (
+                "SELECT 1 FROM replacement_transitions "
+                "WHERE workspace_id = ? AND kind = ? "
+                "AND old_content = ? AND id > ? LIMIT 1"
+            )
+            params = (workspace_id, TransitionKind.REPLACE, content, after_id)
+        else:
+            raise StorageError(f"Unknown intent kind: {kind}")
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute(query, params)
+                return cursor.fetchone() is not None
+            except sqlite3.Error as e:
+                raise StorageError(f"Failed to look up later intent: {e}") from e
             finally:
                 cursor.close()
 
@@ -1043,6 +1270,52 @@ class MemoryStore(BaseModel):
         row = cursor.fetchone()
         return str(row[0]) if row is not None else None
 
+    def _insert_add_intent_row(
+        self,
+        cursor: sqlite3.Cursor,
+        workspace_id: str,
+        content: str,
+    ) -> ReplacementTransition:
+        """Insert an add intent, allocating a new id after a later delete."""
+        existing = self._existing_intent(
+            cursor,
+            workspace_id=workspace_id,
+            kind=TransitionKind.ADD,
+            old_memory_id=0,
+            new_content=content,
+        )
+        if existing is not None and self.has_later_intent(
+            workspace_id=workspace_id,
+            kind=TransitionKind.DELETE,
+            content=content,
+            after_id=existing.id,
+        ):
+            self._mark_transition_complete(cursor, existing.id)
+        return self._insert_transition_row(
+            cursor,
+            workspace_id=workspace_id,
+            old_memory_id=0,
+            old_content="",
+            new_content=content,
+            archive_id=0,
+            reason="add",
+            confidence=1.0,
+            kind=TransitionKind.ADD,
+        )
+
+    def _mark_transition_complete(
+        self, cursor: sqlite3.Cursor, transition_id: int
+    ) -> None:
+        """Mark one transition completed on the caller's cursor."""
+        _ = cursor.execute(
+            """
+            UPDATE replacement_transitions
+            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = ?
+            """,
+            (TRANSITION_COMPLETED, transition_id, TRANSITION_PENDING),
+        )
+
     def _insert_transition_row(
         self,
         cursor: sqlite3.Cursor,
@@ -1053,14 +1326,19 @@ class MemoryStore(BaseModel):
         archive_id: int,
         reason: str,
         confidence: float,
+        kind: TransitionKind = TransitionKind.REPLACE,
     ) -> ReplacementTransition:
         """Insert a pending transition or return the exclusive existing row."""
-        existing = self._existing_transition(cursor, workspace_id, old_memory_id)
+        existing = self._existing_intent(
+            cursor,
+            workspace_id=workspace_id,
+            kind=kind,
+            old_memory_id=old_memory_id,
+            new_content=new_content,
+        )
         if existing is not None:
-            if existing.new_content != new_content:
-                raise StorageError(
-                    "Old memory already has a replacement transition"
-                )
+            if kind == TransitionKind.REPLACE and existing.new_content != new_content:
+                raise StorageError("Old memory already has a replacement transition")
             return existing
 
         try:
@@ -1068,8 +1346,8 @@ class MemoryStore(BaseModel):
                 """
                 INSERT INTO replacement_transitions
                     (workspace_id, old_memory_id, old_content, new_content,
-                     archive_id, reason, confidence, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     archive_id, reason, confidence, status, kind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workspace_id,
@@ -1080,11 +1358,18 @@ class MemoryStore(BaseModel):
                     reason,
                     confidence,
                     TRANSITION_PENDING,
+                    kind,
                 ),
             )
         except sqlite3.IntegrityError:
-            existing = self._existing_transition(cursor, workspace_id, old_memory_id)
-            if existing is not None and existing.new_content == new_content:
+            existing = self._existing_intent(
+                cursor,
+                workspace_id=workspace_id,
+                kind=kind,
+                old_memory_id=old_memory_id,
+                new_content=new_content,
+            )
+            if existing is not None:
                 return existing
             raise StorageError(
                 "Old memory already has a replacement transition"
@@ -1103,6 +1388,7 @@ class MemoryStore(BaseModel):
             reason=reason,
             confidence=confidence,
             status=TRANSITION_PENDING,
+            kind=kind,
         )
 
     def _existing_transition(
@@ -1111,37 +1397,77 @@ class MemoryStore(BaseModel):
         workspace_id: str,
         old_memory_id: int,
     ) -> ReplacementTransition | None:
-        """Return the exclusive transition for an old memory, if present."""
-        _ = cursor.execute(
-            """
-            SELECT id, workspace_id, old_memory_id, old_content, new_content,
-                   archive_id, reason, confidence, status
-            FROM replacement_transitions
-            WHERE workspace_id = ? AND old_memory_id = ?
-            """,
-            (workspace_id, old_memory_id),
+        """Return the exclusive replace/delete transition for an old memory."""
+        return self._existing_intent(
+            cursor,
+            workspace_id=workspace_id,
+            kind=TransitionKind.REPLACE,
+            old_memory_id=old_memory_id,
+            new_content="",
         )
+
+    def _existing_intent(
+        self,
+        cursor: sqlite3.Cursor,
+        *,
+        workspace_id: str,
+        kind: TransitionKind,
+        old_memory_id: int,
+        new_content: str,
+    ) -> ReplacementTransition | None:
+        """Return a matching pending or exclusive intent, if present."""
+        if kind == TransitionKind.ADD:
+            _ = cursor.execute(
+                f"""
+                SELECT id, workspace_id, old_memory_id, old_content, new_content,
+                       archive_id, reason, confidence, status,
+                       {_KIND_COALESCE}
+                FROM replacement_transitions
+                WHERE workspace_id = ? AND kind = ? AND new_content = ?
+                  AND status = ?
+                """,
+                (
+                    workspace_id,
+                    TransitionKind.ADD,
+                    new_content,
+                    TRANSITION_PENDING,
+                ),
+            )
+        else:
+            _ = cursor.execute(
+                f"""
+                SELECT id, workspace_id, old_memory_id, old_content, new_content,
+                       archive_id, reason, confidence, status,
+                       {_KIND_COALESCE}
+                FROM replacement_transitions
+                WHERE workspace_id = ? AND old_memory_id = ? AND kind = ?
+                """,
+                (workspace_id, old_memory_id, kind),
+            )
         row = cursor.fetchone()
         return self._row_to_transition(row) if row is not None else None
 
-    def _row_to_transition(self, row: tuple[object, ...]) -> ReplacementTransition:
+    def _row_to_transition(self, row: object) -> ReplacementTransition:
         """Map a replacement_transitions SELECT row to a dataclass."""
-        status_value = str(row[8])
-        transition_status: ReplacementTransitionStatus = (
-            TRANSITION_COMPLETED
-            if status_value == TRANSITION_COMPLETED
-            else TRANSITION_PENDING
-        )
+        cells: list[object] = _transition_row_cells(row)
+        status_value = str(cells[8])
+        kind_value = str(cells[9]) if len(cells) > 9 else TransitionKind.REPLACE
+        try:
+            transition_status = TransitionStatus.from_stored(status_value)
+            kind = TransitionKind.from_stored(kind_value)
+        except ValueError as e:
+            raise StorageError(f"Invalid replacement transition row: {e}") from e
         return ReplacementTransition(
-            id=int(str(row[0])),
-            workspace_id=str(row[1]),
-            old_memory_id=int(str(row[2])),
-            old_content=str(row[3]),
-            new_content=str(row[4]),
-            archive_id=int(str(row[5])),
-            reason=str(row[6]),
-            confidence=float(str(row[7])),
+            id=int(str(cells[0])),
+            workspace_id=str(cells[1]),
+            old_memory_id=int(str(cells[2])),
+            old_content=str(cells[3]),
+            new_content=str(cells[4]),
+            archive_id=int(str(cells[5])),
+            reason=str(cells[6]),
+            confidence=float(str(cells[7])),
             status=transition_status,
+            kind=kind,
         )
 
     def get_archived(

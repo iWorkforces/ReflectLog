@@ -9,21 +9,24 @@ Uncovered lines targeted:
 
 from dataclasses import replace
 import logging
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.application.utils.security import SecretString
+from reflectlog.core.enums import LlmProvider, RerankerEngine
 from reflectlog.core.exceptions import (
     InconsistentStateError,
     SearchError,
     StorageError,
 )
-from reflectlog.application.memory.manager import MemoryManager
-from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.types import ISemanticSearchEngine
 from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
-from reflectlog.application.utils.security import SecretString
-
+from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -42,8 +45,8 @@ def mock_config() -> Config:
         search_score_threshold=0.8,
         fusion_ranking_threshold=0.5,
         enable_smart_replace=False,
-        llm_provider="openai",
-        reranker_engine="none",
+        llm_provider=LlmProvider.OPENAI,
+        reranker_engine=RerankerEngine.NONE,
         rerank_max_concurrency=5,
         embedding_cache_enabled=False,
         eager_initialization=False,
@@ -80,9 +83,12 @@ def mock_logger() -> LogCapture:
 
 
 def _return_inserted_memories(
-    workspace_id: str, contents: list[str] | None = None, infer: bool = False
+    workspace_id: str,
+    contents: list[str] | None = None,
+    infer: bool = False,
+    vectors: list[list[float]] | None = None,
 ) -> list[str]:
-    _ = workspace_id, infer
+    _ = workspace_id, infer, vectors
     return contents or []
 
 
@@ -98,9 +104,26 @@ def _make_manager(
         mock_usearch = MagicMock()
         mock_usearch.add_batch.side_effect = _return_inserted_memories
         mock_usearch.get_id_by_content.return_value = None
+        mock_usearch.contains_id.return_value = False
+        mock_usearch.count.return_value = 0
+        mock_usearch.is_ready.return_value = False
+        mock_usearch.embedder.embed_documents.side_effect = (
+            lambda texts: [[0.1] * 4 for _ in texts]
+        )
+        mock_usearch.memory_store.begin_add_intents.return_value = []
+        mock_usearch.memory_store.begin_delete_intents.return_value = []
+        mock_usearch.memory_store.list_pending_transitions.return_value = []
+        mock_usearch.memory_store.has_later_intent.return_value = False
+        mock_usearch.memory_store.get.return_value = None
         usearch_cls.return_value = mock_usearch
 
         mock_tantivy = MagicMock()
+        mock_tantivy.is_ready.return_value = False
+        mock_tantivy.delete.return_value = True
+        mock_tantivy.find_by_exact_match.return_value = []
+        mock_tantivy.delete_batch.side_effect = (
+            lambda _workspace, contents, verify_exists=True: len(contents)
+        )
         tantivy_cls.return_value = mock_tantivy
 
         manager = MemoryManager(config, logger.structured)
@@ -188,7 +211,7 @@ class TestEagerInitialization:
         """All components set to lazy should log skip message (line 390)."""
         mock_config = replace(mock_config, eager_initialization=True, eager_initialize_search_engines=False, eager_initialize_reranker=False, eager_initialize_smart_replacer=False)
 
-        manager, _, _ = _make_manager(mock_config, mock_logger)
+        _manager, _, _ = _make_manager(mock_config, mock_logger)
         # Verify skip message was logged
         skip_logged = any(
             "skipped" in message.lower()
@@ -348,72 +371,65 @@ class TestSmartReplacerProperty:
 
 
 # ---------------------------------------------------------------------------
-# Tests: _add_memory  (lines 527-560)
+# Tests: add_memories  (dedup, hybrid write, errors)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestAddMemory:
-    """Tests for _add_memory method."""
+    """Tests for the public add_memories path."""
 
     def test_add_memory_duplicate_skipped(self, mock_config: Config, mock_logger: LogCapture):
-        """Duplicate memory returns False (lines 527-535)."""
-        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        """Existing exact match is not stored again."""
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 11
 
-        result = manager._add_memory("hello world")
-        assert result is False
-        mock_usearch.add.assert_not_called()
+        result = manager.add_memories(["hello world"])
+        assert result == 0
+        mock_usearch.add_batch.assert_not_called()
 
     def test_add_memory_success(self, mock_config: Config, mock_logger: LogCapture):
-        """Successful add returns True (lines 537-557)."""
+        """Successful add stores on both engines."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        mock_tantivy.search.return_value = []  # No duplicate
 
-        result = manager._add_memory("new memory")
-        assert result is True
-        mock_usearch.add.assert_called_once_with(
+        result = manager.add_memories(["new memory"])
+        assert result == 1
+        mock_usearch.add_batch.assert_called_once_with(
             workspace_id="test_project",
-            content="new memory",
+            contents=["new memory"],
             infer=False,
+            vectors=[[0.1, 0.1, 0.1, 0.1]],
         )
-        mock_tantivy.add.assert_called_once_with("test_project", "new memory")
+        mock_tantivy.add_batch.assert_called_once_with("test_project", ["new memory"])
 
     def test_add_memory_without_tantivy(self, mock_config: Config, mock_logger: LogCapture):
         """Add memory without Tantivy engine (semantic only)."""
         mock_config = replace(mock_config, enable_hybrid_search=False)
-        with (
-            patch(f"{MODULE}.USearchEngine") as usearch_cls,
-            patch(f"{MODULE}.LangchainQwenEmbeddings"),
-            patch(f"{MODULE}.TantivyEngine"),
-        ):
-            mock_usearch = MagicMock()
-            usearch_cls.return_value = mock_usearch
-            # No duplicate via database lookup
-            mock_usearch.get_id_by_content.return_value = None
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
 
-            manager = MemoryManager(mock_config, mock_logger.structured)
-            result = manager._add_memory("solo memory")
-            assert result is True
-            mock_usearch.add.assert_called_once()
+        result = manager.add_memories(["solo memory"])
+        assert result == 1
+        mock_usearch.add_batch.assert_called_once()
+        mock_tantivy.add_batch.assert_not_called()
 
     def test_add_memory_storage_error(self, mock_config: Config, mock_logger: LogCapture):
-        """Storage exception wraps in StorageError (lines 559-560)."""
-        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        mock_tantivy.search.return_value = []
-        mock_usearch.add.side_effect = RuntimeError("disk full")
+        """Batch insert failures surface as StorageError."""
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.add_batch.side_effect = StorageError("disk full")
 
-        with pytest.raises(StorageError, match="Failed to add memory"):
-            manager._add_memory("error content")
+        with pytest.raises(StorageError, match="disk full"):
+            manager.add_memories(["error content"])
 
     def test_add_memory_dedup_disabled(self, mock_config: Config, mock_logger: LogCapture):
         """When deduplicate_memories=False, skip duplicate check."""
         mock_config = replace(mock_config, deduplicate_memories=False)
-        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
-        result = manager._add_memory("any memory")
-        assert result is True
-        # Should not call search for dedup
-        mock_tantivy.search.assert_not_called()
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.get_id_by_content.return_value = 11
+
+        result = manager.add_memories(["any memory"])
+        assert result == 1
+        mock_usearch.get_id_by_content.assert_not_called()
+        mock_usearch.add_batch.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +443,7 @@ class TestAddMemoriesBatchLogging:
 
     def test_add_memories_in_batch_duplicate(self, mock_config: Config, mock_logger: LogCapture):
         """Duplicate within batch should be skipped (lines 593-602)."""
-        manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
+        manager, _mock_usearch, _ = _make_manager(mock_config, mock_logger)
         result = manager.add_memories(["mem1", "mem1", "mem2"])
         # "mem1" repeated: first stored, second skipped
         assert result == 2  # mem1 + mem2
@@ -443,8 +459,9 @@ class TestAddMemoriesBatchLogging:
         result = manager.add_memories(["mem1", "mem2"])
         assert result == 1
         # Verify warning logged for skipped memory
-        warning_logged = "Skipped during batch insert" in mock_logger.messages(
-            logging.WARNING
+        warning_logged = any(
+            "Skipped during batch insert" in message
+            for message in mock_logger.messages(logging.WARNING)
         )
         assert warning_logged
 
@@ -535,6 +552,46 @@ class TestDeleteOperations:
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         manager.delete_by_id("42")
         mock_usearch.delete.assert_called_once_with(memory_id="42")
+
+    def test_delete_by_id_tombs_tantivy_when_content_known(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        class _Store:
+            def get(self, memory_id: int) -> object:
+                return type("Rec", (), {"content": "known"})()
+
+            def begin_delete_intents(
+                self, workspace_id: str, items: list[tuple[int, str]]
+            ) -> list[object]:
+                return []
+
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.memory_store = _Store()
+        manager.delete_by_id("42")
+        mock_usearch.delete.assert_called_once_with(memory_id="42")
+        mock_usearch.commit.assert_called()
+        mock_tantivy.delete.assert_called_once_with(
+            "test_project", "known", verify_exists=True
+        )
+        mock_tantivy.commit.assert_called()
+
+    def test_delete_by_id_tantivy_false_is_inconsistent(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        class _Store:
+            def get(self, memory_id: int) -> object:
+                return type("Rec", (), {"content": "known"})()
+
+            def begin_delete_intents(
+                self, workspace_id: str, items: list[tuple[int, str]]
+            ) -> list[object]:
+                return []
+
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.memory_store = _Store()
+        mock_tantivy.delete.return_value = False
+        with pytest.raises(InconsistentStateError, match="Tantivy"):
+            manager.delete_by_id("42")
 
     def test_delete_by_id_exception_raises_storage_error(
         self, mock_config: Config, mock_logger: LogCapture
@@ -636,7 +693,9 @@ class TestDeleteOperations:
         assert deleted == ["keep", "also"]
         assert mock_usearch.delete.call_count == 2
         mock_usearch.commit.assert_called_once()
-        assert mock_tantivy.delete.call_count == 2
+        mock_tantivy.delete_batch.assert_called_once_with(
+            "test_project", ["keep", "also"], verify_exists=True
+        )
 
     def test_delete_memories_tantivy_failure_inconsistent_state(
         self, mock_config: Config, mock_logger: LogCapture
@@ -644,7 +703,7 @@ class TestDeleteOperations:
         """Tantivy failure after USearch batch delete raises InconsistentStateError."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 42
-        mock_tantivy.delete.side_effect = RuntimeError("tantivy broken")
+        mock_tantivy.delete_batch.side_effect = RuntimeError("tantivy broken")
 
         with pytest.raises(
             InconsistentStateError,
@@ -675,7 +734,7 @@ class TestDeleteOperations:
                 return len(contents)
 
         fake = FakeTantivy()
-        manager._tantivy_engine = fake
+        manager._tantivy_engine = cast(TantivyEngine, fake)
 
         deleted = manager.delete_memories(["hello"])
 
@@ -698,7 +757,7 @@ class TestDeleteOperations:
             ) -> int:
                 return 0
 
-        manager._tantivy_engine = ShortTantivy()
+        manager._tantivy_engine = cast(TantivyEngine, ShortTantivy())
 
         with pytest.raises(InconsistentStateError, match="deleted 0/1"):
             manager.delete_memories(["hello"])
@@ -717,11 +776,11 @@ class TestCloseErrorPaths:
 
     def test_close_tantivy_error_logged(self, mock_config: Config, mock_logger: LogCapture):
         """Tantivy close error should be logged not raised (lines 983-991)."""
-        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        manager, _mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.flush.side_effect = RuntimeError("tantivy flush error")
 
-        manager.close()
-        # Should log error
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
         error_logged = any(
             "Error closing Tantivy engine" in message
             for message in mock_logger.messages(logging.ERROR)
@@ -730,11 +789,11 @@ class TestCloseErrorPaths:
 
     def test_close_usearch_error_logged(self, mock_config: Config, mock_logger: LogCapture):
         """USearch close error should be logged not raised (lines 1002-1010)."""
-        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.commit.side_effect = RuntimeError("usearch commit error")
 
-        manager.close()
-        # Should log error
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
         error_logged = any(
             "Error closing USearch engine" in message
             for message in mock_logger.messages(logging.ERROR)
@@ -747,7 +806,8 @@ class TestCloseErrorPaths:
         mock_tantivy.flush.side_effect = RuntimeError("tantivy error")
         mock_usearch.commit.side_effect = RuntimeError("usearch error")
 
-        manager.close()
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
         error_calls = mock_logger.messages(logging.ERROR)
         tantivy_err = any("Tantivy" in c for c in error_calls)
         usearch_err = any("USearch" in c for c in error_calls)
@@ -763,6 +823,31 @@ class TestCloseErrorPaths:
             for message in mock_logger.messages(logging.INFO)
         )
         assert close_logged
+
+    def test_close_is_idempotent(self, mock_config: Config, mock_logger: LogCapture):
+        """A second close() is a no-op after the first persist."""
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        manager.close()
+        manager.close()
+        mock_usearch.close.assert_called_once()
+        mock_tantivy.close.assert_called_once()
+
+    def test_pending_intent_count_propagates_list_failure(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
+        """Journal listing errors must surface so health cannot report zero."""
+        manager, _mock_usearch, _ = _make_manager(mock_config, mock_logger)
+
+        class BrokenStore:
+            def list_pending_transitions(self) -> list[object]:
+                raise RuntimeError("journal locked")
+
+        class BrokenEngine:
+            memory_store = BrokenStore()
+
+        manager._semantic_engine = cast(ISemanticSearchEngine, BrokenEngine())
+        with pytest.raises(RuntimeError, match="journal locked"):
+            _ = manager.pending_intent_count()
 
 
 # ---------------------------------------------------------------------------
@@ -781,7 +866,9 @@ class TestGetAll:
 
         result = manager.get_all()
         assert result == ["mem1", "mem2"]
-        mock_usearch.get_all.assert_called_once_with(workspace_id="test_project")
+        mock_usearch.get_all.assert_called_once_with(
+            workspace_id="test_project", limit=None, offset=0
+        )
 
     def test_get_all_exception_raises_storage_error(self, mock_config: Config, mock_logger: LogCapture):
         """get_all wraps exceptions in StorageError."""
@@ -815,7 +902,10 @@ class TestInitLogging:
         """Init with smart replace enabled logs correctly."""
         mock_config = replace(mock_config, enable_smart_replace=True)
         _make_manager(mock_config, mock_logger)
-        sr_logged = "SmartReplacer configured" in mock_logger.messages(logging.INFO)
+        sr_logged = any(
+            "SmartReplacer configured" in message
+            for message in mock_logger.messages(logging.INFO)
+        )
         assert sr_logged
 
     def test_init_embedding_cache_enabled(self, mock_config: Config, mock_logger: LogCapture):

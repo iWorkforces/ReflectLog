@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from _typeshed import SupportsWrite
 
 from reflectlog.application.mcp_server import FastMCPServer  # noqa: E402
+from reflectlog.core.enums import TransportMode  # noqa: E402
 from reflectlog.utility.scoring import (  # noqa: E402
     warmup_numba_functions,
 )
@@ -168,7 +169,7 @@ def main() -> None:
     """
     args = parse_args()
     transport_mode = _apply_cli_env_vars(args)
-    output_stream = sys.stderr if transport_mode == "stdio" else sys.stdout
+    output_stream = sys.stderr if transport_mode == TransportMode.STDIO else sys.stdout
 
     print(
         "Starting ReflectLog - Project-based AI Agent Memories...",
@@ -207,7 +208,7 @@ def _apply_cli_env_vars(args: argparse.Namespace) -> str:
     if args.transport:
         os.environ["MCP_TRANSPORT"] = args.transport
     elif "MCP_TRANSPORT" not in os.environ:
-        os.environ["MCP_TRANSPORT"] = "stdio"
+        os.environ["MCP_TRANSPORT"] = TransportMode.STDIO
 
     if args.port:
         os.environ["MCP_PORT"] = str(args.port)
@@ -216,7 +217,7 @@ def _apply_cli_env_vars(args: argparse.Namespace) -> str:
     if args.path:
         os.environ["MCP_PATH"] = args.path
 
-    return os.environ.get("MCP_TRANSPORT", "stdio")
+    return os.environ.get("MCP_TRANSPORT", TransportMode.STDIO)
 
 
 def _print_startup_timing(
@@ -261,17 +262,30 @@ def _start_server(
     """
     server: FastMCPServer | None = None
 
+    shutting_down = {"value": False}
+
     def graceful_shutdown(signum: int, frame: object) -> None:
         """Signal handler for graceful shutdown."""
+        if shutting_down["value"]:
+            return
+        shutting_down["value"] = True
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         print(
             f"\nReceived {signal_name}, initiating graceful shutdown...",
             file=output_stream,
         )
+        persist_ok = True
         if server is not None:
-            server.close()
-        print("Shutdown complete.", file=output_stream)
-        sys.exit(0)
+            try:
+                server.close()
+            except Exception as exc:
+                persist_ok = False
+                print(f"Shutdown persist failed: {exc}", file=output_stream)
+        if persist_ok:
+            print("Shutdown complete.", file=output_stream)
+            sys.exit(0)
+        print("Shutdown incomplete; persist failed.", file=output_stream)
+        sys.exit(1)
 
     _ = signal.signal(signal.SIGINT, graceful_shutdown)
     _ = signal.signal(signal.SIGTERM, graceful_shutdown)

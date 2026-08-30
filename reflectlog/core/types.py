@@ -8,18 +8,21 @@ Types defined here:
     MemoryRecord: TypedDict for memory entries.
     Embeddings: Protocol for embedding providers.
     IArchiveMemoryStore: Protocol for archive operations.
+    IStoredMemory: Protocol for stored memory rows.
     ISemanticSearchEngine: Protocol for semantic search engines.
 """
 
 from dataclasses import dataclass
 from typing import (
-    Literal,
     Protocol,
     TypedDict,
     runtime_checkable,
 )
 
-ReplacementTransitionStatus = Literal["pending", "completed"]
+from reflectlog.core.enums import TransitionKind, TransitionStatus
+
+ReplacementTransitionStatus = TransitionStatus
+IndexIntentKind = TransitionKind
 
 
 class MemoryRecord(TypedDict, total=False):
@@ -49,7 +52,8 @@ class ReplacementTransition:
     archive_id: int
     reason: str
     confidence: float
-    status: ReplacementTransitionStatus
+    status: TransitionStatus
+    kind: TransitionKind = TransitionKind.REPLACE
 
 
 @dataclass(frozen=True)
@@ -64,7 +68,28 @@ class ReplacementTransitionRequest:
     confidence: float
 
 
+@runtime_checkable
+class IStoredMemory(Protocol):
+    """A stored memory row returned by the archive store."""
+
+    @property
+    def id(self) -> int: ...
+
+    @property
+    def workspace_id(self) -> str: ...
+
+    @property
+    def content(self) -> str: ...
+
+    @property
+    def created_at(self) -> str: ...
+
+
 class IArchiveMemoryStore(Protocol):
+    db_path: str
+
+    def get(self, memory_id: int) -> IStoredMemory | None: ...
+
     def archive(
         self,
         memory_id: int,
@@ -89,13 +114,34 @@ class IArchiveMemoryStore(Protocol):
         self, requests: list[ReplacementTransitionRequest]
     ) -> list[ReplacementTransition]: ...
 
+    def begin_add_intents(
+        self, workspace_id: str, contents: list[str]
+    ) -> list[ReplacementTransition]: ...
+
+    def begin_delete_intents(
+        self, workspace_id: str, items: list[tuple[int, str]]
+    ) -> list[ReplacementTransition]: ...
+
     def list_pending_transitions(self) -> list[ReplacementTransition]: ...
+
+    def has_later_intent(
+        self,
+        *,
+        workspace_id: str,
+        kind: TransitionKind,
+        content: str,
+        after_id: int,
+    ) -> bool: ...
+
+    def exists_many(self, workspace_id: str, contents: list[str]) -> set[str]: ...
 
     def get_transition_for_old_memory(
         self, workspace_id: str, old_memory_id: int
     ) -> ReplacementTransition | None: ...
 
     def complete_replacement_transition(self, transition_id: int) -> None: ...
+
+    def close(self) -> None: ...
 
 
 @runtime_checkable
@@ -204,6 +250,11 @@ class ISemanticSearchEngine(Protocol):
         """Engine name for identification."""
         ...
 
+    @property
+    def embedder(self) -> Embeddings:
+        """Embedding provider used to vectorize memories."""
+        ...
+
     def add(self, workspace_id: str, content: str, infer: bool) -> None:
         """Add a memory to the semantic index.
 
@@ -274,14 +325,21 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
-    def get_all(self, workspace_id: str) -> list[str]:
-        """Retrieve all stored memories for a workspace.
+    def get_all(
+        self,
+        workspace_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[str]:
+        """Retrieve stored memories for a workspace.
 
         Args:
             workspace_id: Workspace identifier for filtering.
+            limit: Maximum rows to return.
+            offset: Rows to skip.
 
         Returns:
-            List of all memories stored for the project.
+            List of memories stored for the project.
 
         Raises:
             RuntimeError: If retrieval operation fails.
@@ -336,6 +394,14 @@ class ISemanticSearchEngine(Protocol):
 
     def is_ready(self) -> bool:
         """Return True if lazy initialization has already completed."""
+        ...
+
+    def count(self, workspace_id: str) -> int:
+        """Return how many memories exist for a workspace."""
+        ...
+
+    def contains_id(self, memory_id: int) -> bool | None:
+        """Return whether the index contains ``memory_id``, or None if unknown."""
         ...
 
     def get_id_by_content(self, workspace_id: str, content: str) -> int | None:

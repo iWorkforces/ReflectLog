@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reflectlog.application.tools.base import BaseTool
 from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.tools.base import BaseTool
 
 
 class ConcreteTool(BaseTool):

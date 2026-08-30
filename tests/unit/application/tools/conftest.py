@@ -10,6 +10,7 @@ from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.tools.add import AddTool
 from reflectlog.application.tools.remove import RemoveTool
 from reflectlog.application.tools.search import SearchTool
+from reflectlog.core.enums import EngineReadiness
 
 
 @pytest.fixture
@@ -33,10 +34,12 @@ def mock_memory_manager() -> MagicMock:
     mm.delete_by_message = MagicMock(return_value=True)
     mm.search_engine_status = MagicMock(
         return_value={
-            "semantic_engine": "pending",
-            "tantivy_engine": "disabled",
+            "semantic_engine": EngineReadiness.PENDING,
+            "tantivy_engine": EngineReadiness.DISABLED,
         }
     )
+    mm.pending_intent_count = MagicMock(return_value=0)
+    mm.count = MagicMock(return_value=0)
     mm.startup_metrics = None
     return mm
 

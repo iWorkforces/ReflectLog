@@ -10,8 +10,8 @@ Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
 """
 
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-import threading
 import time
 from typing import TYPE_CHECKING, Protocol
 
@@ -26,13 +26,11 @@ from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
 from ...core.logging import IStructuredLogger
 from ...core.types import (
-    Embeddings,
     ISemanticSearchEngine,
     ReplacementTransition,
     ReplacementTransitionRequest,
 )
 from ..config.settings import Config
-from ..utils.validation import truncate_memory
 from .match_utils import has_exact_match
 from .replacement_recovery import (
     reconcile_pending_replacements,
@@ -199,30 +197,14 @@ class DuplicateDetectionPhase:
                 },
             )
 
-        # Step 2: Parallel duplicate detection against existing storage
+        # Step 2: Batch duplicate detection against existing storage
         duplicate_flags: dict[str, bool] = {}
-        semaphore = anyio.Semaphore(self.config.add_max_concurrency)
-
-        async def check_duplicate(memory: str) -> tuple[str, bool]:
-            """Check if memory is duplicate (with semaphore for concurrency control)."""
-            async with semaphore:
-                is_dup = await asyncify(self._has_exact_match)(memory)
-                return (memory, is_dup)
-
-        # asyncer task group required: soonify captures SoonValue results from parallel checks
-        results: list[tuple[str, bool]] = []
-        async with create_task_group() as tg:
-
-            async def collect_result(memory: str) -> None:
-                res = await check_duplicate(memory)
-                results.append(res)
-
-            for memory in unique_memories:
-                _ = tg.soonify(collect_result)(memory)
-
-        # Process results
-        for memory, is_dup in results:
-            duplicate_flags[memory] = is_dup
+        store = self._semantic_engine.memory_store
+        present = await asyncify(store.exists_many)(
+            self._workspace_id, unique_memories
+        )
+        for memory in unique_memories:
+            duplicate_flags[memory] = memory in present
 
         # Separate duplicates from non-duplicates
         storage_duplicates: list[str] = []
@@ -410,7 +392,7 @@ class SmartReplacementPhase:
                 "No similar memories found for replacement check",
                 extra={
                     "workspace_id": self._workspace_id,
-                    "new_memory_preview": new_memory[:100],
+                    "new_memory_length": len(new_memory),
                 },
             )
         return similar_results
@@ -502,12 +484,8 @@ class SmartReplacementPhase:
                                 "confidence": confidence,
                                 "similarity_score": similarity_score,
                                 "reason": reason,
-                                "old_memory_preview": truncate_memory(
-                                    existing_memory, max_length=60
-                                ),
-                                "new_memory_preview": truncate_memory(
-                                    new_memory, max_length=60
-                                ),
+                                "old_memory_length": len(existing_memory),
+                                "new_memory_length": len(new_memory),
                             },
                         )
                         return ReplacementInfo(
@@ -535,7 +513,7 @@ class SmartReplacementPhase:
                         extra={
                             "workspace_id": self._workspace_id,
                             "error": str(candidate_error),
-                            "existing_preview": existing_memory[:100],
+                            "existing_memory_length": len(existing_memory),
                         },
                     )
                     return None
@@ -594,7 +572,7 @@ class SmartReplacementPhase:
                 extra={
                     "workspace_id": self._workspace_id,
                     "error": str(e),
-                    "new_memory_preview": new_memory[:100],
+                    "new_memory_length": len(new_memory),
                 },
             )
             return []
@@ -620,8 +598,8 @@ class StoragePhase:
         tantivy_engine: TantivyEngine | None,
         config: Config,
         logger: IStructuredLogger | None,
-        write_lock: threading.Lock | None = None,
-        lock: threading.RLock | None = None,
+        write_lock: AbstractContextManager[object] | None = None,
+        lock: AbstractContextManager[object] | None = None,
     ):
         """Initialize storage phase.
 
@@ -728,13 +706,7 @@ class StoragePhase:
         """Compute document embeddings before taking the write lock."""
         if not memories:
             return None
-        embedder = getattr(self._semantic_engine, "embedder", None)
-        if (
-            "embed_documents" not in type(embedder).__dict__
-            or not isinstance(embedder, Embeddings)
-        ):
-            return None
-        computed = embedder.embed_documents(memories)
+        computed = self._semantic_engine.embedder.embed_documents(memories)
         if len(computed) != len(memories):
             raise StorageError("Embedding batch size mismatch for persist")
         typed: list[list[float]] = []
@@ -753,11 +725,17 @@ class StoragePhase:
         """Mutate indexes while the caller already holds ``_write_lock``."""
         planned, replacements = self._plan_replacements(memories, replacement_map)
         transitions = self._record_planned_transitions(planned)
-        self._delete_recorded_olds(transitions)
+        add_intents = self._record_add_intents(memories)
         stored_count = self._store_and_commit(
             memories, dry_run=False, locked=True, vectors=vectors
         )
+        self._delete_recorded_olds(transitions)
+        if transitions:
+            if self._tantivy_engine is not None:
+                self._tantivy_engine.commit()
+            self._semantic_engine.commit()
         self._complete_if_converged(transitions)
+        self._complete_add_intents(add_intents)
         return stored_count, replacements
 
     def _plan_replacements(
@@ -795,8 +773,8 @@ class StoragePhase:
                 "Replacing old memory with new one",
                 extra={
                     "action": "replace",
-                    "old_preview": truncate_memory(info.old_memory, max_length=60),
-                    "new_preview": truncate_memory(memory, max_length=60),
+                    "old_length": len(info.old_memory),
+                    "new_length": len(memory),
                     "confidence": info.confidence,
                     "similarity": info.similarity_score,
                     "dry_run": dry_run,
@@ -834,13 +812,9 @@ class StoragePhase:
     ) -> list[tuple[ReplacementInfo, str, int]]:
         """Omit successors that would collide with an exclusive leftover row."""
         store = self._semantic_engine.memory_store
-        getter = getattr(store, "get_transition_for_old_memory", None)
-        if not callable(getter):
-            return planned
-
         kept: list[tuple[ReplacementInfo, str, int]] = []
         for info, memory, old_id in planned:
-            existing = getter(self._workspace_id, old_id)
+            existing = store.get_transition_for_old_memory(self._workspace_id, old_id)
             if (
                 isinstance(existing, ReplacementTransition)
                 and existing.new_content != memory
@@ -849,10 +823,8 @@ class StoragePhase:
                     "Skipping successor that conflicts with an existing transition",
                     extra={
                         "old_memory_id": old_id,
-                        "existing_new_content": truncate_memory(
-                            existing.new_content, max_length=60
-                        ),
-                        "skipped_new_content": truncate_memory(memory, max_length=60),
+                        "existing_new_length": len(existing.new_content),
+                        "skipped_new_length": len(memory),
                         "dry_run": dry_run,
                     },
                 )
@@ -879,19 +851,7 @@ class StoragePhase:
         ]
         store = self._semantic_engine.memory_store
         try:
-            if "begin_replacement_transitions" in type(store).__dict__:
-                return store.begin_replacement_transitions(requests)
-            return [
-                store.begin_replacement_transition(
-                    old_memory_id=request.old_memory_id,
-                    workspace_id=request.workspace_id,
-                    old_content=request.old_content,
-                    new_content=request.new_content,
-                    reason=request.reason,
-                    confidence=request.confidence,
-                )
-                for request in requests
-            ]
+            return store.begin_replacement_transitions(requests)
         except Exception as e:
             raise StorageError(
                 f"Failed to record replacement transition: {e}"
@@ -919,36 +879,16 @@ class StoragePhase:
                 ) from delete_error
         if contents and self._tantivy_engine is not None:
             try:
-                delete_batch = type(self._tantivy_engine).__dict__.get(
-                    "delete_batch"
+                deleted_count = self._tantivy_engine.delete_batch(
+                    self._workspace_id,
+                    contents,
+                    verify_exists=True,
                 )
-                if callable(delete_batch):
-                    deleted_count = delete_batch(
-                        self._tantivy_engine,
-                        self._workspace_id,
-                        contents,
-                        verify_exists=True,
+                if deleted_count < len(contents):
+                    raise InconsistentStateError(
+                        "USearch replacement delete succeeded but Tantivy "
+                        f"deleted {deleted_count}/{len(contents)}"
                     )
-                    if not isinstance(deleted_count, int):
-                        raise InconsistentStateError(
-                            "USearch replacement delete succeeded but Tantivy "
-                            f"delete_batch returned {type(deleted_count).__name__}"
-                        )
-                    if deleted_count < len(contents):
-                        raise InconsistentStateError(
-                            "USearch replacement delete succeeded but Tantivy "
-                            f"deleted {deleted_count}/{len(contents)}"
-                        )
-                else:
-                    for content in contents:
-                        deleted = self._tantivy_engine.delete(
-                            self._workspace_id, content, verify_exists=True
-                        )
-                        if not deleted:
-                            raise InconsistentStateError(
-                                "USearch replacement delete succeeded but "
-                                f"Tantivy did not delete {content!r}"
-                            )
             except InconsistentStateError:
                 raise
             except Exception as tantivy_error:
@@ -1026,12 +966,7 @@ class StoragePhase:
                 vectors=vectors,
             )
         if self._tantivy_engine is not None:
-            add_batch = type(self._tantivy_engine).__dict__.get("add_batch")
-            if callable(add_batch):
-                _ = add_batch(self._tantivy_engine, self._workspace_id, inserted_memories)
-            else:
-                for memory in inserted_memories:
-                    self._tantivy_engine.add(self._workspace_id, memory)
+            self._tantivy_engine.add_batch(self._workspace_id, inserted_memories)
         self.logger.debug(
             "Batch added memories to hybrid storage",
             extra={
@@ -1058,52 +993,6 @@ class StoragePhase:
         if self._tantivy_engine is not None:
             _ = self._tantivy_engine.delete(self._workspace_id, content)
 
-    def _add_memory(self, content: str) -> bool:
-        """Add a single memory to BOTH USearch semantic and Tantivy full-text engines.
-
-        Args:
-            content: The memory to store.
-
-        Returns:
-            True if the memory was stored, False if it was skipped as a duplicate.
-
-        Raises:
-            RuntimeError: If storage operation fails.
-        """
-        if self.config.deduplicate_memories and self._has_exact_match(content):
-            self.logger.info(
-                "Duplicate memory detected, skipping storage",
-                extra={
-                    "workspace_id": self._workspace_id,
-                    "memory_preview": content[:200],
-                },
-            )
-            return False
-
-        try:
-            self._semantic_engine.add(
-                workspace_id=self._workspace_id,
-                content=content,
-                infer=self.config.enable_llm_infer,
-            )
-
-            # 2. Add to Tantivy full-text search engine
-            if self._tantivy_engine is not None:
-                self._tantivy_engine.add(self._workspace_id, content)
-
-            self.logger.debug(
-                "Memory added to hybrid storage",
-                extra={
-                    "workspace_id": self._workspace_id,
-                    "memory_length": len(content),
-                    "engines": ["semantic", "tantivy"],
-                },
-            )
-            return True
-
-        except Exception as e:
-            raise StorageError(f"Failed to add memory to hybrid storage: {e}") from e
-
     def _has_exact_match(self, content: str) -> bool:
         """Check whether the exact memory already exists in storage.
 
@@ -1118,6 +1007,31 @@ class StoragePhase:
             content=content,
             logger=self.logger,
         )
+
+    def _record_add_intents(self, memories: list[str]) -> list[ReplacementTransition]:
+        """Persist add intents before mutating either index."""
+        if not memories:
+            return []
+        return self._semantic_engine.memory_store.begin_add_intents(
+            self._workspace_id, memories
+        )
+
+    def _complete_add_intents(self, intents: list[ReplacementTransition]) -> None:
+        """Mark add intents complete when both backends have the content."""
+        store = self._semantic_engine.memory_store
+        for intent in intents:
+            new_id = self._semantic_engine.get_id_by_content(
+                self._workspace_id, intent.new_content
+            )
+            if new_id is None:
+                continue
+            if self._tantivy_engine is not None:
+                matches = self._tantivy_engine.find_by_exact_match(
+                    self._workspace_id, intent.new_content
+                )
+                if intent.new_content not in matches:
+                    continue
+            store.complete_replacement_transition(intent.id)
 
     def _record_replacement_transition(
         self, replacement_info: ReplacementInfo, new_memory: str
@@ -1293,13 +1207,7 @@ class AddPipeline:
                 "stored_count": result.stored_count,
                 "replaced_count": result.replaced_count,
                 "skipped_count": result.skipped_count,
-                "replacement_details": [
-                    {
-                        "old": truncate_memory(r.old_memory, 50),
-                        "confidence": r.confidence,
-                    }
-                    for r in result.replacements
-                ],
+                "replacement_count": result.replaced_count,
                 "dry_run": dry_run,
                 "optimization": "phased_parallel",
             },

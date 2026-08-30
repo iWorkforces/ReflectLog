@@ -79,6 +79,7 @@ class FastMCP:
         **kwargs: object,
     ) -> Callable[_P, _R] | Callable[[Callable[_P, _R]], Callable[_P, _R]]: ...
     def run(self, **kwargs: object) -> None: ...
+    def add_middleware(self, middleware: object) -> object: ...
     @property
     def _tool_manager(self) -> ToolManager: ...
 
@@ -96,7 +97,7 @@ class Client:
     async def call_tool(
         self,
         tool_name: str,
-        arguments: dict[str, JSONValue] | None = None,
+        arguments: dict[str, JSONValue] | dict[str, object] | None = None,
     ) -> CallToolResult: ...
 
 __all__ = ["Client", "FastMCP", "Tool", "ToolManager"]

@@ -1,63 +1,36 @@
 # Security Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Dedicated security tests for SQL injection, path traversal, and input validation. Critical for production safety.
+Dedicated injection / traversal / XSS tests. Included in default pytest `testpaths` (`tests/unit`, `tests/integration`, `tests/security`).
 
 ## STRUCTURE
-
 ```
 tests/security/
-└── test_security.py        # SQL injection, path traversal, malicious input
+└── test_security.py
 ```
 
 ## WHERE TO LOOK
-
 | Test | Purpose |
 |------|---------|
-| test_sql_injection_* | SQL injection pattern detection |
-| test_path_traversal_* | WORKSPACE_ID path traversal prevention |
-| test_malicious_input | Edge cases, unicode attacks |
+| `test_sql_injection_basic` | Search payload must not execute SQL |
+| `test_command_injection` | Shell metacharacters |
+| `test_xss_attempt` | Stored content not treated as code |
+| `test_path_traversal_workspace_id` | `WORKSPACE_ID` charset |
+| `test_auth_bypass_attempt` | No token/header bypass |
+| `test_rate_limit_respected` / `test_concurrent_burst` | Load-adjacent safety |
 
-## KEY PATTERNS
-
-### SQL Injection Patterns
-```python
-SQL_INJECTION_PATTERNS = [
-    "'; DROP TABLE memories; --",
-    "' OR '1' = '1",
-    "1; DELETE FROM messages WHERE 1=1",
-    "' UNION SELECT * FROM users --",
-    "admin'--",
-]
-```
-
-### Path Traversal Prevention
-```python
-PATH_TRAVERSAL_INPUTS = [
-    "../../../etc/passwd",
-    "..\\..\\..\\windows\\system32",
-    "....//....//etc/shadow",
-    "%2e%2e%2f%2e%2e%2f",
-]
-```
-
-### Validation Test
-```python
-@pytest.mark.parametrize("malicious", SQL_INJECTION_PATTERNS)
-def test_sql_injection_blocked(malicious):
-    with pytest.raises(ValidationError, match="SQL injection"):
-        validate_messages([malicious])
-```
+## CONVENTIONS
+- Manager is a partial `MemoryManager.__new__` with mocked engines — not a live store.
+- `WORKSPACE_ID` pattern: `^[A-Za-z0-9_.-]{1,64}$`.
+- Never log tokens or memory text.
 
 ## ANTI-PATTERNS
-
-- Never skip security tests before release
-- Never test with sanitized inputs only
+- Never skip this file before release.
+- Never test only sanitized inputs.
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
+- No `type: ignore`.
 
 ## NOTES
-
-- **Critical**: These tests must pass 100%
-- **Regex patterns**: `WORKSPACE_ID_PATTERN = r"^[A-Za-z0-9_.-]{1,64}$"`
+No CI. Local: `./start-unittest.sh` (includes this path). Hooks do **not** run pytest — only typecheck + lint `--all`.

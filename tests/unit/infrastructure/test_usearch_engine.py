@@ -1,9 +1,9 @@
 '''Unit tests for USearchEngine.'''
 
+from collections.abc import Sequence
 import gc
 import os
 import tempfile
-from collections.abc import Sequence
 from typing import Generator, cast
 from unittest.mock import MagicMock, patch
 
@@ -11,10 +11,10 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from reflectlog.core.exceptions import StorageError
-from reflectlog.core.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import Embeddings
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 
@@ -99,6 +99,9 @@ class TestUSearchConfigFromAppConfig:
         mock_config.embedder_provider = "openai"
         mock_config.embedding_dims = 3072
         mock_config.qwen_embedding_dims = 4096
+        mock_config.usearch_index_path = "indexes/test-project/usearch"
+        mock_config.usearch_exact_search = False
+        mock_config.usearch_exact_search_threshold = 256
 
         with patch("os.getcwd", return_value="/tmp"):
             config = USearchConfig.from_config(mock_config)
@@ -115,6 +118,9 @@ class TestUSearchConfigFromAppConfig:
         mock_config.embedder_provider = "langchain"
         mock_config.embedding_dims = 3072
         mock_config.qwen_embedding_dims = 4096
+        mock_config.usearch_index_path = "indexes/test-project/usearch"
+        mock_config.usearch_exact_search = False
+        mock_config.usearch_exact_search_threshold = 256
 
         with patch("os.getcwd", return_value="/tmp"):
             config = USearchConfig.from_config(mock_config)
@@ -597,12 +603,14 @@ class TestUSearchEngineExactSearch:
         mock_config.qwen_embedding_dims = 4096
         mock_config.usearch_exact_search = True
         mock_config.usearch_exact_search_threshold = 5000
+        mock_config.usearch_index_path = "indexes/test-project/usearch"
 
         with patch("os.getcwd", return_value="/tmp"):
             config = USearchConfig.from_config(mock_config)
 
         assert config.exact_search is True
         assert config.exact_search_threshold == 5000
+        assert config.index_path.endswith("vectors.usearch")
 
 
 class TestUSearchConfigFromDict:
@@ -690,6 +698,100 @@ class TestUSearchEngineIndexInit:
             logger.info.assert_called()  # type: ignore
         finally:
             engine.close()
+
+    def test_corrupt_index_file_with_sqlite_rows_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """An existing corrupt index file must not be replaced when SQLite has rows."""
+        import sqlite3
+
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _ = temp_engine
+        os.makedirs(os.path.dirname(config.db_path), exist_ok=True)
+        os.makedirs(os.path.dirname(config.index_path), exist_ok=True)
+        with open(config.index_path, "wb") as handle:
+            handle.write(b"not-an-index")
+        connection = sqlite3.connect(config.db_path)
+        try:
+            _ = connection.execute(
+                "CREATE TABLE memories (id INTEGER PRIMARY KEY, content TEXT)"
+            )
+            _ = connection.execute("INSERT INTO memories(content) VALUES ('kept')")
+            connection.commit()
+        finally:
+            connection.close()
+
+        engine = USearchEngine(config=config, embedder=embedder)
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.side_effect = RuntimeError("corrupt")
+            with pytest.raises(InitializationError, match="Refusing to create"):
+                _ = engine.index
+
+    def test_corrupt_index_with_unreadable_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """A present HNSW file plus unreadable SQLite must not be overwritten."""
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _ = temp_engine
+        os.makedirs(os.path.dirname(config.index_path), exist_ok=True)
+        os.makedirs(os.path.dirname(config.db_path), exist_ok=True)
+        with open(config.index_path, "wb") as handle:
+            handle.write(b"not-an-index")
+        with open(config.db_path, "wb") as handle:
+            handle.write(b"")
+
+        engine = USearchEngine(config=config, embedder=embedder)
+        with (
+            patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls,
+            patch(
+                "reflectlog.infrastructure.usearch_engine._sqlite_memory_count",
+                return_value=None,
+            ),
+        ):
+            mock_index_cls.restore.side_effect = RuntimeError("corrupt")
+            with pytest.raises(InitializationError, match="unreadable"):
+                _ = engine.index
+
+    def test_corrupt_index_with_missing_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _ = temp_engine
+        os.makedirs(os.path.dirname(config.index_path), exist_ok=True)
+        with open(config.index_path, "wb") as handle:
+            handle.write(b"not-an-index")
+        if os.path.exists(config.db_path):
+            os.remove(config.db_path)
+
+        engine = USearchEngine(config=config, embedder=embedder)
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.side_effect = RuntimeError("corrupt")
+            with pytest.raises(InitializationError, match="missing"):
+                _ = engine.index
+
+    def test_restore_success_with_missing_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        restored = MagicMock()
+        restored.__len__.return_value = 3
+        with (
+            patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls,
+            patch(
+                "reflectlog.infrastructure.usearch_engine.os.path.exists",
+                return_value=False,
+            ),
+        ):
+            mock_index_cls.restore.return_value = restored
+            with pytest.raises(InitializationError, match="missing"):
+                _ = engine.index
+            mock_index_cls.assert_not_called()
 
     def test_index_init_failure_raises_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
@@ -781,6 +883,8 @@ class TestUSearchEngineAddErrorPaths:
 
         try:
             engine.ensure_initialized()
+            original_store = engine.memory_store
+            original_store.close()
             mock_store = MagicMock()
             mock_store.insert.side_effect = StorageError("Duplicate memory detected")
             object.__setattr__(engine, "_memory_store", mock_store)
@@ -801,6 +905,8 @@ class TestUSearchEngineAddErrorPaths:
 
         try:
             engine.ensure_initialized()
+            original_store = engine.memory_store
+            original_store.close()
             mock_store = MagicMock()
             mock_store.insert.side_effect = TypeError("unexpected type error")
             object.__setattr__(engine, "_memory_store", mock_store)
@@ -822,6 +928,8 @@ class TestUSearchEngineAddErrorPaths:
 
         try:
             engine.ensure_initialized()
+            original_store = engine.memory_store
+            original_store.close()
             mock_store = MagicMock()
             mock_store.insert.side_effect = RuntimeError("connection lost")
             object.__setattr__(engine, "_memory_store", mock_store)
@@ -948,7 +1056,7 @@ class TestUSearchEngineAddBatch:
                     raise RuntimeError("index full")
                 original_add(key, vector)
 
-            engine.index.add = boom
+            engine.index.add = boom  # ty: ignore[invalid-assignment]
             with pytest.raises(RuntimeError, match="Failed to add memory batch"):
                 _ = engine.add_batch("user1", ["idx1", "idx2"], infer=False)
             assert engine.get_all("user1") == []
@@ -1198,7 +1306,7 @@ class TestUSearchEngineGetAllErrorPaths:
             mock_store.get_all.side_effect = OSError("disk read error")
             object.__setattr__(engine, "_memory_store", mock_store)
 
-            with pytest.raises(RuntimeError, match="Failed to retrieve contents"):
+            with pytest.raises(RuntimeError, match="Failed to retrieve memories"):
                 engine.get_all("user1")
 
             logger.error.assert_called()  # type: ignore
@@ -1260,7 +1368,7 @@ class TestUSearchEngineDeleteErrorPaths:
                 side_effect=OSError("corrupted index")
             )
 
-            with pytest.raises(RuntimeError, match="Failed to delete content"):
+            with pytest.raises(RuntimeError, match="Failed to delete memory"):
                 engine.delete("42")
 
             logger.error.assert_called()  # type: ignore
@@ -1311,6 +1419,7 @@ class TestUSearchEngineCommitErrorPaths:
         try:
             engine.ensure_initialized()
             engine._index = MagicMock()
+            engine._dirty = True
             engine._index.save = MagicMock(side_effect=OSError("disk full"))
 
             with pytest.raises(RuntimeError, match="Failed to save USearch index"):
@@ -1375,7 +1484,7 @@ class TestUSearchEngineContextManager:
         config, embedder, _ = temp_engine
 
         with pytest.raises(ValueError, match="test error"):
-            with USearchEngine(config=config, embedder=embedder) as engine:
+            with USearchEngine(config=config, embedder=embedder) as _engine:
                 raise ValueError("test error")
 
     def test_close_with_no_memory_store(

@@ -5,6 +5,7 @@ import tempfile
 
 import pytest
 
+from reflectlog.core.enums import TransitionKind
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.types import ReplacementTransition
 from reflectlog.infrastructure.memory_store import (
@@ -198,4 +199,154 @@ class TestPendingTransitionLifecycle:
             _ = store.connection
             with pytest.raises(StorageError, match="was not pending"):
                 store.complete_replacement_transition(999)
+            store.close()
+
+
+@pytest.mark.unit
+class TestAddAndDeleteIntents:
+    """Ordinary add/delete intents share the replacement_transitions table."""
+
+    def test_begin_add_intents_are_pending_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            first = store.begin_add_intents("proj1", ["hello", "hello"])
+            second = store.begin_add_intents("proj1", ["hello"])
+            assert len(first) == 1
+            assert first[0].kind == TransitionKind.ADD
+            assert first[0].new_content == "hello"
+            assert second[0].id == first[0].id
+            assert len(store.list_pending_transitions()) == 1
+            store.close()
+
+    def test_begin_delete_intents_are_id_scoped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            rows = store.begin_delete_intents("proj1", [(11, "hello")])
+            assert len(rows) == 1
+            assert rows[0].kind == TransitionKind.DELETE
+            assert rows[0].old_memory_id == 11
+            assert rows[0].old_content == "hello"
+            store.close()
+
+    def test_has_later_intent_sees_completed_delete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            added = store.begin_add_intents("proj1", ["hello"])[0]
+            deleted = store.begin_delete_intents("proj1", [(11, "hello")])[0]
+            store.complete_replacement_transition(deleted.id)
+            assert store.has_later_intent(
+                workspace_id="proj1",
+                kind=TransitionKind.DELETE,
+                content="hello",
+                after_id=added.id,
+            )
+            store.close()
+
+    def test_reopen_keeps_later_pending_adds(self) -> None:
+        """Connect-time dedupe must not drop add intents that share old_memory_id=0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.db")
+            store = MemoryStore(db_path=path)
+            first = store.begin_add_intents("proj1", ["one"])[0]
+            store.complete_replacement_transition(first.id)
+            second = store.begin_add_intents("proj1", ["two"])[0]
+            store.close()
+
+            reopened = MemoryStore(db_path=path)
+            pending = reopened.list_pending_transitions()
+            assert [row.new_content for row in pending] == ["two"]
+            assert pending[0].id == second.id
+            reopened.close()
+
+    def test_reopen_keeps_two_pending_adds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.db")
+            store = MemoryStore(db_path=path)
+            first = store.begin_add_intents("proj1", ["one"])[0]
+            store.complete_replacement_transition(first.id)
+            _ = store.begin_add_intents("proj1", ["two", "three"])
+            store.close()
+            reopened = MemoryStore(db_path=path)
+            pending = {row.new_content for row in reopened.list_pending_transitions()}
+            assert pending == {"two", "three"}
+            reopened.close()
+
+    def test_readd_after_delete_gets_new_intent_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            first = store.begin_add_intents("proj1", ["hello"])[0]
+            deleted = store.begin_delete_intents("proj1", [(11, "hello")])[0]
+            store.complete_replacement_transition(deleted.id)
+            second = store.begin_add_intents("proj1", ["hello"])[0]
+            assert second.id > first.id
+            assert second.id > deleted.id
+            store.close()
+
+    def test_delete_and_replace_can_coexist_for_same_old_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            replaced = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj1",
+                old_content="hello",
+                new_content="hello v2",
+                reason="updated",
+                confidence=0.9,
+            )
+            deleted = store.begin_delete_intents("proj1", [(11, "hello")])[0]
+            assert deleted.id != replaced.id
+            assert deleted.kind == TransitionKind.DELETE
+            assert replaced.kind == TransitionKind.REPLACE
+            store.close()
+
+    def test_has_later_intent_delete_sees_later_replace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            added = store.begin_add_intents("proj1", ["hello"])[0]
+            _ = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj1",
+                old_content="hello",
+                new_content="hello v2",
+                reason="updated",
+                confidence=0.9,
+            )
+            assert store.has_later_intent(
+                workspace_id="proj1",
+                kind=TransitionKind.DELETE,
+                content="hello",
+                after_id=added.id,
+            )
+            store.close()
+
+
+@pytest.mark.unit
+class TestTransitionRowParse:
+    """Corrupt journal kinds must fail closed."""
+
+    def test_unknown_kind_raises_storage_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            _ = store.connection.execute(
+                """
+                INSERT INTO replacement_transitions
+                    (workspace_id, old_memory_id, old_content, new_content,
+                     archive_id, reason, confidence, status, kind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "proj1",
+                    11,
+                    "old",
+                    "new",
+                    0,
+                    "r",
+                    0.9,
+                    TRANSITION_PENDING,
+                    "bogus",
+                ),
+            )
+            store.connection.commit()
+            with pytest.raises(StorageError, match="Invalid replacement transition"):
+                _ = store.list_pending_transitions()
             store.close()

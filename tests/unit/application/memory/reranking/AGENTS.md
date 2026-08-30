@@ -1,54 +1,41 @@
 # Reranking Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Unit tests for batch min-max normalization and temporal recency decay. Pure functions, no mocking needed.
+Tests for batch min-max normalize, threshold safety net, and recency decay. Functions live in `reflectlog/utility/scoring.py`. This package is the integration pointer only.
 
 ## STRUCTURE
-
 ```
 tests/unit/application/memory/reranking/
-└── test_normalization.py   # Score normalization, threshold filtering, decay
+└── test_normalization.py
 ```
 
 ## WHERE TO LOOK
-
 | Test | Purpose |
 |------|---------|
-| test_normalize_* | Batch min-max normalization edge cases |
-| test_threshold_* | Safety net minimum results |
-| test_recency_* | Exponential decay calculations |
+| `test_normalize_*` | Batch min-max to `[0, 1]` |
+| `test_all_equal_scores` | **All equal → 1.0** (not 0.5) |
+| `test_threshold_*` | Safety net keeps `min_results` |
+| `test_recency_*` | `exp(-rate * hours_old)` after CE normalize |
 
 ## KEY PATTERNS
-
-### Normalization Edge Cases
 ```python
-def test_normalize_single_item():
+def test_normalize_single_item() -> None:
     result = normalize_reranker_scores([("doc", 0.5)])
-    assert result == [("doc", 1.0)]  # Single item = 1.0
+    assert result == [("doc", 1.0)]
 
-def test_normalize_equal_scores():
+def test_normalize_equal_scores() -> None:
     result = normalize_reranker_scores([("a", 0.5), ("b", 0.5)])
-    assert all(s == 0.5 for _, s in result)  # All equal = 0.5 (neutral)
-```
-
-### Recency Decay Formula
-```python
-def test_decay_rate():
-    # rate=0.01, 24 hours old
-    # factor = exp(-0.01 * 24) = 0.787
-    factor = calculate_recency_factor(created_at, decay_rate=0.01)
-    assert 0.78 < factor < 0.79
+    assert all(s == 1.0 for _, s in result)  # equally good
 ```
 
 ## ANTI-PATTERNS
-
-- Never test normalization individually - batch only
-- Never apply decay before normalization
+- Never document all-equal as 0.5.
+- Never normalize one score at a time.
+- Never apply recency before CE normalize/threshold.
+- Never skip CE tests for ≤1 hit (production skips CE).
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
 
 ## NOTES
-
-- **Pure functions**: No mocking required
-- **Deterministic**: Time mocked for decay tests
+Skip CE if ≤1 hit. Recency after threshold. Pure functions; mock time only for decay.

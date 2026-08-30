@@ -66,17 +66,25 @@ class RerankerPostProcessor:
         normalized = normalize_reranker_scores(scores)
 
         if self._logger:
-            log_fn = getattr(self._logger, self._normalize_log_level)
-            log_fn(
+            message = (
                 f"Batch normalization: enabled "
                 f"(raw range: {min(raw_scores):.4f}-{max(raw_scores):.4f} "
-                f"-> normalized: 0.0-1.0)",
-                extra={
-                    "batch_normalize": True,
-                    "raw_min": min(raw_scores),
-                    "raw_max": max(raw_scores),
-                },
+                f"-> normalized: 0.0-1.0)"
             )
+            extra = {
+                "batch_normalize": True,
+                "raw_min": min(raw_scores),
+                "raw_max": max(raw_scores),
+            }
+            level = self._normalize_log_level
+            if level == "debug":
+                self._logger.debug(message, extra=extra)
+            elif level == "warning":
+                self._logger.warning(message, extra=extra)
+            elif level == "error":
+                self._logger.error(message, extra=extra)
+            else:
+                self._logger.info(message, extra=extra)
 
         return normalized
 

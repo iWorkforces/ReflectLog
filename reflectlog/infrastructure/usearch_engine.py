@@ -25,7 +25,8 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index
 
 from reflectlog.core.config import IAppConfig
-from reflectlog.core.exceptions import StorageError
+from reflectlog.core.enums import EmbedderProvider
+from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import Embeddings
 from reflectlog.utility.scoring import distance_to_similarity_cosine
@@ -35,6 +36,26 @@ from reflectlog.utility.security import validate_workspace_id
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
     """Type guard to check if config is a dict."""
     return isinstance(config, dict)
+
+
+def _sqlite_memory_count(db_path: str) -> int | None:
+    """Return memory row count, 0 if the DB is absent, or None if unreadable."""
+    if not os.path.exists(db_path):
+        return 0
+    import sqlite3
+
+    try:
+        connection = sqlite3.connect(db_path, timeout=5.0)
+        try:
+            _ = connection.execute("PRAGMA busy_timeout = 5000")
+            row = connection.execute("SELECT COUNT(*) FROM memories").fetchone()
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    return int(row[0])
 
 
 @dataclass(frozen=True)
@@ -112,19 +133,15 @@ class USearchConfig:
         """
         # Validate workspace_id to prevent path traversal attacks
         workspace_id = validate_workspace_id(config.workspace_id)
-        base_path = os.path.join(os.getcwd(), "indexes", workspace_id, "usearch")
+        base_path = config.usearch_index_path
+        if not os.path.isabs(base_path):
+            base_path = os.path.join(os.getcwd(), base_path)
 
         # Determine embedding dims based on provider
         embedding_dims = (
             config.qwen_embedding_dims
-            if config.embedder_provider == "langchain"
+            if config.embedder_provider == EmbedderProvider.LANGCHAIN
             else config.embedding_dims
-        )
-
-        # Get exact search settings with safe defaults for missing attributes
-        exact_search = getattr(config, "usearch_exact_search", False)
-        exact_search_threshold = getattr(
-            config, "usearch_exact_search_threshold", 10000
         )
 
         return cls(
@@ -132,8 +149,8 @@ class USearchConfig:
             index_path=os.path.join(base_path, "vectors.usearch"),
             db_path=os.path.join(base_path, "memories.db"),
             embedding_dims=embedding_dims,
-            exact_search=exact_search,
-            exact_search_threshold=exact_search_threshold,
+            exact_search=config.usearch_exact_search,
+            exact_search_threshold=config.usearch_exact_search_threshold,
         )
 
 
@@ -199,6 +216,27 @@ class USearchEngine(BaseModel):
 
         super().__init__(config=config, embedder=embedder, logger=logger, **kwargs)
 
+    def _reject_populated_hnsw_without_db(self, hnsw_size: int) -> None:
+        """Refuse a loaded HNSW when SQLite is missing, empty, or unreadable."""
+        if hnsw_size <= 0:
+            return
+        db_missing = not os.path.exists(self.config.db_path)
+        sqlite_rows = _sqlite_memory_count(self.config.db_path)
+        if sqlite_rows is not None and sqlite_rows > 0:
+            return
+        detail = (
+            "missing"
+            if db_missing
+            else "unreadable"
+            if sqlite_rows is None
+            else "empty"
+        )
+        raise InitializationError(
+            f"USearch index has {hnsw_size} vectors but SQLite is {detail} "
+            f"at {self.config.db_path}. Refusing to load HNSW without a "
+            "readable memory store."
+        )
+
     @property
     def name(self) -> str:
         """Engine name for identification."""
@@ -233,6 +271,7 @@ class USearchEngine(BaseModel):
                             raise RuntimeError(
                                 f"Index.restore() returned None for {self.config.index_path}"
                             )
+                        self._reject_populated_hnsw_without_db(len(loaded_index))
                         self._index = loaded_index
                         if self.logger:
                             self.logger.info(
@@ -243,8 +282,28 @@ class USearchEngine(BaseModel):
                                     "size": len(loaded_index),
                                 },
                             )
-                    except RuntimeError, FileNotFoundError, OSError:
-                        # Index doesn't exist or is corrupted, create new one
+                    except (RuntimeError, FileNotFoundError, OSError) as restore_error:
+                        index_exists = os.path.exists(self.config.index_path)
+                        db_missing = not os.path.exists(self.config.db_path)
+                        sqlite_rows = _sqlite_memory_count(self.config.db_path)
+                        sqlite_unknown = sqlite_rows is None
+                        sqlite_populated = sqlite_rows is not None and sqlite_rows > 0
+                        if index_exists and (
+                            sqlite_populated or sqlite_unknown or db_missing
+                        ):
+                            detail = (
+                                "missing"
+                                if db_missing
+                                else "unreadable"
+                                if sqlite_unknown
+                                else f"{sqlite_rows} memories"
+                            )
+                            raise InitializationError(
+                                "USearch index is corrupt but SQLite is "
+                                f"{detail} at {self.config.db_path}. "
+                                "Refusing to create an empty HNSW that would "
+                                "overwrite the file."
+                            ) from restore_error
                         if self.logger:
                             self.logger.debug(
                                 "USearch index not found, creating new index",
@@ -272,6 +331,8 @@ class USearchEngine(BaseModel):
                                 },
                             )
 
+                except InitializationError:
+                    raise
                 except Exception as exc:
                     if self.logger:
                         self.logger.error(
@@ -457,15 +518,15 @@ class USearchEngine(BaseModel):
                     computed = self.embedder.embed_documents(inserted_contents)
                 else:
                     content_to_vector = dict(zip(contents, vectors, strict=True))
-                    computed = [content_to_vector[content] for content in inserted_contents]
+                    computed = [
+                        content_to_vector[content] for content in inserted_contents
+                    ]
                 if len(computed) != len(inserted_contents):
                     raise RuntimeError(
                         "Embedding batch size mismatch for USearch add_batch"
                     )
                 if any(not vector for vector in computed):
-                    raise RuntimeError(
-                        "Embedding batch contained an empty vector"
-                    )
+                    raise RuntimeError("Embedding batch contained an empty vector")
             except Exception as embed_error:
                 # Rollback all SQLite inserts if embedding fails
                 if self.logger:
@@ -729,17 +790,30 @@ class USearchEngine(BaseModel):
             for i, (record, _) in enumerate(filtered_matches)
         ]
 
-    def get_all(self, workspace_id: str) -> list[str]:
-        """Retrieve all stored memories for a workspace.
+    def count(self, workspace_id: str) -> int:
+        """Return how many memories exist for a workspace."""
+        return self.memory_store.count(workspace_id)
+
+    def get_all(
+        self,
+        workspace_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[str]:
+        """Retrieve stored memories for a workspace, optionally paged.
 
         Args:
             workspace_id: Workspace identifier for filtering.
+            limit: Maximum rows to return.
+            offset: Rows to skip.
 
         Returns:
-            List of all memories stored for the project.
+            List of memories stored for the project.
         """
         try:
-            memories = self.memory_store.get_all(workspace_id)
+            memories = self.memory_store.get_all(
+                workspace_id, limit=limit, offset=offset
+            )
 
             if self.logger:
                 self.logger.debug(
@@ -775,14 +849,11 @@ class USearchEngine(BaseModel):
         try:
             mem_id = int(memory_id)
 
-            # Check if key exists in index
+            deleted = self.memory_store.delete(mem_id)
             with self._index_lock:
                 if mem_id in self.index:
                     self.index.remove(mem_id)
                     self._dirty = True
-
-            # Delete from SQLite
-            deleted = self.memory_store.delete(mem_id)
 
             if self.logger:
                 if deleted:
@@ -825,13 +896,23 @@ class USearchEngine(BaseModel):
                 )
             raise RuntimeError(f"Failed to delete memory: {e}") from e
 
+    def contains_id(self, memory_id: int) -> bool | None:
+        """Return whether the HNSW index contains ``memory_id`` under the index lock."""
+        if self._index is None:
+            return None
+        with self._index_lock:
+            try:
+                return memory_id in self.index
+            except TypeError:
+                return None
+
     def commit(self) -> None:
         """Commit pending changes to the index.
 
         Saves the USearch index to disk. SQLite auto-commits.
         """
         try:
-            if self._index is not None:
+            if self._index is not None and self._dirty:
                 with self._index_lock:
                     self.index.save(self.config.index_path)
                 self._dirty = False

@@ -1,6 +1,14 @@
 """ReflectLog Server - Refactored modular implementation."""
 
+from collections.abc import Callable
+import hmac
+from ipaddress import ip_address
+import os
+
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_request
+from fastmcp.server.middleware import Middleware
 from fastmcp.utilities.logging import get_logger
 
 from reflectlog.application import config
@@ -12,9 +20,38 @@ from reflectlog.application.tools.get_all import GetAllTool
 from reflectlog.application.tools.health_check import HealthCheckTool
 from reflectlog.application.tools.remove import RemoveTool
 from reflectlog.application.tools.search import SearchTool
+from reflectlog.core.enums import EmbedderProvider, TransportMode
+from reflectlog.core.exceptions import ConfigurationError
 from reflectlog.core.prompts import build_instructions
 
 from .utils.logging import create_logger
+
+
+class _BearerTokenMiddleware(Middleware):
+    """Reject HTTP MCP requests that lack the configured bearer token."""
+
+    def __init__(self, token: str) -> None:
+        super().__init__()
+        self._token = token
+
+    async def on_request(
+        self, context: object, call_next: Callable[..., object]
+    ) -> object:
+        try:
+            request = get_http_request()
+        except Exception as exc:
+            raise ToolError("Unauthorized") from exc
+        auth = request.headers.get("authorization", "")
+        expected = f"Bearer {self._token}"
+        if not hmac.compare_digest(auth.encode("utf-8"), expected.encode("utf-8")):
+            raise ToolError("Unauthorized")
+        import inspect
+
+        result = call_next(context)
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
 
 # Canonical registry of available MCP tool implementations.
 AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {
@@ -53,9 +90,7 @@ class FastMCPServer:
         )
 
         # Log initialization
-        init_msg = (
-            f"Initializing reflectlog MCP server [workspace_id={self.config.workspace_id}]"
-        )
+        init_msg = f"Initializing reflectlog MCP server [workspace_id={self.config.workspace_id}]"
         self.logger.info(init_msg)
 
         self.logger.info(
@@ -64,7 +99,7 @@ class FastMCPServer:
         )
 
         self.logger.info(
-            f"embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}"
+            f"embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == EmbedderProvider.LANGCHAIN else self.config.embedding_dims}"
         )
 
         # Initialize memory manager
@@ -78,6 +113,8 @@ class FastMCPServer:
 
         # Initialize FastMCP with dynamic instructions
         self.mcp = FastMCP(name="reflectlog", instructions=instructions)
+        self._http_auth_installed = False
+        self._install_http_auth()
 
         # Register tools with FastMCP
         self._register_tools()
@@ -235,6 +272,27 @@ class FastMCPServer:
 
         return None
 
+    @staticmethod
+    def _is_unspecified_bind(host: str) -> bool:
+        """Return True when ``host`` is a bind-all / unspecified address."""
+        candidate = host.strip()
+        if candidate.startswith("[") and candidate.endswith("]"):
+            candidate = candidate[1:-1]
+        try:
+            return ip_address(candidate).is_unspecified
+        except ValueError:
+            return False
+
+    def _install_http_auth(self) -> None:
+        """Attach bearer middleware when a token is configured for HTTP."""
+        if self._http_auth_installed or self.config.transport == TransportMode.STDIO:
+            return
+        auth_token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
+        if not auth_token:
+            return
+        _ = self.mcp.add_middleware(_BearerTokenMiddleware(auth_token))
+        self._http_auth_installed = True
+
     def run(self) -> None:
         """Start the FastMCP server with configured transport.
 
@@ -244,24 +302,36 @@ class FastMCPServer:
         """
         transport = self.config.transport
 
-        if transport == "stdio":
+        if transport == TransportMode.STDIO:
             self.logger.info("Running MCP server with stdio transport")
-            self.mcp.run(transport="stdio")
-        else:
-            self.logger.info(
-                f"Running MCP server with {transport} transport",
-                extra={
-                    "host": self.config.host,
-                    "port": self.config.port,
-                    "path": self.config.path,
-                },
+            self.mcp.run(transport=TransportMode.STDIO)
+            return
+
+        allow_public = os.environ.get("ALLOW_PUBLIC_BIND", "false").lower() == "true"
+        if self._is_unspecified_bind(self.config.host) and not allow_public:
+            raise ConfigurationError(
+                f"Refusing to bind {self.config.host} without ALLOW_PUBLIC_BIND=true"
             )
-            self.mcp.run(
-                transport=transport,
-                port=self.config.port,
-                host=self.config.host,
-                path=self.config.path,
+        auth_token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
+        if not auth_token:
+            raise ConfigurationError(
+                "MCP_AUTH_TOKEN is required for non-stdio transports"
             )
+        self._install_http_auth()
+        self.logger.info(
+            f"Running MCP server with {transport} transport",
+            extra={
+                "host": self.config.host,
+                "port": self.config.port,
+                "path": self.config.path,
+            },
+        )
+        self.mcp.run(
+            transport=transport,
+            port=self.config.port,
+            host=self.config.host,
+            path=self.config.path,
+        )
 
     def close(self) -> None:
         """Gracefully shutdown the server and persist all data.
@@ -285,6 +355,7 @@ class FastMCPServer:
                 f"Error during server shutdown: {e}",
                 extra={"error": str(e)},
             )
+            raise
 
     def set_startup_metrics(self, metrics: dict[str, float]) -> None:
         """Store startup timing metrics on the memory manager.

@@ -7,10 +7,12 @@ import aiohttp
 import httpx
 import pytest
 
-from reflectlog.utility.http import HttpClientFactory
-from reflectlog.utility.http import get_pooled_aiohttp_client
-from reflectlog.utility.http import get_pooled_async_httpx_client
-from reflectlog.utility.http import get_pooled_httpx_client
+from reflectlog.utility.http import (
+    HttpClientFactory,
+    get_pooled_aiohttp_client,
+    get_pooled_async_httpx_client,
+    get_pooled_httpx_client,
+)
 
 
 @pytest.fixture(autouse=True)

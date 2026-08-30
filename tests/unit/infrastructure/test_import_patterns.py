@@ -11,7 +11,6 @@ import pathlib
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -46,9 +45,12 @@ def _file_imports_from_application(filepath: pathlib.Path) -> bool:
     source = filepath.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(filepath))
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            if node.module.startswith("reflectlog.application"):
-                return True
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.startswith("reflectlog.application")
+        ):
+            return True
     return False
 
 
@@ -160,13 +162,17 @@ class TestCachedEmbeddingsAPI:
 
     def test_exports_exist(self) -> None:
         """CachedEmbeddings is importable."""
-        from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import (
+            CachedEmbeddings,
+        )
 
         assert CachedEmbeddings is not None
 
     def test_has_embedding_methods(self) -> None:
         """CachedEmbeddings must expose embed_query, embed_documents, and async variants."""
-        from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import (
+            CachedEmbeddings,
+        )
 
         for method_name in (
             "embed_query",
@@ -178,7 +184,9 @@ class TestCachedEmbeddingsAPI:
 
     def test_has_cache_management_methods(self) -> None:
         """CachedEmbeddings must expose get_cache_stats and clear_cache."""
-        from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import (
+            CachedEmbeddings,
+        )
 
         assert hasattr(CachedEmbeddings, "get_cache_stats")
         assert hasattr(CachedEmbeddings, "clear_cache")
@@ -375,7 +383,9 @@ class TestProtocolConformance:
 
     def test_cached_embeddings_has_embeddings_interface(self) -> None:
         """CachedEmbeddings must have the Embeddings protocol methods."""
-        from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
+        from reflectlog.infrastructure.embeddings.cached_embeddings import (
+            CachedEmbeddings,
+        )
 
         for method_name in (
             "embed_query",

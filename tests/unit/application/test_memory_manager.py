@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
-from reflectlog.core.exceptions import StorageError
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 
 

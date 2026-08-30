@@ -1,30 +1,41 @@
 # Agent Guidelines for reflectlog/infrastructure/search/
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30
+**Commit:** 062b44f
+**Branch:** develop
 
 ## OVERVIEW
-Search engine base classes and abstractions. Actual implementations (USearch, Tantivy) are in parent `infrastructure/` directory.
+Empty package marker. Live engines stay FLAT in parent `infrastructure/`.
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Live engines | infrastructure/usearch_engine.py, tantivy_engine.py | Sync tuple search used by SearchPipeline |
-| Live pipeline | application/memory/search_strategies.py | SearchPipeline + SearchContext + SearchResult |
+| Semantic | `../usearch_engine.py` | HNSW + SQLite SoT |
+| FTS | `../tantivy_engine.py` | Tombstone+commit |
+| Identity | `../memory_store.py` | `get_all` SoT |
+| Pipeline | `application/memory/search_strategies.py` | SearchPipeline + CE skip ≤1 |
 
 ## CONVENTIONS
 
-**Lifecycle Management** - ensure_initialized() for lazy init, is_ready() for health, commit() to persist, close() to release.
-
-**Live search contract** - USearch/Tantivy expose sync ``search()`` returning tuples.
+- Sync `search()` returns tuples.
+- Search `OSError` → `SearchError`, never `[]`.
+- HNSW fail-closed if SQLite missing/empty/unreadable.
+- SQLite insert then vectors; rollback HNSW+rows on embed/index fail.
+- Tantivy delete = tombstone+commit. `compact()` is maintenance only.
+- CE skip ≤1 is SearchPipeline, not `CrossEncoderReranker.rerank`.
+- Factories: `from_config()`, not `from_app_config()`.
 
 ## ANTI-PATTERNS
 
-- Never treat deleted staged-search protocols as the MemoryManager search API
-- Never skip ensure_initialized() before index operations
-- Never ignore commit() errors
-- Never use triple single quotes; use """ only
+- Never treat this package as the engine home.
+- Never swallow search `OSError` as `[]`.
+- Never compact Tantivy on delete.
+- Never load HNSW without readable SQLite.
+- Never skip `ensure_initialized()` / ignore `commit()` errors.
+- No `getattr` / `optional_attr` / `from_app_config()`.
 
 ## NOTES
 
-Concrete USearch and Tantivy engines remain in the parent directory.
+No engine code here. Use parent `infrastructure/AGENTS.md` for layout.
+No extra guides under sibling empty markers `llm/`, `memory/`, `reranking/`.

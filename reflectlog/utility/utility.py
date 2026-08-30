@@ -109,10 +109,7 @@ def init_credentials(verbose: bool = True) -> str | None:
             oauth_token = keychain_token
             os.environ["ANTHROPIC_AUTH_TOKEN"] = oauth_token
             if verbose:
-                print(
-                    f"ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}... "
-                    "(retrieved from keychain)"
-                )
+                print("ANTHROPIC_AUTH_TOKEN: <set> (retrieved from keychain)")
         elif keychain_token:
             # It's a regular API key, not an OAuth token
             if verbose:
@@ -131,7 +128,7 @@ def init_credentials(verbose: bool = True) -> str | None:
                 )
     else:
         if verbose:
-            print(f"ANTHROPIC_AUTH_TOKEN: {oauth_token[:20]}...")
+            print("ANTHROPIC_AUTH_TOKEN: <set>")
 
     return oauth_token
 
@@ -170,7 +167,7 @@ async def generate_content(
         model=model,
         system_prompt=system_prompt,
         allowed_tools=allowed_tools or [],
-        permission_mode="bypassPermissions",
+        permission_mode="default",
     )
 
     result_text = ""

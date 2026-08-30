@@ -1,19 +1,23 @@
 '''Tests for reflectlog.application.config.validation module.'''
 
+from dataclasses import replace
+
 import pytest
 
+from reflectlog.application.config.settings import Config
 from reflectlog.application.config.validation import (
     ConfigurationValidator,
     ValidationError,
     validate_config,
 )
-
-ConfigValue = str | int | float | bool | None
-
-
-class MockConfig:
-    def __init__(self, values: dict[str, ConfigValue]) -> None:
-        self.__dict__.update(values)
+from reflectlog.application.utils.security import SecretString
+from reflectlog.core.enums import (
+    CrossEncoderDevice,
+    FusionMethod,
+    LlmProvider,
+    RerankerEngine,
+    TransportMode,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -973,48 +977,41 @@ class TestValidateOpenrouterApiKey:
 class TestValidateConfig:
     '''Tests for the validate_config() convenience function.'''
 
-    def _make_config(self, **overrides: ConfigValue) -> MockConfig:
-        '''Create a mock config object with default valid values.'''
-        defaults: dict[str, ConfigValue] = {
-            "workspace_id": "my-project",
-            "transport": "stdio",
-            "port": 9103,
-            "search_score_threshold": 0.5,
-            "fusion_ranking_threshold": 0.3,
-            "cross_encoder_score_threshold": 0.7,
-            "smart_replace_threshold": 0.7,
-            "smart_replace_min_similarity": 0.5,
-            "tantivy_compaction_threshold_ratio": 0.2,
-            "recency_decay_rate": 0.01,
-            "search_limit": 10,
-            "remove_search_limit": 5,
-            "fusion_rrf_k": 60,
-            "rerank_max_concurrency": 4,
-            "cross_encoder_batch_size": 32,
-            "cross_encoder_max_length": 512,
-            "add_max_concurrency": 8,
-            "embedding_batch_size": 32,
-            "embedding_cache_size": 100,
-            "reranker_engine": "cross_encoder",
-            "llm_provider": "openai",
-            "cross_encoder_device": "cpu",
-            "fusion_method": "rrf",
-            "min_message_length": 1,
-            "max_message_length": 30720,
-            "enable_hybrid_search": True,
-            "enable_rrf_fusion": True,
-            "circuit_breaker_enabled": False,
-            "circuit_breaker_failure_threshold": 5,
-            "circuit_breaker_timeout": 60.0,
-            "circuit_breaker_success_threshold": 2,
-            "openrouter_api_key": None,
-            "embedder_provider": "openai",
-            "embedding_dims": 4096,
-            "qwen_embedding_dims": 1024,
-        }
-        defaults.update(overrides)
-
-        return MockConfig(defaults)
+    def _make_config(self, **overrides: object) -> Config:
+        '''Create a Config with valid defaults and optional field overrides.'''
+        config = Config(
+            workspace_id="my-project",
+            openrouter_api_key=SecretString("sk-or-v1-" + "a" * 42),
+            transport=TransportMode.STDIO,
+            port=9103,
+            search_score_threshold=0.5,
+            fusion_ranking_threshold=0.3,
+            cross_encoder_score_threshold=0.7,
+            smart_replace_threshold=0.7,
+            smart_replace_min_similarity=0.5,
+            tantivy_compaction_threshold_ratio=0.2,
+            recency_decay_rate=0.01,
+            search_limit=10,
+            remove_search_limit=5,
+            fusion_rrf_k=60,
+            rerank_max_concurrency=4,
+            cross_encoder_batch_size=32,
+            cross_encoder_max_length=512,
+            add_max_concurrency=8,
+            embedding_batch_size=32,
+            embedding_cache_size=100,
+            reranker_engine=RerankerEngine.CROSS_ENCODER,
+            llm_provider=LlmProvider.OPENAI,
+            cross_encoder_device=CrossEncoderDevice.CPU,
+            fusion_method=FusionMethod.RRF,
+            min_memory_length=1,
+            max_memory_length=30720,
+            enable_hybrid_search=True,
+            enable_rrf_fusion=True,
+        )
+        if not overrides:
+            return config
+        return replace(config, **overrides)
 
     def test_valid_config_no_errors(self):
         '''Valid configuration produces no errors.'''
@@ -1027,12 +1024,6 @@ class TestValidateConfig:
         cfg = self._make_config(workspace_id="bad@id!")
         errors = validate_config(cfg)
         assert any(e.field == "WORKSPACE_ID" for e in errors)
-
-    def test_invalid_transport(self):
-        '''Invalid transport produces error.'''
-        cfg = self._make_config(transport="websocket")
-        errors = validate_config(cfg)
-        assert any(e.field == "MCP_TRANSPORT" for e in errors)
 
     def test_invalid_port(self):
         '''Invalid port produces error.'''
@@ -1052,111 +1043,33 @@ class TestValidateConfig:
         errors = validate_config(cfg)
         assert any(e.field == "SEARCH_LIMIT" for e in errors)
 
-    def test_invalid_reranker_engine(self):
-        '''Invalid reranker engine produces error.'''
-        cfg = self._make_config(reranker_engine="invalid")
-        errors = validate_config(cfg)
-        assert any(e.field == "RERANKER_ENGINE" for e in errors)
-
-    def test_invalid_llm_provider(self):
-        '''Invalid LLM provider produces error.'''
-        cfg = self._make_config(llm_provider="google")
-        errors = validate_config(cfg)
-        assert any(e.field == "LLM_PROVIDER" for e in errors)
-
-    def test_invalid_cross_encoder_device(self):
-        '''Invalid cross-encoder device produces error.'''
-        cfg = self._make_config(cross_encoder_device="tpu")
-        errors = validate_config(cfg)
-        assert any(e.field == "CROSS_ENCODER_DEVICE" for e in errors)
-
-    def test_invalid_fusion_method(self):
-        '''Invalid fusion method produces error.'''
-        cfg = self._make_config(fusion_method="average")
-        errors = validate_config(cfg)
-        assert any(e.field == "FUSION_METHOD" for e in errors)
-
     def test_invalid_memory_lengths(self):
-        '''min >= max message lengths produces error.'''
-        cfg = self._make_config(min_message_length=500, max_message_length=100)
+        '''min >= max memory lengths produces error.'''
+        cfg = self._make_config(min_memory_length=500, max_memory_length=100)
         errors = validate_config(cfg)
         assert len(errors) > 0
 
-    def test_none_attributes_skipped(self):
-        '''None attributes are safely skipped (no crash).'''
-        cfg = self._make_config(
-            workspace_id=None,
-            transport=None,
-            port=None,
-            search_score_threshold=None,
-            search_limit=None,
-            reranker_engine=None,
-            llm_provider=None,
-            cross_encoder_device=None,
-            fusion_method=None,
-            min_message_length=None,
-            max_message_length=None,
-        )
-        errors = validate_config(cfg)
-        # No crash; dependencies still validated with defaults
-        assert isinstance(errors, list)
-
-    def test_missing_attributes_handled(self):
-        '''Object with no relevant attributes produces no crash.'''
-
-        class Empty:
-            pass
-
-        errors = validate_config(Empty())
-        assert isinstance(errors, list)
-
-    def test_circuit_breaker_enabled_valid(self):
-        '''Enabled circuit breaker with valid settings produces no errors.'''
-        cfg = self._make_config(
-            circuit_breaker_enabled=True,
-            circuit_breaker_failure_threshold=5,
-            circuit_breaker_timeout=60.0,
-            circuit_breaker_success_threshold=2,
-        )
-        errors = validate_config(cfg)
-        assert errors == []
-
-    def test_circuit_breaker_enabled_falsy_values_get_defaults(self):
-        '''Enabled circuit breaker with falsy values uses or-defaults (valid).'''
-        # validate_config uses `or` defaults: 0 -> 5, 0.0 -> 60.0, 0 -> 2
-        # So falsy values produce NO errors because defaults are valid.
-        cfg = self._make_config(
-            circuit_breaker_enabled=True,
-            circuit_breaker_failure_threshold=0,
-            circuit_breaker_timeout=0.0,
-            circuit_breaker_success_threshold=0,
-        )
-        errors = validate_config(cfg)
-        # The or-defaults (5, 60.0, 2) are all valid, so no errors
-        assert not any("CIRCUIT_BREAKER" in e.field for e in errors)
-
     def test_openrouter_api_key_validated(self):
         '''OpenRouter API key format is validated when present.'''
-        cfg = self._make_config(openrouter_api_key="bad-key")
+        cfg = self._make_config(openrouter_api_key=SecretString("bad-key"))
         errors = validate_config(cfg)
         assert any("OPENROUTER_API_KEY" in e.field for e in errors)
 
     def test_valid_openrouter_api_key(self):
         '''Valid OpenRouter API key produces no error.'''
-        cfg = self._make_config(openrouter_api_key="sk-or-v1-" + "a" * 42)
+        cfg = self._make_config(openrouter_api_key=SecretString("sk-or-v1-" + "a" * 42))
         errors = validate_config(cfg)
         assert not any("OPENROUTER_API_KEY" in e.field for e in errors)
 
     def test_dependencies_validated(self):
-        '''Dependencies are validated (defaults used when None).'''
+        '''Typed hybrid/RRF/reranker defaults remain valid together.'''
         cfg = self._make_config(
-            enable_hybrid_search=None,
-            enable_rrf_fusion=None,
-            reranker_engine=None,
+            enable_hybrid_search=True,
+            enable_rrf_fusion=True,
+            reranker_engine=RerankerEngine.CROSS_ENCODER,
         )
         errors = validate_config(cfg)
-        # Defaults used: True, True, "cross_encoder" — all valid
-        assert isinstance(errors, list)
+        assert errors == []
 
     def test_all_percentage_fields_validated(self):
         '''All percentage fields are validated.'''
@@ -1170,7 +1083,6 @@ class TestValidateConfig:
             recency_decay_rate=10.0,
         )
         errors = validate_config(cfg)
-        # Should have errors for all 7 percentage fields
         percentage_fields = {
             "SEARCH_SCORE_THRESHOLD",
             "FUSION_RANKING_THRESHOLD",

@@ -1,50 +1,37 @@
-# Agent Guidelines for reflectlog/plugins/
+# reflectlog/plugins/
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-Three-tier plugin system for runtime extensibility without core code modification.
+Discovery/registry/loader exist. **Not imported by `server.py` or `FastMCPServer`.** Startup tools come from `AVAILABLE_TOOL_CLASSES` only.
 
 ## STRUCTURE
+
 ```
 plugins/
-├── discovery.py     # Entry points, directory scan, static registration
-├── registry.py      # Plugin registration, state tracking, querying
-└── loading.py       # Lifecycle management (load/activate/deactivate/unload)
+├── discovery.py   # EntryPointDiscovery, DirectoryScanDiscovery, StaticRegistration, CompositeDiscovery
+├── registry.py    # PluginRegistry[T], ToolRegistry[T], PluginState, PluginMetadata, IPluggable
+└── loading.py     # PluginLoader, LifecycleHooks, IPluginLifecycle
 ```
 
 ## WHERE TO LOOK
+
 | Task | Location | Notes |
-|-------|----------|--------|
-| Discovery strategies | discovery.py | EntryPoint, DirectoryScan, Static, Composite |
-| Plugin registration | registry.py | PluginRegistry[T], ToolRegistry[T] |
-| Lifecycle management | loading.py | PluginLoader, LifecycleHooks, IPluginLifecycle |
-| State transitions | registry.py | DISCOVERED → LOADED → ACTIVATED |
-| Metadata tracking | registry.py | PluginMetadata with timestamps |
+|------|----------|-------|
+| Discover | discovery.py | `PluginDiscoveryStrategy.discover()` → `DiscoveredPlugin` |
+| Register | registry.py | `PluginState`: DISCOVERED → LOADED → ACTIVATED → DEACTIVATED → UNLOADED; ERROR |
+| Lifecycle | loading.py | `IPluginLifecycle`: `initialize` / `activate` / `deactivate` / `cleanup` |
+| Shutdown | loading.py | `PluginLoader.shutdown()` deactivates then unloads |
 
 ## CONVENTIONS
 
-**Three Discovery Mechanisms**:
-- EntryPointDiscovery: Standard Python entry points (`reflectlog.plugins` group)
-- DirectoryScanDiscovery: Scan packages by module pattern
-- StaticRegistration: Explicit registration for testing
+- `IPluggable`: `plugin_name`, `plugin_version`.
+- `EntryPointDiscovery(group, plugin_type)` — docstring group `reflectlog.plugins`. **No `pyproject.toml` entry-points registered.**
+- Callers (tests only): `PluginLoader.load_all` / `activate_all` / `shutdown`.
+- Unit tests under `tests/unit/plugins/`.
 
-**Lifecycle Protocol**: Implement `IPluginLifecycle` for plugins needing resource management:
-```python
-async def initialize()  # Post-load setup
-async def activate()    # Register for use
-async def deactivate()  # Unregister
-async def cleanup()     # Release resources
-```
+## ANTI-PATTERNS
 
-**State Machine**: DISCOVERED → LOADED → ACTIVATED → DEACTIVATED → UNLOADED. Errors propagate to ERROR state.
-
-**Thread Safety**: Registry not thread-safe by default. Use external locking for concurrent access. Loader methods are async-safe.
-
-**Entry Point Config** (in pyproject.toml):
-```toml
-[project.entry-points."reflectlog.plugins"]
-my_tool = "my_package.plugins:MyTool"
-```
-
-**Graceful Shutdown**: Always call `await loader.shutdown()` to clean up all plugins and release resources.
+- Do not wire this package into `server.py` / `mcp_server.py` without an explicit product change.
+- Do not invent a live plugin API at startup.
+- Do not assume entry points exist in the installed package.

@@ -15,10 +15,11 @@ import pytest
 
 from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.manager import MemoryManager
-from reflectlog.core.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.application.utils.security import SecretString
+from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import Embeddings
 
 
 class MockEmbedder(Embeddings):
@@ -61,7 +62,7 @@ def create_usearch_config(temp_dir: str, project_suffix: str = "") -> Config:
         embedding_dims=128,
         qwen_embedding_dims=128,
         enable_hybrid_search=True,
-        reranker_engine="none",
+        reranker_engine=RerankerEngine.NONE,
         tantivy_index_path_template=os.path.join(temp_dir, "{workspace_id}", "tantivy"),
         search_limit=5,
         fusion_ranking_threshold=0.0,  # Allow all results

@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from reflectlog.core.exceptions import SearchError
 from reflectlog.application.tools.search import SearchTool
+from reflectlog.core.exceptions import SearchError
 
 
 @pytest.mark.unit

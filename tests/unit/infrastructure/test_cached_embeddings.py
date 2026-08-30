@@ -4,12 +4,12 @@ import hashlib
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from cachetools import LRUCache
+import pytest
 
-from reflectlog.core.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import Embeddings
 from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 
 

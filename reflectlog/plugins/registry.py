@@ -7,7 +7,7 @@ or "find reranker plugins".
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 
@@ -20,7 +20,7 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-class PluginState(Enum):
+class PluginState(StrEnum):
     """Plugin lifecycle states."""
 
     DISCOVERED = "discovered"
@@ -111,17 +111,12 @@ class PluginRegistry[T]:
             PluginMetadata for the registered plugin.
         """
         if metadata is None:
-            # Auto-generate metadata from plugin
-            # Use getattr with default to satisfy type checker
-            name = (
-                getattr(plugin, "plugin_name", None)
-                or getattr(plugin, "__class__", type(plugin)).__name__
-            )
-
-            version = (
-                getattr(plugin, "plugin_version", None)
-                or getattr(plugin, "__class__", type(plugin)).__module__.split(".")[-1]
-            )
+            if isinstance(plugin, IPluggable):
+                name = plugin.plugin_name or type(plugin).__name__
+                version = plugin.plugin_version or type(plugin).__module__.split(".")[-1]
+            else:
+                name = type(plugin).__name__
+                version = type(plugin).__module__.split(".")[-1]
 
             metadata = PluginMetadata(
                 name=name,

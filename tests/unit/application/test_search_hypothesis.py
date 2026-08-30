@@ -19,7 +19,9 @@ import pytest
 
 pytest.importorskip("hypothesis")
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
+
 from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils.logging import create_logger

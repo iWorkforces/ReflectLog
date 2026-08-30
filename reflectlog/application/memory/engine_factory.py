@@ -12,12 +12,13 @@ from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.fusion import create_fusion_engine
 from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.core.config_adapters import ConfigAdapter
+from reflectlog.core.enums import EmbedderProvider, RerankerEngine
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
+from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
@@ -31,7 +32,7 @@ class EngineFactoryResult:
     semantic_engine: USearchEngine
     tantivy_engine: TantivyEngine | None
     fusion_engine: FusionEngine
-    reranker_engine: str
+    reranker_engine: RerankerEngine
     enable_hybrid_search: bool
 
 
@@ -119,7 +120,7 @@ class EngineFactory:
             config={
                 "model": config.embedding_model,
                 "embedding_dims": config.qwen_embedding_dims
-                if config.embedder_provider == "langchain"
+                if config.embedder_provider == EmbedderProvider.LANGCHAIN
                 else config.embedding_dims,
                 "api_key": config.openrouter_api_key.get_secret_value(),
                 "openai_base_url": config.openrouter_base_url,
@@ -204,7 +205,7 @@ def create_cross_encoder_reranker(
     Returns:
         CrossEncoderReranker instance or None if not configured.
     """
-    if config.reranker_engine != "cross_encoder":
+    if config.reranker_engine != RerankerEngine.CROSS_ENCODER:
         return None
 
     ce_config = CrossEncoderConfig.from_config(ConfigAdapter(config))

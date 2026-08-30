@@ -15,7 +15,6 @@ from reflectlog.application.config.settings import (
 from reflectlog.application.utils.security import SecretString
 from reflectlog.core.exceptions import ConfigurationError
 
-
 # ---------------------------------------------------------------------------
 # Minimal env vars required for Config.from_environment()
 # ---------------------------------------------------------------------------
@@ -24,12 +23,6 @@ REQUIRED_ENV = {
     "WORKSPACE_ID": "test-project",
     "OPENROUTER_API_KEY": "sk-test-key-12345",
 }
-
-
-def _env(**overrides: str) -> dict[str, str]:
-    """Build env dict with required vars + overrides."""
-    env = {**REQUIRED_ENV, **overrides}
-    return env
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +113,7 @@ class TestConfigDefaults:
         assert cfg.fusion_method == "rrf"
         assert cfg.fusion_normalization is None
         assert cfg.fusion_rrf_k == 60
-        assert cfg.fusion_ranking_threshold == 0.8
+        assert cfg.fusion_ranking_threshold == 0.0
         assert cfg.enable_rrf_fusion is True
         assert cfg.fusion_weights is None
 
@@ -180,7 +173,7 @@ class TestConfigDefaults:
     def test_recency_defaults(self):
         cfg = self._make_config()
         assert cfg.enable_recency_boost is True
-        assert cfg.recency_decay_rate == 0.01
+        assert cfg.recency_decay_rate == 0.001
 
     def test_allowed_tools_default(self):
         cfg = self._make_config()
@@ -189,7 +182,7 @@ class TestConfigDefaults:
     def test_frozen_raises_on_mutation(self):
         cfg = self._make_config()
         with pytest.raises(AttributeError):
-            cfg.port = 1234  # ty: ignore[invalid-assignment]
+            type(cfg).__setattr__(cfg, "port", 1234)
 
 
 # ---------------------------------------------------------------------------
@@ -310,11 +303,11 @@ class TestFromEnvironmentOverrides:
         cfg = self._with_env(monkeypatch, MCP_TRANSPORT="streamable-http")
         assert cfg.transport == "streamable-http"
 
-    def test_transport_unknown_falls_back_to_stdio(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        cfg = self._with_env(monkeypatch, MCP_TRANSPORT="unknown")
-        assert cfg.transport == "stdio"
+    def test_transport_unknown_raises(self, monkeypatch: pytest.MonkeyPatch):
+        from reflectlog.core.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="Invalid MCP_TRANSPORT"):
+            _ = self._with_env(monkeypatch, MCP_TRANSPORT="unknown")
 
     def test_port_override(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(monkeypatch, PORT="8080")

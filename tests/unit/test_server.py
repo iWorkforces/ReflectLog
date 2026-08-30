@@ -1,8 +1,8 @@
 '''Unit tests for reflectlog/server.py CLI module.'''
 
+from collections.abc import Callable
 import io
 import os
-from collections.abc import Callable
 from pathlib import Path
 import signal
 import sys

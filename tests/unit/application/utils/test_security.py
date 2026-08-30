@@ -2,13 +2,13 @@
 
 import pytest
 
-from reflectlog.core.exceptions import ValidationError
 from reflectlog.application.utils.security import (
     SecretString,
     redact_dict_secrets,
     sanitize_for_logging,
     validate_workspace_id,
 )
+from reflectlog.core.exceptions import ValidationError
 
 
 class TestSecretString:
