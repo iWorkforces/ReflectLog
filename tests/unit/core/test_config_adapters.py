@@ -895,6 +895,20 @@ class TestEdgeCases:
         assert adapter.usearch_index_path == "indexes/my-project.v2/usearch"
         assert adapter.tantivy_index_path == "indexes/my-project.v2/tantivy"
 
+    def test_storage_paths_lowercase_workspace_component(self) -> None:
+        """Index paths lowercase the workspace component; identity stays mixed-case."""
+        config = Config(
+            workspace_id="MyProject",
+            openrouter_api_key=SecretString("sk-key"),
+        )
+        adapter = ConfigAdapter(config)
+        storage = StorageConfigAdapter(config)
+        assert config.workspace_id == "MyProject"
+        assert adapter.usearch_index_path == "indexes/myproject/usearch"
+        assert adapter.tantivy_index_path == "indexes/myproject/tantivy"
+        assert storage.usearch_index_path == "indexes/myproject/usearch"
+        assert storage.tantivy_index_path == "indexes/myproject/tantivy"
+
     def test_reranker_engine_none_string(self) -> None:
         """Config with reranker_engine='none' coerces correctly."""
         config = Config(

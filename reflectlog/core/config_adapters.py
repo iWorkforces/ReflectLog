@@ -182,13 +182,13 @@ class ConfigAdapter(IAppConfig):
     @property
     def usearch_index_path(self) -> str:
         """Path to USearch index files."""
-        return f"indexes/{self._config.workspace_id}/usearch"
+        return f"indexes/{self._config.workspace_id.lower()}/usearch"
 
     @property
     def tantivy_index_path(self) -> str:
         """Path to Tantivy index files."""
         return self._config.tantivy_index_path_template.format(
-            workspace_id=self._config.workspace_id
+            workspace_id=self._config.workspace_id.lower()
         )
 
     @property
@@ -494,12 +494,12 @@ class StorageConfigAdapter(IStorageConfig):
 
     @property
     def usearch_index_path(self) -> str:
-        return f"indexes/{self._config.workspace_id}/usearch"
+        return f"indexes/{self._config.workspace_id.lower()}/usearch"
 
     @property
     def tantivy_index_path(self) -> str:
         return self._config.tantivy_index_path_template.format(
-            workspace_id=self._config.workspace_id
+            workspace_id=self._config.workspace_id.lower()
         )
 
     @property
