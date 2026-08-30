@@ -214,8 +214,7 @@ class TestCanonicalPipelineIdentity:
         import reflectlog.application.tools as tools_pkg
         from reflectlog.utility import utility as utility_mod
 
-        with pytest.raises(AttributeError):
-            _ = reflectlog.main
+        assert not hasattr(reflectlog, "main")
         assert not hasattr(tools_pkg, "SearchTool")
         for name in (
             "AssistantMessage",
@@ -287,14 +286,14 @@ class TestCanonicalPipelineIdentity:
             def is_ready(self) -> bool:
                 return True
 
-        manager._semantic_engine = PendingEngine()
+        manager._semantic_engine = cast(Any, PendingEngine())
         manager._tantivy_engine = None
         assert manager.search_engine_status() == {
             "semantic_engine": "pending",
             "tantivy_engine": "disabled",
         }
-        manager._semantic_engine = ReadyEngine()
-        manager._tantivy_engine = ReadyEngine()
+        manager._semantic_engine = cast(Any, ReadyEngine())
+        manager._tantivy_engine = cast(Any, ReadyEngine())
         assert manager.search_engine_status() == {
             "semantic_engine": "initialized",
             "tantivy_engine": "initialized",
@@ -1191,11 +1190,11 @@ class TestSearchResponsiveness:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("mem", 0.4)]
-        manager._semantic_engine = semantic
+        manager._semantic_engine = cast(Any, semantic)
         manager._tantivy_engine = tantivy
         manager.is_hybrid_search = True
         manager._search_pipeline = SearchPipeline(
-            semantic_engine=semantic,
+            semantic_engine=cast(Any, semantic),
             tantivy_engine=tantivy,
             fusion_engine=fusion,
             config=config,

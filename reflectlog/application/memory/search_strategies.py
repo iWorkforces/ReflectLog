@@ -25,9 +25,8 @@ from asyncer import (
 from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.exceptions import SearchError
 
-from ...core.access import optional_attr
 from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine
+from ...core.types import ISemanticSearchEngine, IStoredMemory
 from ..config.settings import Config
 from ..utils.logging import format_fusion_score_status
 from .fusion.base import FusionEngine
@@ -184,13 +183,13 @@ class SearchPipeline:
                 if context.reranker_engine == RerankerEngine.CROSS_ENCODER
                 else context.limit
             )
-            soon_results = tg.soonify(asyncify(self._semantic_engine.search))(
-                query=context.query,
-                workspace_id=context.workspace_id,
-                limit=fetch_limit,
+            soon_results = tg.soonify(self._search_semantic)(
+                context.query, fetch_limit, context.workspace_id
             )
         assert soon_results is not None
-        results: list[tuple[str, float, str]] = soon_results.value or []
+        results, search_error = soon_results.value
+        if search_error is not None:
+            raise search_error
 
         timestamp_map = {msg: created_at for msg, _, created_at in results}
         paired = [(msg, score) for msg, score, _ in results]
@@ -228,8 +227,8 @@ class SearchPipeline:
         backends_used = int(bool(semantic_results)) + int(bool(tantivy_results))
         if context.enable_rrf_fusion and backends_used >= 2:
             hybrid_results = await self._step3_fusion_threshold(
-            context, hybrid_results, backends_used
-        )
+                context, hybrid_results, backends_used
+            )
             # Handle case where all results were filtered out
             if not hybrid_results:
                 return SearchResult(
@@ -245,7 +244,9 @@ class SearchPipeline:
             self._log_skip_reranking(len(hybrid_results), rerank_step_num)
         else:
             timestamp_map = await asyncify(self._complete_timestamp_map)(
-                timestamp_map, [msg for msg, _ in hybrid_results]
+                timestamp_map,
+                [msg for msg, _ in hybrid_results],
+                context.workspace_id,
             )
             hybrid_results = await self._step4_reranking(
                 context, hybrid_results, timestamp_map, rerank_step_num
@@ -753,7 +754,10 @@ class SearchPipeline:
         self.logger.info("─" * 50, extra={"section": "fusion"})
 
     def _complete_timestamp_map(
-        self, timestamp_map: dict[str, str], contents: list[str]
+        self,
+        timestamp_map: dict[str, str],
+        contents: list[str],
+        workspace_id: str,
     ) -> dict[str, str]:
         """Resolve created_at for every candidate. Empty map disables recency."""
         completed = {
@@ -767,20 +771,14 @@ class SearchPipeline:
 
         try:
             store = self._semantic_engine.memory_store
-            config = optional_attr(self._semantic_engine, "config")
-            workspace_id = optional_attr(config, "workspace_id") if config is not None else None
-            if not isinstance(workspace_id, str):
-                return completed
-
             for content in missing:
                 mem_id = self._semantic_engine.get_id_by_content(workspace_id, content)
                 if mem_id is None:
                     continue
                 stored = store.get(mem_id)
-                created_raw = (
-                    optional_attr(stored, "created_at") if stored is not None else ""
-                )
-                created_at = created_raw if isinstance(created_raw, str) else ""
+                if not isinstance(stored, IStoredMemory):
+                    continue
+                created_at = stored.created_at
                 if not created_at:
                     continue
                 completed[content] = created_at

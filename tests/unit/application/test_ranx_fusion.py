@@ -4,7 +4,6 @@ from typing import List, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
-from ranx import Run
 
 from reflectlog.application.memory.fusion import create_fusion_engine
 from reflectlog.application.memory.fusion.ranx_fusion import (

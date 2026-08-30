@@ -73,7 +73,7 @@ def validate_add_batch(
     """Reject oversized add payloads before embed/persist."""
     if len(memories) > max_batch:
         return False, f"Too many memories in one add (max: {max_batch})"
-    total_chars = sum(len(item) for item in memories if isinstance(item, str))
+    total_chars = sum(len(item) for item in memories)
     if total_chars > max_chars:
         return False, f"Add payload too large (max: {max_chars} characters)"
     return True, None

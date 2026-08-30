@@ -352,13 +352,10 @@ class RanxFusionEngine(FusionEngine):
         if not runs:
             return []
 
-        # Build params for ranx.fuse()
+        # RRF already returned above. Remaining methods only take weights.
         params: dict[str, Any] | None = None
-        if self._method == FusionMethod.RRF:
-            params = {"k": self._rrf_k}
         if self._weights is not None:
-            params = {} if params is None else params
-            params["weights"] = self._weights
+            params = {"weights": self._weights}
 
         try:
             combined = ranx_fuse(
