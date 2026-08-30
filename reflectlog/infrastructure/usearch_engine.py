@@ -195,6 +195,7 @@ class USearchEngine(BaseModel):
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _index_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
     _dirty: bool = PrivateAttr(default=False)
+    _closed: bool = PrivateAttr(default=False)
 
     def __init__(
         self,
@@ -252,6 +253,8 @@ class USearchEngine(BaseModel):
         Raises:
             RuntimeError: If index initialization fails.
         """
+        if self._closed:
+            raise StorageError("USearchEngine is closed")
         if self._index is not None:
             return self._index
 
@@ -303,6 +306,13 @@ class USearchEngine(BaseModel):
                                 f"{detail} at {self.config.db_path}. "
                                 "Refusing to create an empty HNSW that would "
                                 "overwrite the file."
+                            ) from restore_error
+                        if sqlite_populated:
+                            raise InitializationError(
+                                "USearch index is missing but SQLite has "
+                                f"{sqlite_rows} memories at {self.config.db_path}. "
+                                "Refusing to create an empty HNSW that would "
+                                "hide existing rows."
                             ) from restore_error
                         if self.logger:
                             self.logger.debug(
@@ -390,6 +400,7 @@ class USearchEngine(BaseModel):
         """
         mem_id = None  # Track mem_id for rollback on embedding failure
         try:
+            _ = self.index
             if infer and self.logger:
                 self.logger.warning(
                     "infer=True not supported by USearchEngine, proceeding as infer=False",
@@ -494,6 +505,7 @@ class USearchEngine(BaseModel):
         if not contents:
             return []
 
+        _ = self.index
         if infer and self.logger:
             self.logger.warning(
                 "infer=True not supported by USearchEngine, proceeding as infer=False",
@@ -704,7 +716,7 @@ class USearchEngine(BaseModel):
                     "USearch search completed",
                     extra={
                         "workspace_id": self.config.workspace_id,
-                        "query": query[:100],
+                        "query_length": len(query),
                         "search_mode": "exact" if use_exact else "approximate",
                         "matches_found": len(matches),
                         "results_after_filter": len(results),
@@ -720,7 +732,7 @@ class USearchEngine(BaseModel):
                     "USearch search failed",
                     extra={
                         "workspace_id": self.config.workspace_id,
-                        "query": query[:100],
+                        "query_length": len(query),
                         "error": str(e),
                     },
                 )
@@ -970,8 +982,10 @@ class USearchEngine(BaseModel):
 
         Closes the MemoryStore SQLite connection.
         """
+        self._closed = True
         if self._memory_store is not None:
             self._memory_store.close()
+        self._index = None
 
     def __enter__(self) -> Self:
         """Enter context manager.

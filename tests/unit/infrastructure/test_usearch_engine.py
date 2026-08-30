@@ -772,6 +772,26 @@ class TestUSearchEngineIndexInit:
             with pytest.raises(InitializationError, match="missing"):
                 _ = engine.index
 
+    def test_missing_index_with_populated_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import InitializationError
+        from reflectlog.infrastructure.memory_store import MemoryStore
+
+        config, embedder, _ = temp_engine
+        store = MemoryStore(db_path=config.db_path)
+        _ = store.insert(config.workspace_id, "already stored")
+        store.close()
+        if os.path.exists(config.index_path):
+            os.remove(config.index_path)
+
+        engine = USearchEngine(config=config, embedder=embedder)
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.side_effect = FileNotFoundError("no file")
+            with pytest.raises(InitializationError, match="missing but SQLite"):
+                _ = engine.index
+            mock_index_cls.assert_not_called()
+
     def test_restore_success_with_missing_sqlite_fails_closed(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
