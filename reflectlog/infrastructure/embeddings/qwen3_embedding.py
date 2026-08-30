@@ -286,17 +286,9 @@ class LangchainQwenEmbeddings(BaseModel):
                     for j, embedding in enumerate(batch_embeddings):
                         results[start_idx + j] = embedding
             except Exception as e:
-                # Log error but don't cancel other batches
-                # Empty results remain empty for this batch
-                # Caller can detect by checking for empty lists
-                import warnings
-
-                warnings.warn(
-                    f"Embedding batch {start_idx} failed: {e}",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
-                # Results at failed batch indices remain as empty lists
+                raise RuntimeError(
+                    f"Embedding batch at offset {start_idx} failed"
+                ) from e
 
         # Process all batches concurrently (limited by semaphore)
         # Note: If one batch fails, others continue

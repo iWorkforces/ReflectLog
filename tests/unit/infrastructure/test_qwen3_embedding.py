@@ -636,14 +636,10 @@ class TestAembedDocumentsBatchFailure:
             return LangchainQwenEmbeddings(config=config)
 
     @pytest.mark.asyncio
-    async def test_batch_failure_emits_warning_and_leaves_empty_results(
+    async def test_batch_failure_raises(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        call_count = 0
-
         async def mock_create(**kwargs: Unpack[EmbeddingRequest]) -> EmbeddingResponse:
-            nonlocal call_count
-            call_count += 1
             input_texts = kwargs["input"]
             if input_texts == ["fail_text"]:
                 raise ConnectionError("batch failed")
@@ -659,13 +655,9 @@ class TestAembedDocumentsBatchFailure:
                 "reflectlog.infrastructure.embeddings.qwen3_embedding.anyio.sleep",
                 new_callable=AsyncMock,
             ),
-            pytest.warns(RuntimeWarning, match="Embedding batch .* failed"),
+            pytest.raises(BaseExceptionGroup),
         ):
-            result = await mock_embeddings.aembed_documents(["good_text", "fail_text"])
-
-        assert len(result) == 2
-        assert result[0] == [0.1, 0.2, 0.3]
-        assert result[1] == []
+            _ = await mock_embeddings.aembed_documents(["good_text", "fail_text"])
 
 
 class TestAsyncContextManager:
