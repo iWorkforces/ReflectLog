@@ -523,6 +523,24 @@ class MemoryStore(BaseModel):
             finally:
                 cursor.close()
 
+    def count(self, workspace_id: str) -> int:
+        """Return how many memories exist for a workspace."""
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute(
+                    "SELECT COUNT(*) FROM memories WHERE workspace_id = ?",
+                    (workspace_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return 0
+                return int(row[0])
+            except sqlite3.Error as e:
+                raise StorageError(f"Failed to count memories: {e}") from e
+            finally:
+                cursor.close()
+
     def get_all(
         self,
         workspace_id: str,
@@ -1025,17 +1043,7 @@ class MemoryStore(BaseModel):
             try:
                 _ = cursor.execute("BEGIN")
                 recorded = [
-                    self._insert_transition_row(
-                        cursor,
-                        workspace_id=workspace_id,
-                        old_memory_id=0,
-                        old_content="",
-                        new_content=content,
-                        archive_id=0,
-                        reason="add",
-                        confidence=1.0,
-                        kind="add",
-                    )
+                    self._insert_add_intent_row(cursor, workspace_id, content)
                     for content in unique
                 ]
                 self.connection.commit()
@@ -1231,6 +1239,52 @@ class MemoryStore(BaseModel):
         )
         row = cursor.fetchone()
         return str(row[0]) if row is not None else None
+
+    def _insert_add_intent_row(
+        self,
+        cursor: sqlite3.Cursor,
+        workspace_id: str,
+        content: str,
+    ) -> ReplacementTransition:
+        """Insert an add intent, allocating a new id after a later delete."""
+        existing = self._existing_intent(
+            cursor,
+            workspace_id=workspace_id,
+            kind="add",
+            old_memory_id=0,
+            new_content=content,
+        )
+        if existing is not None and self.has_later_intent(
+            workspace_id=workspace_id,
+            kind="delete",
+            content=content,
+            after_id=existing.id,
+        ):
+            self._mark_transition_complete(cursor, existing.id)
+        return self._insert_transition_row(
+            cursor,
+            workspace_id=workspace_id,
+            old_memory_id=0,
+            old_content="",
+            new_content=content,
+            archive_id=0,
+            reason="add",
+            confidence=1.0,
+            kind="add",
+        )
+
+    def _mark_transition_complete(
+        self, cursor: sqlite3.Cursor, transition_id: int
+    ) -> None:
+        """Mark one transition completed on the caller's cursor."""
+        _ = cursor.execute(
+            """
+            UPDATE replacement_transitions
+            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = ?
+            """,
+            (TRANSITION_COMPLETED, transition_id, TRANSITION_PENDING),
+        )
 
     def _insert_transition_row(
         self,

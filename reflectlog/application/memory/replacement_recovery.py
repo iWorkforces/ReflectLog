@@ -9,9 +9,11 @@ SQLite or hybrid Tantivy still disagree.
 from __future__ import annotations
 
 from contextlib import AbstractContextManager, nullcontext
+import operator
 import os
 from typing import TYPE_CHECKING, cast
 
+from reflectlog.core.access import optional_attr
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import (
     IArchiveMemoryStore,
@@ -110,6 +112,21 @@ def apply_pending_transition(
             tantivy_engine=tantivy_engine,
             logger=logger,
         )
+
+    store = semantic_engine.memory_store
+    if _later_intent_exists(
+        store, transition, kind="delete", content=transition.new_content
+    ):
+        _remove_recorded_old(transition, semantic_engine, tantivy_engine)
+        if tantivy_engine is not None:
+            tantivy_engine.commit()
+        semantic_engine.commit()
+        store.complete_replacement_transition(transition.id)
+        logger.info(
+            "Completed replace intent superseded by a later delete or replace",
+            extra={"transition_id": transition.id},
+        )
+        return True
 
     _ensure_replacement_present(
         transition,
@@ -329,7 +346,7 @@ def _delete_converged(
 
 
 def _later_intent_exists(
-    store: object,
+    store: IArchiveMemoryStore,
     transition: ReplacementTransition,
     *,
     kind: str,
@@ -340,19 +357,13 @@ def _later_intent_exists(
     Listing failures fall through to ``has_later_intent`` rather than treating
     the later write as absent. Pending rows are workspace-scoped.
     """
-    lister = type(store).__dict__.get("list_pending_transitions")
-    pending: list[object] | None = None
-    if callable(lister):
-        try:
-            raw = lister(store)
-        except Exception:
-            raw = None
-        if isinstance(raw, list):
-            pending = cast(list[object], raw)
+    pending: list[ReplacementTransition] | None = None
+    try:
+        pending = store.list_pending_transitions()
+    except Exception:
+        pending = None
     if pending is not None:
         for other in pending:
-            if not isinstance(other, ReplacementTransition):
-                continue
             if other.workspace_id != transition.workspace_id:
                 continue
             if other.id <= transition.id:
@@ -365,19 +376,11 @@ def _later_intent_exists(
                 return True
             if kind == "add" and other.kind == "add" and other.new_content == content:
                 return True
-    finder = type(store).__dict__.get("has_later_intent")
-    if not callable(finder):
-        if pending is None and callable(lister):
-            raise RuntimeError("cannot determine later intents; listing failed")
-        return False
-    return bool(
-        finder(
-            store,
-            workspace_id=transition.workspace_id,
-            kind=kind,
-            content=content,
-            after_id=transition.id,
-        )
+    return store.has_later_intent(
+        workspace_id=transition.workspace_id,
+        kind=kind,
+        content=content,
+        after_id=transition.id,
     )
 
 
@@ -401,19 +404,11 @@ def _recovery_store(
     logger: IStructuredLogger,
 ) -> IArchiveMemoryStore | None:
     """Return a transition store when pending rows can be listed."""
-    store = getattr(semantic_engine, "memory_store", None)
-    list_pending = getattr(store, "list_pending_transitions", None)
-    if store is None or not callable(list_pending):
-        logger.warning(
-            "Skipping replacement recovery; memory store cannot list transitions",
-            extra={"store_type": type(store).__name__},
-        )
-        return None
-
-    db_path = getattr(store, "db_path", None)
+    store = semantic_engine.memory_store
+    db_path = optional_attr(store, "db_path")
     if isinstance(db_path, str) and db_path and not os.path.exists(db_path):
         return None
-    return cast(IArchiveMemoryStore, store)
+    return store
 
 
 def _ensure_replacement_present(
@@ -469,17 +464,14 @@ def _index_contains(
     semantic_engine: ISemanticSearchEngine, memory_id: int
 ) -> bool | None:
     """Return membership, or None when the index cannot be inspected."""
-    contains = type(semantic_engine).__dict__.get("contains_id")
-    if callable(contains):
-        result = contains(semantic_engine, memory_id)
-        if isinstance(result, bool):
-            return result
-        return None
-    index = getattr(semantic_engine, "index", None)
+    result = semantic_engine.contains_id(memory_id)
+    if isinstance(result, bool):
+        return result
+    index = optional_attr(semantic_engine, "index")
     if index is None:
         return None
     try:
-        return memory_id in index
+        return bool(operator.contains(index, memory_id))
     except TypeError:
         return None
 
@@ -490,8 +482,8 @@ def _precompute_add_vectors(
     logger: IStructuredLogger,
 ) -> dict[str, list[float]]:
     """Embed missing add/replace text outside the write lock."""
-    embedder = getattr(semantic_engine, "embedder", None)
-    embed_query = getattr(embedder, "embed_query", None) if embedder is not None else None
+    embedder = optional_attr(semantic_engine, "embedder")
+    embed_query = optional_attr(embedder, "embed_query") if embedder is not None else None
     if not callable(embed_query):
         return {}
     needed: list[str] = []
@@ -529,10 +521,8 @@ def _insert_recovered_add(
     vector: list[float] | None,
 ) -> None:
     """Insert recovered content, preferring a precomputed vector."""
-    add_batch = type(semantic_engine).__dict__.get("add_batch")
-    if callable(add_batch) and vector is not None:
-        _ = add_batch(
-            semantic_engine,
+    if vector is not None:
+        _ = semantic_engine.add_batch(
             transition.workspace_id,
             [transition.new_content],
             infer=False,

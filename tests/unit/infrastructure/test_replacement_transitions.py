@@ -257,6 +257,30 @@ class TestAddAndDeleteIntents:
             assert pending[0].id == second.id
             reopened.close()
 
+    def test_reopen_keeps_two_pending_adds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.db")
+            store = MemoryStore(db_path=path)
+            first = store.begin_add_intents("proj1", ["one"])[0]
+            store.complete_replacement_transition(first.id)
+            _ = store.begin_add_intents("proj1", ["two", "three"])
+            store.close()
+            reopened = MemoryStore(db_path=path)
+            pending = {row.new_content for row in reopened.list_pending_transitions()}
+            assert pending == {"two", "three"}
+            reopened.close()
+
+    def test_readd_after_delete_gets_new_intent_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            first = store.begin_add_intents("proj1", ["hello"])[0]
+            deleted = store.begin_delete_intents("proj1", [(11, "hello")])[0]
+            store.complete_replacement_transition(deleted.id)
+            second = store.begin_add_intents("proj1", ["hello"])[0]
+            assert second.id > first.id
+            assert second.id > deleted.id
+            store.close()
+
     def test_delete_and_replace_can_coexist_for_same_old_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))

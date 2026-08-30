@@ -16,6 +16,18 @@ from reflectlog.core.types import ReplacementTransition
 from reflectlog.infrastructure.memory_store import MemoryStore
 
 
+def _stub_journal(semantic: MagicMock) -> None:
+    semantic.memory_store.list_pending_transitions.return_value = []
+    semantic.memory_store.has_later_intent.return_value = False
+    def _contains(memory_id: int) -> bool:
+        index = semantic.index
+        if isinstance(index, (set, dict)):
+            return memory_id in index
+        return False
+
+    semantic.contains_id.side_effect = _contains
+
+
 def _transition() -> ReplacementTransition:
     return ReplacementTransition(
         id=3,
@@ -36,6 +48,7 @@ class TestApplyPendingTransition:
 
     def test_deletes_old_and_inserts_missing_new(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         semantic.get_id_by_content.side_effect = [None, None, 99, None]
         semantic.index = {99}
         tantivy = MagicMock()
@@ -75,6 +88,7 @@ class TestApplyPendingTransition:
 
     def test_skips_insert_when_replacement_already_present(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         def get_id(_workspace_id: str, content: str) -> int | None:
             return 99 if content == "new convention" else None
 
@@ -99,6 +113,7 @@ class TestApplyPendingTransition:
 
     def test_reindexes_missing_vector(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         def get_new_id(_workspace_id: str, content: str) -> int | None:
             return 7 if content == "new convention" else None
 
@@ -152,6 +167,7 @@ class TestApplyPendingTransition:
 
     def test_leaves_pending_when_tantivy_still_has_old(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         def get_replacement_id(_workspace_id: str, content: str) -> int | None:
             return 99 if content == "new convention" else None
 
@@ -175,6 +191,7 @@ class TestApplyPendingTransition:
 
     def test_does_not_complete_when_indexes_disagree(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         semantic.get_id_by_content.return_value = None
         semantic.index = set()
         tantivy = MagicMock()
@@ -192,6 +209,7 @@ class TestApplyPendingTransition:
 
     def test_works_without_tantivy(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         semantic.get_id_by_content.side_effect = [None, 7, None]
         semantic.index = {7}
 
@@ -267,11 +285,11 @@ class TestReconcilePendingReplacements:
         )
         assert count == 0
 
-    def test_skips_when_store_cannot_list_transitions(self) -> None:
+    def test_skips_when_store_db_is_missing(self) -> None:
         logger = MagicMock()
         store = MagicMock()
-        store.list_pending_transitions = None
-        store.db_path = None
+        store.db_path = "/no/such/memories.db"
+        store.list_pending_transitions.return_value = []
         semantic = MagicMock()
         semantic.memory_store = store
         count = reconcile_pending_replacements(
@@ -282,7 +300,6 @@ class TestReconcilePendingReplacements:
             logger=logger,
         )
         assert count == 0
-        logger.warning.assert_called()
 
     def test_noops_when_nothing_is_pending(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -473,7 +490,54 @@ class TestReconcilePendingReplacements:
                 tantivy_engine=None,
                 logger=MagicMock(),
             )
-            # add() is used when add_batch is not on the MagicMock class
             semantic.add.assert_called()
+            assert completed is False
+            assert added.id in {row.id for row in store.list_pending_transitions()}
             store.close()
-            assert completed in {True, False}
+
+    def test_stale_replace_is_completed_when_later_delete_of_new_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            replaced = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj",
+                old_content="hello",
+                new_content="hello v2",
+                reason="updated",
+                confidence=0.9,
+            )
+            deleted = store.begin_delete_intents("proj", [(22, "hello v2")])[0]
+            store.complete_replacement_transition(deleted.id)
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.get_id_by_content.return_value = None
+            semantic.index = set()
+            completed = apply_pending_transition(
+                replaced,
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                logger=MagicMock(),
+            )
+            assert completed is True
+            semantic.add.assert_not_called()
+            assert all(row.id != replaced.id for row in store.list_pending_transitions())
+            store.close()
+
+    def test_completed_later_delete_supersedes_pending_add(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            added = store.begin_add_intents("proj", ["hello"])[0]
+            deleted = store.begin_delete_intents("proj", [(11, "hello")])[0]
+            store.complete_replacement_transition(deleted.id)
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.get_id_by_content.return_value = None
+            completed = apply_pending_transition(
+                added,
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                logger=MagicMock(),
+            )
+            assert completed is True
+            semantic.add.assert_not_called()
+            store.close()
