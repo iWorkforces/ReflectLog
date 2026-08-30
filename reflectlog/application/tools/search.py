@@ -78,6 +78,9 @@ class SearchTool(BaseTool):
                 >>> search("Ruby")
                 []  # No semantically similar content
             """
+            if not query.strip():
+                raise ValueError("Search query must contain non-whitespace characters")
+
             try:
                 self.log_invocation(ToolName.SEARCH, query_length=len(query))
 

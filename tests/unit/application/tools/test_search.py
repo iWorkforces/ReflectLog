@@ -100,6 +100,18 @@ class TestSearchToolNoResults:
 
         assert result == []
 
+
+@pytest.mark.unit
+class TestSearchToolWhitespaceQuery:
+    async def test_whitespace_query_raises_before_search(
+        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock
+    ) -> None:
+        mock_memory_manager.search = AsyncMock(return_value=["should not run"])
+        handler = search_tool_instance.get_handler()
+        with pytest.raises(ValueError, match="non-whitespace"):
+            await handler("   ")
+        mock_memory_manager.search.assert_not_called()
+
     async def test_search_no_results_logs_message(
         self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
     ) -> None:

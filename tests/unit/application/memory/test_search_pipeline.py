@@ -665,15 +665,44 @@ class TestBackendFailureContracts:
         assert result.tantivy_results == []
 
     @pytest.mark.asyncio
-    async def test_semantic_error_and_empty_tantivy_raises_search_error(self) -> None:
+    async def test_semantic_error_and_empty_tantivy_success_returns_empty(
+        self,
+    ) -> None:
         semantic = MagicMock()
         semantic.search.side_effect = RuntimeError("embed fail")
+        semantic.memory_store.exists_many.return_value = set()
         tantivy = MagicMock()
         tantivy.search.return_value = []
         pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
 
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert result.memories == []
+
+    async def test_semantic_error_and_tantivy_none_raises_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.search.side_effect = RuntimeError("embed fail")
+        pipeline = _make_pipeline(semantic=semantic, tantivy=None)
+
         with pytest.raises(SearchError, match="Failed to execute search"):
             await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+    async def test_fts_hits_missing_from_sqlite_are_dropped(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = []
+        semantic.memory_store.exists_many.return_value = set()
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("deleted text", 4.0)]
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("deleted text", 0.01)]
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion
+        )
+
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert result.tantivy_results == []
+        fusion.fuse.assert_called_once_with([], [])
+        assert result.memories == []
 
     async def test_tantivy_error_and_empty_semantic_raises_search_error(self) -> None:
         semantic = MagicMock()
