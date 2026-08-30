@@ -115,6 +115,7 @@ class MemoryStore(BaseModel):
     _conn: sqlite3.Connection | None = PrivateAttr(default=None)
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _conn_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
+    _closed: bool = PrivateAttr(default=False)
 
     def __init__(
         self, db_path: str, logger: IStructuredLogger | None = None, **kwargs: Any
@@ -135,8 +136,12 @@ class MemoryStore(BaseModel):
         Returns:
             SQLite connection with WAL mode enabled and busy timeout.
         """
+        if self._closed:
+            raise StorageError("MemoryStore is closed")
         if self._conn is None:
             with self._init_lock:
+                if self._closed:
+                    raise StorageError("MemoryStore is closed")
                 if self._conn is None:
                     # Ensure directory exists
                     db_dir = os.path.dirname(self.db_path)
@@ -1655,6 +1660,7 @@ class MemoryStore(BaseModel):
     def close(self) -> None:
         """Close the database connection."""
         with self._conn_lock:
+            self._closed = True
             if self._conn is not None:
                 self._conn.close()
                 self._conn = None

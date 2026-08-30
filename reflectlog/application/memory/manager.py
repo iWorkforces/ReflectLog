@@ -573,40 +573,40 @@ class MemoryManager:
                 extra={"error": str(exc)},
             )
 
+        self._ensure_open()
         memories_to_add: list[str] = []
         seen_memories: set[str] = set()
-        with self._lock:
-            log_limit = min(len(memories), LOG_ADD_MEMORY_PREVIEW_LIMIT)
-            for idx, memory in enumerate(memories, 1):
-                if idx <= log_limit:
-                    self.logger.info(
-                        f"  ⏳ [{idx}/{len(memories)}] Processing memory",
-                        extra={
-                            "memory_index": idx,
-                            "total_memories": len(memories),
-                            "memory_length": len(memory),
-                        },
-                    )
-                if memory in seen_memories:
-                    if idx <= log_limit:
-                        self.logger.info(
-                            "    Skipped (duplicate in batch)",
-                            extra={
-                                "memory_index": idx,
-                                "reason": "batch_duplicate",
-                            },
-                        )
-                    continue
-                seen_memories.add(memory)
-                memories_to_add.append(memory)
-            if len(memories) > log_limit:
+        log_limit = min(len(memories), LOG_ADD_MEMORY_PREVIEW_LIMIT)
+        for idx, memory in enumerate(memories, 1):
+            if idx <= log_limit:
                 self.logger.info(
-                    f"  ... {len(memories) - log_limit} more memory(s) omitted from logs",
+                    f"  ⏳ [{idx}/{len(memories)}] Processing memory",
                     extra={
-                        "omitted_count": len(memories) - log_limit,
+                        "memory_index": idx,
                         "total_memories": len(memories),
+                        "memory_length": len(memory),
                     },
                 )
+            if memory in seen_memories:
+                if idx <= log_limit:
+                    self.logger.info(
+                        "    Skipped (duplicate in batch)",
+                        extra={
+                            "memory_index": idx,
+                            "reason": "batch_duplicate",
+                        },
+                    )
+                continue
+            seen_memories.add(memory)
+            memories_to_add.append(memory)
+        if len(memories) > log_limit:
+            self.logger.info(
+                f"  ... {len(memories) - log_limit} more memory(s) omitted from logs",
+                extra={
+                    "omitted_count": len(memories) - log_limit,
+                    "total_memories": len(memories),
+                },
+            )
 
         if not memories_to_add:
             return 0
@@ -692,6 +692,7 @@ class MemoryManager:
         Raises:
             RuntimeError: If storage operation fails (not raised in dry_run mode).
         """
+        self._ensure_open()
         return await self._add_pipeline.execute(memories, dry_run)
 
     async def add_messages_async(
@@ -761,6 +762,19 @@ class MemoryManager:
             Cancelling this await does not abort native USearch or Tantivy
             work already running in a worker thread.
         """
+        self._ensure_open()
+        if not query.strip():
+            return []
+        try:
+            _ = self.reconcile_pending_replacements()
+        except InitializationError:
+            raise
+        except Exception as exc:
+            self.logger.error(
+                "Pre-search reconcile failed; continuing with pending rows",
+                extra={"error": str(exc)},
+            )
+
         # Use defaults from config if not provided
         if limit is None:
             limit = self.config.search_limit
@@ -877,6 +891,7 @@ class MemoryManager:
         Raises:
             StorageError: If deletion fails.
         """
+        self._ensure_open()
         with self._write_lock, self._lock:
             try:
                 numeric_id = int(memory_id)
@@ -924,6 +939,7 @@ class MemoryManager:
         Raises:
             RuntimeError: If deletion fails or results in inconsistent state.
         """
+        self._ensure_open()
         with self._write_lock, self._lock:
             try:
                 # 1. Look up the SQLite ID from the memory content
@@ -1003,6 +1019,7 @@ class MemoryManager:
         Returns:
             Contents that were found and deleted.
         """
+        self._ensure_open()
         unique = list(dict.fromkeys(memories))
         if not unique:
             return []
@@ -1174,6 +1191,11 @@ class MemoryManager:
             content=content,
             logger=self.logger,
         )
+
+    def _ensure_open(self) -> None:
+        """Reject writes and searches after close() has started."""
+        if self._closed or self._closing:
+            raise StorageError("MemoryManager is closed")
 
     def _dispose_partial_init(self) -> None:
         """Close engines created before a constructor failure."""

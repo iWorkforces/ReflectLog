@@ -848,6 +848,14 @@ class TestCloseErrorPaths:
         mock_usearch.close.assert_called_once()
         mock_tantivy.close.assert_called_once()
 
+    def test_writes_after_close_are_rejected(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
+        manager, _, _ = _make_manager(mock_config, mock_logger)
+        manager.close()
+        with pytest.raises(StorageError, match="closed"):
+            manager.add_memories(["too late"])
+
     def test_pending_intent_count_propagates_list_failure(
         self, mock_config: Config, mock_logger: LogCapture
     ):
