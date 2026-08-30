@@ -11,7 +11,7 @@ concern-focused module. It implements the 4-step search pipeline:
 from dataclasses import dataclass
 import math
 import time
-from typing import TYPE_CHECKING, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
     from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
@@ -22,6 +22,7 @@ from asyncer import (
     create_task_group,
 )
 
+from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.exceptions import SearchError
 
 from ...core.access import optional_attr
@@ -58,7 +59,7 @@ class SearchContext:
     overfetch_limit: int
     enable_hybrid_search: bool
     enable_rrf_fusion: bool
-    reranker_engine: str
+    reranker_engine: RerankerEngine | str
     workspace_id: str
 
 
@@ -180,7 +181,7 @@ class SearchPipeline:
         async with create_task_group() as tg:
             fetch_limit = (
                 context.overfetch_limit
-                if context.reranker_engine == "cross_encoder"
+                if context.reranker_engine == RerankerEngine.CROSS_ENCODER
                 else context.limit
             )
             soon_results = tg.soonify(asyncify(self._semantic_engine.search))(
@@ -616,17 +617,17 @@ class SearchPipeline:
     def _get_cross_encoder_reranker(self) -> CrossEncoderReranker | None:
         if (
             self._memory_manager is None
-            or self.config.reranker_engine != "cross_encoder"
+            or self.config.reranker_engine != RerankerEngine.CROSS_ENCODER
         ):
             return None
         return self._memory_manager.cross_encoder_reranker
 
     def _get_reranker(
         self,
-    ) -> tuple[Literal["cross_encoder"], CrossEncoderReranker] | tuple[None, None]:
+    ) -> tuple[RerankerEngine, CrossEncoderReranker] | tuple[None, None]:
         cross_encoder_reranker = self._get_cross_encoder_reranker()
         if cross_encoder_reranker is not None:
-            return ("cross_encoder", cross_encoder_reranker)
+            return (RerankerEngine.CROSS_ENCODER, cross_encoder_reranker)
 
         return (None, None)
 

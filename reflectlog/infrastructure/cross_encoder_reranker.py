@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.core.access import optional_attr
 from reflectlog.core.config import IAppConfig
+from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.reranker_post_processor import (
     RerankerPostProcessor,
@@ -78,7 +79,7 @@ class CrossEncoderConfig:
         """
         return cls(
             model_name=config.cross_encoder_model,
-            enabled=config.reranker_engine == "cross_encoder",
+            enabled=config.reranker_engine == RerankerEngine.CROSS_ENCODER,
             top_k=config.cross_encoder_top_k,
             device=config.cross_encoder_device,
             batch_size=config.cross_encoder_batch_size,

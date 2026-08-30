@@ -11,6 +11,7 @@ import numpy as np
 from ranx import Run
 from ranx import fuse as ranx_fuse
 
+from reflectlog.core.enums import FusionMethod, FusionNormalization
 from reflectlog.utility.scoring import (
     compute_rrf_scores_batch,
     compute_weighted_rrf_scores_batch,
@@ -21,20 +22,22 @@ from .base import FusionEngine
 
 # Supported fusion methods (unsupervised, no training data required)
 # Note: ranx uses 'sum', 'mnz', 'max' instead of 'combsum', 'combmnz', 'combmax'
-SUPPORTED_METHODS: set[str] = {"rrf", "sum", "mnz", "max", "bordafuse"}
+SUPPORTED_METHODS: frozenset[FusionMethod] = frozenset(FusionMethod)
 
 # Supported normalization strategies
-SUPPORTED_NORMALIZATIONS: set[str] = {"min-max", "max", "sum", "zmuv", "rank", "borda"}
+SUPPORTED_NORMALIZATIONS: frozenset[FusionNormalization] = frozenset(
+    FusionNormalization
+)
 
 # Default normalization per fusion method (applied to inputs before fusion)
 # Note: We use None for RRF since it works on ranks, not scores
 # Output scores are normalized in _normalize_output_scores()
-DEFAULT_NORMALIZATIONS: dict[str, str | None] = {
-    "rrf": None,  # RRF uses rank positions, input normalization not needed
-    "sum": None,  # CombSUM: Will normalize inputs if scores are incomparable
-    "mnz": None,  # CombMNZ: weighted score addition
-    "max": None,  # CombMAX: maximum score
-    "bordafuse": None,
+DEFAULT_NORMALIZATIONS: dict[FusionMethod, FusionNormalization | None] = {
+    FusionMethod.RRF: None,
+    FusionMethod.SUM: None,
+    FusionMethod.MNZ: None,
+    FusionMethod.MAX: None,
+    FusionMethod.BORDAFUSE: None,
 }
 
 
@@ -67,8 +70,8 @@ class RanxFusionEngine(FusionEngine):
 
     def __init__(
         self,
-        method: str = "rrf",
-        normalization: str | None = None,
+        method: FusionMethod | str = FusionMethod.RRF,
+        normalization: FusionNormalization | str | None = None,
         rrf_k: int = 60,
         weights: list[float] | None = None,
         logger: IStructuredLogger | None = None,
@@ -95,17 +98,21 @@ class RanxFusionEngine(FusionEngine):
         if method not in SUPPORTED_METHODS:
             raise ValueError(
                 f"Unsupported fusion method: '{method}'. "
-                f"Supported methods: {sorted(SUPPORTED_METHODS)}"
+                f"Supported methods: {sorted(member.value for member in FusionMethod)}"
             )
 
         if normalization is not None and normalization not in SUPPORTED_NORMALIZATIONS:
             raise ValueError(
                 f"Unsupported normalization: '{normalization}'. "
-                f"Supported normalizations: {sorted(SUPPORTED_NORMALIZATIONS)}"
+                f"Supported normalizations: "
+                f"{sorted(member.value for member in FusionNormalization)}"
             )
 
-        self._method = method
-        self._normalization = normalization or DEFAULT_NORMALIZATIONS.get(method)
+        resolved_method = FusionMethod(method)
+        self._method = resolved_method
+        self._normalization = normalization or DEFAULT_NORMALIZATIONS.get(
+            resolved_method
+        )
         self._rrf_k = rrf_k
         self._weights = weights
         self.logger = logger
@@ -303,7 +310,7 @@ class RanxFusionEngine(FusionEngine):
                 self._convert_to_run(non_empty[0], name="run_0")
             )
 
-        if self._method == "rrf":
+        if self._method == FusionMethod.RRF:
             return self._fuse_rrf_numba(non_empty)
 
         # Validate score ranges and log unusual inputs (debug level)
@@ -347,7 +354,7 @@ class RanxFusionEngine(FusionEngine):
 
         # Build params for ranx.fuse()
         params: dict[str, Any] | None = None
-        if self._method == "rrf":
+        if self._method == FusionMethod.RRF:
             params = {"k": self._rrf_k}
         if self._weights is not None:
             params = {} if params is None else params

@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index
 
 from reflectlog.core.config import IAppConfig
+from reflectlog.core.enums import EmbedderProvider
 from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import Embeddings
@@ -141,7 +142,7 @@ class USearchConfig:
         # Determine embedding dims based on provider
         embedding_dims = (
             config.qwen_embedding_dims
-            if config.embedder_provider == "langchain"
+            if config.embedder_provider == EmbedderProvider.LANGCHAIN
             else config.embedding_dims
         )
 

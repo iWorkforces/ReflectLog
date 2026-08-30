@@ -56,6 +56,12 @@ from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngin
 
 from ...core.access import optional_attr
 from ...core.config_adapters import ConfigAdapter
+from ...core.enums import (
+    EmbedderProvider,
+    EngineReadiness,
+    RerankerEngine,
+    TransitionKind,
+)
 from ...core.logging import IStructuredLogger
 from ...core.types import Embeddings, ISemanticSearchEngine, ReplacementTransition
 from ..config.settings import Config
@@ -160,7 +166,7 @@ class MemoryManager:
             config={
                 "model": config.embedding_model,
                 "embedding_dims": config.qwen_embedding_dims
-                if config.embedder_provider == "langchain"
+                if config.embedder_provider == EmbedderProvider.LANGCHAIN
                 else config.embedding_dims,
                 "api_key": config.openrouter_api_key.get_secret_value(),
                 "openai_base_url": config.openrouter_base_url,
@@ -217,20 +223,20 @@ class MemoryManager:
         self._cross_encoder_reranker: CrossEncoderReranker | None = None
 
         config = self.config
-        if config.reranker_engine == "cross_encoder":
+        if config.reranker_engine == RerankerEngine.CROSS_ENCODER:
             self.logger.info(
                 f"CrossEncoder reranker configured (lazy init) "
                 f"[model={config.cross_encoder_model}]",
                 extra={
-                    "reranker_engine": "cross_encoder",
+                    "reranker_engine": RerankerEngine.CROSS_ENCODER,
                     "model": config.cross_encoder_model,
                     "device": config.cross_encoder_device,
                 },
             )
-        elif config.reranker_engine == "none":
+        elif config.reranker_engine == RerankerEngine.NONE:
             self.logger.info(
                 "Reranking disabled (RERANKER_ENGINE=none)",
-                extra={"reranker_engine": "none"},
+                extra={"reranker_engine": RerankerEngine.NONE},
             )
         else:
             raise ConfigurationError(
@@ -399,7 +405,7 @@ class MemoryManager:
         # Pre-warm reranker if explicitly configured (lazy by default)
         if should_init_reranker:
             # Validate that reranker engine type is supported
-            if self.config.reranker_engine != "cross_encoder":
+            if self.config.reranker_engine != RerankerEngine.CROSS_ENCODER:
                 raise ValueError(
                     f"Invalid reranker_engine for eager initialization: "
                     f"{self.config.reranker_engine!r}. "
@@ -474,7 +480,7 @@ class MemoryManager:
         # Fast path: already initialized or not configured
         if (
             self._cross_encoder_reranker is not None
-            or self.config.reranker_engine != "cross_encoder"
+            or self.config.reranker_engine != RerankerEngine.CROSS_ENCODER
         ):
             return self._cross_encoder_reranker
 
@@ -483,7 +489,7 @@ class MemoryManager:
             # Double-check after acquiring lock
             if (
                 self._cross_encoder_reranker is not None
-                or self.config.reranker_engine != "cross_encoder"
+                or self.config.reranker_engine != RerankerEngine.CROSS_ENCODER
             ):
                 return self._cross_encoder_reranker
 
@@ -495,7 +501,7 @@ class MemoryManager:
             self.logger.info(
                 f"Lazy initialized CrossEncoder reranker [model={self.config.cross_encoder_model}]",
                 extra={
-                    "reranker_engine": "cross_encoder",
+                    "reranker_engine": RerankerEngine.CROSS_ENCODER,
                     "model": self.config.cross_encoder_model,
                     "device": self.config.cross_encoder_device,
                 },
@@ -540,7 +546,7 @@ class MemoryManager:
 
     def get_reranker(self) -> CrossEncoderReranker | None:
         """Get the configured cross-encoder reranker, or None if disabled."""
-        if self.config.reranker_engine == "cross_encoder":
+        if self.config.reranker_engine == RerankerEngine.CROSS_ENCODER:
             return self.cross_encoder_reranker
         return None
 
@@ -611,7 +617,6 @@ class MemoryManager:
         memories_to_add: list[str] = []
         seen_memories: set[str] = set()
         with self._lock:
-
             log_limit = min(len(memories), LOG_ADD_MEMORY_PREVIEW_LIMIT)
             for idx, memory in enumerate(memories, 1):
                 if idx <= log_limit:
@@ -660,7 +665,9 @@ class MemoryManager:
         embedder = optional_attr(self._semantic_engine, "embedder")
         if isinstance(embedder, Embeddings):
             vectors = embedder.embed_documents(memories_to_add)
-            if len(vectors) != len(memories_to_add) or any(not item for item in vectors):
+            if len(vectors) != len(memories_to_add) or any(
+                not item for item in vectors
+            ):
                 raise StorageError("Embedding batch size mismatch or empty vector")
 
         with self._write_lock, self._lock:
@@ -749,9 +756,7 @@ class MemoryManager:
         """Return how many memories exist in this workspace."""
         return self._semantic_engine.count(self.workspace_id)
 
-    def get_all(
-        self, limit: int | None = None, offset: int = 0
-    ) -> list[str]:
+    def get_all(self, limit: int | None = None, offset: int = 0) -> list[str]:
         """Retrieve stored memories, paged at the semantic store.
 
         Thread-safe: Uses RLock to ensure consistent state during retrieval.
@@ -845,7 +850,7 @@ class MemoryManager:
         except Exception:
             return 0
 
-    def search_engine_status(self) -> dict[str, str]:
+    def search_engine_status(self) -> dict[str, EngineReadiness]:
         """Return public readiness of search engines for health checks.
 
         Values are ``initialized`` (warmed), ``pending`` (constructed but
@@ -853,22 +858,24 @@ class MemoryManager:
         """
         return {
             "semantic_engine": self._engine_readiness(
-                self._semantic_engine, absent="not_initialized"
+                self._semantic_engine, absent=EngineReadiness.NOT_INITIALIZED
             ),
             "tantivy_engine": self._engine_readiness(
-                self._tantivy_engine, absent="disabled"
+                self._tantivy_engine, absent=EngineReadiness.DISABLED
             ),
         }
 
-    def _engine_readiness(self, engine: _ReadyEngine | None, *, absent: str) -> str:
+    def _engine_readiness(
+        self, engine: _ReadyEngine | None, *, absent: EngineReadiness
+    ) -> EngineReadiness:
         if engine is None:
             return absent
         try:
             if engine.is_ready():
-                return "initialized"
+                return EngineReadiness.INITIALIZED
         except Exception:
-            return "pending"
-        return "pending"
+            return EngineReadiness.PENDING
+        return EngineReadiness.PENDING
 
     def search_for_removal(
         self, query: str, limit: int | None = None
@@ -1096,7 +1103,7 @@ class MemoryManager:
         """Mark add intents complete when the content is live in SQLite."""
         store = self._semantic_engine.memory_store
         for intent in intents:
-            if intent.kind != "add":
+            if intent.kind != TransitionKind.ADD:
                 continue
             if self.get_id_by_content(intent.new_content) is None:
                 continue
@@ -1116,7 +1123,7 @@ class MemoryManager:
         """Mark delete intents complete when the recorded id is gone."""
         store = self._semantic_engine.memory_store
         for intent in intents:
-            if intent.kind != "delete":
+            if intent.kind != TransitionKind.DELETE:
                 continue
             if self.get_id_by_content(intent.old_content) == intent.old_memory_id:
                 continue
