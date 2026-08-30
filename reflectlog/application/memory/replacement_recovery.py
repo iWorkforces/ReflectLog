@@ -178,7 +178,6 @@ def apply_pending_transition(
         store,
         workspace_id=transition.workspace_id,
         content=transition.old_content,
-        before_id=transition.id,
     )
     store.complete_replacement_transition(transition.id)
     logger.info(
@@ -390,9 +389,13 @@ def _complete_pending_adds_of(
     *,
     workspace_id: str,
     content: str,
-    before_id: int,
 ) -> None:
-    """Complete earlier pending ADD rows for text that a replace just removed."""
+    """Complete leftover pending ADD rows for text that a replace just removed.
+
+    Snapshot-visible leftover ADDs of the old text (including ``id`` greater
+    than the replace) must not be applied after this replace converges.
+    A genuine later ADD is journaled only after this replace is complete.
+    """
     if not content:
         return
     for row in store.list_pending_transitions():
@@ -401,8 +404,6 @@ def _complete_pending_adds_of(
         if row.kind != TransitionKind.ADD:
             continue
         if row.new_content != content:
-            continue
-        if row.id >= before_id:
             continue
         store.complete_replacement_transition(row.id)
 
