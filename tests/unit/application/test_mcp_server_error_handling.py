@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reflectlog.core.exceptions import ConfigurationError, StorageError
+from reflectlog.core.exceptions import ConfigurationError, SearchError, StorageError
 
 
 @pytest.fixture
@@ -247,9 +247,8 @@ class TestSearchToolErrorHandling:
         mcp_server = FastMCPServer()
         search_tool = mcp_server.registered_tools["search"].fn
 
-        result = await search_tool("test query")
-
-        assert result == []
+        with pytest.raises(SearchError, match="Failed to search memory store"):
+            await search_tool("test query")
 
 
 @pytest.mark.unit
@@ -359,7 +358,11 @@ class TestRemoveToolErrorHandling:
 class TestRunMethodCoverage:
     '''Test coverage for run() method.'''
 
-    @patch.dict(os.environ, {"MCP_TRANSPORT": "http"}, clear=False)
+    @patch.dict(
+        os.environ,
+        {"MCP_TRANSPORT": "http", "MCP_AUTH_TOKEN": "test-token"},
+        clear=False,
+    )
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
     @patch("reflectlog.application.memory.manager.USearchEngine")
     @patch("reflectlog.application.memory.manager.CachedEmbeddings")
@@ -422,7 +425,11 @@ class TestRunMethodCoverage:
 
         mock_run.assert_called_once()
 
-    @patch.dict(os.environ, {"MCP_TRANSPORT": "sse"}, clear=False)
+    @patch.dict(
+        os.environ,
+        {"MCP_TRANSPORT": "sse", "MCP_AUTH_TOKEN": "test-token"},
+        clear=False,
+    )
     @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
     @patch("reflectlog.application.memory.manager.USearchEngine")
     @patch("reflectlog.application.memory.manager.CachedEmbeddings")
@@ -459,6 +466,7 @@ class TestRunMethodCoverage:
             "MCP_PORT": "8080",
             "MCP_HOST": "localhost",
             "MCP_PATH": "/custom",
+            "MCP_AUTH_TOKEN": "test-token",
         },
         clear=False,
     )
@@ -490,3 +498,95 @@ class TestRunMethodCoverage:
         mcp_server.run()
 
         mock_run.assert_called_once()
+
+
+@pytest.mark.unit
+class TestHttpAuthAndBind:
+    @pytest.mark.asyncio
+    async def test_bearer_middleware_rejects_and_accepts(self) -> None:
+        from fastmcp.exceptions import ToolError
+
+        from reflectlog.application.mcp_server import _BearerTokenMiddleware
+
+        middleware = _BearerTokenMiddleware("secret")
+        with patch(
+            "reflectlog.application.mcp_server.get_http_request",
+            side_effect=RuntimeError("no request"),
+        ):
+            with pytest.raises(ToolError, match="Unauthorized"):
+                await middleware.on_request(object(), lambda _ctx: "ok")
+
+        request = MagicMock()
+        request.headers.get.return_value = "Bearer wrong"
+        with patch(
+            "reflectlog.application.mcp_server.get_http_request",
+            return_value=request,
+        ):
+            with pytest.raises(ToolError, match="Unauthorized"):
+                await middleware.on_request(object(), lambda _ctx: "ok")
+
+        request.headers.get.return_value = "Bearer secret"
+        with patch(
+            "reflectlog.application.mcp_server.get_http_request",
+            return_value=request,
+        ):
+            result = await middleware.on_request(object(), lambda _ctx: "ok")
+        assert result == "ok"
+
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    def test_http_requires_auth_token(
+        self,
+        _cached: MagicMock,
+        _usearch_cls: MagicMock,
+        _embeddings: MagicMock,
+        mock_usearch_engine: MagicMock,
+    ) -> None:
+        from reflectlog.application.config.settings import Config
+        from reflectlog.application.mcp_server import FastMCPServer
+        from reflectlog.application.utils.security import SecretString
+
+        _usearch_cls.return_value = mock_usearch_engine
+        server = FastMCPServer(
+            Config(
+                workspace_id="test",
+                openrouter_api_key=SecretString("k"),
+                transport="http",
+                host="127.0.0.1",
+            )
+        )
+        with patch.dict(os.environ, {"MCP_AUTH_TOKEN": ""}, clear=False):
+            with pytest.raises(ConfigurationError, match="MCP_AUTH_TOKEN"):
+                server.run()
+
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    def test_http_refuses_bind_all_without_allow(
+        self,
+        _cached: MagicMock,
+        _usearch_cls: MagicMock,
+        _embeddings: MagicMock,
+        mock_usearch_engine: MagicMock,
+    ) -> None:
+        from reflectlog.application.config.settings import Config
+        from reflectlog.application.mcp_server import FastMCPServer
+        from reflectlog.application.utils.security import SecretString
+
+        _usearch_cls.return_value = mock_usearch_engine
+        server = FastMCPServer(
+            Config(
+                workspace_id="test",
+                openrouter_api_key=SecretString("k"),
+                transport="http",
+                host="0.0.0.0",
+            )
+        )
+        with patch.dict(
+            os.environ,
+            {"MCP_AUTH_TOKEN": "token", "ALLOW_PUBLIC_BIND": "false"},
+            clear=False,
+        ):
+            with pytest.raises(ConfigurationError, match="ALLOW_PUBLIC_BIND"):
+                server.run()

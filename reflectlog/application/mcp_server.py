@@ -1,13 +1,16 @@
 """ReflectLog Server - Refactored modular implementation."""
 
+import hmac
 import os
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_request
+from fastmcp.server.middleware import Middleware
 from fastmcp.utilities.logging import get_logger
 
 from reflectlog.application import config
 from reflectlog.application.config.settings import Config, get_config
-from reflectlog.core.exceptions import ConfigurationError
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.tools.add import AddTool
 from reflectlog.application.tools.base import BaseTool
@@ -15,40 +18,36 @@ from reflectlog.application.tools.get_all import GetAllTool
 from reflectlog.application.tools.health_check import HealthCheckTool
 from reflectlog.application.tools.remove import RemoveTool
 from reflectlog.application.tools.search import SearchTool
+from reflectlog.core.exceptions import ConfigurationError
 from reflectlog.core.prompts import build_instructions
 
 from .utils.logging import create_logger
 
 
-class _BearerTokenMiddleware:
+class _BearerTokenMiddleware(Middleware):
     """Reject HTTP MCP requests that lack the configured bearer token."""
 
     def __init__(self, token: str) -> None:
+        super().__init__()
         self._token = token
 
     async def on_request(self, context: object, call_next: object) -> object:
-        from fastmcp.exceptions import ToolError
-        from fastmcp.server.dependencies import get_http_request
-
         try:
             request = get_http_request()
-            auth = request.headers.get("authorization", "")
-        except Exception:
-            return await _call_next(call_next, context)
-        if auth != f"Bearer {self._token}":
+        except Exception as exc:
+            raise ToolError("Unauthorized") from exc
+        auth = request.headers.get("authorization", "")
+        expected = f"Bearer {self._token}"
+        if not hmac.compare_digest(auth.encode("utf-8"), expected.encode("utf-8")):
             raise ToolError("Unauthorized")
-        return await _call_next(call_next, context)
+        if not callable(call_next):
+            raise RuntimeError("invalid middleware chain")
+        import inspect
 
-
-async def _call_next(call_next: object, context: object) -> object:
-    import inspect
-
-    if not callable(call_next):
-        raise RuntimeError("invalid middleware chain")
-    result = call_next(context)
-    if inspect.isawaitable(result):
-        return await result
-    return result
+        result = call_next(context)
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
 # Canonical registry of available MCP tool implementations.
 AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {
@@ -114,7 +113,11 @@ class FastMCPServer:
         self.mcp = FastMCP(name="reflectlog", instructions=instructions)
         auth_token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
         add_middleware = getattr(self.mcp, "add_middleware", None)
-        if auth_token and self.config.transport != "stdio" and callable(add_middleware):
+        if auth_token and self.config.transport != "stdio":
+            if not callable(add_middleware):
+                raise ConfigurationError(
+                    "FastMCP add_middleware is required for HTTP auth"
+                )
             _ = add_middleware(_BearerTokenMiddleware(auth_token))
 
         # Register tools with FastMCP
@@ -335,6 +338,7 @@ class FastMCPServer:
                 f"Error during server shutdown: {e}",
                 extra={"error": str(e)},
             )
+            raise
 
     def set_startup_metrics(self, metrics: dict[str, float]) -> None:
         """Store startup timing metrics on the memory manager.
