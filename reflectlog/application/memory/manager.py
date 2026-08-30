@@ -706,7 +706,9 @@ class MemoryManager:
     def count(self) -> int:
         """Return how many memories exist in this workspace."""
         self._ensure_open()
-        return self._semantic_engine.count(self.workspace_id)
+        with self._lock:
+            self._ensure_open()
+            return self._semantic_engine.count(self.workspace_id)
 
     def get_all(self, limit: int | None = None, offset: int = 0) -> list[str]:
         """Retrieve stored memories, paged at the semantic store.
@@ -722,6 +724,7 @@ class MemoryManager:
         self._ensure_open()
         try:
             with self._lock:
+                self._ensure_open()
                 memories = self._semantic_engine.get_all(
                     workspace_id=self.workspace_id,
                     limit=limit,
@@ -779,6 +782,7 @@ class MemoryManager:
                 "Pre-search reconcile failed; continuing with pending rows",
                 extra={"error": str(exc)},
             )
+        self._ensure_open()
 
         # Use defaults from config if not provided
         if limit is None:
@@ -859,6 +863,7 @@ class MemoryManager:
         Raises:
             SearchError: If the lookup fails.
         """
+        self._ensure_open()
         # Note: limit is kept for API compatibility but exact match returns at most 1
         _ = limit  # Unused, kept for API compatibility
 
@@ -898,6 +903,7 @@ class MemoryManager:
         """
         self._ensure_open()
         with self._write_lock, self._lock:
+            self._ensure_open()
             try:
                 numeric_id = int(memory_id)
                 record = self._semantic_engine.memory_store.get(numeric_id)
@@ -946,6 +952,7 @@ class MemoryManager:
         """
         self._ensure_open()
         with self._write_lock, self._lock:
+            self._ensure_open()
             try:
                 # 1. Look up the SQLite ID from the memory content
                 mem_id = self.get_id_by_content(memory)
@@ -1029,6 +1036,7 @@ class MemoryManager:
         if not unique:
             return []
         with self._write_lock, self._lock:
+            self._ensure_open()
             found: list[tuple[int, str]] = []
             for memory in unique:
                 mem_id = self.get_id_by_content(memory)
@@ -1234,20 +1242,19 @@ class MemoryManager:
                 extra={"workspace_id": self.workspace_id},
             )
 
-            # 1. Close Tantivy engine first (if enabled)
+            # Persist first. Close engines only after both commits succeed so a
+            # failed close can retry instead of leaving a half-closed pair.
             if self._tantivy_engine is not None:
                 try:
-                    # Use flush() to commit and wait for all merge threads
                     self._tantivy_engine.flush()
-                    self._tantivy_engine.close()
                     self.logger.info(
-                        "Tantivy engine closed successfully",
+                        "Tantivy engine persisted",
                         extra={"workspace_id": self.workspace_id, "engine": "tantivy"},
                     )
                 except Exception as e:
                     persist_ok = False
                     self.logger.error(
-                        f"Error closing Tantivy engine: {e}",
+                        f"Error persisting Tantivy engine: {e}",
                         extra={
                             "workspace_id": self.workspace_id,
                             "engine": "tantivy",
@@ -1255,25 +1262,49 @@ class MemoryManager:
                         },
                     )
 
-            # 2. Close USearch semantic engine
             try:
-                # Commit to save USearch index to disk
                 self._semantic_engine.commit()
-                self._semantic_engine.close()
                 self.logger.info(
-                    "USearch engine closed successfully",
+                    "USearch engine persisted",
                     extra={"workspace_id": self.workspace_id, "engine": "usearch"},
                 )
             except Exception as e:
                 persist_ok = False
                 self.logger.error(
-                    f"Error closing USearch engine: {e}",
+                    f"Error persisting USearch engine: {e}",
                     extra={
                         "workspace_id": self.workspace_id,
                         "engine": "usearch",
                         "error": str(e),
                     },
                 )
+
+            if persist_ok:
+                if self._tantivy_engine is not None:
+                    try:
+                        self._tantivy_engine.close()
+                    except Exception as e:
+                        persist_ok = False
+                        self.logger.error(
+                            f"Error closing Tantivy engine: {e}",
+                            extra={
+                                "workspace_id": self.workspace_id,
+                                "engine": "tantivy",
+                                "error": str(e),
+                            },
+                        )
+                try:
+                    self._semantic_engine.close()
+                except Exception as e:
+                    persist_ok = False
+                    self.logger.error(
+                        f"Error closing USearch engine: {e}",
+                        extra={
+                            "workspace_id": self.workspace_id,
+                            "engine": "usearch",
+                            "error": str(e),
+                        },
+                    )
 
             self._closing = False
             if persist_ok:

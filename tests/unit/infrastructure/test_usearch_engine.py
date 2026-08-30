@@ -1555,3 +1555,17 @@ class TestUSearchEngineContextManager:
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
         engine.close()
+
+    def test_index_and_store_raise_after_close(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import StorageError
+
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        _ = engine.index
+        engine.close()
+        with pytest.raises(StorageError, match="USearchEngine is closed"):
+            _ = engine.index
+        with pytest.raises(StorageError, match="USearchEngine is closed"):
+            _ = engine.memory_store
