@@ -1348,7 +1348,7 @@ class TestMemoryStoreClose:
             store.close()
 
     def test_close_with_connection(self) -> None:
-        '''close should close the database connection.'''
+        '''close is a write barrier; the connection cannot be reopened.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1356,9 +1356,8 @@ class TestMemoryStoreClose:
             _ = store.connection  # Force init
             store.close()
 
-            # After closing, accessing connection should re-initialize
-            _ = store.connection  # Should work (re-creates)
-            store.close()
+            with pytest.raises(StorageError, match="MemoryStore is closed"):
+                _ = store.connection
 
     def test_close_double_call(self) -> None:
         '''Calling close twice should be safe.'''
@@ -1735,16 +1734,13 @@ class TestMemoryStoreConnectionProperty:
             assert conn1 is conn2
             store.close()
 
-    def test_connection_after_close_reinitializes(self) -> None:
-        '''Accessing connection after close should create new connection.'''
+    def test_connection_after_close_raises(self) -> None:
+        '''Accessing connection after close must not mint a new handle.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
 
-            conn1 = store.connection
+            _ = store.connection
             store.close()
-            conn2 = store.connection
-
-            # Should be different connection objects
-            assert conn1 is not conn2
-            store.close()
+            with pytest.raises(StorageError, match="MemoryStore is closed"):
+                _ = store.connection

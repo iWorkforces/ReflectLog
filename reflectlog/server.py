@@ -267,6 +267,9 @@ def _start_server(
     def graceful_shutdown(signum: int, frame: object) -> None:
         """Signal handler for graceful shutdown."""
         if shutting_down["value"]:
+            _ = signal.signal(signal.SIGINT, signal.SIG_DFL)
+            _ = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.raise_signal(signum)
             return
         shutting_down["value"] = True
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"

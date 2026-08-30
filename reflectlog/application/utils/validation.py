@@ -79,6 +79,36 @@ def validate_add_batch(
     return True, None
 
 
+def validate_remove_batch(
+    memories: list[str], max_batch: int, max_chars: int
+) -> tuple[bool, str | None]:
+    """Reject oversized remove payloads after uniqueness."""
+    if len(memories) > max_batch:
+        return False, f"Too many memories in one remove (max: {max_batch})"
+    total_chars = sum(len(item) for item in memories)
+    if total_chars > max_chars:
+        return False, f"Remove payload too large (max: {max_chars} characters)"
+    return True, None
+
+
+def validate_remove_memories(memories: list[Any]) -> tuple[bool, str | None]:
+    """Reject empty or non-string remove targets without add length/control rules.
+
+    Stored rows may predate a later min/max or control-character policy.
+    Whitespace-only strings are still rejected as they cannot identify a row.
+    """
+    if not memories:
+        return True, None
+    for i, memory in enumerate(memories):
+        if memory is None:
+            return False, f"Memory at index {i} is None"
+        if not isinstance(memory, str):
+            return False, f"Memory at index {i} is not a string: {type(memory)}"
+        if not memory.strip():
+            return False, f"Memory at index {i} contains only whitespace"
+    return True, None
+
+
 def truncate_memory(content: str, max_length: int = 100) -> str:
     """Truncate a memory for display purposes (Unicode-aware).
 

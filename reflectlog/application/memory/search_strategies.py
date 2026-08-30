@@ -214,6 +214,9 @@ class SearchPipeline:
         # Step 1: Parallel Search
         semantic_results, tantivy_results = await self._step1_parallel_search(context)
         semantic_results = self._filter_semantic_threshold(semantic_results)
+        tantivy_results = await asyncify(self._filter_live_hits)(
+            tantivy_results, context.workspace_id
+        )
 
         timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
@@ -225,6 +228,9 @@ class SearchPipeline:
         # Step 2: RRF Fusion or Concatenation
         hybrid_results = await self._step2_fusion_or_concatenate(
             context, semantic_results, tantivy_results
+        )
+        hybrid_results = await asyncify(self._filter_live_hits)(
+            hybrid_results, context.workspace_id
         )
 
         # Step 3: Fusion threshold applies only to fused (2+ backend) RRF output.
@@ -306,9 +312,7 @@ class SearchPipeline:
         semantic_results, semantic_error = soon_semantic.value
         tantivy_results, tantivy_error = soon_tantivy.value
         if semantic_error is not None and (
-            tantivy_error is not None
-            or self._tantivy_engine is None
-            or not tantivy_results
+            tantivy_error is not None or self._tantivy_engine is None
         ):
             raise SearchError(
                 f"Failed to execute search: {semantic_error}"
@@ -799,6 +803,29 @@ class SearchPipeline:
             return completed
         return completed
 
+    def _filter_live_hits(
+        self,
+        results: list[tuple[str, float]],
+        workspace_id: str,
+    ) -> list[tuple[str, float]]:
+        """Drop FTS hits that are no longer in the SQLite source of truth."""
+        if not results:
+            return results
+        try:
+            store = self._semantic_engine.memory_store
+            present = _string_set(
+                store.exists_many(
+                    workspace_id, [memory for memory, _score in results]
+                )
+            )
+        except (AttributeError, TypeError):
+            return []
+        if present is None:
+            return []
+        return [
+            (memory, score) for memory, score in results if memory in present
+        ]
+
     def _filter_semantic_threshold(
         self, results: list[tuple[str, float, str]]
     ) -> list[tuple[str, float, str]]:
@@ -822,6 +849,19 @@ class SearchPipeline:
         except (TypeError, ValueError):
             configured = context.limit
         return max(1, configured, context.limit)
+
+
+def _string_set(raw: object) -> set[str] | None:
+    """Return a string set, or None when the value is not a real content set."""
+    if not isinstance(raw, set):
+        return None
+    members: list[object] = list(cast(set[object], raw))
+    contents: set[str] = set()
+    for item in members:
+        if not isinstance(item, str):
+            return None
+        contents.add(item)
+    return contents
 
 
 def calculate_adaptive_overfetch(limit: int, index_size: int, config: Config) -> int:

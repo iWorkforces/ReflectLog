@@ -22,6 +22,7 @@ from reflectlog.application.memory.add_phases import (
     ReplacementInfo,
     SmartReplacementPhase,
     StoragePhase,
+    _persist_list_for_add,
 )
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.enums import TransitionStatus
@@ -1575,3 +1576,143 @@ class TestAddPipeline:
         assert result.replaced_count == 1
         assert len(result.replacements) == 1
         assert result.replacements[0].old_memory == "old"
+
+
+class TestPersistListForAdd:
+    """Replacement olds and dry-run must not treat storage dups as stored."""
+
+    def test_dry_run_skips_all_storage_duplicates(self) -> None:
+        persist, skipped = _persist_list_for_add(
+            unique_memories=["new"],
+            storage_duplicates=["old"],
+            replacement_map={},
+            dry_run=True,
+        )
+        assert persist == ["new"]
+        assert skipped == 1
+
+    def test_live_excludes_replacement_olds(self) -> None:
+        persist, skipped = _persist_list_for_add(
+            unique_memories=["I moved to Boston"],
+            storage_duplicates=["I live in NYC"],
+            replacement_map={
+                "I moved to Boston": [
+                    ReplacementInfo(
+                        old_memory="I live in NYC",
+                        new_memory="I moved to Boston",
+                        confidence=0.9,
+                        reason="updated",
+                    )
+                ]
+            },
+            dry_run=False,
+        )
+        assert persist == ["I moved to Boston"]
+        assert skipped == 1
+
+    def test_live_keeps_unrelated_storage_duplicates(self) -> None:
+        persist, skipped = _persist_list_for_add(
+            unique_memories=["fresh"],
+            storage_duplicates=["already there"],
+            replacement_map={},
+            dry_run=False,
+        )
+        assert persist == ["fresh", "already there"]
+        assert skipped == 0
+
+    async def test_pipeline_does_not_persist_replacement_old(
+        self, mock_config: Config, mock_logger: Mock
+    ) -> None:
+        replacement = ReplacementInfo(
+            old_memory="I live in NYC",
+            new_memory="I moved to Boston",
+            confidence=0.9,
+            reason="updated",
+        )
+        phase1 = MagicMock()
+        phase1.execute = AsyncMock(
+            return_value=Phase1Result(
+                unique_memories=["I moved to Boston"],
+                storage_duplicates=["I live in NYC"],
+                batch_duplicates_count=0,
+                duration=0.1,
+            )
+        )
+        phase2 = MagicMock()
+        phase2.execute = AsyncMock(
+            return_value=Phase2Result(
+                replacement_map={"I moved to Boston": [replacement]},
+                total_replacements=1,
+                duration=0.1,
+            )
+        )
+        phase3 = MagicMock()
+        phase3.execute = AsyncMock(
+            return_value=Phase3Result(
+                stored_count=1,
+                replaced_count=1,
+                replacements=[replacement],
+                duration=0.1,
+            )
+        )
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=phase3,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await pipeline.execute(
+            ["I moved to Boston", "I live in NYC"]
+        )
+        assert result.stored_count == 1
+        assert result.skipped_count == 1
+        called = phase3.execute.await_args
+        assert called is not None
+        persisted = called.args[0]
+        assert persisted == ["I moved to Boston"]
+        assert "I live in NYC" not in persisted
+
+    async def test_dry_run_counts_storage_duplicate_as_skipped(
+        self, mock_config: Config, mock_logger: Mock
+    ) -> None:
+        phase1 = MagicMock()
+        phase1.execute = AsyncMock(
+            return_value=Phase1Result(
+                unique_memories=["fresh"],
+                storage_duplicates=["already"],
+                batch_duplicates_count=0,
+                duration=0.1,
+            )
+        )
+        phase2 = MagicMock()
+        phase2.execute = AsyncMock(
+            return_value=Phase2Result(
+                replacement_map={},
+                total_replacements=0,
+                duration=0.1,
+            )
+        )
+        phase3 = MagicMock()
+        phase3.execute = AsyncMock(
+            return_value=Phase3Result(
+                stored_count=1,
+                replaced_count=0,
+                replacements=[],
+                duration=0.1,
+            )
+        )
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=phase3,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await pipeline.execute(["fresh", "already"], dry_run=True)
+        assert result.stored_count == 1
+        assert result.skipped_count == 1
+        called = phase3.execute.await_args
+        assert called is not None
+        persisted = called.args[0]
+        assert persisted == ["fresh"]

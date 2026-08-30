@@ -7,6 +7,7 @@ from asyncer import asyncify
 from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import StorageError
 
+from ..utils.validation import validate_remove_batch, validate_remove_memories
 from .base import BaseTool
 
 
@@ -73,32 +74,38 @@ class RemoveTool(BaseTool):
                 self.logger.info("Remove called with empty list, skipping")
                 return
 
-            if any(not item.strip() for item in memories):
-                raise ValueError("Remove targets must be non-empty strings")
+            unique_memories = list(dict.fromkeys(memories))
+            is_valid, error_msg = validate_remove_memories(unique_memories)
+            if is_valid:
+                is_valid, error_msg = validate_remove_batch(
+                    unique_memories,
+                    self.config.max_add_batch,
+                    self.config.max_add_chars,
+                )
+            if not is_valid:
+                raise ValueError(f"Invalid memory: {error_msg}")
 
             self.log_invocation(
                 ToolName.REMOVE,
-                requested_count=len(memories),
+                requested_count=len(unique_memories),
                 search_limit=self.config.remove_search_limit,
             )
 
             self.logger.info(
-                f"Attempting to remove {len(memories)} unique memory(ies)",
+                f"Attempting to remove {len(unique_memories)} unique memory(ies)",
                 extra={
                     "tool": "remove",
-                    "count": len(memories),
+                    "count": len(unique_memories),
                 },
             )
 
             self.logger.info(
-                f"  {len(memories)} removal target(s)",
+                f"  {len(unique_memories)} removal target(s)",
                 extra={
                     "tool": "remove",
-                    "total_memories": len(memories),
+                    "total_memories": len(unique_memories),
                 },
             )
-
-            unique_memories = list(dict.fromkeys(memories))
             actual_removed = 0
             memories_not_found: list[str] = []
 

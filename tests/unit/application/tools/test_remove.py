@@ -1,5 +1,6 @@
 """Tests for RemoveTool implementation."""
 
+from dataclasses import replace
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -95,6 +96,81 @@ class TestRemoveToolHappyPath:
         handler = remove_tool_instance.get_handler()
         await handler([memory, memory])
 
+        assert recording_manager.calls == [[memory]]
+
+    async def test_remove_unique_then_caps_batch(
+        self,
+        mock_config: Config,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        """Duplicates are collapsed before the remove batch cap."""
+        config = replace(mock_config, max_add_batch=1)
+        tool = RemoveTool(
+            config=config,
+            memory_manager=cast(MemoryManager, recording_manager),
+            logger=mock_tool_logger,
+        )
+        memory = "Only one unique"
+        recording_manager.present = {memory}
+        handler = tool.get_handler()
+        await handler([memory, memory])
+        assert recording_manager.calls == [[memory]]
+
+    async def test_oversize_unique_remove_does_not_delete(
+        self,
+        mock_config: Config,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        """A unique list over the batch cap never reaches delete_memories."""
+        config = replace(mock_config, max_add_batch=1)
+        tool = RemoveTool(
+            config=config,
+            memory_manager=cast(MemoryManager, recording_manager),
+            logger=mock_tool_logger,
+        )
+        handler = tool.get_handler()
+        with pytest.raises(ValueError, match="Too many memories in one remove"):
+            await handler(["First", "Second"])
+        assert recording_manager.calls == []
+
+    async def test_remove_allows_short_memories_when_min_add_length_is_high(
+        self,
+        mock_config: Config,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        """Delete does not apply min_memory_length from add validation."""
+        config = replace(mock_config, min_memory_length=50)
+        tool = RemoveTool(
+            config=config,
+            memory_manager=cast(MemoryManager, recording_manager),
+            logger=mock_tool_logger,
+        )
+        memory = "short"
+        recording_manager.present = {memory}
+        handler = tool.get_handler()
+        await handler([memory])
+        assert recording_manager.calls == [[memory]]
+
+    async def test_remove_allows_oversize_stored_row(
+        self,
+        mock_config: Config,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        """Delete does not apply max_memory_length from add validation."""
+        config = replace(mock_config, max_memory_length=8)
+        tool = RemoveTool(
+            config=config,
+            memory_manager=cast(MemoryManager, recording_manager),
+            logger=mock_tool_logger,
+        )
+        memory = "this stored row is longer than the current cap"
+        recording_manager.present = {memory}
+        handler = tool.get_handler()
+        await handler([memory])
         assert recording_manager.calls == [[memory]]
 
 

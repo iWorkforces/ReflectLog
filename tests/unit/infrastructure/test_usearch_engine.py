@@ -772,6 +772,67 @@ class TestUSearchEngineIndexInit:
             with pytest.raises(InitializationError, match="missing"):
                 _ = engine.index
 
+    def test_missing_index_with_populated_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import InitializationError
+        from reflectlog.infrastructure.memory_store import MemoryStore
+
+        config, embedder, _ = temp_engine
+        store = MemoryStore(db_path=config.db_path)
+        _ = store.insert(config.workspace_id, "already stored")
+        store.close()
+        if os.path.exists(config.index_path):
+            os.remove(config.index_path)
+
+        engine = USearchEngine(config=config, embedder=embedder)
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.side_effect = FileNotFoundError("no file")
+            with pytest.raises(InitializationError, match="missing but SQLite"):
+                _ = engine.index
+            mock_index_cls.assert_not_called()
+
+    def test_new_index_is_saved_before_first_insert(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.infrastructure.memory_store import MemoryStore
+
+        config, embedder, _ = temp_engine
+        if os.path.exists(config.db_path):
+            os.remove(config.db_path)
+        if os.path.exists(config.index_path):
+            os.remove(config.index_path)
+
+        created = MagicMock()
+        created.__len__.return_value = 0
+        engine = USearchEngine(config=config, embedder=embedder)
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.side_effect = FileNotFoundError("no file")
+            mock_index_cls.return_value = created
+            _ = engine.index
+            created.save.assert_called_once_with(config.index_path)
+        store = MemoryStore(db_path=config.db_path)
+        assert store.count(config.workspace_id) == 0
+        store.close()
+
+    def test_empty_restored_index_with_populated_sqlite_is_allowed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.infrastructure.memory_store import MemoryStore
+
+        config, embedder, _ = temp_engine
+        store = MemoryStore(db_path=config.db_path)
+        _ = store.insert(config.workspace_id, "already stored")
+        store.close()
+
+        restored = MagicMock()
+        restored.__len__.return_value = 0
+        engine = USearchEngine(config=config, embedder=embedder)
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.return_value = restored
+            loaded = engine.index
+        assert loaded is restored
+
     def test_restore_success_with_missing_sqlite_fails_closed(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
@@ -1494,3 +1555,17 @@ class TestUSearchEngineContextManager:
         config, embedder, _ = temp_engine
         engine = USearchEngine(config=config, embedder=embedder)
         engine.close()
+
+    def test_index_and_store_raise_after_close(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import StorageError
+
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        _ = engine.index
+        engine.close()
+        with pytest.raises(StorageError, match="USearchEngine is closed"):
+            _ = engine.index
+        with pytest.raises(StorageError, match="USearchEngine is closed"):
+            _ = engine.memory_store

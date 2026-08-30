@@ -272,6 +272,12 @@ class TestFromEnvironmentDefaults:
         cfg = Config.from_environment()
         assert cfg.workspace_id == "my_project.v2"
 
+    def test_workspace_id_keeps_env_case(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("WORKSPACE_ID", "MyProject")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-key")
+        cfg = Config.from_environment()
+        assert cfg.workspace_id == "MyProject"
+
 
 # ---------------------------------------------------------------------------
 # Config.from_environment() – env var overrides

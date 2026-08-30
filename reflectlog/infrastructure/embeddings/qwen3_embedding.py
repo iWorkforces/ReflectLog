@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import os
 import random
 import time
-from typing import Any, Self, TypeGuard
+from typing import Any, Protocol, Self, TypeGuard, cast, runtime_checkable
 import warnings
 
 import anyio
@@ -14,6 +14,35 @@ from reflectlog.utility.http import HttpClientFactory
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
     return isinstance(config, dict)
+
+
+@runtime_checkable
+class _HasEmbedding(Protocol):
+    embedding: list[float]
+
+
+@runtime_checkable
+class _HasIndex(Protocol):
+    index: object
+
+
+def _ordered_embeddings(data: object) -> list[list[float]]:
+    """Return embedding vectors in input order, using ``index`` when present."""
+    if not isinstance(data, list):
+        return []
+    items = cast(list[object], data)
+    ordered: list[tuple[int, list[float]]] = []
+    for position, item in enumerate(items):
+        if not isinstance(item, _HasEmbedding):
+            raise RuntimeError("Embedding response item is missing embedding")
+        index = position
+        if isinstance(item, _HasIndex):
+            candidate = item.index
+            if isinstance(candidate, int):
+                index = candidate
+        ordered.append((index, list(item.embedding)))
+    ordered.sort(key=lambda row: row[0])
+    return [vector for _, vector in ordered]
 
 
 @dataclass
@@ -114,7 +143,7 @@ class LangchainQwenEmbeddings(BaseModel):
                 if self._client is None:
                     raise RuntimeError("Qwen embeddings client is not initialized.")
                 response = self._client.embeddings.create(**kwargs)
-                return [d.embedding for d in response.data]
+                return _ordered_embeddings(response.data)
             except Exception as exc:
                 last_exc = exc
                 if attempt < max_attempts:
@@ -142,7 +171,9 @@ class LangchainQwenEmbeddings(BaseModel):
             dimensions=self.config.embedding_dims,
             encoding_format="float",
         )
-        return embeddings[0] if embeddings else []
+        if not embeddings or not embeddings[0]:
+            raise RuntimeError("Embedding produced an empty vector")
+        return embeddings[0]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed search docs using synchronous client with retries and batching.
@@ -174,6 +205,8 @@ class LangchainQwenEmbeddings(BaseModel):
                 encoding_format="float",
             )
             results.extend(batch_embeddings)
+        if len(results) != len(texts) or any(not item for item in results):
+            raise RuntimeError("Embedding produced an empty or incomplete batch")
         return results
 
     async def _async_embed_with_retry(self, **kwargs: Any) -> list[list[float]]:
@@ -199,7 +232,7 @@ class LangchainQwenEmbeddings(BaseModel):
             try:
                 client = self._get_async_client()
                 response = await client.embeddings.create(**kwargs)
-                return [d.embedding for d in response.data]
+                return _ordered_embeddings(response.data)
             except Exception as exc:  # pragma: no cover - network/env dependent
                 last_exc = exc
                 if attempt < max_attempts:
@@ -220,7 +253,9 @@ class LangchainQwenEmbeddings(BaseModel):
             dimensions=self.config.embedding_dims,
             encoding_format="float",
         )
-        return embeddings[0] if embeddings else []
+        if not embeddings or not embeddings[0]:
+            raise RuntimeError("Embedding produced an empty vector")
+        return embeddings[0]
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         """Async version: Embed search docs with batching and concurrent execution.
@@ -296,6 +331,9 @@ class LangchainQwenEmbeddings(BaseModel):
             for start_idx, batch_texts in batches:
                 _ = tg.start_soon(embed_batch, start_idx, batch_texts)
 
+        for embedding in results:
+            if not embedding:
+                raise RuntimeError("Embedding produced an empty vector")
         return results
 
     async def aclose(self) -> None:

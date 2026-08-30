@@ -56,7 +56,11 @@ def reconcile_pending_replacements(
     completed = 0
     inner_lock = lock if lock is not None else nullcontext()
     with write_lock, inner_lock:
-        for transition in _pending_rows(store.list_pending_transitions()):
+        snapshot = _pending_rows(store.list_pending_transitions())
+        pending_ids = {row.id for row in snapshot}
+        for transition in snapshot:
+            if transition.id not in pending_ids:
+                continue
             try:
                 if apply_pending_transition(
                     transition,
@@ -74,6 +78,9 @@ def reconcile_pending_replacements(
                         "error": str(exc),
                     },
                 )
+            pending_ids = {
+                row.id for row in _pending_rows(store.list_pending_transitions())
+            }
 
     if completed:
         logger.info(
@@ -96,6 +103,11 @@ def apply_pending_transition(
     Returns:
         True when the transition was marked complete.
     """
+    store = semantic_engine.memory_store
+    pending_ids = {row.id for row in _pending_rows(store.list_pending_transitions())}
+    if transition.id not in pending_ids:
+        return False
+
     if transition.kind == TransitionKind.ADD:
         return _apply_pending_add(
             transition,
@@ -112,7 +124,6 @@ def apply_pending_transition(
             logger=logger,
         )
 
-    store = semantic_engine.memory_store
     if _later_intent_exists(
         store, transition, kind=TransitionKind.DELETE, content=transition.new_content
     ):
@@ -163,7 +174,12 @@ def apply_pending_transition(
         )
         return False
 
-    semantic_engine.memory_store.complete_replacement_transition(transition.id)
+    _complete_pending_adds_of(
+        store,
+        workspace_id=transition.workspace_id,
+        content=transition.old_content,
+    )
+    store.complete_replacement_transition(transition.id)
     logger.info(
         "Applied pending replacement transition",
         extra={
@@ -366,6 +382,30 @@ def _delete_converged(
     return not _tantivy_has(
         tantivy_engine, transition.workspace_id, transition.old_content
     )
+
+
+def _complete_pending_adds_of(
+    store: IArchiveMemoryStore,
+    *,
+    workspace_id: str,
+    content: str,
+) -> None:
+    """Complete leftover pending ADD rows for text that a replace just removed.
+
+    Snapshot-visible leftover ADDs of the old text (including ``id`` greater
+    than the replace) must not be applied after this replace converges.
+    A genuine later ADD is journaled only after this replace is complete.
+    """
+    if not content:
+        return
+    for row in store.list_pending_transitions():
+        if row.workspace_id != workspace_id:
+            continue
+        if row.kind != TransitionKind.ADD:
+            continue
+        if row.new_content != content:
+            continue
+        store.complete_replacement_transition(row.id)
 
 
 def _later_intent_exists(

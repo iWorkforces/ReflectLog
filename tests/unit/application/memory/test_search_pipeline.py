@@ -100,6 +100,15 @@ def _make_pipeline(
         manager = memory_manager
     if isinstance(semantic, MagicMock):
         semantic.is_ready.return_value = False
+        exists_many = semantic.memory_store.exists_many
+        if (
+            isinstance(exists_many, MagicMock)
+            and exists_many.side_effect is None
+            and isinstance(exists_many.return_value, MagicMock)
+        ):
+            exists_many.side_effect = (
+                lambda _workspace_id, contents: set(contents)
+            )
     if isinstance(tantivy, MagicMock):
         tantivy.is_ready.return_value = False
     return SearchPipeline(
@@ -144,6 +153,14 @@ class ControllableBackend:
         self.block_on_init = block_on_init
         self.finished = finished
         self.search_calls: list[tuple[str, str, int]] = []
+
+    @property
+    def memory_store(self) -> object:
+        return self
+
+    def exists_many(self, workspace_id: str, contents: list[str]) -> set[str]:
+        _ = workspace_id
+        return set(contents)
 
     def is_ready(self) -> bool:
         return False
@@ -665,15 +682,88 @@ class TestBackendFailureContracts:
         assert result.tantivy_results == []
 
     @pytest.mark.asyncio
-    async def test_semantic_error_and_empty_tantivy_raises_search_error(self) -> None:
+    async def test_semantic_error_and_empty_tantivy_success_returns_empty(
+        self,
+    ) -> None:
         semantic = MagicMock()
         semantic.search.side_effect = RuntimeError("embed fail")
+        semantic.memory_store.exists_many.side_effect = lambda *_args: set()
         tantivy = MagicMock()
         tantivy.search.return_value = []
         pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
 
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert result.memories == []
+
+    async def test_semantic_error_and_tantivy_none_raises_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.search.side_effect = RuntimeError("embed fail")
+        pipeline = _make_pipeline(semantic=semantic, tantivy=None)
+
         with pytest.raises(SearchError, match="Failed to execute search"):
             await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+    async def test_fts_hits_missing_from_sqlite_are_dropped(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = []
+        semantic.memory_store.exists_many.side_effect = lambda *_args: set()
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("deleted text", 4.0)]
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("deleted text", 0.01)]
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion
+        )
+
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert result.tantivy_results == []
+        fusion.fuse.assert_called_once_with([], [])
+        assert result.memories == []
+
+    async def test_fts_keeps_live_sqlite_hits_and_drops_deleted(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("keep me", 0.9, _TS)]
+        semantic.memory_store.exists_many.side_effect = (
+            lambda _workspace_id, contents: {item for item in contents if item == "keep me"}
+        )
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("keep me", 4.0), ("deleted text", 3.0)]
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("keep me", 0.4), ("deleted text", 0.01)]
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=fusion,
+            config=_make_config(fusion_ranking_threshold=0.0),
+        )
+
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert result.tantivy_results == [("keep me", 4.0)]
+        fusion.fuse.assert_called_once_with([("keep me", 0.9)], [("keep me", 4.0)])
+        assert result.memories == ["keep me"]
+
+    async def test_fts_hits_dropped_when_exists_many_is_not_a_string_set(
+        self,
+    ) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = []
+        semantic.memory_store.exists_many.side_effect = None
+        semantic.memory_store.exists_many.return_value = ["not", "a", "set"]
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("maybe live", 4.0)]
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("maybe live", 0.01)]
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion
+        )
+
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert result.tantivy_results == []
+        fusion.fuse.assert_called_once_with([], [])
+        assert result.memories == []
 
     async def test_tantivy_error_and_empty_semantic_raises_search_error(self) -> None:
         semantic = MagicMock()
@@ -1177,6 +1267,14 @@ class TestSearchResponsiveness:
 
             def is_ready(self) -> bool:
                 return False
+
+            @property
+            def memory_store(self) -> object:
+                return self
+
+            def exists_many(self, workspace_id: str, contents: list[str]) -> set[str]:
+                _ = workspace_id
+                return set(contents)
 
             def count(self, workspace_id: str) -> int:
                 _ = workspace_id

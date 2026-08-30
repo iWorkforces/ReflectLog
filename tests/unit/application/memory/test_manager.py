@@ -798,10 +798,11 @@ class TestCloseErrorPaths:
         with pytest.raises(StorageError, match="persist incomplete"):
             manager.close()
         error_logged = any(
-            "Error closing Tantivy engine" in message
+            "Error persisting Tantivy engine" in message
             for message in mock_logger.messages(logging.ERROR)
         )
         assert error_logged
+        mock_tantivy.close.assert_not_called()
 
     def test_close_usearch_error_logged(self, mock_config: Config, mock_logger: LogCapture):
         """USearch close error should be logged not raised (lines 1002-1010)."""
@@ -811,10 +812,11 @@ class TestCloseErrorPaths:
         with pytest.raises(StorageError, match="persist incomplete"):
             manager.close()
         error_logged = any(
-            "Error closing USearch engine" in message
+            "Error persisting USearch engine" in message
             for message in mock_logger.messages(logging.ERROR)
         )
         assert error_logged
+        mock_usearch.close.assert_not_called()
 
     def test_close_both_errors_logged(self, mock_config: Config, mock_logger: LogCapture):
         """Both engines failing should both be logged."""
@@ -847,6 +849,51 @@ class TestCloseErrorPaths:
         manager.close()
         mock_usearch.close.assert_called_once()
         mock_tantivy.close.assert_called_once()
+
+    def test_failed_close_can_retry_persist(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        """A persist failure must not stick closed so a later close can retry."""
+        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.commit.side_effect = [RuntimeError("usearch commit error"), None]
+
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
+        manager.close()
+        assert mock_usearch.commit.call_count == 2
+        mock_usearch.close.assert_called_once()
+
+    def test_failed_tantivy_persist_does_not_close_usearch(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_tantivy.flush.side_effect = RuntimeError("tantivy flush error")
+
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
+        mock_usearch.commit.assert_called_once()
+        mock_usearch.close.assert_not_called()
+        mock_tantivy.close.assert_not_called()
+        assert manager._closed is False
+        manager._ensure_open()
+
+    def test_search_after_close_is_rejected(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, _, _ = _make_manager(mock_config, mock_logger)
+        manager.close()
+        import asyncio
+
+        with pytest.raises(StorageError, match="closed"):
+            asyncio.run(manager.search("query"))
+
+    def test_writes_after_close_are_rejected(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
+        manager, _, _ = _make_manager(mock_config, mock_logger)
+        manager.close()
+        with pytest.raises(StorageError, match="closed"):
+            manager.add_memories(["too late"])
 
     def test_pending_intent_count_propagates_list_failure(
         self, mock_config: Config, mock_logger: LogCapture

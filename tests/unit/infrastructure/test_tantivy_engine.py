@@ -1775,7 +1775,7 @@ class TestSearchErrorHandling:
     '''Tests for search error handling paths.'''
 
     def test_search_empty_query_uses_workspace_only(self) -> None:
-        '''Test search with empty query string uses workspace_id-only query.'''
+        '''Whitespace queries must not dump every workspace document.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1783,10 +1783,8 @@ class TestSearchErrorHandling:
             engine.add("test", "test document content")
             engine.commit()
 
-            # Empty/whitespace query should use workspace_id only path
             results = engine.search("  ", "test", limit=10)
-            # Should return results since all docs match workspace_id
-            assert len(results) >= 1
+            assert results == []
 
     def test_search_value_error_returns_empty(self) -> None:
         '''Test search returns [] on ValueError and logs with logger.'''
@@ -2264,6 +2262,117 @@ class TestRebuildIndexWithDocs:
             docs = engine._get_all_docs("test")
             assert "rebuilt" in docs
 
+    def test_rebuild_restores_leftover_backup_when_live_unreadable(self) -> None:
+        '''A leftover rebuild bak is restored instead of discarded.'''
+        import shutil
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            live_path = os.path.join(tmpdir, "idx")
+            bak_path = f"{live_path}.rebuild-bak"
+            config = TantivyConfig(workspace_id="test", index_path=live_path)
+            engine = TantivyEngine(config)
+            engine.add("test", "keep from bak")
+            engine.commit()
+            engine.close()
+
+            shutil.copytree(live_path, bak_path)
+            shutil.rmtree(live_path)
+            os.makedirs(live_path, exist_ok=True)
+
+            restored = TantivyEngine(config)
+            docs = restored._get_all_docs("test")
+            assert "keep from bak" in docs
+            restored.close()
+
+    def test_rebuild_restores_leftover_backup_when_live_is_empty_openable(
+        self,
+    ) -> None:
+        '''An empty but openable live index must not hide leftover bak docs.'''
+        import shutil
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            live_path = os.path.join(tmpdir, "idx")
+            bak_path = f"{live_path}.rebuild-bak"
+            config = TantivyConfig(workspace_id="test", index_path=live_path)
+            engine = TantivyEngine(config)
+            engine.add("test", "keep from bak")
+            engine.commit()
+            shutil.copytree(live_path, bak_path)
+            shutil.rmtree(live_path)
+            engine._closed = False
+            engine._index = None
+            engine._writer = None
+            engine._searcher = None
+            engine._initialize_index(restore_backup=False)
+            engine.close()
+
+            restored = TantivyEngine(config)
+            docs = restored._get_all_docs("test")
+            assert "keep from bak" in docs
+            restored.close()
+
+    def test_restore_does_not_replace_populated_live_with_bak(self) -> None:
+        import shutil
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            live_path = os.path.join(tmpdir, "idx")
+            bak_path = f"{live_path}.rebuild-bak"
+            config = TantivyConfig(workspace_id="test", index_path=live_path)
+            engine = TantivyEngine(config)
+            engine.add("test", "live docs")
+            engine.commit()
+            engine.close()
+
+            shutil.copytree(live_path, bak_path)
+            live = TantivyEngine(config)
+            live.add("test", "newer live")
+            live.commit()
+            live.close()
+
+            opened = TantivyEngine(config)
+            docs = opened._get_all_docs("test")
+            assert "live docs" in docs
+            assert "newer live" in docs
+            opened.close()
+
+    def test_add_after_close_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
+            engine = TantivyEngine(config)
+            engine.close()
+            with pytest.raises(SearchError, match="closed"):
+                engine.add("test", "too late")
+
+    def test_search_after_close_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
+            engine = TantivyEngine(config)
+            engine.add("test", "visible")
+            engine.commit()
+            engine.close()
+            with pytest.raises(SearchError, match="closed"):
+                _ = engine.search("visible", "test", limit=5)
+
+    def test_all_workspaces_keeps_surplus_live_copies(self) -> None:
+        '''Rebuild keep-list uses live-minus-tomb surplus, not any-tomb hide.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                workspace_id="test",
+                index_path=tmpdir,
+                soft_delete_enabled=True,
+            )
+            engine = TantivyEngine(config)
+            engine.add("proj-a", "twice")
+            engine.commit()
+            assert engine.soft_delete("proj-a", "twice")
+            engine.commit()
+            engine.add("proj-a", "twice")
+            engine.commit()
+            results = engine._get_all_docs_all_workspaces()
+            copies = [content for _workspace, content in results if content == "twice"]
+            assert len(copies) == 1
+            engine.close()
+
 
 @pytest.mark.unit
 class TestGetDocLimitEdgeCases:
@@ -2567,3 +2676,36 @@ class TestEscapeTantivyQuery:
     def test_escape_empty_string(self) -> None:
         '''Test escaping empty string returns empty.'''
         assert TantivyEngine._escape_tantivy_query("") == ""
+
+
+class TestSoftDeleteDoesNotPlantSurplusTombs:
+    @pytest.fixture
+    def engine(self) -> TantivyEngine:
+        tmpdir = tempfile.mkdtemp()
+        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
+        return TantivyEngine(config)
+
+    def test_verify_exists_false_does_not_hide_later_readd(
+        self, engine: TantivyEngine
+    ) -> None:
+        engine.add("test-project", "hello world")
+        engine.commit()
+        assert engine.delete("test-project", "hello world") is True
+        replayed = engine.soft_delete(
+            "test-project", "hello world", verify_exists=False
+        )
+        assert replayed is False
+        engine.add("test-project", "hello world")
+        engine.commit()
+        assert engine.find_by_exact_match("test-project", "hello world") == [
+            "hello world"
+        ]
+        assert engine.search("hello", "test-project", limit=5) == [
+            ("hello world", pytest.approx(1.0))
+        ]
+
+    def test_whitespace_query_returns_no_hits(self, engine: TantivyEngine) -> None:
+        engine.add("test-project", "hello world")
+        engine.commit()
+        assert engine.search("   ", "test-project", limit=10) == []
+        assert engine.search("\n\t", "test-project", limit=10) == []
