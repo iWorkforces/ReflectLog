@@ -164,6 +164,11 @@ def apply_pending_transition(
         return False
 
     semantic_engine.memory_store.complete_replacement_transition(transition.id)
+    _complete_pending_adds_of(
+        semantic_engine.memory_store,
+        workspace_id=transition.workspace_id,
+        content=transition.old_content,
+    )
     logger.info(
         "Applied pending replacement transition",
         extra={
@@ -246,7 +251,7 @@ def _apply_pending_add(
     store = semantic_engine.memory_store
     if _later_intent_exists(
         store, transition, kind=TransitionKind.DELETE, content=transition.new_content
-    ):
+    ) or _earlier_pending_replace_of(store, transition):
         store.complete_replacement_transition(transition.id)
         logger.info(
             "Completed add intent superseded by a later delete or replace",
@@ -366,6 +371,43 @@ def _delete_converged(
     return not _tantivy_has(
         tantivy_engine, transition.workspace_id, transition.old_content
     )
+
+
+def _complete_pending_adds_of(
+    store: IArchiveMemoryStore,
+    *,
+    workspace_id: str,
+    content: str,
+) -> None:
+    """Complete pending ADD rows for text that a replace just removed."""
+    if not content:
+        return
+    for row in store.list_pending_transitions():
+        if row.workspace_id != workspace_id:
+            continue
+        if row.kind != TransitionKind.ADD:
+            continue
+        if row.new_content != content:
+            continue
+        store.complete_replacement_transition(row.id)
+
+
+def _earlier_pending_replace_of(
+    store: IArchiveMemoryStore,
+    transition: ReplacementTransition,
+) -> bool:
+    """Return True when an earlier pending REPLACE still owns this add text."""
+    for other in store.list_pending_transitions():
+        if other.workspace_id != transition.workspace_id:
+            continue
+        if other.id >= transition.id:
+            continue
+        if (
+            other.kind == TransitionKind.REPLACE
+            and other.old_content == transition.new_content
+        ):
+            return True
+    return False
 
 
 def _later_intent_exists(

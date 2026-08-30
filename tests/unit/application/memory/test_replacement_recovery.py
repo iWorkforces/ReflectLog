@@ -560,3 +560,64 @@ class TestReconcilePendingReplacements:
             assert completed is True
             semantic.add.assert_not_called()
             store.close()
+
+    def test_earlier_pending_replace_supersedes_add_of_old_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            replaced = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj",
+                old_content="I live in NYC",
+                new_content="I moved to Boston",
+                reason="updated",
+                confidence=0.9,
+            )
+            added = store.begin_add_intents("proj", ["I live in NYC"])[0]
+            assert added.id > replaced.id
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.get_id_by_content.return_value = None
+            completed = apply_pending_transition(
+                added,
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                logger=MagicMock(),
+            )
+            assert completed is True
+            semantic.add.assert_not_called()
+            semantic.add_batch.assert_not_called()
+            assert added.id not in {row.id for row in store.list_pending_transitions()}
+            store.close()
+
+    def test_apply_replace_completes_pending_add_of_old_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            replaced = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj",
+                old_content="I live in NYC",
+                new_content="I moved to Boston",
+                reason="updated",
+                confidence=0.9,
+            )
+            added = store.begin_add_intents("proj", ["I live in NYC"])[0]
+            semantic = MagicMock()
+            semantic.memory_store = store
+            _stub_contains(semantic)
+            semantic.get_id_by_content.side_effect = (
+                lambda workspace_id, content: 22
+                if content == "I moved to Boston"
+                else None
+            )
+            semantic.index = {22}
+            semantic.contains_id.side_effect = lambda memory_id: memory_id == 22
+            completed = apply_pending_transition(
+                replaced,
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                logger=MagicMock(),
+            )
+            assert completed is True
+            pending_ids = {row.id for row in store.list_pending_transitions()}
+            assert added.id not in pending_ids
+            store.close()
