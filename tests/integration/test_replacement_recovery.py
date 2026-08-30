@@ -142,9 +142,7 @@ def _crash_after_tantivy_delete(_manager: MemoryManager) -> Generator[None]:
         *,
         verify_exists: bool = True,
     ) -> int:
-        deleted = original(
-            self, workspace_id, contents, verify_exists=verify_exists
-        )
+        deleted = original(self, workspace_id, contents, verify_exists=verify_exists)
         raise RuntimeError("crash after tantivy delete")
         return deleted
 
@@ -157,9 +155,13 @@ def _crash_after_insert(_manager: MemoryManager) -> Generator[None]:
     original = USearchEngine.add_batch
 
     def boom(
-        self: USearchEngine, workspace_id: str, contents: list[str], infer: bool
+        self: USearchEngine,
+        workspace_id: str,
+        contents: list[str],
+        infer: bool,
+        vectors: list[list[float]] | None = None,
     ) -> list[str]:
-        stored = original(self, workspace_id, contents, infer)
+        stored = original(self, workspace_id, contents, infer, vectors=vectors)
         raise RuntimeError("crash after insert")
         return stored
 

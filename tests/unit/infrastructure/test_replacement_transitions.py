@@ -318,3 +318,15 @@ class TestAddAndDeleteIntents:
                 after_id=added.id,
             )
             store.close()
+
+
+@pytest.mark.unit
+class TestTransitionRowParse:
+    """Corrupt journal kinds must fail closed."""
+
+    def test_unknown_kind_raises_storage_error(self) -> None:
+        store = MemoryStore.__new__(MemoryStore)
+        with pytest.raises(StorageError, match="Invalid replacement transition"):
+            _ = store._row_to_transition(
+                (1, "proj1", 11, "old", "new", 8, "r", 0.9, "pending", "bogus")
+            )

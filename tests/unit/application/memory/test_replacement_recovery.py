@@ -144,6 +144,7 @@ class TestApplyPendingTransition:
 
     def test_skips_tantivy_delete_when_old_text_was_readded(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         def get_current_id(_workspace_id: str, content: str) -> int:
             return 22 if content == "old convention" else 99
 

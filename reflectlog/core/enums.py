@@ -19,11 +19,8 @@ class TransitionKind(StrEnum):
 
     @classmethod
     def from_stored(cls, value: str) -> TransitionKind:
-        """Parse a stored kind, defaulting unknown legacy rows to REPLACE."""
-        try:
-            return cls(value)
-        except ValueError:
-            return cls.REPLACE
+        """Parse a stored kind. Unknown values raise ``ValueError``."""
+        return cls(value)
 
 
 class TransitionStatus(StrEnum):
@@ -34,11 +31,8 @@ class TransitionStatus(StrEnum):
 
     @classmethod
     def from_stored(cls, value: str) -> TransitionStatus:
-        """Parse a stored status, defaulting unknown rows to PENDING."""
-        try:
-            return cls(value)
-        except ValueError:
-            return cls.PENDING
+        """Parse a stored status. Unknown values raise ``ValueError``."""
+        return cls(value)
 
 
 class TransportMode(StrEnum):

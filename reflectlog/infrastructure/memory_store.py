@@ -1434,9 +1434,12 @@ class MemoryStore(BaseModel):
     def _row_to_transition(self, row: tuple[object, ...]) -> ReplacementTransition:
         """Map a replacement_transitions SELECT row to a dataclass."""
         status_value = str(row[8])
-        transition_status = TransitionStatus.from_stored(status_value)
         kind_value = str(row[9]) if len(row) > 9 else TransitionKind.REPLACE
-        kind = TransitionKind.from_stored(kind_value)
+        try:
+            transition_status = TransitionStatus.from_stored(status_value)
+            kind = TransitionKind.from_stored(kind_value)
+        except ValueError as e:
+            raise StorageError(f"Invalid replacement transition row: {e}") from e
         return ReplacementTransition(
             id=int(str(row[0])),
             workspace_id=str(row[1]),

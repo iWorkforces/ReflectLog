@@ -735,6 +735,10 @@ class StoragePhase:
             memories, dry_run=False, locked=True, vectors=vectors
         )
         self._delete_recorded_olds(transitions)
+        if transitions:
+            if self._tantivy_engine is not None:
+                self._tantivy_engine.commit()
+            self._semantic_engine.commit()
         self._complete_if_converged(transitions)
         self._complete_add_intents(add_intents)
         return stored_count, replacements
