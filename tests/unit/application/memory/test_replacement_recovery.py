@@ -27,8 +27,13 @@ def _stub_contains(semantic: MagicMock) -> None:
     semantic.contains_id.side_effect = _contains
 
 
-def _stub_journal(semantic: MagicMock) -> None:
-    semantic.memory_store.list_pending_transitions.return_value = []
+def _stub_journal(
+    semantic: MagicMock,
+    *rows: ReplacementTransition,
+) -> None:
+    semantic.memory_store.list_pending_transitions.return_value = (
+        list(rows) if rows else [_transition()]
+    )
     semantic.memory_store.has_later_intent.return_value = False
     _stub_contains(semantic)
 
@@ -561,7 +566,7 @@ class TestReconcilePendingReplacements:
             semantic.add.assert_not_called()
             store.close()
 
-    def test_earlier_pending_replace_supersedes_add_of_old_text(self) -> None:
+    def test_later_add_of_old_text_is_not_superseded(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
             replaced = store.begin_replacement_transition(
@@ -574,9 +579,22 @@ class TestReconcilePendingReplacements:
             )
             added = store.begin_add_intents("proj", ["I live in NYC"])[0]
             assert added.id > replaced.id
+            live: dict[str, int] = {}
             semantic = MagicMock()
             semantic.memory_store = store
-            semantic.get_id_by_content.return_value = None
+            semantic.index = set()
+
+            def get_id(_workspace_id: str, content: str) -> int | None:
+                return live.get(content)
+
+            def add(workspace_id: str, content: str, infer: bool = False) -> None:
+                _ = (workspace_id, infer)
+                live[content] = 33
+                semantic.index.add(33)
+
+            semantic.get_id_by_content.side_effect = get_id
+            semantic.add.side_effect = add
+            _stub_contains(semantic)
             completed = apply_pending_transition(
                 added,
                 semantic_engine=semantic,
@@ -584,12 +602,11 @@ class TestReconcilePendingReplacements:
                 logger=MagicMock(),
             )
             assert completed is True
-            semantic.add.assert_not_called()
-            semantic.add_batch.assert_not_called()
+            assert live == {"I live in NYC": 33}
             assert added.id not in {row.id for row in store.list_pending_transitions()}
             store.close()
 
-    def test_apply_replace_completes_pending_add_of_old_text(self) -> None:
+    def test_apply_replace_leaves_later_add_of_old_text_pending(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
             replaced = store.begin_replacement_transition(
@@ -619,5 +636,75 @@ class TestReconcilePendingReplacements:
             )
             assert completed is True
             pending_ids = {row.id for row in store.list_pending_transitions()}
+            assert added.id in pending_ids
+            store.close()
+
+    def test_reconcile_replace_then_earlier_add_does_not_reinsert_old_text(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            added = store.begin_add_intents("proj", ["I live in NYC"])[0]
+            replaced = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj",
+                old_content="I live in NYC",
+                new_content="I moved to Boston",
+                reason="updated",
+                confidence=0.9,
+            )
+            assert added.id < replaced.id
+            live: dict[str, int] = {}
+
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.embedder.embed_query.return_value = [0.1, 0.2]
+            semantic.index = set()
+
+            def get_id(_workspace_id: str, content: str) -> int | None:
+                return live.get(content)
+
+            def add(_workspace_id: str, content: str, infer: bool = False) -> None:
+                live[content] = 100 + len(live)
+                semantic.index.add(live[content])
+
+            def add_batch(
+                workspace_id: str,
+                contents: list[str],
+                infer: bool = False,
+                vectors: list[list[float]] | None = None,
+            ) -> list[str]:
+                _ = (workspace_id, infer, vectors)
+                for content in contents:
+                    add(workspace_id, content)
+                return list(contents)
+
+            def delete(*, memory_id: str) -> None:
+                target = int(memory_id)
+                for content, mem_id in list(live.items()):
+                    if mem_id == target:
+                        del live[content]
+                        semantic.index.discard(target)
+
+            semantic.get_id_by_content.side_effect = get_id
+            semantic.add.side_effect = add
+            semantic.add_batch.side_effect = add_batch
+            semantic.delete.side_effect = delete
+            semantic.contains_id.side_effect = (
+                lambda memory_id: memory_id in semantic.index
+            )
+
+            count = reconcile_pending_replacements(
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                write_lock=threading.Lock(),
+                lock=threading.RLock(),
+                logger=MagicMock(),
+            )
+            assert count >= 1
+            assert "I live in NYC" not in live
+            assert "I moved to Boston" in live
+            pending_ids = {row.id for row in store.list_pending_transitions()}
             assert added.id not in pending_ids
+            assert replaced.id not in pending_ids
             store.close()

@@ -56,7 +56,11 @@ def reconcile_pending_replacements(
     completed = 0
     inner_lock = lock if lock is not None else nullcontext()
     with write_lock, inner_lock:
-        for transition in _pending_rows(store.list_pending_transitions()):
+        snapshot = _pending_rows(store.list_pending_transitions())
+        pending_ids = {row.id for row in snapshot}
+        for transition in snapshot:
+            if transition.id not in pending_ids:
+                continue
             try:
                 if apply_pending_transition(
                     transition,
@@ -74,6 +78,9 @@ def reconcile_pending_replacements(
                         "error": str(exc),
                     },
                 )
+            pending_ids = {
+                row.id for row in _pending_rows(store.list_pending_transitions())
+            }
 
     if completed:
         logger.info(
@@ -96,6 +103,11 @@ def apply_pending_transition(
     Returns:
         True when the transition was marked complete.
     """
+    store = semantic_engine.memory_store
+    pending_ids = {row.id for row in _pending_rows(store.list_pending_transitions())}
+    if transition.id not in pending_ids:
+        return False
+
     if transition.kind == TransitionKind.ADD:
         return _apply_pending_add(
             transition,
@@ -112,7 +124,6 @@ def apply_pending_transition(
             logger=logger,
         )
 
-    store = semantic_engine.memory_store
     if _later_intent_exists(
         store, transition, kind=TransitionKind.DELETE, content=transition.new_content
     ):
@@ -163,12 +174,13 @@ def apply_pending_transition(
         )
         return False
 
-    semantic_engine.memory_store.complete_replacement_transition(transition.id)
     _complete_pending_adds_of(
-        semantic_engine.memory_store,
+        store,
         workspace_id=transition.workspace_id,
         content=transition.old_content,
+        before_id=transition.id,
     )
+    store.complete_replacement_transition(transition.id)
     logger.info(
         "Applied pending replacement transition",
         extra={
@@ -251,7 +263,7 @@ def _apply_pending_add(
     store = semantic_engine.memory_store
     if _later_intent_exists(
         store, transition, kind=TransitionKind.DELETE, content=transition.new_content
-    ) or _earlier_pending_replace_of(store, transition):
+    ):
         store.complete_replacement_transition(transition.id)
         logger.info(
             "Completed add intent superseded by a later delete or replace",
@@ -378,8 +390,9 @@ def _complete_pending_adds_of(
     *,
     workspace_id: str,
     content: str,
+    before_id: int,
 ) -> None:
-    """Complete pending ADD rows for text that a replace just removed."""
+    """Complete earlier pending ADD rows for text that a replace just removed."""
     if not content:
         return
     for row in store.list_pending_transitions():
@@ -389,25 +402,9 @@ def _complete_pending_adds_of(
             continue
         if row.new_content != content:
             continue
+        if row.id >= before_id:
+            continue
         store.complete_replacement_transition(row.id)
-
-
-def _earlier_pending_replace_of(
-    store: IArchiveMemoryStore,
-    transition: ReplacementTransition,
-) -> bool:
-    """Return True when an earlier pending REPLACE still owns this add text."""
-    for other in store.list_pending_transitions():
-        if other.workspace_id != transition.workspace_id:
-            continue
-        if other.id >= transition.id:
-            continue
-        if (
-            other.kind == TransitionKind.REPLACE
-            and other.old_content == transition.new_content
-        ):
-            return True
-    return False
 
 
 def _later_intent_exists(
