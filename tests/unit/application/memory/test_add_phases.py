@@ -24,6 +24,7 @@ from reflectlog.application.memory.add_phases import (
     StoragePhase,
 )
 from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.enums import TransitionStatus
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import ReplacementTransition, ReplacementTransitionRequest
@@ -654,7 +655,7 @@ class TestStoragePhase:
                 archive_id=100,
                 reason="updated",
                 confidence=0.9,
-                status="pending",
+                status=TransitionStatus.PENDING,
             )
         ]
     
@@ -729,7 +730,7 @@ class TestStoragePhase:
                 archive_id=100,
                 reason="updated",
                 confidence=0.9,
-                status="pending",
+                status=TransitionStatus.PENDING,
             )
         ]
         mock_semantic_engine.delete.side_effect = RuntimeError("Delete failed")
@@ -1089,7 +1090,7 @@ class TestStoragePhase:
             archive_id=100,
             reason="updated",
             confidence=0.9,
-            status="pending",
+            status=TransitionStatus.PENDING,
         )
         mock_semantic_engine.get_id_by_content.return_value = 42
         mock_semantic_engine.memory_store.begin_replacement_transitions.return_value = [
@@ -1194,7 +1195,7 @@ class TestStoragePhase:
                         archive_id=100,
                         reason=request.reason,
                         confidence=request.confidence,
-                        status="pending",
+                        status=TransitionStatus.PENDING,
                     )
                 )
             return recorded
@@ -1290,7 +1291,7 @@ class TestStoragePhase:
                 archive_id=1,
                 reason="strong",
                 confidence=0.95,
-                status="pending",
+                status=TransitionStatus.PENDING,
             )
         ]
     
@@ -1374,7 +1375,7 @@ class TestStoragePhase:
                 archive_id=1,
                 reason="first intent",
                 confidence=0.8,
-                status="pending",
+                status=TransitionStatus.PENDING,
             )
         )
     

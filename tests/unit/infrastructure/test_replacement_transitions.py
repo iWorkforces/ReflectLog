@@ -5,6 +5,7 @@ import tempfile
 
 import pytest
 
+from reflectlog.core.enums import TransitionKind
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.types import ReplacementTransition
 from reflectlog.infrastructure.memory_store import (
@@ -211,7 +212,7 @@ class TestAddAndDeleteIntents:
             first = store.begin_add_intents("proj1", ["hello", "hello"])
             second = store.begin_add_intents("proj1", ["hello"])
             assert len(first) == 1
-            assert first[0].kind == "add"
+            assert first[0].kind == TransitionKind.ADD
             assert first[0].new_content == "hello"
             assert second[0].id == first[0].id
             assert len(store.list_pending_transitions()) == 1
@@ -222,7 +223,7 @@ class TestAddAndDeleteIntents:
             store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
             rows = store.begin_delete_intents("proj1", [(11, "hello")])
             assert len(rows) == 1
-            assert rows[0].kind == "delete"
+            assert rows[0].kind == TransitionKind.DELETE
             assert rows[0].old_memory_id == 11
             assert rows[0].old_content == "hello"
             store.close()
@@ -235,7 +236,7 @@ class TestAddAndDeleteIntents:
             store.complete_replacement_transition(deleted.id)
             assert store.has_later_intent(
                 workspace_id="proj1",
-                kind="delete",
+                kind=TransitionKind.DELETE,
                 content="hello",
                 after_id=added.id,
             )
@@ -294,8 +295,8 @@ class TestAddAndDeleteIntents:
             )
             deleted = store.begin_delete_intents("proj1", [(11, "hello")])[0]
             assert deleted.id != replaced.id
-            assert deleted.kind == "delete"
-            assert replaced.kind == "replace"
+            assert deleted.kind == TransitionKind.DELETE
+            assert replaced.kind == TransitionKind.REPLACE
             store.close()
 
     def test_has_later_intent_delete_sees_later_replace(self) -> None:
@@ -312,7 +313,7 @@ class TestAddAndDeleteIntents:
             )
             assert store.has_later_intent(
                 workspace_id="proj1",
-                kind="delete",
+                kind=TransitionKind.DELETE,
                 content="hello",
                 after_id=added.id,
             )

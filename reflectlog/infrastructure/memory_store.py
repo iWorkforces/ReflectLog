@@ -15,17 +15,17 @@ from typing import Any, final
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
+from reflectlog.core.enums import TransitionKind, TransitionStatus
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import (
-    IndexIntentKind,
     ReplacementTransition,
     ReplacementTransitionRequest,
-    ReplacementTransitionStatus,
 )
 
-TRANSITION_PENDING: ReplacementTransitionStatus = "pending"
-TRANSITION_COMPLETED: ReplacementTransitionStatus = "completed"
+TRANSITION_PENDING = TransitionStatus.PENDING
+TRANSITION_COMPLETED = TransitionStatus.COMPLETED
+_KIND_COALESCE = f"COALESCE(kind, '{TransitionKind.REPLACE}')"
 
 
 @dataclass(frozen=True)
@@ -399,7 +399,10 @@ class MemoryStore(BaseModel):
                             if self.logger:
                                 self.logger.debug(
                                     "Duplicate memory skipped during batch insert",
-                                    extra={"workspace_id": workspace_id, "error": str(e)},
+                                    extra={
+                                        "workspace_id": workspace_id,
+                                        "error": str(e),
+                                    },
                                 )
                             continue
                         raise
@@ -970,7 +973,7 @@ class MemoryStore(BaseModel):
             archive_id=archive_id,
             reason=request.reason,
             confidence=request.confidence,
-            kind="replace",
+            kind=TransitionKind.REPLACE,
         )
 
     def list_pending_transitions(self) -> list[ReplacementTransition]:
@@ -983,10 +986,10 @@ class MemoryStore(BaseModel):
             cursor = self.connection.cursor()
             try:
                 _ = cursor.execute(
-                    """
+                    f"""
                     SELECT id, workspace_id, old_memory_id, old_content,
                            new_content, archive_id, reason, confidence, status,
-                           COALESCE(kind, 'replace')
+                           {_KIND_COALESCE}
                     FROM replacement_transitions
                     WHERE status = ?
                     ORDER BY id
@@ -1074,7 +1077,7 @@ class MemoryStore(BaseModel):
                         archive_id=0,
                         reason="delete",
                         confidence=1.0,
-                        kind="delete",
+                        kind=TransitionKind.DELETE,
                     )
                     for memory_id, content in items
                 ]
@@ -1090,36 +1093,47 @@ class MemoryStore(BaseModel):
         self,
         *,
         workspace_id: str,
-        kind: str,
+        kind: TransitionKind,
         content: str,
         after_id: int,
     ) -> bool:
         """Return True when a later add/delete/replace row exists for the text.
 
-        ``kind='delete'`` also matches a later replace of the same old text so a
-        stale add cannot resurrect content that was replaced.
+        ``TransitionKind.DELETE`` also matches a later replace of the same old
+        text so a stale add cannot resurrect content that was replaced.
         """
-        if kind == "add":
+        if kind == TransitionKind.ADD:
             query = (
                 "SELECT 1 FROM replacement_transitions "
-                "WHERE workspace_id = ? AND kind = 'add' "
+                "WHERE workspace_id = ? AND kind = ? "
                 "AND new_content = ? AND id > ? LIMIT 1"
             )
-            params: tuple[object, ...] = (workspace_id, content, after_id)
-        elif kind == "delete":
+            params: tuple[object, ...] = (
+                workspace_id,
+                TransitionKind.ADD,
+                content,
+                after_id,
+            )
+        elif kind == TransitionKind.DELETE:
             query = (
                 "SELECT 1 FROM replacement_transitions "
-                "WHERE workspace_id = ? AND kind IN ('delete', 'replace') "
+                "WHERE workspace_id = ? AND kind IN (?, ?) "
                 "AND old_content = ? AND id > ? LIMIT 1"
             )
-            params = (workspace_id, content, after_id)
-        elif kind == "replace":
+            params = (
+                workspace_id,
+                TransitionKind.DELETE,
+                TransitionKind.REPLACE,
+                content,
+                after_id,
+            )
+        elif kind == TransitionKind.REPLACE:
             query = (
                 "SELECT 1 FROM replacement_transitions "
-                "WHERE workspace_id = ? AND kind = 'replace' "
+                "WHERE workspace_id = ? AND kind = ? "
                 "AND old_content = ? AND id > ? LIMIT 1"
             )
-            params = (workspace_id, content, after_id)
+            params = (workspace_id, TransitionKind.REPLACE, content, after_id)
         else:
             raise StorageError(f"Unknown intent kind: {kind}")
         with self._conn_lock:
@@ -1250,13 +1264,13 @@ class MemoryStore(BaseModel):
         existing = self._existing_intent(
             cursor,
             workspace_id=workspace_id,
-            kind="add",
+            kind=TransitionKind.ADD,
             old_memory_id=0,
             new_content=content,
         )
         if existing is not None and self.has_later_intent(
             workspace_id=workspace_id,
-            kind="delete",
+            kind=TransitionKind.DELETE,
             content=content,
             after_id=existing.id,
         ):
@@ -1270,7 +1284,7 @@ class MemoryStore(BaseModel):
             archive_id=0,
             reason="add",
             confidence=1.0,
-            kind="add",
+            kind=TransitionKind.ADD,
         )
 
     def _mark_transition_complete(
@@ -1296,7 +1310,7 @@ class MemoryStore(BaseModel):
         archive_id: int,
         reason: str,
         confidence: float,
-        kind: IndexIntentKind = "replace",
+        kind: TransitionKind = TransitionKind.REPLACE,
     ) -> ReplacementTransition:
         """Insert a pending transition or return the exclusive existing row."""
         existing = self._existing_intent(
@@ -1307,10 +1321,8 @@ class MemoryStore(BaseModel):
             new_content=new_content,
         )
         if existing is not None:
-            if kind == "replace" and existing.new_content != new_content:
-                raise StorageError(
-                    "Old memory already has a replacement transition"
-                )
+            if kind == TransitionKind.REPLACE and existing.new_content != new_content:
+                raise StorageError("Old memory already has a replacement transition")
             return existing
 
         try:
@@ -1373,7 +1385,7 @@ class MemoryStore(BaseModel):
         return self._existing_intent(
             cursor,
             workspace_id=workspace_id,
-            kind="replace",
+            kind=TransitionKind.REPLACE,
             old_memory_id=old_memory_id,
             new_content="",
         )
@@ -1383,29 +1395,34 @@ class MemoryStore(BaseModel):
         cursor: sqlite3.Cursor,
         *,
         workspace_id: str,
-        kind: IndexIntentKind,
+        kind: TransitionKind,
         old_memory_id: int,
         new_content: str,
     ) -> ReplacementTransition | None:
         """Return a matching pending or exclusive intent, if present."""
-        if kind == "add":
+        if kind == TransitionKind.ADD:
             _ = cursor.execute(
-                """
+                f"""
                 SELECT id, workspace_id, old_memory_id, old_content, new_content,
                        archive_id, reason, confidence, status,
-                       COALESCE(kind, 'replace')
+                       {_KIND_COALESCE}
                 FROM replacement_transitions
-                WHERE workspace_id = ? AND kind = 'add' AND new_content = ?
+                WHERE workspace_id = ? AND kind = ? AND new_content = ?
                   AND status = ?
                 """,
-                (workspace_id, new_content, TRANSITION_PENDING),
+                (
+                    workspace_id,
+                    TransitionKind.ADD,
+                    new_content,
+                    TRANSITION_PENDING,
+                ),
             )
         else:
             _ = cursor.execute(
-                """
+                f"""
                 SELECT id, workspace_id, old_memory_id, old_content, new_content,
                        archive_id, reason, confidence, status,
-                       COALESCE(kind, 'replace')
+                       {_KIND_COALESCE}
                 FROM replacement_transitions
                 WHERE workspace_id = ? AND old_memory_id = ? AND kind = ?
                 """,
@@ -1417,19 +1434,9 @@ class MemoryStore(BaseModel):
     def _row_to_transition(self, row: tuple[object, ...]) -> ReplacementTransition:
         """Map a replacement_transitions SELECT row to a dataclass."""
         status_value = str(row[8])
-        transition_status: ReplacementTransitionStatus = (
-            TRANSITION_COMPLETED
-            if status_value == TRANSITION_COMPLETED
-            else TRANSITION_PENDING
-        )
-        kind_value = str(row[9]) if len(row) > 9 else "replace"
-        kind: IndexIntentKind = (
-            "add"
-            if kind_value == "add"
-            else "delete"
-            if kind_value == "delete"
-            else "replace"
-        )
+        transition_status = TransitionStatus.from_stored(status_value)
+        kind_value = str(row[9]) if len(row) > 9 else TransitionKind.REPLACE
+        kind = TransitionKind.from_stored(kind_value)
         return ReplacementTransition(
             id=int(str(row[0])),
             workspace_id=str(row[1]),

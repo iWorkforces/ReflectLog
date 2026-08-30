@@ -12,6 +12,7 @@ from reflectlog.application.memory.replacement_recovery import (
     reconcile_pending_replacements,
     replacement_converged,
 )
+from reflectlog.core.enums import TransitionKind, TransitionStatus
 from reflectlog.core.types import ReplacementTransition
 from reflectlog.infrastructure.memory_store import MemoryStore
 
@@ -38,7 +39,7 @@ def _transition() -> ReplacementTransition:
         archive_id=8,
         reason="updated",
         confidence=0.9,
-        status="pending",
+        status=TransitionStatus.PENDING,
     )
 
 
@@ -471,7 +472,10 @@ class TestReconcilePendingReplacements:
             )
             assert completed is True
             semantic.add.assert_not_called()
-            assert all(row.kind != "add" for row in store.list_pending_transitions())
+            assert all(
+                row.kind != TransitionKind.ADD
+                for row in store.list_pending_transitions()
+            )
             store.close()
 
     def test_later_delete_in_other_workspace_does_not_suppress_add(self) -> None:

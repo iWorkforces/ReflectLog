@@ -14,6 +14,7 @@ import os
 from typing import TYPE_CHECKING, cast
 
 from reflectlog.core.access import optional_attr
+from reflectlog.core.enums import TransitionKind
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import (
     IArchiveMemoryStore,
@@ -97,7 +98,7 @@ def apply_pending_transition(
     Returns:
         True when the transition was marked complete.
     """
-    if transition.kind == "add":
+    if transition.kind == TransitionKind.ADD:
         return _apply_pending_add(
             transition,
             semantic_engine=semantic_engine,
@@ -105,7 +106,7 @@ def apply_pending_transition(
             logger=logger,
             precomputed_vectors=precomputed_vectors,
         )
-    if transition.kind == "delete":
+    if transition.kind == TransitionKind.DELETE:
         return _apply_pending_delete(
             transition,
             semantic_engine=semantic_engine,
@@ -115,7 +116,7 @@ def apply_pending_transition(
 
     store = semantic_engine.memory_store
     if _later_intent_exists(
-        store, transition, kind="delete", content=transition.new_content
+        store, transition, kind=TransitionKind.DELETE, content=transition.new_content
     ):
         _remove_recorded_old(transition, semantic_engine, tantivy_engine)
         if tantivy_engine is not None:
@@ -185,9 +186,13 @@ def replacement_converged(
 
     if tantivy_engine is None:
         return True
-    if not _tantivy_has(tantivy_engine, transition.workspace_id, transition.new_content):
+    if not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.new_content
+    ):
         return False
-    if not _tantivy_has(tantivy_engine, transition.workspace_id, transition.old_content):
+    if not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.old_content
+    ):
         return True
     return _old_text_live_under_new_id(transition, semantic_engine)
 
@@ -231,7 +236,7 @@ def _apply_pending_add(
     """Ensure NEW content exists unless a later delete/replace of that text won."""
     store = semantic_engine.memory_store
     if _later_intent_exists(
-        store, transition, kind="delete", content=transition.new_content
+        store, transition, kind=TransitionKind.DELETE, content=transition.new_content
     ):
         store.complete_replacement_transition(transition.id)
         logger.info(
@@ -281,7 +286,7 @@ def _apply_pending_delete(
     """Remove the recorded old id; do not wipe a later re-add of the same text."""
     store = semantic_engine.memory_store
     later_add = _later_intent_exists(
-        store, transition, kind="add", content=transition.old_content
+        store, transition, kind=TransitionKind.ADD, content=transition.old_content
     )
     semantic_engine.delete(memory_id=str(transition.old_memory_id))
     if (
@@ -349,7 +354,7 @@ def _later_intent_exists(
     store: IArchiveMemoryStore,
     transition: ReplacementTransition,
     *,
-    kind: str,
+    kind: TransitionKind,
     content: str,
 ) -> bool:
     """Return True when a later add/delete/replace intent for the text exists.
@@ -369,12 +374,16 @@ def _later_intent_exists(
             if other.id <= transition.id:
                 continue
             if (
-                kind == "delete"
-                and other.kind in {"delete", "replace"}
+                kind == TransitionKind.DELETE
+                and other.kind in {TransitionKind.DELETE, TransitionKind.REPLACE}
                 and other.old_content == content
             ):
                 return True
-            if kind == "add" and other.kind == "add" and other.new_content == content:
+            if (
+                kind == TransitionKind.ADD
+                and other.kind == TransitionKind.ADD
+                and other.new_content == content
+            ):
                 return True
     return store.has_later_intent(
         workspace_id=transition.workspace_id,
@@ -429,7 +438,9 @@ def _ensure_replacement_present(
 
     if tantivy_engine is None:
         return
-    if not _tantivy_has(tantivy_engine, transition.workspace_id, transition.new_content):
+    if not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.new_content
+    ):
         tantivy_engine.add(transition.workspace_id, transition.new_content)
 
 
@@ -483,18 +494,23 @@ def _precompute_add_vectors(
 ) -> dict[str, list[float]]:
     """Embed missing add/replace text outside the write lock."""
     embedder = optional_attr(semantic_engine, "embedder")
-    embed_query = optional_attr(embedder, "embed_query") if embedder is not None else None
+    embed_query = (
+        optional_attr(embedder, "embed_query") if embedder is not None else None
+    )
     if not callable(embed_query):
         return {}
     needed: list[str] = []
     seen: set[str] = set()
     for transition in pending:
-        if transition.kind not in {"add", "replace"}:
+        if transition.kind not in {TransitionKind.ADD, TransitionKind.REPLACE}:
             continue
         content = transition.new_content
         if not content or content in seen:
             continue
-        if semantic_engine.get_id_by_content(transition.workspace_id, content) is not None:
+        if (
+            semantic_engine.get_id_by_content(transition.workspace_id, content)
+            is not None
+        ):
             continue
         seen.add(content)
         needed.append(content)
