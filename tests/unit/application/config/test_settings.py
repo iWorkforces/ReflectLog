@@ -303,11 +303,11 @@ class TestFromEnvironmentOverrides:
         cfg = self._with_env(monkeypatch, MCP_TRANSPORT="streamable-http")
         assert cfg.transport == "streamable-http"
 
-    def test_transport_unknown_falls_back_to_stdio(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        cfg = self._with_env(monkeypatch, MCP_TRANSPORT="unknown")
-        assert cfg.transport == "stdio"
+    def test_transport_unknown_raises(self, monkeypatch: pytest.MonkeyPatch):
+        from reflectlog.core.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="Invalid MCP_TRANSPORT"):
+            _ = self._with_env(monkeypatch, MCP_TRANSPORT="unknown")
 
     def test_port_override(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(monkeypatch, PORT="8080")

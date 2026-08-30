@@ -590,3 +590,34 @@ class TestHttpAuthAndBind:
         ):
             with pytest.raises(ConfigurationError, match="ALLOW_PUBLIC_BIND"):
                 server.run()
+
+    @patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings")
+    @patch("reflectlog.application.memory.manager.USearchEngine")
+    @patch("reflectlog.application.memory.manager.CachedEmbeddings")
+    def test_http_refuses_ipv6_unspecified_without_allow(
+        self,
+        _cached: MagicMock,
+        _usearch_cls: MagicMock,
+        _embeddings: MagicMock,
+        mock_usearch_engine: MagicMock,
+    ) -> None:
+        from reflectlog.application.config.settings import Config
+        from reflectlog.application.mcp_server import FastMCPServer
+        from reflectlog.application.utils.security import SecretString
+
+        _usearch_cls.return_value = mock_usearch_engine
+        server = FastMCPServer(
+            Config(
+                workspace_id="test",
+                openrouter_api_key=SecretString("k"),
+                transport="http",
+                host="::0",
+            )
+        )
+        with patch.dict(
+            os.environ,
+            {"MCP_AUTH_TOKEN": "token", "ALLOW_PUBLIC_BIND": "false"},
+            clear=False,
+        ):
+            with pytest.raises(ConfigurationError, match="ALLOW_PUBLIC_BIND"):
+                server.run()

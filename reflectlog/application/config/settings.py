@@ -310,7 +310,6 @@ class Config:
             TransportMode,
             os.environ.get("MCP_TRANSPORT", TransportMode.STDIO),
             field="MCP_TRANSPORT",
-            default=TransportMode.STDIO,
         )
 
         return {

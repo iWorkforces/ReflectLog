@@ -1,6 +1,7 @@
 """ReflectLog Server - Refactored modular implementation."""
 
 import hmac
+from ipaddress import ip_address
 import os
 
 from fastmcp import FastMCP
@@ -270,6 +271,17 @@ class FastMCPServer:
 
         return None
 
+    @staticmethod
+    def _is_unspecified_bind(host: str) -> bool:
+        """Return True when ``host`` is a bind-all / unspecified address."""
+        candidate = host.strip()
+        if candidate.startswith("[") and candidate.endswith("]"):
+            candidate = candidate[1:-1]
+        try:
+            return ip_address(candidate).is_unspecified
+        except ValueError:
+            return False
+
     def _install_http_auth(self) -> None:
         """Attach bearer middleware when a token is configured for HTTP."""
         if self._http_auth_installed or self.config.transport == TransportMode.STDIO:
@@ -294,9 +306,8 @@ class FastMCPServer:
             self.mcp.run(transport=TransportMode.STDIO)
             return
 
-        public_hosts = {"0.0.0.0", "::", "[::]"}
         allow_public = os.environ.get("ALLOW_PUBLIC_BIND", "false").lower() == "true"
-        if self.config.host in public_hosts and not allow_public:
+        if self._is_unspecified_bind(self.config.host) and not allow_public:
             raise ConfigurationError(
                 f"Refusing to bind {self.config.host} without ALLOW_PUBLIC_BIND=true"
             )
