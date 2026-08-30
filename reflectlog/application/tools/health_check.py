@@ -81,13 +81,7 @@ class HealthCheckTool(BaseTool):
                 semantic_engine_status = engine_status["semantic_engine"]
                 tantivy_engine_status = engine_status["tantivy_engine"]
 
-                pending_count_fn = getattr(self.memory, "pending_intent_count", None)
-                if not callable(pending_count_fn):
-                    pending_count_fn = getattr(
-                        self.memory, "pending_replacement_count", None
-                    )
-                pending_raw = pending_count_fn() if callable(pending_count_fn) else 0
-                pending_count = pending_raw if isinstance(pending_raw, int) else 0
+                pending_count = self.memory.pending_intent_count()
                 status = "healthy"
                 if pending_count > 0:
                     status = "degraded"

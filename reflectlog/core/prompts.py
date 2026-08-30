@@ -129,14 +129,15 @@ MCP_INSTRUCTIONS = build_instructions(
     [
         (
             "add",
-            "    • add(memories: list[str])\n"
+            "    • add(memories: list[str], dry_run: bool = False) -> dict\n"
             "      Add memories with semantic embeddings. Empty lists are no-op.\n"
-            "      Memories must be 1-30720 characters, non-whitespace.",
+            "      Returns stored/skipped/replaced counts. dry_run previews replacements.",
         ),
         (
             "get_all",
-            "    • get_all() -> list[str]\n"
-            "      Retrieve all stored memories. Returns empty list if none stored.",
+            "    • get_all(limit: int | None = None, offset: int = 0) -> dict\n"
+            "      Page stored memories. Default cap 1000. Returns memories, "
+            "total, offset, limit, truncated.",
         ),
         (
             "search",

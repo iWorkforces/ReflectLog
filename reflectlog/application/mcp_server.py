@@ -111,14 +111,8 @@ class FastMCPServer:
 
         # Initialize FastMCP with dynamic instructions
         self.mcp = FastMCP(name="reflectlog", instructions=instructions)
-        auth_token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
-        add_middleware = getattr(self.mcp, "add_middleware", None)
-        if auth_token and self.config.transport != "stdio":
-            if not callable(add_middleware):
-                raise ConfigurationError(
-                    "FastMCP add_middleware is required for HTTP auth"
-                )
-            _ = add_middleware(_BearerTokenMiddleware(auth_token))
+        self._http_auth_installed = False
+        self._install_http_auth()
 
         # Register tools with FastMCP
         self._register_tools()
@@ -276,6 +270,16 @@ class FastMCPServer:
 
         return None
 
+    def _install_http_auth(self) -> None:
+        """Attach bearer middleware when a token is configured for HTTP."""
+        if self._http_auth_installed or self.config.transport == "stdio":
+            return
+        auth_token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
+        if not auth_token:
+            return
+        _ = self.mcp.add_middleware(_BearerTokenMiddleware(auth_token))
+        self._http_auth_installed = True
+
     def run(self) -> None:
         """Start the FastMCP server with configured transport.
 
@@ -301,6 +305,7 @@ class FastMCPServer:
             raise ConfigurationError(
                 "MCP_AUTH_TOKEN is required for non-stdio transports"
             )
+        self._install_http_auth()
         self.logger.info(
             f"Running MCP server with {transport} transport",
             extra={

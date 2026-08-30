@@ -1,6 +1,6 @@
 """Remove tool implementation for ReflectLog Server."""
 
-from typing import Any, override
+from typing import override
 
 from asyncer import asyncify
 
@@ -72,7 +72,7 @@ class RemoveTool(BaseTool):
                 self.logger.info("Remove called with empty list, skipping")
                 return
 
-            if any(not isinstance(item, str) or not item for item in memories):
+            if any(not item.strip() for item in memories):
                 raise ValueError("Remove targets must be non-empty strings")
 
             self.log_invocation(
@@ -102,32 +102,16 @@ class RemoveTool(BaseTool):
             memories_not_found: list[str] = []
 
             try:
-                delete_memories = type(self.memory).__dict__.get("delete_memories")
-                if callable(delete_memories):
-                    deleted = await asyncify(self.memory.delete_memories)(
-                        unique_memories
-                    )
-                    if not isinstance(deleted, list):
-                        raise TypeError(
-                            "delete_memories must return list[str], "
-                            f"got {type(deleted).__name__}"
-                        )
-                    deleted_set = set(deleted)
-                    actual_removed = len(deleted_set)
-                    memories_not_found = [
-                        f"index:{idx}"
-                        for idx, memory in enumerate(unique_memories)
-                        if memory not in deleted_set
-                    ]
-                else:
-                    for memory_idx, memory in enumerate(unique_memories, 1):
-                        removed_count = await self._remove_single_memory_async(
-                            memory, memory_idx, len(unique_memories)
-                        )
-                        if removed_count == 0:
-                            memories_not_found.append(f"index:{memory_idx}")
-                        else:
-                            actual_removed += removed_count
+                deleted = await asyncify(self.memory.delete_memories)(
+                    unique_memories
+                )
+                deleted_set = set(deleted)
+                actual_removed = len(deleted_set)
+                memories_not_found = [
+                    f"index:{idx}"
+                    for idx, memory in enumerate(unique_memories)
+                    if memory not in deleted_set
+                ]
 
                 # Log final summary
                 self.logger.info(
@@ -177,153 +161,3 @@ class RemoveTool(BaseTool):
                 )
 
         return remove
-
-    async def _remove_single_memory_async(
-        self, memory: str, memory_idx: int, total_memories: int
-    ) -> int:
-        """Remove a single memory and all its occurrences (async).
-
-        Args:
-            memory: The memory to remove.
-            memory_idx: Current memory index (for logging).
-            total_memories: Total number of memories being removed (for logging).
-
-        Returns:
-            Number of occurrences removed.
-        """
-        self.logger.info(
-            f"[{memory_idx}/{total_memories}] Searching for memory",
-            extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "total_memories": total_memories,
-            },
-        )
-
-        # Search for candidates via asyncify (non-blocking)
-        candidates: list[dict[str, Any]] = await asyncify(
-            self.memory.search_for_removal
-        )(memory)
-
-        self.logger.info(
-            f"[{memory_idx}/{total_memories}] Found {len(candidates)} semantic candidate(s)",
-            extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "candidates_found": len(candidates),
-            },
-        )
-
-        # Filter for exact matches FIRST - exact matches are definitively correct
-        # regardless of score (scores can vary due to embedding quirks)
-        self.logger.info(
-            f"[{memory_idx}/{total_memories}] Filtering for exact matches...",
-            extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-            },
-        )
-
-        exact_matches = [item for item in candidates if item["memory"] == memory]
-
-        # Log candidates with scores for debugging (only if no exact match found)
-        if not exact_matches and candidates:
-            self._log_removal_candidates(candidates, memory_idx, total_memories)
-
-        if not exact_matches:
-            self.logger.info(
-                f"[{memory_idx}/{total_memories}] No exact match found",
-                extra={
-                    "tool": "remove",
-                    "memory_index": memory_idx,
-                },
-            )
-            return 0
-
-        self.logger.info(
-            f"[{memory_idx}/{total_memories}] Found {len(exact_matches)} exact match(es)",
-            extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "exact_matches": len(exact_matches),
-            },
-        )
-
-        for match_idx, exact_match in enumerate(exact_matches, 1):
-            self.logger.info(
-                f"[{memory_idx}/{total_memories}] Deleting occurrence {match_idx}/{len(exact_matches)}",
-                extra={
-                    "tool": "remove",
-                    "memory_index": memory_idx,
-                    "match_index": match_idx,
-                },
-            )
-
-            delete_by_memory = getattr(
-                self.memory,
-                "delete_by_memory",
-                None,
-            )
-            if delete_by_memory is None:
-                delete_by_memory = self.memory.delete_by_message
-            _ = await asyncify(delete_by_memory)(exact_match["memory"])
-
-            self.logger.info(
-                f"[{memory_idx}/{total_memories}] Deleted occurrence {match_idx}",
-                extra={
-                    "tool": "remove",
-                    "memory_index": memory_idx,
-                    "match_index": match_idx,
-                },
-            )
-
-        self.logger.info(
-            f"[{memory_idx}/{total_memories}] Removed {len(exact_matches)} occurrence(s)",
-            extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "occurrences_removed": len(exact_matches),
-            },
-        )
-
-        return len(exact_matches)
-
-    def _log_removal_candidates(
-        self,
-        candidates: list[dict[str, Any]],
-        memory_idx: int,
-        total_memories: int,
-    ) -> None:
-        """Log removal candidates for debugging.
-
-        Args:
-            candidates: List of candidate records.
-            memory_idx: Current memory index.
-            total_memories: Total number of memories being removed.
-        """
-        self.logger.info(
-            f"[{memory_idx}/{total_memories}] Found {len(candidates)} candidate(s)",
-            extra={
-                "tool": "remove",
-                "memory_index": memory_idx,
-                "candidates_count": len(candidates),
-            },
-        )
-
-        # Sort by score for visualization
-        sorted_candidates = sorted(
-            candidates, key=lambda x: x.get("score", 0.0), reverse=True
-        )
-
-        for idx, candidate in enumerate(sorted_candidates[:3], 1):
-            score = candidate.get("score", 0.0)
-
-            self.logger.info(
-                f"[{memory_idx}/{total_memories}]   [{idx}] Score: {score:.4f}",
-                extra={
-                    "tool": "remove",
-                    "memory_index": memory_idx,
-                    "candidate_index": idx,
-                    "score": score,
-                },
-            )

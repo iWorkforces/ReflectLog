@@ -250,7 +250,7 @@ class TestRemoveToolPartialRemoval:
             logger=mock_tool_logger,
         )
         handler = tool.get_handler()
-        with pytest.raises(TypeError, match="delete_memories must return list"):
+        with pytest.raises(TypeError):
             await handler(["Exists"])
 
 

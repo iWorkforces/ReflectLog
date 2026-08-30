@@ -126,7 +126,7 @@ class TestToolInstructionSnippets:
         tool = AddTool(mock_config, mock_memory_manager, mock_logger)
         snippet = tool.get_instruction_snippet()
 
-        assert "add(memories: list[str])" in snippet
+        assert "add(memories: list[str], dry_run: bool = False)" in snippet
         assert (
             "semantic embeddings" in snippet.lower() or "embeddings" in snippet.lower()
         )
@@ -145,8 +145,8 @@ class TestToolInstructionSnippets:
         tool = GetAllTool(mock_config, mock_memory_manager, mock_logger)
         snippet = tool.get_instruction_snippet()
 
-        assert "get_all()" in snippet
-        assert "list[str]" in snippet
+        assert "get_all(" in snippet
+        assert "dict" in snippet
         assert snippet.startswith("    •")
 
     def test_search_tool_snippet_format(
@@ -235,8 +235,8 @@ class TestDynamicInstructionsIntegration:
             monkeypatch, None
         )
 
-        assert "add(memories: list[str])" in instructions
-        assert "get_all()" in instructions
+        assert "add(memories: list[str], dry_run: bool = False)" in instructions
+        assert "get_all(" in instructions
         assert "search(query: str)" in instructions
         assert "remove(memories: list[str])" in instructions
 
@@ -248,9 +248,9 @@ class TestDynamicInstructionsIntegration:
             monkeypatch, "add,search"
         )
 
-        assert "add(memories: list[str])" in instructions
+        assert "add(memories: list[str], dry_run: bool = False)" in instructions
         assert "search(query: str)" in instructions
-        assert "get_all()" not in instructions
+        assert "get_all(" not in instructions
         assert "remove(memories: list[str])" not in instructions
 
     def test_instructions_single_tool(self, monkeypatch: MonkeyPatch) -> None:
@@ -259,8 +259,8 @@ class TestDynamicInstructionsIntegration:
             monkeypatch, "get_all"
         )
 
-        assert "get_all()" in instructions
-        assert "add(memories: list[str])" not in instructions
+        assert "get_all(" in instructions
+        assert "add(memories: list[str]" not in instructions
         assert "search(query: str)" not in instructions
         assert "remove(memories: list[str])" not in instructions
 
@@ -295,8 +295,9 @@ class TestBackwardCompatibility:
         """MCP_INSTRUCTIONS constant should include all tools (backward compatibility)."""
         from reflectlog.core.prompts import MCP_INSTRUCTIONS
 
-        assert "add(memories: list[str])" in MCP_INSTRUCTIONS
-        assert "get_all() -> list[str]" in MCP_INSTRUCTIONS
+        assert "add(memories: list[str], dry_run: bool = False)" in MCP_INSTRUCTIONS
+        assert "get_all(" in MCP_INSTRUCTIONS
+        assert "-> dict" in MCP_INSTRUCTIONS
         assert "search(query: str) -> list[str]" in MCP_INSTRUCTIONS
         assert "remove(memories: list[str])" in MCP_INSTRUCTIONS
 

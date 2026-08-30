@@ -56,7 +56,7 @@ MCP_AUTH_TOKEN=change-me uv run reflectlog --transport http --port 9103
 ReflectLog provides five MCP tools:
 
 1. **add(memories: list[str], dry_run: bool = False) -> dict** - Store memories; returns stored/skipped/replaced counts
-2. **get_all(limit: int | None = None, offset: int = 0) -> list[str]** - Page stored memories (default cap 1000)
+2. **get_all(limit: int | None = None, offset: int = 0) -> dict** - Page stored memories (default cap 1000); includes `total` and `truncated`
 3. **search(query: str) -> list[str]** - Hybrid semantic + full-text search
 4. **remove(memories: list[str])** - Remove memories by exact match
 5. **health_check() -> dict** - Server health, including `pending_intent_count`
@@ -72,8 +72,8 @@ results = await search("web frameworks")
 # Returns: ["I prefer Python for web development"]
 
 # Get all memories
-all = await get_all()
-# Returns all stored memories
+page = await get_all()
+# Returns {"memories": [...], "total": N, "offset": 0, "limit": 1000, "truncated": bool}
 
 # Remove memories
 await remove(["I use FastAPI for APIs"])

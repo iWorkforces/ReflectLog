@@ -37,6 +37,8 @@ def mock_memory_manager() -> MagicMock:
             "tantivy_engine": "disabled",
         }
     )
+    mm.pending_intent_count = MagicMock(return_value=0)
+    mm.count = MagicMock(return_value=0)
     mm.startup_metrics = None
     return mm
 

@@ -99,7 +99,9 @@ class TestAddTool:
         result = await add_func(memories)
 
         # Verify behavior
-        assert result is None  # add returns None
+        assert result["stored_count"] == 1
+        assert result["skipped_count"] == 0
+        assert result["dry_run"] is False
         mcp_server.memory_manager.memory.add_batch.assert_called_once()
         # USearchEngine.add_batch is called with keyword arguments
         call_kwargs = mcp_server.memory_manager.memory.add_batch.call_args.kwargs
@@ -141,8 +143,14 @@ class TestAddTool:
         assert add_func is not None
         result = await add_func(memories)
 
-        # Verify no-op: returns None and doesn't call memory.add_batch
-        assert result is None
+        # Verify no-op: empty dict and doesn't call memory.add_batch
+        assert result == {
+            "stored_count": 0,
+            "skipped_count": 0,
+            "replaced_count": 0,
+            "replacements": [],
+            "dry_run": False,
+        }
         mcp_server.memory_manager.memory.add_batch.assert_not_called()
 
     async def test_add_memory_at_min_length(self, mcp_server, sample_memories):
@@ -347,6 +355,7 @@ class TestGetAllTool:
     async def test_get_all_empty_store(self, mcp_server):
         '''Test get_all returns empty list when no memories stored.'''
         mcp_server.memory_manager.memory.get_all.return_value = []
+        mcp_server.memory_manager.count = MagicMock(return_value=0)
 
         # Get the get_all tool function
         get_all_func = None
@@ -359,13 +368,16 @@ class TestGetAllTool:
 
         result = await get_all_func()
 
-        assert result == []
+        assert result["memories"] == []
+        assert result["truncated"] is False
+        assert result["total"] == 0
         mcp_server.memory_manager.memory.get_all.assert_called_once()
 
     async def test_get_all_single_memory(self, mcp_server, sample_memories):
         '''Test get_all returns single memory.'''
         memories = sample_memories["single"]
         mcp_server.memory_manager.memory.get_all.return_value = memories
+        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -376,13 +388,14 @@ class TestGetAllTool:
         assert get_all_func is not None
         result = await get_all_func()
 
-        assert result == memories
+        assert result["memories"] == memories
         mcp_server.memory_manager.memory.get_all.assert_called_once()
 
     async def test_get_all_multiple_memories(self, mcp_server, sample_memories):
         '''Test get_all returns multiple memories.'''
         memories = sample_memories["multiple"]
         mcp_server.memory_manager.memory.get_all.return_value = memories
+        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -393,14 +406,15 @@ class TestGetAllTool:
         assert get_all_func is not None
         result = await get_all_func()
 
-        assert result == memories
-        assert len(result) == 3
+        assert result["memories"] == memories
+        assert len(result["memories"]) == 3
         mcp_server.memory_manager.memory.get_all.assert_called_once()
 
     async def test_get_all_returns_copy(self, mcp_server, sample_memories):
         '''Test get_all returns a copy of memories (prevents mutation).'''
         memories = sample_memories["multiple"].copy()
         mcp_server.memory_manager.memory.get_all.return_value = list(memories)
+        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -411,9 +425,9 @@ class TestGetAllTool:
         assert get_all_func is not None
         result = await get_all_func()
 
-        # Modify result
-        if result:
-            result.append("New memory")
+        page = result["memories"]
+        if page:
+            page.append("New memory")
 
         # Original should be unchanged if copy works correctly
         # Note: In practice, we can't test true immutability here since
@@ -424,6 +438,7 @@ class TestGetAllTool:
         '''Test get_all handles memories with special characters.'''
         memories = sample_memories["with_special_chars"]
         mcp_server.memory_manager.memory.get_all.return_value = memories
+        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -434,13 +449,14 @@ class TestGetAllTool:
         assert get_all_func is not None
         result = await get_all_func()
 
-        assert result == memories
-        assert len(result) == 3
+        assert result["memories"] == memories
+        assert len(result["memories"]) == 3
 
     async def test_get_all_large_dataset(self, mcp_server):
         '''Test get_all with large number of memories.'''
         memories = [f"Memory {i}" for i in range(1000)]
         mcp_server.memory_manager.memory.get_all.return_value = memories
+        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -451,8 +467,8 @@ class TestGetAllTool:
         assert get_all_func is not None
         result = await get_all_func()
 
-        assert len(result) == 1000
-        assert result == memories
+        assert len(result["memories"]) == 1000
+        assert result["memories"] == memories
 
     async def test_get_all_memory_failure_raises_storage_error(self, mcp_server):
         '''Test memory retrieval failure raises StorageError.'''
@@ -474,6 +490,7 @@ class TestGetAllTool:
         '''Test get_all can be called multiple times.'''
         memories = sample_memories["multiple"]
         mcp_server.memory_manager.memory.get_all.return_value = memories
+        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -485,8 +502,8 @@ class TestGetAllTool:
         result1 = await get_all_func()
         result2 = await get_all_func()
 
-        assert result1 == memories
-        assert result2 == memories
+        assert result1["memories"] == memories
+        assert result2["memories"] == memories
         assert mcp_server.memory_manager.memory.get_all.call_count == 2
 
 
@@ -796,6 +813,17 @@ class TestRemoveTool:
         ) as deleted:
             result = await self._remove_fn(mcp_server)([])
         assert result is None
+        deleted.assert_not_called()
+
+    async def test_remove_whitespace_only_raises_value_error(self, mcp_server):
+        """Whitespace-only targets are rejected before delete."""
+        with patch.object(
+            type(mcp_server.memory_manager),
+            "delete_memories",
+            return_value=[],
+        ) as deleted:
+            with pytest.raises(ValueError, match="non-empty strings"):
+                await self._remove_fn(mcp_server)(["   "])
         deleted.assert_not_called()
 
     async def test_remove_non_existent_memory_silently_ignored(self, mcp_server):
@@ -1133,7 +1161,8 @@ class TestServerClose:
         server, mock_mm, mock_logger = self._build_server(monkeypatch)
         mock_mm.close.side_effect = RuntimeError("disk full")
 
-        server.close()
+        with pytest.raises(RuntimeError, match="disk full"):
+            server.close()
 
         mock_mm.close.assert_called_once()
         mock_logger.error.assert_called_once()

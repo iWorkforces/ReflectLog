@@ -50,8 +50,8 @@ class AddTool(BaseTool):
                     modifying storage. Default is False (live mode).
 
             Returns:
-                None. Memories are stored successfully if no error is raised.
-                (In dry_run mode, no changes are made to storage.)
+                Dict with stored_count, skipped_count, replaced_count,
+                replacements, and dry_run. Empty input is a no-op dict.
 
             Raises:
                 ValueError: If any memory is invalid (empty, too long, whitespace-only).
