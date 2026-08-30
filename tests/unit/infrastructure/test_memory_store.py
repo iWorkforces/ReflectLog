@@ -192,6 +192,16 @@ class TestMemoryStoreGetAll:
             assert memories == ["First", "Second", "Third"]
             store.close()
 
+    def test_get_all_pages_in_sql(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            _ = store.insert("user1", "First")
+            _ = store.insert("user1", "Second")
+            _ = store.insert("user1", "Third")
+            assert store.get_all("user1", limit=1, offset=1) == ["Second"]
+            assert store.get_all("user1", limit=10, offset=2) == ["Third"]
+            store.close()
+
 
 class TestMemoryStoreDelete:
     '''Tests for MemoryStore.delete method.'''

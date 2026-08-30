@@ -1,9 +1,9 @@
 '''Unit tests for USearchEngine.'''
 
+from collections.abc import Sequence
 import gc
 import os
 import tempfile
-from collections.abc import Sequence
 from typing import Generator, cast
 from unittest.mock import MagicMock, patch
 
@@ -11,10 +11,10 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from reflectlog.core.exceptions import StorageError
-from reflectlog.core.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import Embeddings
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 
@@ -726,6 +726,29 @@ class TestUSearchEngineIndexInit:
         with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
             mock_index_cls.restore.side_effect = RuntimeError("corrupt")
             with pytest.raises(InitializationError, match="Refusing to create"):
+                _ = engine.index
+
+    def test_corrupt_index_with_unreadable_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """A present HNSW file plus unreadable SQLite must not be overwritten."""
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _ = temp_engine
+        os.makedirs(os.path.dirname(config.index_path), exist_ok=True)
+        with open(config.index_path, "wb") as handle:
+            handle.write(b"not-an-index")
+
+        engine = USearchEngine(config=config, embedder=embedder)
+        with (
+            patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls,
+            patch(
+                "reflectlog.infrastructure.usearch_engine._sqlite_memory_count",
+                return_value=None,
+            ),
+        ):
+            mock_index_cls.restore.side_effect = RuntimeError("corrupt")
+            with pytest.raises(InitializationError, match="unreadable"):
                 _ = engine.index
 
     def test_index_init_failure_raises_runtime_error(

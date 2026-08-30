@@ -287,17 +287,6 @@ class TantivyEngine(BaseModel):
                 self._searcher = self._index.searcher()
         return self._searcher
 
-    def _recreate_writer_if_needed(self) -> None:
-        """Recreate the IndexWriter if it's in an invalid state (thread-safe).
-
-        The Tantivy-py IndexWriter becomes invalid after certain operations
-        like delete_documents(). This method safely recreates the writer.
-
-        Must be called with _writer_lock already held.
-        """
-        if self._index is not None:
-            self._writer = self._index.writer()
-
     def _get_all_docs(self, workspace_id: str) -> list[str]:
         """Get all active (non-tombstoned) documents for a workspace.
 
@@ -656,7 +645,7 @@ class TantivyEngine(BaseModel):
         memories = [msg for msg, _ in results]
         scores = np.array([score for _, score in results], dtype=np.float64)
         if float(np.max(scores)) == float(np.min(scores)):
-            return [(msg, 1.0) for msg in memories]
+            return [(msg, float(score)) for msg, score in results]
 
         # Use existing JIT-optimized normalization
         normalized = normalize_scores_minmax(scores)

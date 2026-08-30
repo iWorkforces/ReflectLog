@@ -424,33 +424,6 @@ class TestTantivyEngineHelperMethods:
         assert len(docs_b) == 1
         assert "B's doc" in docs_b
 
-    def test_recreate_writer_if_needed(self, engine: TantivyEngine) -> None:
-        '''Test _recreate_writer_if_needed creates a new writer.'''
-        # Start with no writer
-        assert engine._writer is None
-
-        # Recreate should create a new writer
-        with engine._writer_lock:
-            engine._recreate_writer_if_needed()
-
-        # Should have a writer now
-        assert engine._writer is not None
-
-        # After commit, writer should still be valid (optimization: reuse writer)
-        engine.add("test", "test message")
-        engine.commit()
-        assert engine._writer is not None  # Writer reused, not invalidated
-
-        # After flush, writer should be None (flush invalidates writer)
-        engine.flush()
-        assert engine._writer is None
-
-        # Recreate again should work
-        with engine._writer_lock:
-            engine._recreate_writer_if_needed()
-        assert engine._writer is not None
-
-
 @pytest.mark.unit
 class TestTantivyEngineWriterReuse:
     '''Tests for writer reuse optimization.'''
@@ -1823,42 +1796,33 @@ class TestSearchErrorHandling:
             with pytest.raises(SearchError, match="Tantivy search failed"):
                 engine.search("query", "test", limit=5)
 
-    def test_search_query_escaping_fallback(self) -> None:
-        '''Test that search escapes query on first parse failure.'''
+    def test_search_always_escapes_before_parse(self) -> None:
+        """Special characters are escaped before the first parse_query call."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_logger = MagicMock()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config, logger=mock_logger)
-
-            engine.add("test", "test document with special chars")
+            engine = TantivyEngine(config)
+            engine.add("test", "hello")
             engine.commit()
 
             original_index = engine._index
-            cached_searcher = engine.searcher
-            mock_index = MagicMock()
-            call_count = 0
+            parsed: list[str] = []
 
-            def side_effect_parse_query(
+            def capture_parse(
                 query: str, *, default_field_names: list[str] | None = None
             ) -> tantivy.Query:
-                nonlocal call_count
-                call_count += 1
-                is_search_query = "test" in query and "is_deleted" not in query
-                if is_search_query and call_count <= 2:
-                    raise ValueError("parse fail on first try")
-                assert original_index is not None  # type guard
+                parsed.append(query)
+                assert original_index is not None
                 return original_index.parse_query(
                     query, default_field_names=default_field_names
                 )
 
-            mock_index.parse_query.side_effect = side_effect_parse_query
+            mock_index = MagicMock()
+            mock_index.parse_query.side_effect = capture_parse
             engine._index = mock_index
-            engine._searcher = cached_searcher
-
-            results = engine.search("test", "test", limit=5)
-
-            calls = [str(c) for c in mock_logger.debug.call_args_list]
-            assert any("Escaped Tantivy query" in c for c in calls)
+            engine._searcher = engine.searcher
+            _ = engine.search("foo:bar", "test", limit=5)
+            assert parsed
+            assert any("foo\\:bar" in query for query in parsed)
 
     def test_search_empty_query_value_error_re_raises(self) -> None:
         '''Test that empty query + ValueError is re-raised (not escaped).'''

@@ -37,24 +37,25 @@ def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
     return isinstance(config, dict)
 
 
-def _sqlite_memory_count(db_path: str) -> int:
-    """Return how many memory rows exist, or 0 if the database is absent."""
+def _sqlite_memory_count(db_path: str) -> int | None:
+    """Return memory row count, 0 if the DB is absent, or None if unreadable."""
     if not os.path.exists(db_path):
         return 0
     import sqlite3
 
     try:
-        connection = sqlite3.connect(db_path)
+        connection = sqlite3.connect(db_path, timeout=5.0)
         try:
+            _ = connection.execute("PRAGMA busy_timeout = 5000")
             row = connection.execute(
                 "SELECT COUNT(*) FROM memories"
             ).fetchone()
         finally:
             connection.close()
     except sqlite3.Error:
-        return 0
+        return None
     if row is None:
-        return 0
+        return None
     return int(row[0])
 
 
@@ -263,10 +264,17 @@ class USearchEngine(BaseModel):
                     except (RuntimeError, FileNotFoundError, OSError) as restore_error:
                         index_exists = os.path.exists(self.config.index_path)
                         sqlite_rows = _sqlite_memory_count(self.config.db_path)
-                        if index_exists and sqlite_rows > 0:
+                        sqlite_unknown = sqlite_rows is None
+                        sqlite_populated = sqlite_rows is not None and sqlite_rows > 0
+                        if index_exists and (sqlite_populated or sqlite_unknown):
+                            detail = (
+                                "unreadable"
+                                if sqlite_unknown
+                                else f"{sqlite_rows} memories"
+                            )
                             raise InitializationError(
-                                "USearch index is corrupt but SQLite still has "
-                                f"{sqlite_rows} memories at {self.config.db_path}. "
+                                "USearch index is corrupt but SQLite is "
+                                f"{detail} at {self.config.db_path}. "
                                 "Refusing to create an empty HNSW that would "
                                 "overwrite the file."
                             ) from restore_error
@@ -756,17 +764,26 @@ class USearchEngine(BaseModel):
             for i, (record, _) in enumerate(filtered_matches)
         ]
 
-    def get_all(self, workspace_id: str) -> list[str]:
-        """Retrieve all stored memories for a workspace.
+    def get_all(
+        self,
+        workspace_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[str]:
+        """Retrieve stored memories for a workspace, optionally paged.
 
         Args:
             workspace_id: Workspace identifier for filtering.
+            limit: Maximum rows to return.
+            offset: Rows to skip.
 
         Returns:
-            List of all memories stored for the project.
+            List of memories stored for the project.
         """
         try:
-            memories = self.memory_store.get_all(workspace_id)
+            memories = self.memory_store.get_all(
+                workspace_id, limit=limit, offset=offset
+            )
 
             if self.logger:
                 self.logger.debug(
@@ -848,6 +865,16 @@ class USearchEngine(BaseModel):
                     },
                 )
             raise RuntimeError(f"Failed to delete memory: {e}") from e
+
+    def contains_id(self, memory_id: int) -> bool | None:
+        """Return whether the HNSW index contains ``memory_id`` under the index lock."""
+        if self._index is None:
+            return None
+        with self._index_lock:
+            try:
+                return memory_id in self.index
+            except TypeError:
+                return None
 
     def commit(self) -> None:
         """Commit pending changes to the index.
