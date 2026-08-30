@@ -99,6 +99,9 @@ class TestUSearchConfigFromAppConfig:
         mock_config.embedder_provider = "openai"
         mock_config.embedding_dims = 3072
         mock_config.qwen_embedding_dims = 4096
+        mock_config.usearch_index_path = "indexes/test-project/usearch"
+        mock_config.usearch_exact_search = False
+        mock_config.usearch_exact_search_threshold = 256
 
         with patch("os.getcwd", return_value="/tmp"):
             config = USearchConfig.from_config(mock_config)
@@ -115,6 +118,9 @@ class TestUSearchConfigFromAppConfig:
         mock_config.embedder_provider = "langchain"
         mock_config.embedding_dims = 3072
         mock_config.qwen_embedding_dims = 4096
+        mock_config.usearch_index_path = "indexes/test-project/usearch"
+        mock_config.usearch_exact_search = False
+        mock_config.usearch_exact_search_threshold = 256
 
         with patch("os.getcwd", return_value="/tmp"):
             config = USearchConfig.from_config(mock_config)
@@ -597,12 +603,14 @@ class TestUSearchEngineExactSearch:
         mock_config.qwen_embedding_dims = 4096
         mock_config.usearch_exact_search = True
         mock_config.usearch_exact_search_threshold = 5000
+        mock_config.usearch_index_path = "indexes/test-project/usearch"
 
         with patch("os.getcwd", return_value="/tmp"):
             config = USearchConfig.from_config(mock_config)
 
         assert config.exact_search is True
         assert config.exact_search_threshold == 5000
+        assert config.index_path.endswith("vectors.usearch")
 
 
 class TestUSearchConfigFromDict:
@@ -690,6 +698,35 @@ class TestUSearchEngineIndexInit:
             logger.info.assert_called()  # type: ignore
         finally:
             engine.close()
+
+    def test_corrupt_index_file_with_sqlite_rows_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        """An existing corrupt index file must not be replaced when SQLite has rows."""
+        import sqlite3
+
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _ = temp_engine
+        os.makedirs(os.path.dirname(config.db_path), exist_ok=True)
+        os.makedirs(os.path.dirname(config.index_path), exist_ok=True)
+        with open(config.index_path, "wb") as handle:
+            handle.write(b"not-an-index")
+        connection = sqlite3.connect(config.db_path)
+        try:
+            _ = connection.execute(
+                "CREATE TABLE memories (id INTEGER PRIMARY KEY, content TEXT)"
+            )
+            _ = connection.execute("INSERT INTO memories(content) VALUES ('kept')")
+            connection.commit()
+        finally:
+            connection.close()
+
+        engine = USearchEngine(config=config, embedder=embedder)
+        with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
+            mock_index_cls.restore.side_effect = RuntimeError("corrupt")
+            with pytest.raises(InitializationError, match="Refusing to create"):
+                _ = engine.index
 
     def test_index_init_failure_raises_runtime_error(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]

@@ -19,7 +19,8 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
 
-from reflectlog.core.exceptions import SearchError
+from reflectlog.core.config import IAppConfig
+from reflectlog.core.exceptions import InitializationError, SearchError
 from reflectlog.core.logging import IStructuredLogger
 
 
@@ -76,6 +77,23 @@ class TantivyConfig:
             tombstone_ttl_days=int(data.get("tombstone_ttl_days", 7)),
             tombstone_cache_max_size=int(data.get("tombstone_cache_max_size", 100)),
             normalize_scores=bool(data.get("normalize_scores", True)),
+        )
+
+    @classmethod
+    def from_config(cls, config: IAppConfig) -> TantivyConfig:
+        """Create TantivyConfig from IAppConfig protocol."""
+        return cls(
+            workspace_id=config.workspace_id,
+            index_path=config.tantivy_index_path,
+            normalize_scores=getattr(config, "tantivy_normalize_scores", True),
+            soft_delete_enabled=getattr(config, "tantivy_soft_delete_enabled", True),
+            compaction_threshold_ratio=getattr(
+                config, "tantivy_compaction_threshold_ratio", 0.2
+            ),
+            compaction_max_tombstones=getattr(
+                config, "tantivy_compaction_max_tombstones", 10000
+            ),
+            tombstone_ttl_days=getattr(config, "tantivy_tombstone_ttl_days", 7),
         )
 
 
@@ -202,8 +220,12 @@ class TantivyEngine(BaseModel):
                         "tantivy_index_path": index_path,
                     },
                 )
-        except Exception:
-            # Create new index
+        except Exception as open_error:
+            meta_path = os.path.join(index_path, "meta.json")
+            if os.path.exists(meta_path):
+                raise InitializationError(
+                    f"Failed to open existing Tantivy index at {index_path}"
+                ) from open_error
             schema = self._build_schema()
             self._index = tantivy.Index(schema, path=index_path, reuse=True)
             if self.logger:
@@ -538,7 +560,7 @@ class TantivyEngine(BaseModel):
             if workspace_id in self._tombstone_cache:
                 # Move to end (most recently used)
                 self._tombstone_cache.move_to_end(workspace_id)
-                return self._tombstone_cache[workspace_id]
+                return set(self._tombstone_cache[workspace_id])
 
         if self._index is None:
             return set()
@@ -557,7 +579,6 @@ class TantivyEngine(BaseModel):
             top_docs = self.searcher.search(query=query, limit=doc_limit)
             live_counts: dict[str, int] = {}
             tomb_counts: dict[str, int] = {}
-            max_tombstones_per_project = 10000
 
             for _, doc_addr in top_docs.hits:
                 doc = self.searcher.doc(doc_addr)
@@ -567,13 +588,6 @@ class TantivyEngine(BaseModel):
                 is_deleted_val = doc.get_first("is_deleted")
                 is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
                 if is_deleted == 1:
-                    # Cap unique tomb keys only. Never abort the scan — later
-                    # live re-adds of an already-seen text must still be counted.
-                    if (
-                        memory not in tomb_counts
-                        and len(tomb_counts) >= max_tombstones_per_project
-                    ):
-                        continue
                     tomb_counts[memory] = tomb_counts.get(memory, 0) + 1
                 else:
                     live_counts[memory] = live_counts.get(memory, 0) + 1
@@ -641,6 +655,8 @@ class TantivyEngine(BaseModel):
 
         memories = [msg for msg, _ in results]
         scores = np.array([score for _, score in results], dtype=np.float64)
+        if float(np.max(scores)) == float(np.min(scores)):
+            return [(msg, 1.0) for msg in memories]
 
         # Use existing JIT-optimized normalization
         normalized = normalize_scores_minmax(scores)
@@ -724,35 +740,17 @@ class TantivyEngine(BaseModel):
         escaped_workspace_id = self._escape_tantivy_query(workspace_id)
         query_text = query.strip()
         if query_text:
-            combined_query = f'({query_text}) AND workspace_id:"{escaped_workspace_id}"'
-        else:
-            combined_query = f'workspace_id:"{escaped_workspace_id}"'
-
-        assert self._index is not None
-        try:
-            return self._index.parse_query(
-                query=combined_query, default_field_names=["content"]
-            )
-        except ValueError:
-            if not query_text:
-                raise
             escaped_query_text = self._escape_tantivy_query(query_text)
             combined_query = (
                 f'({escaped_query_text}) AND workspace_id:"{escaped_workspace_id}"'
             )
-            parsed = self._index.parse_query(
-                query=combined_query, default_field_names=["content"]
-            )
-            if self.logger:
-                self.logger.debug(
-                    "Escaped Tantivy query after parse failure",
-                    extra={
-                        "workspace_id": self.config.workspace_id,
-                        "original_query": query_text[:100],
-                        "escaped_query": escaped_query_text[:100],
-                    },
-                )
-            return parsed
+        else:
+            combined_query = f'workspace_id:"{escaped_workspace_id}"'
+
+        assert self._index is not None
+        return self._index.parse_query(
+            query=combined_query, default_field_names=["content"]
+        )
 
     def _collect_search_results(
         self,

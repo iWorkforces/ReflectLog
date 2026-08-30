@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index
 
 from reflectlog.core.config import IAppConfig
-from reflectlog.core.exceptions import StorageError
+from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import Embeddings
 from reflectlog.utility.scoring import distance_to_similarity_cosine
@@ -35,6 +35,27 @@ from reflectlog.utility.security import validate_workspace_id
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
     """Type guard to check if config is a dict."""
     return isinstance(config, dict)
+
+
+def _sqlite_memory_count(db_path: str) -> int:
+    """Return how many memory rows exist, or 0 if the database is absent."""
+    if not os.path.exists(db_path):
+        return 0
+    import sqlite3
+
+    try:
+        connection = sqlite3.connect(db_path)
+        try:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM memories"
+            ).fetchone()
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return 0
+    if row is None:
+        return 0
+    return int(row[0])
 
 
 @dataclass(frozen=True)
@@ -112,7 +133,9 @@ class USearchConfig:
         """
         # Validate workspace_id to prevent path traversal attacks
         workspace_id = validate_workspace_id(config.workspace_id)
-        base_path = os.path.join(os.getcwd(), "indexes", workspace_id, "usearch")
+        base_path = config.usearch_index_path
+        if not os.path.isabs(base_path):
+            base_path = os.path.join(os.getcwd(), base_path)
 
         # Determine embedding dims based on provider
         embedding_dims = (
@@ -121,19 +144,13 @@ class USearchConfig:
             else config.embedding_dims
         )
 
-        # Get exact search settings with safe defaults for missing attributes
-        exact_search = getattr(config, "usearch_exact_search", False)
-        exact_search_threshold = getattr(
-            config, "usearch_exact_search_threshold", 10000
-        )
-
         return cls(
             workspace_id=workspace_id,
             index_path=os.path.join(base_path, "vectors.usearch"),
             db_path=os.path.join(base_path, "memories.db"),
             embedding_dims=embedding_dims,
-            exact_search=exact_search,
-            exact_search_threshold=exact_search_threshold,
+            exact_search=config.usearch_exact_search,
+            exact_search_threshold=config.usearch_exact_search_threshold,
         )
 
 
@@ -243,8 +260,16 @@ class USearchEngine(BaseModel):
                                     "size": len(loaded_index),
                                 },
                             )
-                    except RuntimeError, FileNotFoundError, OSError:
-                        # Index doesn't exist or is corrupted, create new one
+                    except (RuntimeError, FileNotFoundError, OSError) as restore_error:
+                        index_exists = os.path.exists(self.config.index_path)
+                        sqlite_rows = _sqlite_memory_count(self.config.db_path)
+                        if index_exists and sqlite_rows > 0:
+                            raise InitializationError(
+                                "USearch index is corrupt but SQLite still has "
+                                f"{sqlite_rows} memories at {self.config.db_path}. "
+                                "Refusing to create an empty HNSW that would "
+                                "overwrite the file."
+                            ) from restore_error
                         if self.logger:
                             self.logger.debug(
                                 "USearch index not found, creating new index",
@@ -272,6 +297,8 @@ class USearchEngine(BaseModel):
                                 },
                             )
 
+                except InitializationError:
+                    raise
                 except Exception as exc:
                     if self.logger:
                         self.logger.error(
@@ -775,14 +802,11 @@ class USearchEngine(BaseModel):
         try:
             mem_id = int(memory_id)
 
-            # Check if key exists in index
+            deleted = self.memory_store.delete(mem_id)
             with self._index_lock:
                 if mem_id in self.index:
                     self.index.remove(mem_id)
                     self._dirty = True
-
-            # Delete from SQLite
-            deleted = self.memory_store.delete(mem_id)
 
             if self.logger:
                 if deleted:
@@ -831,7 +855,7 @@ class USearchEngine(BaseModel):
         Saves the USearch index to disk. SQLite auto-commits.
         """
         try:
-            if self._index is not None:
+            if self._index is not None and self._dirty:
                 with self._index_lock:
                     self.index.save(self.config.index_path)
                 self._dirty = False
