@@ -4,6 +4,7 @@ from typing import override
 
 from asyncer import asyncify
 
+from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import StorageError
 
 from .base import BaseTool
@@ -15,7 +16,7 @@ class GetAllTool(BaseTool):
     @override
     def get_name(self) -> str:
         """Get the tool name."""
-        return "get_all"
+        return ToolName.GET_ALL
 
     @override
     def get_instruction_snippet(self) -> str:
@@ -42,7 +43,7 @@ class GetAllTool(BaseTool):
                 StorageError: If retrieval operation fails.
             """
             try:
-                self.log_invocation("get_all")
+                self.log_invocation(ToolName.GET_ALL)
 
                 start = max(0, offset)
                 page_size = self.config.get_all_limit if limit is None else max(0, limit)
@@ -63,7 +64,7 @@ class GetAllTool(BaseTool):
                             "limit": page_size,
                         },
                     )
-                self.log_completion("get_all", count=len(page), total=total)
+                self.log_completion(ToolName.GET_ALL, count=len(page), total=total)
                 return {
                     "memories": page,
                     "total": total,
@@ -73,7 +74,7 @@ class GetAllTool(BaseTool):
                 }
 
             except Exception as e:
-                self.log_error("get_all", e)
+                self.log_error(ToolName.GET_ALL, e)
                 raise StorageError(
                     f"Failed to retrieve memories from memory store: {e}"
                 ) from e

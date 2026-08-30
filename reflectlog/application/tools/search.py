@@ -4,6 +4,7 @@ from typing import Annotated, override
 
 from pydantic import Field
 
+from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import SearchError
 
 from .base import BaseTool
@@ -15,7 +16,7 @@ class SearchTool(BaseTool):
     @override
     def get_name(self) -> str:
         """Get the tool name."""
-        return "search"
+        return ToolName.SEARCH
 
     @override
     def get_instruction_snippet(self) -> str:
@@ -78,7 +79,7 @@ class SearchTool(BaseTool):
                 []  # No semantically similar content
             """
             try:
-                self.log_invocation("search", query_length=len(query))
+                self.log_invocation(ToolName.SEARCH, query_length=len(query))
 
                 start_time = self._log_operation_header("search", "SEARCH OPERATION")
                 if self.config.log_search_results_verbose:

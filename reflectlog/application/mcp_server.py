@@ -18,6 +18,7 @@ from reflectlog.application.tools.get_all import GetAllTool
 from reflectlog.application.tools.health_check import HealthCheckTool
 from reflectlog.application.tools.remove import RemoveTool
 from reflectlog.application.tools.search import SearchTool
+from reflectlog.core.enums import EmbedderProvider, TransportMode
 from reflectlog.core.exceptions import ConfigurationError
 from reflectlog.core.prompts import build_instructions
 
@@ -48,6 +49,7 @@ class _BearerTokenMiddleware(Middleware):
         if inspect.isawaitable(result):
             return await result
         return result
+
 
 # Canonical registry of available MCP tool implementations.
 AVAILABLE_TOOL_CLASSES: dict[str, type[BaseTool]] = {
@@ -86,9 +88,7 @@ class FastMCPServer:
         )
 
         # Log initialization
-        init_msg = (
-            f"Initializing reflectlog MCP server [workspace_id={self.config.workspace_id}]"
-        )
+        init_msg = f"Initializing reflectlog MCP server [workspace_id={self.config.workspace_id}]"
         self.logger.info(init_msg)
 
         self.logger.info(
@@ -97,7 +97,7 @@ class FastMCPServer:
         )
 
         self.logger.info(
-            f"embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == 'langchain' else self.config.embedding_dims}"
+            f"embedding_dims={self.config.qwen_embedding_dims if self.config.embedder_provider == EmbedderProvider.LANGCHAIN else self.config.embedding_dims}"
         )
 
         # Initialize memory manager
@@ -272,7 +272,7 @@ class FastMCPServer:
 
     def _install_http_auth(self) -> None:
         """Attach bearer middleware when a token is configured for HTTP."""
-        if self._http_auth_installed or self.config.transport == "stdio":
+        if self._http_auth_installed or self.config.transport == TransportMode.STDIO:
             return
         auth_token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
         if not auth_token:
@@ -289,9 +289,9 @@ class FastMCPServer:
         """
         transport = self.config.transport
 
-        if transport == "stdio":
+        if transport == TransportMode.STDIO:
             self.logger.info("Running MCP server with stdio transport")
-            self.mcp.run(transport="stdio")
+            self.mcp.run(transport=TransportMode.STDIO)
             return
 
         public_hosts = {"0.0.0.0", "::", "[::]"}

@@ -2,6 +2,7 @@
 
 from typing import override
 
+from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import StorageError
 
 from ..utils.validation import validate_add_batch, validate_memories
@@ -14,7 +15,7 @@ class AddTool(BaseTool):
     @override
     def get_name(self) -> str:
         """Get the tool name."""
-        return "add"
+        return ToolName.ADD
 
     @override
     def get_instruction_snippet(self) -> str:
@@ -65,7 +66,7 @@ class AddTool(BaseTool):
             """
             # Handle empty list gracefully (no-op, no error)
             if not memories:
-                self.log_invocation("add", count=0)
+                self.log_invocation(ToolName.ADD, count=0)
                 self.logger.info("Add called with empty list, nothing to store")
                 return {
                     "stored_count": 0,
@@ -85,13 +86,13 @@ class AddTool(BaseTool):
                 )
 
             if not is_valid:
-                self.log_error("add", ValueError(error_msg), count=len(memories))
+                self.log_error(ToolName.ADD, ValueError(error_msg), count=len(memories))
                 raise ValueError(f"Invalid memory: {error_msg}")
 
             # Log invocation and operation header
             mode_str = "DRY_RUN" if dry_run else "LIVE"
             self.log_invocation(
-                "add", count=len(memories), mode=mode_str, dry_run=dry_run
+                ToolName.ADD, count=len(memories), mode=mode_str, dry_run=dry_run
             )
 
             total_chars = sum(len(m) for m in memories)
@@ -173,7 +174,9 @@ class AddTool(BaseTool):
                     extra={"tool": "add", "avg_ms_per_memory": avg_time},
                 )
 
-                self.log_completion("add", requested=len(memories), stored=stored_count)
+                self.log_completion(
+                    ToolName.ADD, requested=len(memories), stored=stored_count
+                )
                 return {
                     "stored_count": stored_count,
                     "skipped_count": skipped_count,

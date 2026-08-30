@@ -4,6 +4,7 @@ from typing import override
 
 from asyncer import asyncify
 
+from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import StorageError
 
 from .base import BaseTool
@@ -15,7 +16,7 @@ class RemoveTool(BaseTool):
     @override
     def get_name(self) -> str:
         """Get the tool name."""
-        return "remove"
+        return ToolName.REMOVE
 
     @override
     def get_instruction_snippet(self) -> str:
@@ -68,7 +69,7 @@ class RemoveTool(BaseTool):
             """
             # Handle empty list gracefully (no-op)
             if not memories:
-                self.log_invocation("remove", count=0)
+                self.log_invocation(ToolName.REMOVE, count=0)
                 self.logger.info("Remove called with empty list, skipping")
                 return
 
@@ -76,7 +77,7 @@ class RemoveTool(BaseTool):
                 raise ValueError("Remove targets must be non-empty strings")
 
             self.log_invocation(
-                "remove",
+                ToolName.REMOVE,
                 requested_count=len(memories),
                 search_limit=self.config.remove_search_limit,
             )
