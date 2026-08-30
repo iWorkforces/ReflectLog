@@ -1775,7 +1775,7 @@ class TestSearchErrorHandling:
     '''Tests for search error handling paths.'''
 
     def test_search_empty_query_uses_workspace_only(self) -> None:
-        '''Test search with empty query string uses workspace_id-only query.'''
+        '''Whitespace queries must not dump every workspace document.'''
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -1783,10 +1783,8 @@ class TestSearchErrorHandling:
             engine.add("test", "test document content")
             engine.commit()
 
-            # Empty/whitespace query should use workspace_id only path
             results = engine.search("  ", "test", limit=10)
-            # Should return results since all docs match workspace_id
-            assert len(results) >= 1
+            assert results == []
 
     def test_search_value_error_returns_empty(self) -> None:
         '''Test search returns [] on ValueError and logs with logger.'''
@@ -2567,3 +2565,36 @@ class TestEscapeTantivyQuery:
     def test_escape_empty_string(self) -> None:
         '''Test escaping empty string returns empty.'''
         assert TantivyEngine._escape_tantivy_query("") == ""
+
+
+class TestSoftDeleteDoesNotPlantSurplusTombs:
+    @pytest.fixture
+    def engine(self) -> TantivyEngine:
+        tmpdir = tempfile.mkdtemp()
+        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
+        return TantivyEngine(config)
+
+    def test_verify_exists_false_does_not_hide_later_readd(
+        self, engine: TantivyEngine
+    ) -> None:
+        engine.add("test-project", "hello world")
+        engine.commit()
+        assert engine.delete("test-project", "hello world") is True
+        replayed = engine.soft_delete(
+            "test-project", "hello world", verify_exists=False
+        )
+        assert replayed is False
+        engine.add("test-project", "hello world")
+        engine.commit()
+        assert engine.find_by_exact_match("test-project", "hello world") == [
+            "hello world"
+        ]
+        assert engine.search("hello", "test-project", limit=5) == [
+            ("hello world", pytest.approx(1.0))
+        ]
+
+    def test_whitespace_query_returns_no_hits(self, engine: TantivyEngine) -> None:
+        engine.add("test-project", "hello world")
+        engine.commit()
+        assert engine.search("   ", "test-project", limit=10) == []
+        assert engine.search("\n\t", "test-project", limit=10) == []
