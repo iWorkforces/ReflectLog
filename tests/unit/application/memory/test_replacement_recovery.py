@@ -80,7 +80,9 @@ class TestApplyPendingTransition:
         )
 
         semantic.delete.assert_called_once_with(memory_id="11")
-        tantivy.delete.assert_called_once_with("proj", "old convention")
+        tantivy.delete.assert_called_once_with(
+            "proj", "old convention", verify_exists=False
+        )
         semantic.add.assert_called_once_with(
             workspace_id="proj",
             content="new convention",

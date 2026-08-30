@@ -563,6 +563,16 @@ class MemoryManager:
         Raises:
             RuntimeError: If storage operation fails.
         """
+        try:
+            _ = self.reconcile_pending_replacements()
+        except InitializationError:
+            raise
+        except Exception as exc:
+            self.logger.error(
+                "Pre-add reconcile failed; continuing with pending rows",
+                extra={"error": str(exc)},
+            )
+
         memories_to_add: list[str] = []
         seen_memories: set[str] = set()
         with self._lock:
@@ -588,15 +598,6 @@ class MemoryManager:
                         )
                     continue
                 seen_memories.add(memory)
-
-                if self.config.deduplicate_memories and self._has_exact_match(memory):
-                    if idx <= log_limit:
-                        self.logger.info(
-                            "    Skipped (duplicate detected)",
-                            extra={"memory_index": idx, "reason": "duplicate"},
-                        )
-                    continue
-
                 memories_to_add.append(memory)
             if len(memories) > log_limit:
                 self.logger.info(
@@ -615,24 +616,33 @@ class MemoryManager:
             raise StorageError("Embedding batch size mismatch or empty vector")
 
         with self._write_lock, self._lock:
-            add_intents = self._record_add_intents(memories_to_add)
+            persist_memories: list[str] = []
+            persist_vectors: list[list[float]] = []
+            for memory, vector in zip(memories_to_add, vectors, strict=True):
+                if self.config.deduplicate_memories and self._has_exact_match(memory):
+                    continue
+                persist_memories.append(memory)
+                persist_vectors.append(vector)
+            if not persist_memories:
+                return 0
+            add_intents = self._record_add_intents(persist_memories)
             inserted_memories = self._semantic_engine.add_batch(
                 workspace_id=self.workspace_id,
-                contents=memories_to_add,
+                contents=persist_memories,
                 infer=self.config.enable_llm_infer,
-                vectors=vectors,
+                vectors=persist_vectors,
             )
 
             if self._tantivy_engine is not None:
                 self._tantivy_engine.add_batch(self.workspace_id, inserted_memories)
 
             stored_count = len(inserted_memories)
-            if stored_count != len(memories_to_add):
+            if stored_count != len(persist_memories):
                 self.logger.warning(
                     "    Skipped during batch insert",
                     extra={
                         "reason": "batch_insert_skipped",
-                        "expected_count": len(memories_to_add),
+                        "expected_count": len(persist_memories),
                         "stored_count": stored_count,
                     },
                 )
@@ -869,23 +879,23 @@ class MemoryManager:
         """
         with self._write_lock, self._lock:
             try:
-                record = self._semantic_engine.memory_store.get(int(memory_id))
+                numeric_id = int(memory_id)
+                record = self._semantic_engine.memory_store.get(numeric_id)
                 content = record.content if record is not None else None
-                delete_intents: list[ReplacementTransition] = []
-                if isinstance(content, str) and content:
-                    delete_intents = self._record_delete_intents(
-                        [(int(memory_id), content)]
-                    )
+                if content is None:
+                    self._finish_orphan_delete_by_id(numeric_id)
+                    return
+                delete_intents = self._record_delete_intents([(numeric_id, content)])
                 self._semantic_engine.delete(memory_id=memory_id)
                 self._semantic_engine.commit()
-                if content is not None and self._tantivy_engine is not None:
+                if self._tantivy_engine is not None:
                     deleted = self._tantivy_engine.delete(
                         self.workspace_id, content, verify_exists=True
                     )
                     if deleted is not True:
                         raise InconsistentStateError(
                             "USearch deletion succeeded but Tantivy "
-                            f"did not delete {content!r}"
+                            f"did not delete memory_id={memory_id}"
                         )
                     self._tantivy_engine.commit()
                 if delete_intents:
@@ -920,6 +930,8 @@ class MemoryManager:
                 mem_id = self.get_id_by_content(memory)
 
                 if mem_id is None:
+                    if self._finish_orphan_tantivy_delete(memory):
+                        return True
                     self.logger.debug(
                         "Memory not found for deletion",
                         extra={
@@ -944,7 +956,7 @@ class MemoryManager:
                         if not deleted:
                             raise InconsistentStateError(
                                 "USearch deletion succeeded but Tantivy "
-                                f"did not delete {memory!r}"
+                                f"did not delete memory_id={mem_id}"
                             )
                     except InconsistentStateError:
                         raise
@@ -1026,6 +1038,12 @@ class MemoryManager:
             if found:
                 self._semantic_engine.commit()
                 self._complete_delete_intents(delete_intents)
+            orphaned = [
+                memory for memory in unique if memory not in contents
+            ]
+            for memory in orphaned:
+                if self._finish_orphan_tantivy_delete(memory):
+                    contents.append(memory)
             return contents
 
     def _record_add_intents(self, memories: list[str]) -> list[ReplacementTransition]:
@@ -1079,6 +1097,61 @@ class MemoryManager:
                 if intent.old_content in matches:
                     continue
             store.complete_replacement_transition(intent.id)
+
+    def _finish_orphan_tantivy_delete(self, content: str) -> bool:
+        """Tombstone leftover FTS after USearch already dropped the row."""
+        if self._tantivy_engine is None or not content:
+            return False
+        deleted = self._tantivy_engine.delete(
+            self.workspace_id, content, verify_exists=True
+        )
+        if deleted is not True:
+            return False
+        self._tantivy_engine.commit()
+        self._complete_matching_delete_intents(content)
+        return True
+
+    def _finish_orphan_delete_by_id(self, memory_id: int) -> None:
+        """Finish a delete whose SQLite row is already gone."""
+        content: str | None = None
+        for row in self._semantic_engine.memory_store.list_pending_transitions():
+            if (
+                row.old_memory_id == memory_id
+                and row.kind
+                in {TransitionKind.DELETE, TransitionKind.REPLACE}
+                and row.old_content
+            ):
+                content = row.old_content
+                break
+        self._semantic_engine.delete(memory_id=str(memory_id))
+        self._semantic_engine.commit()
+        if content is None:
+            return
+        if self._tantivy_engine is not None:
+            _ = self._tantivy_engine.delete(
+                self.workspace_id, content, verify_exists=False
+            )
+            self._tantivy_engine.commit()
+        self._complete_matching_delete_intents(content)
+
+    def _complete_matching_delete_intents(self, content: str) -> None:
+        """Mark pending delete rows complete when FTS no longer has the text."""
+        store = self._semantic_engine.memory_store
+        for row in store.list_pending_transitions():
+            if row.workspace_id != self.workspace_id:
+                continue
+            if row.kind != TransitionKind.DELETE:
+                continue
+            if row.old_content != content:
+                continue
+            if (
+                self._tantivy_engine is not None
+                and content in self._tantivy_engine.find_by_exact_match(
+                    self.workspace_id, content
+                )
+            ):
+                continue
+            store.complete_replacement_transition(row.id)
 
     def get_id_by_content(self, content: str) -> int | None:
         """Get SQLite ID for exact memory content match.

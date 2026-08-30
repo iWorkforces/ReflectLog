@@ -1155,17 +1155,17 @@ class AddPipeline:
         try:
             # Phase 1: Parallel duplicate detection
             phase1_result = await self._phase1.execute(memories)
-            result.skipped_count = (
-                len(phase1_result.storage_duplicates)
-                + phase1_result.batch_duplicates_count
-            )
 
             # Phase 2: Parallel smart replacement detection
             phase2_result = await self._phase2.execute(phase1_result.unique_memories)
 
+            persist_memories = list(phase1_result.unique_memories)
+            persist_memories.extend(phase1_result.storage_duplicates)
+            result.skipped_count = phase1_result.batch_duplicates_count
+
             # Phase 3: Sequential database writes
             phase3_result = await self._phase3.execute(
-                phase1_result.unique_memories,
+                persist_memories,
                 phase2_result.replacement_map,
                 dry_run,
             )
@@ -1173,9 +1173,7 @@ class AddPipeline:
             result.stored_count = phase3_result.stored_count
             result.replaced_count = phase3_result.replaced_count
             result.replacements = phase3_result.replacements
-            persist_skipped = (
-                len(phase1_result.unique_memories) - phase3_result.stored_count
-            )
+            persist_skipped = len(persist_memories) - phase3_result.stored_count
             if persist_skipped > 0:
                 result.skipped_count += persist_skipped
 

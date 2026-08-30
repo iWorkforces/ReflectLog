@@ -119,7 +119,7 @@ def _make_manager(
 
         mock_tantivy = MagicMock()
         mock_tantivy.is_ready.return_value = False
-        mock_tantivy.delete.return_value = True
+        mock_tantivy.delete.return_value = False
         mock_tantivy.find_by_exact_match.return_value = []
         mock_tantivy.delete_batch.side_effect = (
             lambda _workspace, contents, verify_exists=True: len(contents)
@@ -547,6 +547,20 @@ class TestSearchForRemovalError:
 class TestDeleteOperations:
     """Tests for delete_by_id and delete_by_memory error paths."""
 
+    def test_delete_by_memory_tombs_orphan_tantivy(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.get_id_by_content.return_value = None
+        mock_tantivy.delete.return_value = True
+        mock_usearch.memory_store.list_pending_transitions.return_value = []
+
+        assert manager.delete_by_memory("leftover") is True
+        mock_tantivy.delete.assert_called_once_with(
+            "test_project", "leftover", verify_exists=True
+        )
+        mock_tantivy.commit.assert_called()
+
     def test_delete_by_id_success(self, mock_config: Config, mock_logger: LogCapture):
         """delete_by_id calls semantic engine delete (lines 853-855)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
@@ -567,6 +581,7 @@ class TestDeleteOperations:
 
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.memory_store = _Store()
+        mock_tantivy.delete.return_value = True
         manager.delete_by_id("42")
         mock_usearch.delete.assert_called_once_with(memory_id="42")
         mock_usearch.commit.assert_called()
@@ -653,6 +668,7 @@ class TestDeleteOperations:
         """delete_by_memory returns True on success."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 42
+        mock_tantivy.delete.return_value = True
 
         result = manager.delete_by_memory("test memory")
         assert result is True
