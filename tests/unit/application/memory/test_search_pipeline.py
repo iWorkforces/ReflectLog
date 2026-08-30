@@ -721,6 +721,29 @@ class TestBackendFailureContracts:
         fusion.fuse.assert_called_once_with([], [])
         assert result.memories == []
 
+    async def test_fts_keeps_live_sqlite_hits_and_drops_deleted(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [("keep me", 0.9, _TS)]
+        semantic.memory_store.exists_many.side_effect = (
+            lambda _workspace_id, contents: {item for item in contents if item == "keep me"}
+        )
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("keep me", 4.0), ("deleted text", 3.0)]
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("keep me", 0.4), ("deleted text", 0.01)]
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=fusion,
+            config=_make_config(fusion_ranking_threshold=0.0),
+        )
+
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert result.tantivy_results == [("keep me", 4.0)]
+        fusion.fuse.assert_called_once_with([("keep me", 0.9)], [("keep me", 4.0)])
+        assert result.memories == ["keep me"]
+
     async def test_fts_hits_dropped_when_exists_many_is_not_a_string_set(
         self,
     ) -> None:
