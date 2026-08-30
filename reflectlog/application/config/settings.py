@@ -672,6 +672,7 @@ class Config:
             raise ConfigurationError(
                 f"Invalid WORKSPACE_ID: path traversal patterns not allowed: {workspace_id}"
             )
+        workspace_id = workspace_id.lower()
 
         preset = get_active_preset()
         if preset:
