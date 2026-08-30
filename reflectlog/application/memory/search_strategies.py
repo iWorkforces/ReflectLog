@@ -191,7 +191,6 @@ class SearchPipeline:
             )
         assert soon_results is not None
         results: list[tuple[str, float, str]] = soon_results.value or []
-        results = self._filter_semantic_threshold(results)
 
         timestamp_map = {msg: created_at for msg, _, created_at in results}
         paired = [(msg, score) for msg, score, _ in results]
@@ -210,7 +209,6 @@ class SearchPipeline:
         """Execute 4-step hybrid search pipeline."""
         # Step 1: Parallel Search
         semantic_results, tantivy_results = await self._step1_parallel_search(context)
-        semantic_results = self._filter_semantic_threshold(semantic_results)
 
         timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
@@ -559,25 +557,6 @@ class SearchPipeline:
             )
             return 0.0
         return threshold
-
-    def _filter_semantic_threshold(
-        self, results: list[tuple[str, float, str]]
-    ) -> list[tuple[str, float, str]]:
-        """Drop USearch hits below search_score_threshold before fusion."""
-        threshold = self.config.search_score_threshold
-        try:
-            if float(threshold) <= 0 or not results:
-                return results
-        except (TypeError, ValueError):
-            return results
-        kept: list[tuple[str, float, str]] = []
-        for item in results:
-            try:
-                if float(item[1]) >= float(threshold):
-                    kept.append(item)
-            except (TypeError, ValueError):
-                kept.append(item)
-        return kept
 
     def _filter_by_fusion_threshold(
         self, results: list[tuple[str, float]], threshold: float, query: str
