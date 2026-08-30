@@ -29,13 +29,12 @@ from reflectlog.core.config_adapters import (
     _validated_reranker_engine,
     create_config_adapter,
     create_embedder_config_adapter,
-    create_reranker_config_adapter,
     create_replacement_config_adapter,
+    create_reranker_config_adapter,
     create_search_config_adapter,
     create_server_config_adapter,
     create_storage_config_adapter,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

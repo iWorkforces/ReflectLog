@@ -13,11 +13,11 @@ from reflectlog.application.memory.fusion import create_fusion_engine
 from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.core.config_adapters import ConfigAdapter
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
+from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine

@@ -19,13 +19,13 @@ Usage:
 '''
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from pytest import MonkeyPatch
 
-from unittest.mock import MagicMock, AsyncMock
-
-from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.manager import MemoryManager
 
 
 @pytest.fixture

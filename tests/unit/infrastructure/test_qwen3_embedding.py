@@ -1,7 +1,7 @@
 '''Unit tests for LangchainQwenEmbeddings.'''
 
-import os
 from dataclasses import dataclass
+import os
 from typing import TypedDict, Unpack
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 

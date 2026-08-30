@@ -15,7 +15,6 @@ from reflectlog.application.config.settings import (
 from reflectlog.application.utils.security import SecretString
 from reflectlog.core.exceptions import ConfigurationError
 
-
 # ---------------------------------------------------------------------------
 # Minimal env vars required for Config.from_environment()
 # ---------------------------------------------------------------------------
@@ -24,12 +23,6 @@ REQUIRED_ENV = {
     "WORKSPACE_ID": "test-project",
     "OPENROUTER_API_KEY": "sk-test-key-12345",
 }
-
-
-def _env(**overrides: str) -> dict[str, str]:
-    """Build env dict with required vars + overrides."""
-    env = {**REQUIRED_ENV, **overrides}
-    return env
 
 
 # ---------------------------------------------------------------------------

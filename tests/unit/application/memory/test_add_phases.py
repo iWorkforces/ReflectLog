@@ -12,8 +12,6 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
-from reflectlog.core.exceptions import StorageError
-from reflectlog.core.types import ReplacementTransition
 from reflectlog.application.memory.add_phases import (
     AddPipeline,
     AddResult,
@@ -26,9 +24,10 @@ from reflectlog.application.memory.add_phases import (
     StoragePhase,
 )
 from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import ReplacementTransition
 from reflectlog.infrastructure.tantivy_engine import TantivyEngine
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

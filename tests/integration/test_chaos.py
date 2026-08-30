@@ -17,13 +17,14 @@ Usage:
 '''
 
 import asyncio
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.memory.search_strategies import SearchPipeline
-from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
-from reflectlog.application.config.settings import Config
 
 
 @pytest.fixture
@@ -317,8 +318,8 @@ class TestDataCorruption:
 
         Should reload cleanly without data loss.
         '''
-        from reflectlog.application.utils.config_reload import ConfigReloadManager
         from reflectlog.application.config.settings import Config
+        from reflectlog.application.utils.config_reload import ConfigReloadManager
 
         reload_manager = ConfigReloadManager(lambda: Config.from_environment())
         reloaded = reload_manager.reload_config()

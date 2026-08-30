@@ -4,8 +4,8 @@ from typing import cast
 from unittest.mock import patch
 
 import numpy as np
-import pytest
 from numpy.typing import NDArray
+import pytest
 
 from reflectlog.utility.scoring import (
     _find_minmax,

@@ -17,7 +17,6 @@ from reflectlog.application.config.presets import (
     get_preset_summary,
 )
 
-
 # ---------------------------------------------------------------------------
 # ConfigPreset dataclass
 # ---------------------------------------------------------------------------

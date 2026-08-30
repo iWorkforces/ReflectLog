@@ -15,10 +15,10 @@ import pytest
 
 from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.manager import MemoryManager
-from reflectlog.core.types import Embeddings
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.application.utils.security import SecretString
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.types import Embeddings
 
 
 class MockEmbedder(Embeddings):

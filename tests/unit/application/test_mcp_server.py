@@ -6,14 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from reflectlog.application.mcp_server import FastMCPServer
+from reflectlog.application.memory.manager import AddResult
 from reflectlog.core.exceptions import (
     ConfigurationError,
     InconsistentStateError,
     SearchError,
     StorageError,
 )
-from reflectlog.application.mcp_server import FastMCPServer
-from reflectlog.application.memory.manager import AddResult
 
 
 @pytest.mark.unit

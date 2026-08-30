@@ -17,13 +17,13 @@ from unittest.mock import Mock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
-from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.application.memory.engine_factory import (
     EngineFactory,
     EngineFactoryResult,
     create_cross_encoder_reranker,
     create_smart_replacer,
 )
+from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.tantivy_engine import TantivyEngine

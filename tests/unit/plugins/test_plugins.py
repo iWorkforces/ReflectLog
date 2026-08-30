@@ -3,10 +3,10 @@
 Tests plugin discovery, loading, registry, and lifecycle management.
 '''
 
+from dataclasses import dataclass
 import importlib
 import pkgutil
 import types
-from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,7 +35,6 @@ from reflectlog.plugins.registry import (
     ToolRegistry,
     utc_now,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers / stubs

@@ -1,19 +1,19 @@
 """Tests for dynamic MCP instructions generation."""
 # mypy: disable-error-code="misc,var-annotated"
 
-from unittest.mock import MagicMock, patch
 from typing import cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest import MonkeyPatch
 
+from reflectlog.application.mcp_server import FastMCPServer
+from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.core.prompts import (
     INSTRUCTIONS_HEADER,
     TOOL_ORDER,
     build_instructions,
 )
-from reflectlog.application.memory.manager import MemoryManager
-from reflectlog.application.mcp_server import FastMCPServer
 
 
 @pytest.mark.unit

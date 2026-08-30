@@ -1,8 +1,8 @@
 '''Unit tests for reflectlog.application.utils.config_reload module.'''
 
+from collections.abc import Generator
 import signal
 import threading
-from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest

@@ -14,10 +14,10 @@ Usage:
     locust -f locustfile.py --headless --host http://127.0.0.1:8089 --users 100
 '''
 
-import time
 from collections.abc import Callable, Sequence
 from datetime import timedelta
 from random import randint
+import time
 from typing import TYPE_CHECKING, ParamSpec, Protocol
 
 
