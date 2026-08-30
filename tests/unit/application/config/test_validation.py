@@ -1051,7 +1051,7 @@ class TestValidateConfig:
 
     def test_openrouter_api_key_validated(self):
         '''OpenRouter API key format is validated when present.'''
-        cfg = self._make_config(openrouter_api_key=SecretString("bad-key"))
+        cfg = self._make_config(openrouter_api_key=SecretString("sk-or-bad"))
         errors = validate_config(cfg)
         assert any("OPENROUTER_API_KEY" in e.field for e in errors)
 

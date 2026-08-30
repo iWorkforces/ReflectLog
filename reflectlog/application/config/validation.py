@@ -28,6 +28,8 @@ class ValidationError:
 
     def __str__(self) -> str:
         """String representation of the error."""
+        if self.field == "OPENROUTER_API_KEY":
+            return f"{self.field}: {self.message} (got: ***REDACTED***)"
         return f"{self.field}: {self.message} (got: {self.value!r})"
 
 
@@ -408,17 +410,17 @@ class ConfigurationValidator:
         """
         valid = True
 
-        if not self.validate_positive_int("MIN_MESSAGE_LENGTH", min_length):
+        if not self.validate_positive_int("MIN_MEMORY_LENGTH", min_length):
             valid = False
 
-        if not self.validate_positive_int("MAX_MESSAGE_LENGTH", max_length):
+        if not self.validate_positive_int("MAX_MEMORY_LENGTH", max_length):
             valid = False
 
         if min_length >= max_length:
             self.add_error(
-                "MIN_MESSAGE_LENGTH / MAX_MESSAGE_LENGTH",
+                "MIN_MEMORY_LENGTH / MAX_MEMORY_LENGTH",
                 (min_length, max_length),
-                "MIN_MESSAGE_LENGTH must be less than MAX_MESSAGE_LENGTH",
+                "MIN_MEMORY_LENGTH must be less than MAX_MEMORY_LENGTH",
             )
             valid = False
 
@@ -755,7 +757,7 @@ def _validate_security_fields(
 ) -> None:
     """Validate API key formats and security-sensitive fields."""
     api_key = config.openrouter_api_key.get_secret_value()
-    if api_key:
+    if api_key.startswith("sk-or"):
         _ = validator.validate_openrouter_api_key_format(api_key)
 
 

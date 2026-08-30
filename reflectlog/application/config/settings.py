@@ -353,8 +353,10 @@ class Config:
     def _parse_search_config() -> SearchConfigDict:
         """Parse search-related configuration from environment variables."""
         return {
-            "search_limit": int(os.environ.get("SEARCH_LIMIT", "5")),
-            "remove_search_limit": int(os.environ.get("REMOVE_SEARCH_LIMIT", "5")),
+            "search_limit": max(1, int(os.environ.get("SEARCH_LIMIT", "5"))),
+            "remove_search_limit": max(
+                1, int(os.environ.get("REMOVE_SEARCH_LIMIT", "5"))
+            ),
             "enable_hybrid_search": os.environ.get(
                 "ENABLE_HYBRID_SEARCH", "true"
             ).lower()
@@ -462,14 +464,16 @@ class Config:
             "cross_encoder_model": os.environ.get(
                 "CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
             ),
-            "cross_encoder_top_k": int(os.environ.get("CROSS_ENCODER_TOP_K", "20")),
+            "cross_encoder_top_k": max(
+                1, int(os.environ.get("CROSS_ENCODER_TOP_K", "20"))
+            ),
             "cross_encoder_device": parse_str_enum(
                 CrossEncoderDevice,
                 os.environ.get("CROSS_ENCODER_DEVICE", CrossEncoderDevice.CPU),
                 field="CROSS_ENCODER_DEVICE",
             ),
-            "cross_encoder_batch_size": int(
-                os.environ.get("CROSS_ENCODER_BATCH_SIZE", "32")
+            "cross_encoder_batch_size": max(
+                1, int(os.environ.get("CROSS_ENCODER_BATCH_SIZE", "32"))
             ),
             "cross_encoder_score_threshold": float(
                 os.environ.get("CROSS_ENCODER_SCORE_THRESHOLD", "0.5")
@@ -710,6 +714,15 @@ class Config:
             **logging_config,
             allowed_tools=allowed_tools,
         )
+
+        from reflectlog.application.config.validation import validate_config
+
+        errors = validate_config(config)
+        if errors:
+            raise ConfigurationError(
+                "Configuration validation failed:\n"
+                + "\n".join(f"  - {error.field}: {error.message}" for error in errors)
+            )
 
         return config
 
