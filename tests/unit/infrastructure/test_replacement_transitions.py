@@ -240,3 +240,56 @@ class TestAddAndDeleteIntents:
                 after_id=added.id,
             )
             store.close()
+
+    def test_reopen_keeps_later_pending_adds(self) -> None:
+        """Connect-time dedupe must not drop add intents that share old_memory_id=0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.db")
+            store = MemoryStore(db_path=path)
+            first = store.begin_add_intents("proj1", ["one"])[0]
+            store.complete_replacement_transition(first.id)
+            second = store.begin_add_intents("proj1", ["two"])[0]
+            store.close()
+
+            reopened = MemoryStore(db_path=path)
+            pending = reopened.list_pending_transitions()
+            assert [row.new_content for row in pending] == ["two"]
+            assert pending[0].id == second.id
+            reopened.close()
+
+    def test_delete_and_replace_can_coexist_for_same_old_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            replaced = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj1",
+                old_content="hello",
+                new_content="hello v2",
+                reason="updated",
+                confidence=0.9,
+            )
+            deleted = store.begin_delete_intents("proj1", [(11, "hello")])[0]
+            assert deleted.id != replaced.id
+            assert deleted.kind == "delete"
+            assert replaced.kind == "replace"
+            store.close()
+
+    def test_has_later_intent_delete_sees_later_replace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            added = store.begin_add_intents("proj1", ["hello"])[0]
+            _ = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj1",
+                old_content="hello",
+                new_content="hello v2",
+                reason="updated",
+                confidence=0.9,
+            )
+            assert store.has_later_intent(
+                workspace_id="proj1",
+                kind="delete",
+                content="hello",
+                after_id=added.id,
+            )
+            store.close()

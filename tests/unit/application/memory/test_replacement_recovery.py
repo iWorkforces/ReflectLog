@@ -341,7 +341,11 @@ class TestReconcilePendingReplacements:
             )
             semantic = MagicMock()
             semantic.memory_store = store
-            semantic.get_id_by_content.side_effect = [None, 99, None]
+
+            def get_id(_workspace_id: str, content: str) -> int | None:
+                return 99 if content == "new convention" else None
+
+            semantic.get_id_by_content.side_effect = get_id
             semantic.index = {99}
 
             count = reconcile_pending_replacements(
@@ -426,3 +430,50 @@ class TestReconcilePendingReplacements:
             assert count == 0
             assert len(store.list_pending_transitions()) == 1
             store.close()
+
+    def test_stale_add_is_completed_when_later_replace_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            added = store.begin_add_intents("proj", ["hello"])[0]
+            _ = store.begin_replacement_transition(
+                old_memory_id=11,
+                workspace_id="proj",
+                old_content="hello",
+                new_content="hello v2",
+                reason="updated",
+                confidence=0.9,
+            )
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.get_id_by_content.return_value = None
+            completed = apply_pending_transition(
+                added,
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                logger=MagicMock(),
+            )
+            assert completed is True
+            semantic.add.assert_not_called()
+            assert all(row.kind != "add" for row in store.list_pending_transitions())
+            store.close()
+
+    def test_later_delete_in_other_workspace_does_not_suppress_add(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            added = store.begin_add_intents("proj-a", ["hello"])[0]
+            _ = store.begin_delete_intents("proj-b", [(11, "hello")])
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.get_id_by_content.return_value = None
+            semantic.add.return_value = None
+            semantic.index = {1}
+            completed = apply_pending_transition(
+                added,
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                logger=MagicMock(),
+            )
+            # add() is used when add_batch is not on the MagicMock class
+            semantic.add.assert_called()
+            store.close()
+            assert completed in {True, False}

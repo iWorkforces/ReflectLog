@@ -13,7 +13,7 @@ produces outputs for the next phase.
 from dataclasses import dataclass, field
 import threading
 import time
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
     from reflectlog.infrastructure.smart_replacer import SmartReplacer
@@ -32,7 +32,6 @@ from ...core.types import (
     ReplacementTransitionRequest,
 )
 from ..config.settings import Config
-from ..utils.validation import truncate_memory
 from .match_utils import has_exact_match
 from .replacement_recovery import (
     reconcile_pending_replacements,
@@ -204,8 +203,10 @@ class DuplicateDetectionPhase:
         store = getattr(self._semantic_engine, "memory_store", None)
         exists_many = type(store).__dict__.get("exists_many") if store is not None else None
         if callable(exists_many) and store is not None:
-            present = exists_many(store, self._workspace_id, unique_memories)
-            present_set = present if isinstance(present, set) else set()
+            present = await asyncify(exists_many)(
+                store, self._workspace_id, unique_memories
+            )
+            present_set = _string_set(present)
             for memory in unique_memories:
                 duplicate_flags[memory] = memory in present_set
         else:
@@ -415,7 +416,7 @@ class SmartReplacementPhase:
                 "No similar memories found for replacement check",
                 extra={
                     "workspace_id": self._workspace_id,
-                    "new_memory_preview": new_memory[:100],
+                    "new_memory_length": len(new_memory),
                 },
             )
         return similar_results
@@ -507,12 +508,8 @@ class SmartReplacementPhase:
                                 "confidence": confidence,
                                 "similarity_score": similarity_score,
                                 "reason": reason,
-                                "old_memory_preview": truncate_memory(
-                                    existing_memory, max_length=60
-                                ),
-                                "new_memory_preview": truncate_memory(
-                                    new_memory, max_length=60
-                                ),
+                                "old_memory_length": len(existing_memory),
+                                "new_memory_length": len(new_memory),
                             },
                         )
                         return ReplacementInfo(
@@ -540,7 +537,7 @@ class SmartReplacementPhase:
                         extra={
                             "workspace_id": self._workspace_id,
                             "error": str(candidate_error),
-                            "existing_preview": existing_memory[:100],
+                            "existing_memory_length": len(existing_memory),
                         },
                     )
                     return None
@@ -599,7 +596,7 @@ class SmartReplacementPhase:
                 extra={
                     "workspace_id": self._workspace_id,
                     "error": str(e),
-                    "new_memory_preview": new_memory[:100],
+                    "new_memory_length": len(new_memory),
                 },
             )
             return []
@@ -802,8 +799,8 @@ class StoragePhase:
                 "Replacing old memory with new one",
                 extra={
                     "action": "replace",
-                    "old_preview": truncate_memory(info.old_memory, max_length=60),
-                    "new_preview": truncate_memory(memory, max_length=60),
+                    "old_length": len(info.old_memory),
+                    "new_length": len(memory),
                     "confidence": info.confidence,
                     "similarity": info.similarity_score,
                     "dry_run": dry_run,
@@ -856,10 +853,8 @@ class StoragePhase:
                     "Skipping successor that conflicts with an existing transition",
                     extra={
                         "old_memory_id": old_id,
-                        "existing_new_content": truncate_memory(
-                            existing.new_content, max_length=60
-                        ),
-                        "skipped_new_content": truncate_memory(memory, max_length=60),
+                        "existing_new_length": len(existing.new_content),
+                        "skipped_new_length": len(memory),
                         "dry_run": dry_run,
                     },
                 )
@@ -1082,7 +1077,7 @@ class StoragePhase:
                 "Duplicate memory detected, skipping storage",
                 extra={
                     "workspace_id": self._workspace_id,
-                    "memory_preview": content[:200],
+                    "memory_length": len(content),
                 },
             )
             return False
@@ -1135,13 +1130,7 @@ class StoragePhase:
         if not callable(begin_add):
             return []
         recorded = begin_add(store, self._workspace_id, memories)
-        if not isinstance(recorded, list):
-            return []
-        intents: list[ReplacementTransition] = []
-        for row in recorded:
-            if isinstance(row, ReplacementTransition):
-                intents.append(row)
-        return intents
+        return _transition_rows(recorded)
 
     def _complete_add_intents(self, intents: list[ReplacementTransition]) -> None:
         """Mark add intents complete when both backends have the content."""
@@ -1337,16 +1326,32 @@ class AddPipeline:
                 "stored_count": result.stored_count,
                 "replaced_count": result.replaced_count,
                 "skipped_count": result.skipped_count,
-                "replacement_details": [
-                    {
-                        "old": truncate_memory(r.old_memory, 50),
-                        "confidence": r.confidence,
-                    }
-                    for r in result.replacements
-                ],
+                "replacement_count": result.replaced_count,
                 "dry_run": dry_run,
                 "optimization": "phased_parallel",
             },
         )
 
         return result
+
+
+def _string_set(raw: object) -> set[str]:
+    """Copy string elements from a set/list without Unknown bindings."""
+    if not isinstance(raw, (set, list, tuple)):
+        return set()
+    values: set[str] = set()
+    for item in cast(list[object] | set[object] | tuple[object, ...], raw):
+        if isinstance(item, str):
+            values.add(item)
+    return values
+
+
+def _transition_rows(raw: object) -> list[ReplacementTransition]:
+    """Keep only ReplacementTransition rows from a dynamic store result."""
+    if not isinstance(raw, list):
+        return []
+    rows: list[ReplacementTransition] = []
+    for item in cast(list[object], raw):
+        if isinstance(item, ReplacementTransition):
+            rows.append(item)
+    return rows

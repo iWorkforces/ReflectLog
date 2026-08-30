@@ -14,16 +14,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.application.utils.security import SecretString
 from reflectlog.core.exceptions import (
     InconsistentStateError,
     SearchError,
     StorageError,
 )
-from reflectlog.application.memory.manager import MemoryManager
-from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
-from reflectlog.application.utils.security import SecretString
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -536,6 +535,26 @@ class TestDeleteOperations:
         manager.delete_by_id("42")
         mock_usearch.delete.assert_called_once_with(memory_id="42")
 
+    def test_delete_by_id_tombs_tantivy_when_content_known(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        class _Store:
+            def get(self, memory_id: int) -> object:
+                return type("Rec", (), {"content": "known"})()
+
+            def begin_delete_intents(
+                self, workspace_id: str, items: list[tuple[int, str]]
+            ) -> list[object]:
+                return []
+
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.memory_store = _Store()
+        manager.delete_by_id("42")
+        mock_usearch.delete.assert_called_once_with(memory_id="42")
+        mock_usearch.commit.assert_called()
+        mock_tantivy.delete.assert_called_once_with("test_project", "known")
+        mock_tantivy.commit.assert_called()
+
     def test_delete_by_id_exception_raises_storage_error(
         self, mock_config: Config, mock_logger: LogCapture
     ):
@@ -720,8 +739,8 @@ class TestCloseErrorPaths:
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.flush.side_effect = RuntimeError("tantivy flush error")
 
-        manager.close()
-        # Should log error
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
         error_logged = any(
             "Error closing Tantivy engine" in message
             for message in mock_logger.messages(logging.ERROR)
@@ -733,8 +752,8 @@ class TestCloseErrorPaths:
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.commit.side_effect = RuntimeError("usearch commit error")
 
-        manager.close()
-        # Should log error
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
         error_logged = any(
             "Error closing USearch engine" in message
             for message in mock_logger.messages(logging.ERROR)
@@ -747,7 +766,8 @@ class TestCloseErrorPaths:
         mock_tantivy.flush.side_effect = RuntimeError("tantivy error")
         mock_usearch.commit.side_effect = RuntimeError("usearch error")
 
-        manager.close()
+        with pytest.raises(StorageError, match="persist incomplete"):
+            manager.close()
         error_calls = mock_logger.messages(logging.ERROR)
         tantivy_err = any("Tantivy" in c for c in error_calls)
         usearch_err = any("USearch" in c for c in error_calls)
@@ -781,7 +801,9 @@ class TestGetAll:
 
         result = manager.get_all()
         assert result == ["mem1", "mem2"]
-        mock_usearch.get_all.assert_called_once_with(workspace_id="test_project")
+        mock_usearch.get_all.assert_called_once_with(
+            workspace_id="test_project", limit=None, offset=0
+        )
 
     def test_get_all_exception_raises_storage_error(self, mock_config: Config, mock_logger: LogCapture):
         """get_all wraps exceptions in StorageError."""

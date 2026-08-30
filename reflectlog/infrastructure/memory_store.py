@@ -236,9 +236,14 @@ class MemoryStore(BaseModel):
         _ = cursor.execute("DROP INDEX IF EXISTS idx_transition_identity")
         _ = cursor.execute("DROP INDEX IF EXISTS idx_transition_old_memory")
         _ = cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_old_memory "
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_old_replace "
             "ON replacement_transitions(workspace_id, old_memory_id) "
-            "WHERE kind IN ('delete', 'replace')"
+            "WHERE kind = 'replace'"
+        )
+        _ = cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transition_old_delete "
+            "ON replacement_transitions(workspace_id, old_memory_id) "
+            "WHERE kind = 'delete'"
         )
         _ = cursor.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_add "
@@ -276,13 +281,19 @@ class MemoryStore(BaseModel):
         )
 
     def _dedupe_transition_old_ids(self, cursor: sqlite3.Cursor) -> None:
-        """Keep one transition per old memory before exclusive uniquing."""
+        """Keep one delete/replace row per old id. Never group add intents.
+
+        Adds all use ``old_memory_id=0``. Deduping them by that key would drop
+        every later pending add on the next process start.
+        """
         _ = cursor.execute(
             """
             DELETE FROM replacement_transitions
-            WHERE id NOT IN (
+            WHERE kind IN ('delete', 'replace')
+              AND id NOT IN (
                 SELECT MIN(id) FROM replacement_transitions
-                GROUP BY workspace_id, old_memory_id
+                WHERE kind IN ('delete', 'replace')
+                GROUP BY workspace_id, old_memory_id, kind
             )
             """
         )
@@ -512,11 +523,18 @@ class MemoryStore(BaseModel):
             finally:
                 cursor.close()
 
-    def get_all(self, workspace_id: str) -> list[str]:
-        """Get all memories for a workspace.
+    def get_all(
+        self,
+        workspace_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[str]:
+        """Get memories for a workspace, optionally paged in SQL.
 
         Args:
             workspace_id: Workspace identifier.
+            limit: Maximum rows to return. ``None`` returns the rest after offset.
+            offset: Rows to skip.
 
         Returns:
             List of memory strings.
@@ -524,13 +542,22 @@ class MemoryStore(BaseModel):
         Raises:
             StorageError: If database operation fails.
         """
+        start = max(0, offset)
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                _ = cursor.execute(
-                    "SELECT content FROM memories WHERE workspace_id = ? ORDER BY id",
-                    (workspace_id,),
-                )
+                if limit is None:
+                    _ = cursor.execute(
+                        "SELECT content FROM memories WHERE workspace_id = ? "
+                        "ORDER BY id LIMIT -1 OFFSET ?",
+                        (workspace_id, start),
+                    )
+                else:
+                    _ = cursor.execute(
+                        "SELECT content FROM memories WHERE workspace_id = ? "
+                        "ORDER BY id LIMIT ? OFFSET ?",
+                        (workspace_id, max(0, limit), start),
+                    )
                 rows = cursor.fetchall()
 
                 return [row[0] for row in rows]
@@ -1059,20 +1086,38 @@ class MemoryStore(BaseModel):
         content: str,
         after_id: int,
     ) -> bool:
-        """Return True when a later add/delete row exists for the same text."""
-        content_column = "new_content" if kind == "add" else "old_content"
+        """Return True when a later add/delete/replace row exists for the text.
+
+        ``kind='delete'`` also matches a later replace of the same old text so a
+        stale add cannot resurrect content that was replaced.
+        """
+        if kind == "add":
+            query = (
+                "SELECT 1 FROM replacement_transitions "
+                "WHERE workspace_id = ? AND kind = 'add' "
+                "AND new_content = ? AND id > ? LIMIT 1"
+            )
+            params: tuple[object, ...] = (workspace_id, content, after_id)
+        elif kind == "delete":
+            query = (
+                "SELECT 1 FROM replacement_transitions "
+                "WHERE workspace_id = ? AND kind IN ('delete', 'replace') "
+                "AND old_content = ? AND id > ? LIMIT 1"
+            )
+            params = (workspace_id, content, after_id)
+        elif kind == "replace":
+            query = (
+                "SELECT 1 FROM replacement_transitions "
+                "WHERE workspace_id = ? AND kind = 'replace' "
+                "AND old_content = ? AND id > ? LIMIT 1"
+            )
+            params = (workspace_id, content, after_id)
+        else:
+            raise StorageError(f"Unknown intent kind: {kind}")
         with self._conn_lock:
             cursor = self.connection.cursor()
             try:
-                _ = cursor.execute(
-                    f"""
-                    SELECT 1 FROM replacement_transitions
-                    WHERE workspace_id = ? AND kind = ?
-                      AND {content_column} = ? AND id > ?
-                    LIMIT 1
-                    """,
-                    (workspace_id, kind, content, after_id),
-                )
+                _ = cursor.execute(query, params)
                 return cursor.fetchone() is not None
             except sqlite3.Error as e:
                 raise StorageError(f"Failed to look up later intent: {e}") from e
@@ -1308,10 +1353,9 @@ class MemoryStore(BaseModel):
                        archive_id, reason, confidence, status,
                        COALESCE(kind, 'replace')
                 FROM replacement_transitions
-                WHERE workspace_id = ? AND old_memory_id = ?
-                  AND kind IN ('delete', 'replace')
+                WHERE workspace_id = ? AND old_memory_id = ? AND kind = ?
                 """,
-                (workspace_id, old_memory_id),
+                (workspace_id, old_memory_id, kind),
             )
         row = cursor.fetchone()
         return self._row_to_transition(row) if row is not None else None

@@ -30,7 +30,7 @@ Example:
 
 import threading
 import time
-from typing import Any, final
+from typing import Any, cast, final
 
 from asyncer import asyncify
 
@@ -38,14 +38,15 @@ from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
 from reflectlog.core.exceptions import (
     ConfigurationError,
     InconsistentStateError,
+    InitializationError,
     SearchError,
     StorageError,
 )
-from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
 )
+from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
@@ -109,6 +110,8 @@ class MemoryManager:
         self._log_configuration()
         try:
             _ = self.reconcile_pending_replacements()
+        except InitializationError:
+            raise
         except Exception as exc:
             self.logger.error(
                 "Startup replacement reconcile failed; continuing with pending rows",
@@ -545,7 +548,7 @@ class MemoryManager:
                 "Duplicate memory detected, skipping storage",
                 extra={
                     "workspace_id": self.workspace_id,
-                    "memory_preview": memory[:200],
+                    "memory_length": len(memory),
                 },
             )
             return False
@@ -738,25 +741,33 @@ class MemoryManager:
     ) -> AddResult:
         return await self.add_memories_async(messages, dry_run)
 
-    def get_all(self) -> list[str]:
-        """Retrieve all stored memories with cross-engine consistency check (thread-safe).
+    def get_all(
+        self, limit: int | None = None, offset: int = 0
+    ) -> list[str]:
+        """Retrieve stored memories, paged at the semantic store.
 
         Thread-safe: Uses RLock to ensure consistent state during retrieval.
 
         Returns:
-            List of all memories from USearchEngine (source of truth).
+            Page of memories from USearchEngine (source of truth).
 
         Raises:
             RuntimeError: If retrieval operation fails.
         """
         try:
             with self._lock:
-                memories = self._semantic_engine.get_all(workspace_id=self.workspace_id)
+                memories = self._semantic_engine.get_all(
+                    workspace_id=self.workspace_id,
+                    limit=limit,
+                    offset=offset,
+                )
             self.logger.info(
                 f"Retrieved {len(memories)} memories (USearchEngine={len(memories)})",
                 extra={
                     "workspace_id": self.workspace_id,
                     "count": len(memories),
+                    "limit": limit,
+                    "offset": offset,
                 },
             )
             return memories
@@ -892,7 +903,7 @@ class MemoryManager:
 
             self.logger.debug(
                 f"Direct lookup removal candidates: {len(candidates)}",
-                extra={"workspace_id": self.workspace_id, "query": query[:50]},
+                extra={"workspace_id": self.workspace_id, "query_length": len(query)},
             )
             return candidates
 
@@ -912,14 +923,24 @@ class MemoryManager:
             try:
                 content = None
                 store = getattr(self._semantic_engine, "memory_store", None)
-                getter = getattr(store, "get", None) if store is not None else None
-                if callable(getter):
-                    record = getter(int(memory_id))
-                    content = getattr(record, "content", None) if record is not None else None
+                getter = type(store).__dict__.get("get") if store is not None else None
+                if callable(getter) and store is not None:
+                    record = getter(store, int(memory_id))
+                    content = (
+                        getattr(record, "content", None) if record is not None else None
+                    )
+                delete_intents: list[ReplacementTransition] = []
+                if isinstance(content, str) and content:
+                    delete_intents = self._record_delete_intents(
+                        [(int(memory_id), content)]
+                    )
                 self._semantic_engine.delete(memory_id=memory_id)
                 self._semantic_engine.commit()
                 if content is not None and self._tantivy_engine is not None:
                     _ = self._tantivy_engine.delete(self.workspace_id, content)
+                    self._tantivy_engine.commit()
+                if delete_intents:
+                    self._complete_delete_intents(delete_intents)
             except Exception as e:
                 raise StorageError(f"Failed to delete memory: {e}") from e
 
@@ -952,7 +973,7 @@ class MemoryManager:
                         "Memory not found for deletion",
                         extra={
                             "workspace_id": self.workspace_id,
-                            "memory_preview": memory[:50],
+                            "memory_length": len(memory),
                         },
                     )
                     return False
@@ -1089,7 +1110,11 @@ class MemoryManager:
         recorded = begin_delete(store, self.workspace_id, items)
         if not isinstance(recorded, list):
             return []
-        return [row for row in recorded if isinstance(row, ReplacementTransition)]
+        rows: list[ReplacementTransition] = []
+        for item in cast(list[object], recorded):
+            if isinstance(item, ReplacementTransition):
+                rows.append(item)
+        return rows
 
     def _complete_delete_intents(self, intents: list[ReplacementTransition]) -> None:
         """Mark delete intents complete when the recorded id is gone."""
@@ -1097,15 +1122,15 @@ class MemoryManager:
         complete = type(store).__dict__.get("complete_replacement_transition") if store else None
         if not callable(complete) or store is None:
             return
-        index = getattr(self._semantic_engine, "index", None)
+        contains = type(self._semantic_engine).__dict__.get("contains_id")
         for intent in intents:
+            if intent.kind != "delete":
+                continue
             if self.get_id_by_content(intent.old_content) == intent.old_memory_id:
                 continue
-            if index is not None:
-                try:
-                    if intent.old_memory_id in index:
-                        continue
-                except TypeError:
+            if callable(contains):
+                present = contains(self._semantic_engine, intent.old_memory_id)
+                if present is True:
                     continue
             _ = complete(store, intent.id)
 
@@ -1199,8 +1224,9 @@ class MemoryManager:
                     "MemoryManager closed - all data persisted",
                     extra={"workspace_id": self.workspace_id},
                 )
-            else:
-                self.logger.error(
-                    "MemoryManager closed - persist incomplete",
-                    extra={"workspace_id": self.workspace_id},
-                )
+                return
+            self.logger.error(
+                "MemoryManager closed - persist incomplete",
+                extra={"workspace_id": self.workspace_id},
+            )
+            raise StorageError("MemoryManager persist incomplete during close")
