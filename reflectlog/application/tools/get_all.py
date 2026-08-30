@@ -56,22 +56,23 @@ class GetAllTool(BaseTool):
             try:
                 self.log_invocation("get_all")
 
-                memories = await asyncify(self.memory.get_all)()
                 start = max(0, offset)
                 page_size = self.config.get_all_limit if limit is None else max(0, limit)
                 page_size = min(page_size, self.config.get_all_limit)
-                page = memories[start : start + page_size]
-                if start + len(page) < len(memories):
+                page = await asyncify(self.memory.get_all)(
+                    limit=page_size, offset=start
+                )
+                if len(page) == page_size:
                     self.logger.warning(
-                        "get_all truncated",
+                        "get_all may be truncated",
                         extra={
                             "tool": "get_all",
                             "returned": len(page),
-                            "total": len(memories),
                             "offset": start,
+                            "limit": page_size,
                         },
                     )
-                self.log_completion("get_all", count=len(page), total=len(memories))
+                self.log_completion("get_all", count=len(page))
                 return page
 
             except Exception as e:

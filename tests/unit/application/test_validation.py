@@ -1,7 +1,8 @@
 '''Tests for memory validation logic.'''
 
-import pytest
 from typing import Any
+
+import pytest
 
 from reflectlog.application.utils.validation import validate_memories
 
@@ -194,3 +195,29 @@ class TestValidateMemories:
         assert is_valid is False
         assert error_msg is not None
         assert "index 50" in error_msg
+
+
+@pytest.mark.unit
+class TestValidateAddBatch:
+    def test_rejects_too_many_items(self) -> None:
+        from reflectlog.application.utils.validation import validate_add_batch
+
+        ok, error = validate_add_batch(["x"] * 101, 100, 500_000)
+        assert ok is False
+        assert error is not None
+        assert "Too many memories" in error
+
+    def test_rejects_too_many_chars(self) -> None:
+        from reflectlog.application.utils.validation import validate_add_batch
+
+        ok, error = validate_add_batch(["a" * 500_001], 100, 500_000)
+        assert ok is False
+        assert error is not None
+        assert "too large" in error
+
+    def test_accepts_at_limits(self) -> None:
+        from reflectlog.application.utils.validation import validate_add_batch
+
+        ok, error = validate_add_batch(["a"] * 100, 100, 500_000)
+        assert ok is True
+        assert error is None

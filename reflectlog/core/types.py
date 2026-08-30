@@ -276,14 +276,21 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
-    def get_all(self, workspace_id: str) -> list[str]:
-        """Retrieve all stored memories for a workspace.
+    def get_all(
+        self,
+        workspace_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[str]:
+        """Retrieve stored memories for a workspace.
 
         Args:
             workspace_id: Workspace identifier for filtering.
+            limit: Maximum rows to return.
+            offset: Rows to skip.
 
         Returns:
-            List of all memories stored for the project.
+            List of memories stored for the project.
 
         Raises:
             RuntimeError: If retrieval operation fails.

@@ -253,8 +253,10 @@ class IMemoryManager(Protocol):
         """Synchronous add used by tests and recovery seeding."""
         ...
 
-    def get_all(self) -> list[str]:
-        """Retrieve all stored memories from the semantic backend."""
+    def get_all(
+        self, limit: int | None = None, offset: int = 0
+    ) -> list[str]:
+        """Retrieve stored memories from the semantic backend."""
         ...
 
     async def search(

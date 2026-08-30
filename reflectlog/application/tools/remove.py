@@ -6,7 +6,6 @@ from asyncer import asyncify
 
 from reflectlog.core.exceptions import StorageError
 
-from ..utils.validation import validate_memories
 from .base import BaseTool
 
 
@@ -73,11 +72,8 @@ class RemoveTool(BaseTool):
                 self.logger.info("Remove called with empty list, skipping")
                 return
 
-            is_valid, error_msg = validate_memories(
-                memories, self.config.min_memory_length, self.config.max_memory_length
-            )
-            if not is_valid:
-                raise ValueError(f"Invalid memory: {error_msg}")
+            if any(not isinstance(item, str) or not item for item in memories):
+                raise ValueError("Remove targets must be non-empty strings")
 
             self.log_invocation(
                 "remove",
