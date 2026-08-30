@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import os
 import random
 import time
-from typing import Any, Self, TypeGuard
+from typing import Any, Protocol, Self, TypeGuard, cast, runtime_checkable
 import warnings
 
 import anyio
@@ -14,6 +14,35 @@ from reflectlog.utility.http import HttpClientFactory
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
     return isinstance(config, dict)
+
+
+@runtime_checkable
+class _HasEmbedding(Protocol):
+    embedding: list[float]
+
+
+@runtime_checkable
+class _HasIndex(Protocol):
+    index: object
+
+
+def _ordered_embeddings(data: object) -> list[list[float]]:
+    """Return embedding vectors in input order, using ``index`` when present."""
+    if not isinstance(data, list):
+        return []
+    items = cast(list[object], data)
+    ordered: list[tuple[int, list[float]]] = []
+    for position, item in enumerate(items):
+        if not isinstance(item, _HasEmbedding):
+            raise RuntimeError("Embedding response item is missing embedding")
+        index = position
+        if isinstance(item, _HasIndex):
+            candidate = item.index
+            if isinstance(candidate, int):
+                index = candidate
+        ordered.append((index, list(item.embedding)))
+    ordered.sort(key=lambda row: row[0])
+    return [vector for _, vector in ordered]
 
 
 @dataclass
@@ -114,7 +143,7 @@ class LangchainQwenEmbeddings(BaseModel):
                 if self._client is None:
                     raise RuntimeError("Qwen embeddings client is not initialized.")
                 response = self._client.embeddings.create(**kwargs)
-                return [d.embedding for d in response.data]
+                return _ordered_embeddings(response.data)
             except Exception as exc:
                 last_exc = exc
                 if attempt < max_attempts:
@@ -199,7 +228,7 @@ class LangchainQwenEmbeddings(BaseModel):
             try:
                 client = self._get_async_client()
                 response = await client.embeddings.create(**kwargs)
-                return [d.embedding for d in response.data]
+                return _ordered_embeddings(response.data)
             except Exception as exc:  # pragma: no cover - network/env dependent
                 last_exc = exc
                 if attempt < max_attempts:

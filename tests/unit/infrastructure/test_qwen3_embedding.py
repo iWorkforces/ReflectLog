@@ -290,6 +290,25 @@ class TestSyncEmbedDocuments:
         assert result[1] == [0.2, 0.4, 0.6]
         assert result[2] == [0.3, 0.6, 0.9]
 
+    def test_embed_documents_orders_by_index(
+        self, mock_embeddings: LangchainQwenEmbeddings
+    ) -> None:
+        @dataclass(frozen=True)
+        class IndexedDatum:
+            embedding: list[float]
+            index: int
+
+        mock_response = MagicMock()
+        mock_response.data = [
+            IndexedDatum(embedding=[0.2, 0.4], index=1),
+            IndexedDatum(embedding=[0.1, 0.2], index=0),
+        ]
+        mock_embeddings._client = MagicMock()
+        mock_embeddings._client.embeddings.create.return_value = mock_response
+
+        result = mock_embeddings.embed_documents(["first", "second"])
+        assert result == [[0.1, 0.2], [0.2, 0.4]]
+
 
 class TestAsyncEmbedQuery:
     '''Test asynchronous aembed_query method.'''

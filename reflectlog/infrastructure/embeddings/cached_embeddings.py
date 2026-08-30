@@ -138,6 +138,8 @@ class CachedEmbeddings(BaseModel):
 
         # Cache miss - compute embedding
         embedding = self.embedder.embed_query(text)
+        if not embedding:
+            raise RuntimeError("Embedding produced an empty vector")
         self._set_cached(cache_key, embedding)
 
         if self.logger:

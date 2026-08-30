@@ -295,6 +295,14 @@ class TestEmbedDocuments:
         with pytest.raises(RuntimeError, match="Empty embedding returned"):
             cached.embed_documents(["doc1", "doc2"])
 
+    def test_empty_query_embedding_is_not_cached(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        mock_embedder.embed_query.return_value = []
+        with pytest.raises(RuntimeError, match="empty vector"):
+            cached.embed_query("broken query")
+        assert cached.get_cache_stats()["size"] == 0
+
 
 class TestAembedQuery:
     '''Test async aembed_query method with caching.'''
