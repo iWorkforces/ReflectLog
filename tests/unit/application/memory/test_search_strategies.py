@@ -53,6 +53,9 @@ def mock_semantic_engine() -> MagicMock:
     engine = MagicMock()
     engine.search = MagicMock(return_value=[])
     engine.ensure_initialized = MagicMock()
+    engine.is_ready = MagicMock(return_value=True)
+    engine.contains_id = MagicMock(return_value=False)
+    engine.count = MagicMock(return_value=0)
     return engine
 
 
@@ -62,6 +65,7 @@ def mock_tantivy_engine() -> MagicMock:
     engine = MagicMock()
     engine.search = MagicMock(return_value=[])
     engine.ensure_initialized = MagicMock()
+    engine.is_ready = MagicMock(return_value=True)
     return engine
 
 
@@ -289,6 +293,20 @@ class TestConcatenateResults:
         assert len(combined) == 2
         msgs = [m for m, _ in combined]
         assert msgs == ["shared", "unique"]
+
+    def test_user_limit_keeps_lexical_slot_when_overfetching(
+        self, pipeline: SearchPipeline
+    ) -> None:
+        """Reserve the lexical slot in the user-visible page, not only overfetch."""
+        semantic = [("s1", 0.9), ("s2", 0.8), ("s3", 0.7), ("s4", 0.6)]
+        tantivy = [("t1", 0.5)]
+
+        combined = pipeline._concatenate_results(
+            semantic, tantivy, limit=5, user_limit=2
+        )
+
+        assert [msg for msg, _ in combined[:2]] == ["s1", "t1"]
+        assert "t1" in {msg for msg, _ in combined}
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +567,15 @@ class TestEffectiveFusionThreshold:
         mock_config.fusion_ranking_threshold = 0.5
         mock_config.fusion_rrf_k = 60
         assert pipeline._effective_fusion_threshold([("a", 0.5), ("b", 0.3)]) == 0.5
+
+    def test_weighted_raw_rrf_ignores_leftover_gate(
+        self, mock_config: Config, pipeline: SearchPipeline
+    ) -> None:
+        mock_config.fusion_ranking_threshold = 0.8
+        mock_config.fusion_rrf_k = 60
+        mock_config.fusion_weights = [2.0, 1.0]
+        raw = [("a", 2.0 / 61), ("b", 1.0 / 61)]
+        assert pipeline._effective_fusion_threshold(raw, n_backends=2) == 0.0
 
 
 # ---------------------------------------------------------------------------

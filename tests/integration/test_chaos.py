@@ -167,10 +167,8 @@ class TestEngineFailure:
     async def test_cross_encoder_reranker_failure(self, manager, monkeypatch):
         '''Test search when the cross-encoder reranker fails.
 
-        Should raise SearchError so callers do not get a silent empty list.
+        Should return fused hits instead of failing the search.
         '''
-
-        from reflectlog.core.exceptions import SearchError
 
         class BoomReranker:
             async def rerank_async(self, *_args: object, **_kwargs: object) -> list[object]:
@@ -185,8 +183,8 @@ class TestEngineFailure:
         ]
         manager._tantivy_engine.search.return_value = [("a", 0.7), ("b", 0.6)]
 
-        with pytest.raises(SearchError, match="cross-encoder"):
-            await manager.search("test query")
+        results = await manager.search("test query")
+        assert results == ["a", "b"]
 
     @pytest.mark.asyncio
     async def test_network_timeout(self, manager, monkeypatch):

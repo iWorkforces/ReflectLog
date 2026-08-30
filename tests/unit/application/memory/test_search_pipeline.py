@@ -97,6 +97,10 @@ def _make_pipeline(
         manager.cross_encoder_reranker = None
     else:
         manager = memory_manager
+    if isinstance(semantic, MagicMock):
+        semantic.is_ready.return_value = False
+    if isinstance(tantivy, MagicMock):
+        tantivy.is_ready.return_value = False
     return SearchPipeline(
         semantic_engine=semantic,
         tantivy_engine=tantivy,
@@ -139,6 +143,9 @@ class ControllableBackend:
         self.block_on_init = block_on_init
         self.finished = finished
         self.search_calls: list[tuple[str, str, int]] = []
+
+    def is_ready(self) -> bool:
+        return False
 
     def ensure_initialized(self) -> None:
         if self.init_thread_ids is not None:
@@ -208,7 +215,7 @@ class TestCanonicalPipelineIdentity:
         from reflectlog.utility import utility as utility_mod
 
         with pytest.raises(AttributeError):
-            _ = getattr(reflectlog, "main")
+            _ = reflectlog.main
         assert not hasattr(tools_pkg, "SearchTool")
         for name in (
             "AssistantMessage",
@@ -1134,6 +1141,9 @@ class TestSearchResponsiveness:
             def __init__(self) -> None:
                 self.search = MagicMock(return_value=[("mem", 0.9, _TS)])
                 self.ensure_initialized = MagicMock()
+
+            def is_ready(self) -> bool:
+                return False
 
             @property
             def _index(self) -> range:
