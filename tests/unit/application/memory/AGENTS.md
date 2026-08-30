@@ -1,74 +1,59 @@
 # Memory Pipeline Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30
+**Commit:** 062b44f
+**Branch:** develop
 
 ## OVERVIEW
 
-Unit tests for 3-phase add pipeline and 4-step search pipeline. Tests manager, strategies, and pipeline orchestration.
+Unit tests for 3-phase add, 4-step search, factory, and journal replay. Engines mocked. This directory’s `conftest.py` sets `NUMBA_DISABLE_JIT=1` and reloads numba.
 
 ## STRUCTURE
 
 ```
 tests/unit/application/memory/
-├── test_add_phases.py               # Phase 1/2/3 implementations
-├── test_search_strategies.py        # 4-step search
-├── test_replacement_recovery.py     # Pending transition reconcile
-├── test_search_pipeline.py          # Search orchestration (37KB)
-├── test_manager.py                  # MemoryManager unit tests (35KB)
-├── test_engine_factory.py           # Engine creation (26KB)
-└── conftest.py                      # NUMBA_DISABLE_JIT=1
+├── conftest.py                  # NUMBA_DISABLE_JIT=1; purge + reload numba
+├── test_manager.py              # MemoryManager internals (locks, delete)
+├── test_add_phases.py           # Dedup / smart replace / persist
+├── test_search_strategies.py    # Fusion, threshold, CE skip
+├── test_search_pipeline.py      # SearchPipeline + overfetch
+├── test_engine_factory.py       # from_config() engine wiring
+├── test_replacement_recovery.py # Journal replay converge
+└── reranking/test_normalization.py
 ```
+
+Sibling (not here): `../test_memory_manager.py` — dual facade file; both collect.
 
 ## WHERE TO LOOK
 
 | Test | Purpose |
 |------|---------|
-| test_add_phases.py | DuplicateDetection, SmartReplacement, Storage phases |
-| test_search_strategies.py | RRF fusion, threshold filtering, reranking |
-| test_manager.py | Facade coordination, lock hierarchy |
-| test_engine_factory.py | USearch/Tantivy lazy initialization |
+| `test_manager.py` | `_write_lock` then `_lock`; `delete_memories` → `list[str]`; Tantivy fail → `InconsistentStateError` |
+| `test_add_phases.py` | Embed outside write lock; persist NEW then OLD |
+| `test_search_pipeline.py` | Canonical `SearchPipeline` / `SearchContext` |
+| `test_replacement_recovery.py` | Restart journal kinds `add\|delete\|replace` |
 
-## KEY PATTERNS
+## CONVENTIONS
 
-### NUMBA Disable for Coverage
+Patch constructors on the manager module:
+
 ```python
-# conftest.py
-os.environ["NUMBA_DISABLE_JIT"] = "1"
-# Required for ranx + coverage compatibility
+MODULE = "reflectlog.application.memory.manager"
+patch(f"{MODULE}.USearchEngine")
+patch(f"{MODULE}.TantivyEngine")
 ```
 
-### Phase Testing
-```python
-async def test_duplicate_detection_phase():
-    phase = DuplicateDetectionPhase(store, engine)
-    result = await phase.run(messages)
-    assert result.duplicates == expected_duplicates
-    assert result.new_messages == expected_new
-```
+Stub `is_ready.return_value = False` and `add_batch.side_effect`. Do not treat MagicMock auto-attrs as real APIs.
 
-### Pipeline Verification
-```python
-async def test_search_pipeline_returns_fused_memories():
-    pipeline = SearchPipeline(
-        semantic_engine=semantic,
-        tantivy_engine=tantivy,
-        fusion_engine=fusion,
-        config=config,
-        logger=logger,
-        memory_manager=manager,
-    )
-    result = await pipeline.execute(SearchContext(...))
-    assert result.memories == expected
-```
+`conftest.py` must run before ranx/numba import. Collection-order flake if a JIT module is imported first (e.g. another test file imported scoring before this conftest). The other JIT disable is `../utils/conftest.py` only.
 
 ## ANTI-PATTERNS
 
-- Never enable NUMBA JIT in these tests (breaks coverage)
-- Never bypass phase isolation - test phases independently
-- Never mock internal phase dependencies incorrectly
+- Never enable JIT in this tree (breaks coverage).
+- Never wrap `InconsistentStateError` as `StorageError`.
+- Never use `type(obj).__dict__.get(...)` (banned).
+- Never construct real USearch/Tantivy here.
 
 ## NOTES
 
-- **NUMBA disabled**: Required for coverage reporting
-- **Phase isolation**: Each phase testable independently
-- **Pipeline order matters**: Stages execute sequentially
+`delete_memories` returns deleted contents (`list[str]`), not a count. CE is skipped when ≤1 hit.

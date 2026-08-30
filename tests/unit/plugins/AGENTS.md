@@ -1,55 +1,35 @@
 # Plugin Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Unit tests for three-tier plugin system: discovery, registration, lifecycle. All external imports mocked.
+Unit tests for discovery, registry, and loader lifecycle. Production plugins are **not** wired at startup; tests still cover the package. External imports mocked.
 
 ## STRUCTURE
-
 ```
 tests/unit/plugins/
-└── test_plugins.py         # 1500+ lines, comprehensive plugin tests
+├── test_discovery.py   # Entry points, directory scan, static, composite
+├── test_loading.py     # PluginLoader state machine
+└── test_plugins.py     # Registry, metadata, package surface
 ```
 
 ## WHERE TO LOOK
+| File | Purpose |
+|------|---------|
+| `test_discovery.py` | `EntryPointDiscovery`, `DirectoryScanDiscovery`, `StaticRegistration`, `load_plugin` |
+| `test_loading.py` | load → initialize → activate → deactivate → unload |
+| `test_plugins.py` | `PluginRegistry`, `PluginState`, `ToolRegistry` |
 
-| Test Section | Purpose |
-|--------------|---------|
-| EntryPointDiscovery | Python entry point discovery |
-| DirectoryScanDiscovery | Module pattern scanning |
-| StaticRegistration | Explicit registration |
-| PluginRegistry | State management, metadata |
-| PluginLoader | Lifecycle orchestration |
-
-## KEY PATTERNS
-
-### Entry Point Mock
-```python
-@patch('importlib.metadata.entry_points')
-def test_entry_point_discovery(mock_entry_points):
-    mock_entry_points.return_value = [MockEP(name="test_plugin", value="mod:Cls")]
-    discovered = EntryPointDiscovery().discover()
-    assert len(discovered) == 1
-```
-
-### Lifecycle State Machine
-```python
-async def test_lifecycle_transitions():
-    loader = PluginLoader(registry, discoverer)
-    await loader.load_all()
-    await loader.initialize_all()
-    await loader.activate_all()
-    assert registry.get_state("plugin") == PluginState.ACTIVATED
-```
+## CONVENTIONS
+- Patch `importlib.metadata.entry_points`; never import real plugin packages.
+- Lifecycle tests must clean up to `UNLOADED` / registry empty.
+- `MagicMock(spec=...)` only. Put missing methods on a protocol, not on the mock.
 
 ## ANTI-PATTERNS
-
-- Never import real plugins in unit tests
-- Never skip cleanup in lifecycle tests
+- Never import real plugins in unit tests.
+- Never skip lifecycle cleanup.
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
+- No `type: ignore`.
 
 ## NOTES
-
-- **Comprehensive coverage**: All 3 discovery mechanisms tested
-- **Async lifecycle**: Tests use anyio for async operations
+Plugins exist under `reflectlog/plugins/` but are not started by `server.py`. Keep tests aligned with that unused-at-runtime package.

@@ -1,73 +1,55 @@
 # Type Stubs Directory
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Custom type stubs for third-party libraries lacking type hints. Configured in pyproject.toml via `ty.extra-paths` and `pyright.stubPath`.
+Minimal third-party stubs for `ty.extra-paths` and `pyright.stubPath`. Dual typecheck (`ty` + pyright) must pass. No `type: ignore`.
 
 ## STRUCTURE
-
 ```
 stubs/
-├── fastmcp/                     # FastMCP server framework
+├── fastmcp/
 │   ├── __init__.pyi
+│   ├── exceptions.pyi
 │   ├── client/
+│   ├── server/
+│   │   ├── dependencies.pyi
+│   │   └── middleware.pyi
 │   └── utilities/
-├── tantivy/                     # Full-text search engine
-│   └── __init__.pyi
-├── usearch/                     # Vector search engine
-│   ├── __init__.pyi
-│   └── index.pyi
-├── ranx/                        # Ranking fusion library
-│   └── __init__.pyi
-├── numba/                       # JIT compiler
-│   └── core/
-├── sentence_transformers/       # Embedding models
-│   └── __init__.pyi
-├── hypothesis/                  # Property-based testing
-├── flagembedding/               # FlagReranker
-└── claude_agent_sdk/            # Claude agent SDK
+├── tantivy/                     # __init__.pyi
+├── usearch/                     # __init__.pyi + index.pyi
+├── ranx/                        # __init__.pyi
+├── numba/                       # core/errors.pyi
+├── sentence_transformers/
+├── hypothesis/
+├── flagembedding/
+└── claude_agent_sdk/
 ```
 
 ## WHERE TO LOOK
+| Stub | Purpose |
+|------|---------|
+| `fastmcp/exceptions.pyi` | FastMCP exception types |
+| `fastmcp/server/dependencies.pyi` | Server dependency injection |
+| `fastmcp/server/middleware.pyi` | Server middleware types |
+| `tantivy/` | FTS engine |
+| `usearch/` | HNSW index |
+| `ranx/` | Fusion (RRF and others) |
 
-| Stub | Library | Purpose |
-|------|---------|---------|
-| fastmcp/ | fastmcp | MCP server framework |
-| tantivy/ | tantivy-py | Full-text search |
-| usearch/ | usearch | Vector similarity |
-| ranx/ | ranx | RRF/CombSUM fusion |
-| numba/ | numba | JIT compilation |
+## CONVENTIONS
+- Only stub symbols the tree actually imports.
+- Native 3.14 unions; no `Any` unless the library is untyped at that call site.
+- `pyproject.toml`: `[tool.ty] extra-paths = ["stubs"]`, `[tool.pyright] stubPath = "stubs"`.
 
-## KEY PATTERNS
-
-### Adding New Stubs
 ```python
 # stubs/newlib/__init__.pyi
 def important_function(arg: str) -> int: ...
-class ImportantClass:
-    def method(self) -> None: ...
-```
-
-### Configuration
-```toml
-# pyproject.toml
-[tool.ty]
-extra-paths = ["stubs"]
-
-[tool.pyright]
-stubPath = "stubs"
 ```
 
 ## ANTI-PATTERNS
-
-- Never add stubs for typed libraries
-- Never use `Any` in stubs - be precise
-- Never forget to update when upgrading libs
+- Never stub already-typed libraries.
+- Never use `getattr` / `optional_attr()` / `type(obj).__dict__` in stubs.
+- Never leave stubs stale after a dependency bump.
 
 ## NOTES
-
-- **Minimal stubs**: Only what's actually used
-- **Version-locked**: Stubs match installed versions
-- **Contrib welcome**: Submit upstream when complete
+FastMCP now includes `exceptions.pyi` and `server/{dependencies,middleware}.pyi`. Keep them in sync with the installed fastmcp version.

@@ -1,56 +1,39 @@
 # Load Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Locust-based load tests for MCP server performance testing. Measures throughput and latency under load.
+Optional Locust scenarios against a running MCP server. **Locust is not a project dependency.** `tests/load/` is **not** in pytest `testpaths`.
 
 ## STRUCTURE
-
 ```
 tests/load/
-└── locustfile.py           # Locust user scenarios, add/search/remove operations
+└── locustfile.py    # ReflectLogUser — add / search / get_all / health
 ```
 
 ## WHERE TO LOOK
-
 | Task | Location |
 |------|----------|
-| Add load | `locustfile.py:AddUser` class |
-| Search load | `locustfile.py:SearchUser` class |
-| Mixed workload | `locustfile.py:MixedUser` class |
+| Add | `ReflectLogUser.add_memory` → `POST /mcp/add` |
+| Search | `ReflectLogUser.search_memory` → `POST /mcp/search` |
+| Get all | `ReflectLogUser.get_all_memories` → `GET /mcp/get_all` |
+| Health | `ReflectLogUser.health_check` → `GET /mcp/health_check` |
 
-## KEY PATTERNS
+## CONVENTIONS
+Locust is imported only when not type-checking (`TYPE_CHECKING` stubs `HttpUser`). Install locust yourself:
 
-### Locust Task Definition
-```python
-class AddUser(HttpUser):
-    wait_time = between(1, 3)
-    
-    @task
-    def add_memories(self):
-        self.client.post("/add", json={
-            "messages": [f"load test message {random.randint(1, 1000)}"]
-        })
-```
-
-### Running Load Tests
 ```bash
-# With Locust
+# not `uv run` — locust is not in the lockfile
 locust -f tests/load/locustfile.py --host http://localhost:9103
-
-# Headless
 locust -f tests/load/locustfile.py --headless -u 100 -r 10 -t 60s
 ```
 
 ## ANTI-PATTERNS
-
-- Never run against production
-- Never skip wait_time (will DDOS server)
+- Never add locust to `pyproject.toml` just to run this file.
+- Never put `tests/load/` on pytest paths.
+- Never run against production.
+- Never drop `wait_time` (will stampede the server).
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
 
 ## NOTES
-
-- **Requires running server**: Start with `./start-reflectlog-mcp-server.sh`
-- **Metrics**: Use Locust web UI at http://localhost:8089
-- **Not CI**: Manual performance testing only
+Start the server separately (`uv run reflectlog --transport http --port 9103`). No CI. Pre-push does not run load tests.

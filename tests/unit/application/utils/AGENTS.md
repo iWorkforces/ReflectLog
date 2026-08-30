@@ -1,67 +1,38 @@
-# Utility Unit Tests
+# Application Utils Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Unit tests for cross-cutting utilities: logging, metrics, circuit breaker, HTTP client, security validation.
+Unit tests for logging, security helpers, config reload, and Numba scoring wrappers. HTTP / circuit-breaker / metrics test modules are gone from this folder.
 
 ## STRUCTURE
-
 ```
 tests/unit/application/utils/
-├── test_circuit_breaker.py          # Circuit state transitions (31KB)
-├── test_http_client.py              # HttpClientFactory (25KB)
-├── test_metrics.py                  # Prometheus metrics (23KB)
-├── test_numba_utils.py              # JIT functions (17KB)
-├── test_config_reload.py            # Hot reload (14KB)
-├── test_logging.py                  # Structured logging (11KB)
-├── test_security.py                 # SQL injection, path traversal (11KB)
-└── conftest.py                      # Shared fixtures
+├── conftest.py                 # NUMBA_DISABLE_JIT=1 + reload
+├── test_logging.py             # StructuredLogger, redaction
+├── test_security.py            # SecretString, validate_workspace_id
+├── test_config_reload.py       # ConfigReloadManager / SIGHUP
+└── test_numba_utils.py         # reflectlog.utility.scoring JIT helpers
 ```
 
 ## WHERE TO LOOK
-
 | Test | Purpose |
 |------|---------|
-| test_circuit_breaker.py | Open/half-open/closed transitions |
-| test_http_client.py | Connection pooling, retry |
-| test_security.py | `validate_workspace_id()`, SQL patterns |
+| `test_security.py` | `SecretString` str=`***REDACTED***`; workspace_id pattern |
+| `test_logging.py` | Structured fields; no memory text |
+| `test_numba_utils.py` | RRF / min-max / filter; imports `utility.scoring` |
+| `test_config_reload.py` | Reload manager + signal handler |
 
-## KEY PATTERNS
-
-### Circuit Breaker State Machine
-```python
-async def test_circuit_opens_after_failures():
-    cb = CircuitBreaker(failure_threshold=3)
-    for _ in range(3):
-        await cb.record_failure()
-    assert cb.state == CircuitState.OPEN
-```
-
-### Security Validation
-```python
-def test_sql_injection_blocked():
-    malicious = "'; DROP TABLE memories; --"
-    with pytest.raises(ValidationError):
-        validate_messages([malicious])
-```
-
-### Metrics Registration
-```python
-def test_metrics_registered():
-    metrics = MemoryMetrics()
-    assert 'memory_add_total' in metrics._registry
-```
+## CONVENTIONS
+- `conftest.py` purges `numba` and reloads with `NUMBA_DISABLE_JIT=1` so coverage can see bodies.
+- Never log secrets or memory text.
+- Recency is not applied before CE normalize/threshold.
 
 ## ANTI-PATTERNS
-
-- Never skip SQL injection tests
-- Never test circuit breaker without time progression
-- Never mock numba functions (test actual JIT)
+- Never skip SQL / path-traversal cases in `validate_workspace_id`.
+- Never mock Numba away when testing scoring math.
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
+- No `type: ignore`.
 
 ## NOTES
-
-- **Numba tests**: Some test actual JIT compilation
-- **Security focus**: SQL injection, path traversal coverage
-- **Async utilities**: All tests are async
+Production HTTP is `reflectlog.utility.http`. Do not resurrect `test_http_client.py` here.

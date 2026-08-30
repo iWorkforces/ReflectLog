@@ -1,37 +1,40 @@
 # MCP Tool Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Unit tests for MCP tool implementations: add, search, remove, and base tool patterns. All memory operations mocked.
+Unit tests for MCP tools. Tools go through `MemoryManager` only — engines stay mocked.
 
 ## STRUCTURE
-
 ```
 tests/unit/application/tools/
-├── conftest.py             # Shared tool test fixtures
-├── test_add.py             # Add tool tests
-├── test_base.py            # Base tool patterns
-├── test_remove.py          # Remove tool tests
-└── test_search.py          # Search tool tests
+├── conftest.py              # mock_config, mock_memory_manager, tool fixtures
+├── test_add.py
+├── test_search.py
+├── test_remove.py
+├── test_health_check.py
+└── test_base.py
 ```
 
 ## WHERE TO LOOK
-
 | Test | Purpose |
 |------|---------|
-| test_add.py | Memory add tool validation, batching |
-| test_search.py | Search tool query handling, result formatting |
-| test_remove.py | Memory removal, exact match verification |
-| test_base.py | Shared tool behavior, error handling |
+| `test_add.py` | `add_memories_async` counts / dry_run |
+| `test_search.py` | Query handling, `SearchError` |
+| `test_remove.py` | `delete_memories` → `list[str]`; not-found = set difference |
+| `test_health_check.py` | `search_engine_status` / `EngineReadiness` |
+| `test_base.py` | `BaseTool` name / handler / validation |
+
+## CONVENTIONS
+- `MagicMock(spec=MemoryManager)` in conftest. Put methods on the protocol.
+- No real engines. No real `MemoryManager` construction.
+- Tools must not import infrastructure engines.
 
 ## ANTI-PATTERNS
-
-- Never call real MemoryManager in tool tests
-- Never skip input validation tests
+- Never call a real `MemoryManager` or engine.
+- Never skip input validation tests.
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
+- No `type: ignore`.
 
 ## NOTES
-
-- **All mocked**: No real infrastructure calls
-- **Fast**: Each test <100ms
+Production also has `get_all.py`; this folder does not yet have `test_get_all.py`. Registration is `application/mcp_server.py`.

@@ -1,39 +1,43 @@
 # Infrastructure Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Unit tests for infrastructure layer: USearch, Tantivy, memory store, rerankers, embeddings. Uses file fixtures and mocks external APIs.
+Unit tests for USearch, Tantivy, SQLite store, embeddings, CE reranker, and LLM provider base. File fixtures via `tmp_path`. No live LLM HTTP.
 
 ## STRUCTURE
-
 ```
 tests/unit/infrastructure/
-├── test_tantivy_engine.py           # Full-text search (95KB)
-├── test_memory_store.py             # SQLite CRUD (61KB)
-├── test_usearch_engine.py           # Vector search (47KB)
-├── test_cross_encoder_reranker.py   # Cross-encoder (38KB)
-├── test_smart_replacer.py           # Replacement detection (36KB)
-├── test_qwen3_embedding.py          # Qwen embeddings (26KB)
-└── test_cached_embeddings.py        # Embedding cache (18KB)
+├── test_tantivy_engine.py
+├── test_memory_store.py
+├── test_usearch_engine.py
+├── test_cross_encoder_reranker.py
+├── test_smart_replacer.py
+├── test_qwen3_embedding.py
+├── test_cached_embeddings.py
+├── test_replacement_transitions.py
+├── test_reranker_post_processor.py
+├── test_llm_provider_base.py
+└── test_import_patterns.py
 ```
 
 ## WHERE TO LOOK
-
 | Test | Purpose |
 |------|---------|
-| test_tantivy_engine.py | Soft-delete, tombstone cache, compaction |
-| test_memory_store.py | Batch CRUD, archive/restore |
-| test_usearch_engine.py | Exact vs HNSW, batch rollback, fail-closed embeds |
-| test_cached_embeddings.py | LRU + short-batch raise |
-| test_cross_encoder_reranker.py | Batch norm, recency |
+| `test_tantivy_engine.py` | FTS, tombstones, no compact-on-delete |
+| `test_memory_store.py` | Identity + journal `add\|delete\|replace` |
+| `test_usearch_engine.py` | HNSW + SQLite SoT; fail-closed empty SQLite |
+| `test_cached_embeddings.py` | LRU; short-batch raise (no pad with `[]`) |
+| `test_cross_encoder_reranker.py` | Skip CE if ≤1 hit; recency after normalize |
+| `test_replacement_transitions.py` | Durable journal transitions |
+| `test_import_patterns.py` | No `infrastructure` → `application` imports |
 
 ## ANTI-PATTERNS
-
-- Never use real LLM API calls in unit tests
-- Never skip tombstone cleanup verification
-- Never share tmp_path between tests
+- Never call a real LLM API.
+- Never share `tmp_path` across tests.
+- Never compact-on-delete. Never HNSW-load when SQLite is missing/empty.
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
+- No `type: ignore`. No MagicMock auto-attrs as engine APIs.
 
 ## NOTES
-- Large test files (test_tantivy_engine.py is 95KB), file-based fixtures via tmp_path
+`get_all()` / `count()` SoT is USearch/SQLite. Journal later-write-wins.

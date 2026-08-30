@@ -1,49 +1,38 @@
 # Utility Unit Tests
 
-**Generated:** 2026-08-29  **Commit:** 7df1375  **Branch:** develop
+**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
 
 ## OVERVIEW
-
-Unit tests for platform-specific credential retrieval utilities. Mocked subprocess calls.
+Unit tests for platform credential retrieval, HTTP pool, retry, and workspace-id equivalence. Subprocess and network mocked.
 
 ## STRUCTURE
-
 ```
 tests/unit/utility/
-└── test_utility.py         # Credential parsing, platform factory
+├── test_utility.py    # get_claude_code_api_key / platform factory
+├── test_http.py       # HttpClientFactory singletons
+├── test_retry.py      # async_retry_with_backoff
+└── test_security.py   # validate_workspace_id vs application.utils.security
 ```
 
 ## WHERE TO LOOK
-
 | Test | Purpose |
 |------|---------|
-| test_utility.py | `get_platform_retriever()`, credential format parsing |
+| `test_utility.py` | Retriever factory; parse OAuth / legacy / raw |
+| `test_http.py` | Pooled httpx / aiohttp; reset singletons |
+| `test_retry.py` | Transient exceptions + backoff |
+| `test_security.py` | Dual `validate_workspace_id` characterization |
 
-## KEY PATTERNS
-
-### Platform Factory Mock
-```python
-@patch('platform.system')
-def test_darwin_factory(mock_system):
-    mock_system.return_value = "Darwin"
-    retriever = get_platform_retriever()
-    assert isinstance(retriever, DarwinCredentialRetriever)
-```
-
-### Credential Format Parsing
-```python
-def test_parse_oauth_json():
-    raw = '{"claudeAiOauth": {"accessToken": "sk-ant-test"}}'
-    result = retriever.parse_credential(raw)
-    assert result == "sk-ant-test"
-```
+## CONVENTIONS
+- Mock `platform.system` and `subprocess.run`. Never invoke `security` / `secret-tool` / PowerShell.
+- Darwin/Linux timeout **10s**; Windows **30s**.
+- Linux config-file path parses inline (does not call `parse_credential()`).
+- Retrievers return `None` on error. Never raise or log tokens.
 
 ## ANTI-PATTERNS
-
-- Never call real `security` or `secret-tool` commands
-- Never log credential values in tests
+- Never log credential values in assertions or fixtures.
+- Never treat Windows timeout as 10s.
+- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
+- No `type: ignore`.
 
 ## NOTES
-
-- **Subprocess mocked**: All platform commands return test data
-- **Graceful degradation**: Tests verify `None` returned on errors
+HTTP factory is `reflectlog.utility.http` (no leftover `http_client.py`). Scoring lives in `utility/scoring.py` and is covered under application/utils numba tests.
