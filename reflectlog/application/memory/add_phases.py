@@ -10,10 +10,10 @@ Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
 """
 
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-import threading
 import time
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from reflectlog.infrastructure.smart_replacer import SmartReplacer
@@ -24,6 +24,7 @@ from asyncer import asyncify, create_task_group
 
 from reflectlog.core.exceptions import InconsistentStateError, StorageError
 
+from ...core.access import optional_attr
 from ...core.logging import IStructuredLogger
 from ...core.types import (
     Embeddings,
@@ -200,35 +201,12 @@ class DuplicateDetectionPhase:
 
         # Step 2: Batch duplicate detection against existing storage
         duplicate_flags: dict[str, bool] = {}
-        store = getattr(self._semantic_engine, "memory_store", None)
-        exists_many = type(store).__dict__.get("exists_many") if store is not None else None
-        if callable(exists_many) and store is not None:
-            present = await asyncify(exists_many)(
-                store, self._workspace_id, unique_memories
-            )
-            present_set = _string_set(present)
-            for memory in unique_memories:
-                duplicate_flags[memory] = memory in present_set
-        else:
-            semaphore = anyio.Semaphore(self.config.add_max_concurrency)
-
-            async def check_duplicate(memory: str) -> tuple[str, bool]:
-                async with semaphore:
-                    is_dup = await asyncify(self._has_exact_match)(memory)
-                    return (memory, is_dup)
-
-            results: list[tuple[str, bool]] = []
-            async with create_task_group() as tg:
-
-                async def collect_result(memory: str) -> None:
-                    res = await check_duplicate(memory)
-                    results.append(res)
-
-                for memory in unique_memories:
-                    _ = tg.soonify(collect_result)(memory)
-
-            for memory, is_dup in results:
-                duplicate_flags[memory] = is_dup
+        store = self._semantic_engine.memory_store
+        present = await asyncify(store.exists_many)(
+            self._workspace_id, unique_memories
+        )
+        for memory in unique_memories:
+            duplicate_flags[memory] = memory in present
 
         # Separate duplicates from non-duplicates
         storage_duplicates: list[str] = []
@@ -622,8 +600,8 @@ class StoragePhase:
         tantivy_engine: TantivyEngine | None,
         config: Config,
         logger: IStructuredLogger | None,
-        write_lock: threading.Lock | None = None,
-        lock: threading.RLock | None = None,
+        write_lock: AbstractContextManager[object] | None = None,
+        lock: AbstractContextManager[object] | None = None,
     ):
         """Initialize storage phase.
 
@@ -730,11 +708,8 @@ class StoragePhase:
         """Compute document embeddings before taking the write lock."""
         if not memories:
             return None
-        embedder = getattr(self._semantic_engine, "embedder", None)
-        if (
-            "embed_documents" not in type(embedder).__dict__
-            or not isinstance(embedder, Embeddings)
-        ):
+        embedder = optional_attr(self._semantic_engine, "embedder")
+        if not isinstance(embedder, Embeddings):
             return None
         computed = embedder.embed_documents(memories)
         if len(computed) != len(memories):
@@ -838,13 +813,9 @@ class StoragePhase:
     ) -> list[tuple[ReplacementInfo, str, int]]:
         """Omit successors that would collide with an exclusive leftover row."""
         store = self._semantic_engine.memory_store
-        getter = getattr(store, "get_transition_for_old_memory", None)
-        if not callable(getter):
-            return planned
-
         kept: list[tuple[ReplacementInfo, str, int]] = []
         for info, memory, old_id in planned:
-            existing = getter(self._workspace_id, old_id)
+            existing = store.get_transition_for_old_memory(self._workspace_id, old_id)
             if (
                 isinstance(existing, ReplacementTransition)
                 and existing.new_content != memory
@@ -881,19 +852,7 @@ class StoragePhase:
         ]
         store = self._semantic_engine.memory_store
         try:
-            if "begin_replacement_transitions" in type(store).__dict__:
-                return store.begin_replacement_transitions(requests)
-            return [
-                store.begin_replacement_transition(
-                    old_memory_id=request.old_memory_id,
-                    workspace_id=request.workspace_id,
-                    old_content=request.old_content,
-                    new_content=request.new_content,
-                    reason=request.reason,
-                    confidence=request.confidence,
-                )
-                for request in requests
-            ]
+            return store.begin_replacement_transitions(requests)
         except Exception as e:
             raise StorageError(
                 f"Failed to record replacement transition: {e}"
@@ -921,36 +880,16 @@ class StoragePhase:
                 ) from delete_error
         if contents and self._tantivy_engine is not None:
             try:
-                delete_batch = type(self._tantivy_engine).__dict__.get(
-                    "delete_batch"
+                deleted_count = self._tantivy_engine.delete_batch(
+                    self._workspace_id,
+                    contents,
+                    verify_exists=True,
                 )
-                if callable(delete_batch):
-                    deleted_count = delete_batch(
-                        self._tantivy_engine,
-                        self._workspace_id,
-                        contents,
-                        verify_exists=True,
+                if deleted_count < len(contents):
+                    raise InconsistentStateError(
+                        "USearch replacement delete succeeded but Tantivy "
+                        f"deleted {deleted_count}/{len(contents)}"
                     )
-                    if not isinstance(deleted_count, int):
-                        raise InconsistentStateError(
-                            "USearch replacement delete succeeded but Tantivy "
-                            f"delete_batch returned {type(deleted_count).__name__}"
-                        )
-                    if deleted_count < len(contents):
-                        raise InconsistentStateError(
-                            "USearch replacement delete succeeded but Tantivy "
-                            f"deleted {deleted_count}/{len(contents)}"
-                        )
-                else:
-                    for content in contents:
-                        deleted = self._tantivy_engine.delete(
-                            self._workspace_id, content, verify_exists=True
-                        )
-                        if not deleted:
-                            raise InconsistentStateError(
-                                "USearch replacement delete succeeded but "
-                                f"Tantivy did not delete {content!r}"
-                            )
             except InconsistentStateError:
                 raise
             except Exception as tantivy_error:
@@ -1028,12 +967,7 @@ class StoragePhase:
                 vectors=vectors,
             )
         if self._tantivy_engine is not None:
-            add_batch = type(self._tantivy_engine).__dict__.get("add_batch")
-            if callable(add_batch):
-                _ = add_batch(self._tantivy_engine, self._workspace_id, inserted_memories)
-            else:
-                for memory in inserted_memories:
-                    self._tantivy_engine.add(self._workspace_id, memory)
+            self._tantivy_engine.add_batch(self._workspace_id, inserted_memories)
         self.logger.debug(
             "Batch added memories to hybrid storage",
             extra={
@@ -1125,19 +1059,13 @@ class StoragePhase:
         """Persist add intents before mutating either index."""
         if not memories:
             return []
-        store = self._semantic_engine.memory_store
-        begin_add = type(store).__dict__.get("begin_add_intents")
-        if not callable(begin_add):
-            return []
-        recorded = begin_add(store, self._workspace_id, memories)
-        return _transition_rows(recorded)
+        return self._semantic_engine.memory_store.begin_add_intents(
+            self._workspace_id, memories
+        )
 
     def _complete_add_intents(self, intents: list[ReplacementTransition]) -> None:
         """Mark add intents complete when both backends have the content."""
         store = self._semantic_engine.memory_store
-        complete = type(store).__dict__.get("complete_replacement_transition")
-        if not callable(complete):
-            return
         for intent in intents:
             new_id = self._semantic_engine.get_id_by_content(
                 self._workspace_id, intent.new_content
@@ -1145,12 +1073,12 @@ class StoragePhase:
             if new_id is None:
                 continue
             if self._tantivy_engine is not None:
-                finder = getattr(self._tantivy_engine, "find_by_exact_match", None)
-                if callable(finder):
-                    matches = finder(self._workspace_id, intent.new_content)
-                    if not isinstance(matches, list) or intent.new_content not in matches:
-                        continue
-            _ = complete(store, intent.id)
+                matches = self._tantivy_engine.find_by_exact_match(
+                    self._workspace_id, intent.new_content
+                )
+                if intent.new_content not in matches:
+                    continue
+            store.complete_replacement_transition(intent.id)
 
     def _record_replacement_transition(
         self, replacement_info: ReplacementInfo, new_memory: str
@@ -1333,25 +1261,3 @@ class AddPipeline:
         )
 
         return result
-
-
-def _string_set(raw: object) -> set[str]:
-    """Copy string elements from a set/list without Unknown bindings."""
-    if not isinstance(raw, (set, list, tuple)):
-        return set()
-    values: set[str] = set()
-    for item in cast(list[object] | set[object] | tuple[object, ...], raw):
-        if isinstance(item, str):
-            values.add(item)
-    return values
-
-
-def _transition_rows(raw: object) -> list[ReplacementTransition]:
-    """Keep only ReplacementTransition rows from a dynamic store result."""
-    if not isinstance(raw, list):
-        return []
-    rows: list[ReplacementTransition] = []
-    for item in cast(list[object], raw):
-        if isinstance(item, ReplacementTransition):
-            rows.append(item)
-    return rows

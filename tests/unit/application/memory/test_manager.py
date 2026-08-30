@@ -97,9 +97,21 @@ def _make_manager(
         mock_usearch = MagicMock()
         mock_usearch.add_batch.side_effect = _return_inserted_memories
         mock_usearch.get_id_by_content.return_value = None
+        mock_usearch.contains_id.return_value = False
+        mock_usearch.count.return_value = 0
+        mock_usearch.is_ready.return_value = False
+        mock_usearch.memory_store.begin_add_intents.return_value = []
+        mock_usearch.memory_store.begin_delete_intents.return_value = []
+        mock_usearch.memory_store.list_pending_transitions.return_value = []
+        mock_usearch.memory_store.has_later_intent.return_value = False
+        mock_usearch.memory_store.get.return_value = None
         usearch_cls.return_value = mock_usearch
 
         mock_tantivy = MagicMock()
+        mock_tantivy.is_ready.return_value = False
+        mock_tantivy.delete_batch.side_effect = (
+            lambda _workspace, contents, verify_exists=True: len(contents)
+        )
         tantivy_cls.return_value = mock_tantivy
 
         manager = MemoryManager(config, logger.structured)
@@ -442,8 +454,9 @@ class TestAddMemoriesBatchLogging:
         result = manager.add_memories(["mem1", "mem2"])
         assert result == 1
         # Verify warning logged for skipped memory
-        warning_logged = "Skipped during batch insert" in mock_logger.messages(
-            logging.WARNING
+        warning_logged = any(
+            "Skipped during batch insert" in message
+            for message in mock_logger.messages(logging.WARNING)
         )
         assert warning_logged
 
@@ -655,7 +668,9 @@ class TestDeleteOperations:
         assert deleted == ["keep", "also"]
         assert mock_usearch.delete.call_count == 2
         mock_usearch.commit.assert_called_once()
-        assert mock_tantivy.delete.call_count == 2
+        mock_tantivy.delete_batch.assert_called_once_with(
+            "test_project", ["keep", "also"], verify_exists=True
+        )
 
     def test_delete_memories_tantivy_failure_inconsistent_state(
         self, mock_config: Config, mock_logger: LogCapture
@@ -663,7 +678,7 @@ class TestDeleteOperations:
         """Tantivy failure after USearch batch delete raises InconsistentStateError."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 42
-        mock_tantivy.delete.side_effect = RuntimeError("tantivy broken")
+        mock_tantivy.delete_batch.side_effect = RuntimeError("tantivy broken")
 
         with pytest.raises(
             InconsistentStateError,
@@ -784,6 +799,32 @@ class TestCloseErrorPaths:
         )
         assert close_logged
 
+    def test_close_is_idempotent(self, mock_config: Config, mock_logger: LogCapture):
+        """A second close() is a no-op after the first persist."""
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        manager.close()
+        manager.close()
+        mock_usearch.close.assert_called_once()
+        mock_tantivy.close.assert_called_once()
+
+    def test_pending_intent_count_fail_soft(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
+        """Missing store or listing errors do not raise from health reads."""
+        manager, _mock_usearch, _ = _make_manager(mock_config, mock_logger)
+        manager._semantic_engine = None
+        assert manager.pending_intent_count() == 0
+
+        class BrokenStore:
+            def list_pending_transitions(self) -> list[object]:
+                raise RuntimeError("journal locked")
+
+        class BrokenEngine:
+            memory_store = BrokenStore()
+
+        manager._semantic_engine = BrokenEngine()
+        assert manager.pending_intent_count() == 0
+
 
 # ---------------------------------------------------------------------------
 # Tests: get_all error path
@@ -837,7 +878,10 @@ class TestInitLogging:
         """Init with smart replace enabled logs correctly."""
         mock_config = replace(mock_config, enable_smart_replace=True)
         _make_manager(mock_config, mock_logger)
-        sr_logged = "SmartReplacer configured" in mock_logger.messages(logging.INFO)
+        sr_logged = any(
+            "SmartReplacer configured" in message
+            for message in mock_logger.messages(logging.INFO)
+        )
         assert sr_logged
 
     def test_init_embedding_cache_enabled(self, mock_config: Config, mock_logger: LogCapture):

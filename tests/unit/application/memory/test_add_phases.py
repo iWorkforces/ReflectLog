@@ -26,7 +26,7 @@ from reflectlog.application.memory.add_phases import (
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.types import ReplacementTransition
+from reflectlog.core.types import ReplacementTransition, ReplacementTransitionRequest
 from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
 # ---------------------------------------------------------------------------
@@ -66,7 +66,19 @@ def mock_semantic_engine():
     engine.delete = MagicMock(return_value=None)
     engine.commit = MagicMock(return_value=None)
     engine.get_id_by_content = MagicMock(return_value=None)
+    engine.contains_id = MagicMock(return_value=False)
+    engine.count = MagicMock(return_value=0)
+    engine.is_ready = MagicMock(return_value=True)
     engine.memory_store = MagicMock()
+    engine.memory_store.exists_many = MagicMock(return_value=set())
+    engine.memory_store.begin_add_intents = MagicMock(return_value=[])
+    engine.memory_store.begin_delete_intents = MagicMock(return_value=[])
+    engine.memory_store.begin_replacement_transitions = MagicMock(return_value=[])
+    engine.memory_store.list_pending_transitions = MagicMock(return_value=[])
+    engine.memory_store.has_later_intent = MagicMock(return_value=False)
+    engine.memory_store.get_transition_for_old_memory = MagicMock(return_value=None)
+    engine.memory_store.complete_replacement_transition = MagicMock()
+    engine.memory_store.get = MagicMock(return_value=None)
     return engine
 
 
@@ -75,9 +87,15 @@ def mock_tantivy_engine():
     """Mock TantivyEngine."""
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
+    engine.add_batch = MagicMock(return_value=None)
     engine.delete = MagicMock(return_value=True)
+    engine.delete_batch = MagicMock(
+        side_effect=lambda _workspace, contents, verify_exists=True: len(contents)
+    )
+    engine.find_by_exact_match = MagicMock(side_effect=lambda _ws, content: [content])
     engine.commit = MagicMock(return_value=None)
     engine.search = MagicMock(return_value=[])
+    engine.is_ready = MagicMock(return_value=True)
     return engine
 
 
@@ -201,11 +219,54 @@ class TestDuplicateDetectionPhase:
             return None
     
         mock_semantic_engine.get_id_by_content.side_effect = get_id
+        mock_semantic_engine.memory_store.exists_many.return_value = {"existing"}
     
         result = await phase.execute(["existing", "new_msg"])
     
         assert "new_msg" in result.unique_memories
         assert "existing" in result.storage_duplicates
+
+    async def test_execute_uses_class_defined_exists_many(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        class Store:
+            def exists_many(self, workspace_id: str, contents: list[str]) -> set[str]:
+                return {"existing"}
+
+        mock_semantic_engine.memory_store = Store()
+        phase = DuplicateDetectionPhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(["existing", "new_msg"])
+        assert "existing" in result.storage_duplicates
+        assert "new_msg" in result.unique_memories
+        mock_semantic_engine.get_id_by_content.assert_not_called()
+
+    async def test_execute_uses_store_exists_many(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        mock_semantic_engine.memory_store.exists_many.return_value = set()
+        phase = DuplicateDetectionPhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        result = await phase.execute(["msg1"])
+        assert result.unique_memories == ["msg1"]
+        mock_semantic_engine.memory_store.exists_many.assert_called_once()
+        mock_semantic_engine.get_id_by_content.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -553,7 +614,7 @@ class TestStoragePhase:
         assert result.stored_count == 1
         # No actual deletes or durable records in dry_run
         mock_semantic_engine.delete.assert_not_called()
-        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.memory_store.begin_replacement_transitions.assert_not_called()
         mock_semantic_engine.memory_store.archive.assert_not_called()
 
     async def test_execute_with_replacement_success(self, mock_semantic_engine: MagicMock, mock_tantivy_engine: MagicMock, mock_config: Config, mock_logger: Mock):
@@ -577,10 +638,13 @@ class TestStoragePhase:
         mock_semantic_engine.get_id_by_content.side_effect = get_id
         mock_semantic_engine.delete.side_effect = delete
         mock_semantic_engine.index = {99}
+        mock_semantic_engine.contains_id.side_effect = (
+            lambda memory_id: memory_id in mock_semantic_engine.index
+        )
         mock_tantivy_engine.find_by_exact_match.side_effect = (
             lambda _ws, content: [content] if content == "new msg" else []
         )
-        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+        mock_semantic_engine.memory_store.begin_replacement_transitions.return_value = [
             ReplacementTransition(
                 id=9,
                 workspace_id="test_project",
@@ -592,7 +656,7 @@ class TestStoragePhase:
                 confidence=0.9,
                 status="pending",
             )
-        )
+        ]
     
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -608,10 +672,10 @@ class TestStoragePhase:
         assert result.replaced_count == 1
         assert result.stored_count == 1
         assert len(result.replacements) == 1
-        mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once()
+        mock_semantic_engine.memory_store.begin_replacement_transitions.assert_called_once()
         mock_semantic_engine.delete.assert_called_once_with(memory_id="42")
-        mock_tantivy_engine.delete.assert_called_once_with(
-            "test_project", "old msg", verify_exists=True
+        mock_tantivy_engine.delete_batch.assert_called_once_with(
+            "test_project", ["old msg"], verify_exists=True
         )
         mock_semantic_engine.memory_store.complete_replacement_transition.assert_called_once_with(
             9
@@ -642,7 +706,7 @@ class TestStoragePhase:
         # Replacement skipped because msg_id was None
         assert result.replaced_count == 0
         mock_semantic_engine.delete.assert_not_called()
-        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.memory_store.begin_replacement_transitions.assert_not_called()
         mock_logger.warning.assert_called()
 
     async def test_execute_replacement_delete_error(self, mock_semantic_engine: MagicMock, mock_tantivy_engine: MagicMock, mock_config: Config, mock_logger: Mock):
@@ -655,7 +719,7 @@ class TestStoragePhase:
         )
         mock_semantic_engine.get_id_by_content.return_value = 42
         mock_semantic_engine.index = set()
-        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+        mock_semantic_engine.memory_store.begin_replacement_transitions.return_value = [
             ReplacementTransition(
                 id=9,
                 workspace_id="test_project",
@@ -667,7 +731,7 @@ class TestStoragePhase:
                 confidence=0.9,
                 status="pending",
             )
-        )
+        ]
         mock_semantic_engine.delete.side_effect = RuntimeError("Delete failed")
     
         phase = StoragePhase(
@@ -1028,9 +1092,9 @@ class TestStoragePhase:
             status="pending",
         )
         mock_semantic_engine.get_id_by_content.return_value = 42
-        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+        mock_semantic_engine.memory_store.begin_replacement_transitions.return_value = [
             transition
-        )
+        ]
 
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -1047,14 +1111,11 @@ class TestStoragePhase:
         result = phase._record_replacement_transition(info, "new msg")
 
         assert result is transition
-        mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once_with(
-            old_memory_id=42,
-            workspace_id="test_project",
-            old_content="old msg",
-            new_content="new msg",
-            reason="updated",
-            confidence=0.9,
-        )
+        mock_semantic_engine.memory_store.begin_replacement_transitions.assert_called_once()
+        recorded = mock_semantic_engine.memory_store.begin_replacement_transitions.call_args[0][0]
+        assert recorded[0].old_memory_id == 42
+        assert recorded[0].old_content == "old msg"
+        assert recorded[0].new_content == "new msg"
         mock_logger.info.assert_called()
 
     def test_record_replacement_transition_mem_not_found(
@@ -1078,7 +1139,7 @@ class TestStoragePhase:
             reason="updated",
         )
         assert phase._record_replacement_transition(info, "new msg") is None
-        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.memory_store.begin_replacement_transitions.assert_not_called()
 
     def test_record_replacement_transition_exception(
         self,
@@ -1088,7 +1149,7 @@ class TestStoragePhase:
     ) -> None:
         """Store failures propagate from the record helper."""
         mock_semantic_engine.get_id_by_content.return_value = 42
-        mock_semantic_engine.memory_store.begin_replacement_transition.side_effect = (
+        mock_semantic_engine.memory_store.begin_replacement_transitions.side_effect = (
             RuntimeError("sqlite")
         )
         phase = StoragePhase(
@@ -1119,24 +1180,29 @@ class TestStoragePhase:
             lambda _ws, content: [content] if content == "new msg" else []
         )
     
-        def record(*_args: object, **_kwargs: object) -> ReplacementTransition:
-            order.append("record")
-            return ReplacementTransition(
-                id=len(order),
-                workspace_id="test_project",
-                old_memory_id=10 + len(order),
-                old_content="old",
-                new_content="new msg",
-                archive_id=100,
-                reason="updated",
-                confidence=0.9,
-                status="pending",
-            )
+        def record(requests: list[ReplacementTransitionRequest]) -> list[ReplacementTransition]:
+            recorded: list[ReplacementTransition] = []
+            for request in requests:
+                order.append("record")
+                recorded.append(
+                    ReplacementTransition(
+                        id=len(order),
+                        workspace_id=request.workspace_id,
+                        old_memory_id=request.old_memory_id,
+                        old_content=request.old_content,
+                        new_content=request.new_content,
+                        archive_id=100,
+                        reason=request.reason,
+                        confidence=request.confidence,
+                        status="pending",
+                    )
+                )
+            return recorded
     
         def delete(*, memory_id: str) -> None:
             order.append(f"delete:{memory_id}")
     
-        mock_semantic_engine.memory_store.begin_replacement_transition.side_effect = (
+        mock_semantic_engine.memory_store.begin_replacement_transitions.side_effect = (
             record
         )
         mock_semantic_engine.delete.side_effect = delete
@@ -1167,7 +1233,7 @@ class TestStoragePhase:
             reason="updated",
         )
         mock_semantic_engine.get_id_by_content.return_value = 42
-        mock_semantic_engine.memory_store.begin_replacement_transition.side_effect = (
+        mock_semantic_engine.memory_store.begin_replacement_transitions.side_effect = (
             StorageError("archive failed")
         )
     
@@ -1184,7 +1250,7 @@ class TestStoragePhase:
             )
     
         mock_semantic_engine.delete.assert_not_called()
-        mock_tantivy_engine.delete.assert_not_called()
+        mock_tantivy_engine.delete_batch.assert_not_called()
 
     async def test_keeps_one_successor_per_old_id(self, mock_semantic_engine: MagicMock, mock_tantivy_engine: MagicMock, mock_config: Config, mock_logger: Mock):
         """Two successors for one old id keep the highest-confidence winner."""
@@ -1214,7 +1280,7 @@ class TestStoragePhase:
         mock_semantic_engine.index = set()
         mock_semantic_engine.add_batch.side_effect = None
         mock_semantic_engine.add_batch.return_value = ["low", "high"]
-        mock_semantic_engine.memory_store.begin_replacement_transition.return_value = (
+        mock_semantic_engine.memory_store.begin_replacement_transitions.return_value = [
             ReplacementTransition(
                 id=1,
                 workspace_id="test_project",
@@ -1226,7 +1292,7 @@ class TestStoragePhase:
                 confidence=0.95,
                 status="pending",
             )
-        )
+        ]
     
         phase = StoragePhase(
             semantic_engine=mock_semantic_engine,
@@ -1242,14 +1308,11 @@ class TestStoragePhase:
         assert result.stored_count == 2
         assert result.replaced_count == 1
         assert result.replacements[0].new_memory == "high"
-        mock_semantic_engine.memory_store.begin_replacement_transition.assert_called_once_with(
-            old_memory_id=42,
-            workspace_id="test_project",
-            old_content="old msg",
-            new_content="high",
-            reason="strong",
-            confidence=0.95,
-        )
+        mock_semantic_engine.memory_store.begin_replacement_transitions.assert_called_once()
+        recorded = mock_semantic_engine.memory_store.begin_replacement_transitions.call_args[0][0]
+        assert recorded[0].old_memory_id == 42
+        assert recorded[0].new_content == "high"
+        assert recorded[0].reason == "strong"
         mock_semantic_engine.add_batch.assert_called_once_with(
             workspace_id="test_project",
             contents=["low", "high"],
@@ -1287,7 +1350,7 @@ class TestStoragePhase:
         assert result.stored_count == 2
         assert result.replaced_count == 1
         assert result.replacements[0].confidence == 0.95
-        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.memory_store.begin_replacement_transitions.assert_not_called()
         mock_semantic_engine.delete.assert_not_called()
 
     async def test_skips_successor_that_conflicts_with_existing_transition(self, mock_semantic_engine: MagicMock, mock_tantivy_engine: MagicMock, mock_config: Config, mock_logger: Mock):
@@ -1328,7 +1391,7 @@ class TestStoragePhase:
     
         assert result.stored_count == 2
         assert result.replaced_count == 0
-        mock_semantic_engine.memory_store.begin_replacement_transition.assert_not_called()
+        mock_semantic_engine.memory_store.begin_replacement_transitions.assert_not_called()
         mock_semantic_engine.delete.assert_not_called()
         mock_semantic_engine.add_batch.assert_called_once_with(
             workspace_id="test_project",
