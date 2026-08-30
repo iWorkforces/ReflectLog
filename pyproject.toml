@@ -159,6 +159,7 @@ call-non-callable = "error"
 unresolved-import = "error"
 
 # Assignment and return type errors
+# invalid-argument-type covers Sized/Container mismatches (len, operator.contains)
 invalid-assignment = "error"
 invalid-return-type = "error"
 invalid-argument-type = "error"
@@ -166,14 +167,17 @@ invalid-argument-type = "error"
 # Redundancy warnings
 redundant-cast = "error"
 
-# Unused / unknown — keep fail-closed (pyright owns unused-function and unknown-var)
+# Unused / unknown — keep fail-closed. ty has no unused-function rule;
+# pyright reportUnusedFunction owns unused helpers (including _-prefixed).
 unused-awaitable = "error"
+unused-ignore-comment = "error"
 
-# Attribute access — getattr is banned; missing members must fail closed
+# Attribute access — getattr / optional_attr are banned; missing members fail closed
 unresolved-attribute = "error"
 possibly-missing-attribute = "error"
 invalid-attribute-access = "error"
 unknown-argument = "error"
+call-top-callable = "error"
 
 # Module-specific rules for third-party libraries without stubs
 possibly-missing-import = "error"
@@ -181,6 +185,17 @@ possibly-missing-import = "error"
 [tool.ty.terminal]
 output-format = "full"
 error-on-warning = true
+
+[tool.pyright]
+# Mirrors pyrightconfig.json for unused helpers and the issues this change set closes.
+# Full strict settings remain in pyrightconfig.json.
+reportArgumentType = "error"
+reportAttributeAccessIssue = "error"
+reportGeneralTypeIssues = "error"
+reportPrivateUsage = "error"
+reportUnknownMemberType = "error"
+reportUnusedFunction = "error"
+reportUnusedClass = "error"
 
 [tool.ruff]
 # Target Python 3.14

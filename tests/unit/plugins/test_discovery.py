@@ -5,8 +5,6 @@ composite discovery, load_plugin function, and PluginDiscoverer orchestrator.
 """
 
 import importlib
-import importlib.metadata
-import pkgutil
 import types
 from unittest.mock import MagicMock, patch
 
@@ -50,7 +48,10 @@ def _make_entry_point(
     ep.name = name
     ep.value = value
     ep.group = group
-    ep.__str__ = lambda self: f"{name} = {value}"
+    def _format(_self: object = None) -> str:
+        return f"{name} = {value}"
+
+    ep.configure_mock(**{"__str__": _format})
     return ep
 
 
@@ -191,7 +192,7 @@ class TestEntryPointDiscovery:
         mock_eps.side_effect = [TypeError("no group arg"), selectable]
         # Patch so the second call returns the selectable object
         call_count = 0
-        original_side_effect = mock_eps.side_effect
+        _original_side_effect = mock_eps.side_effect
 
         def side_effect_fn(*args, **kwargs):
             nonlocal call_count

@@ -1,5 +1,6 @@
 """Tests for AddTool implementation."""
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -141,7 +142,7 @@ class TestAddToolValidation:
         """Non-string item in memories raises ValueError."""
         handler = add_tool_instance.get_handler()
         with pytest.raises(ValueError):
-            await handler([123])
+            await handler(cast(list[str], [123]))
 
     async def test_add_validation_does_not_call_storage(
         self, add_tool_instance: AddTool, mock_memory_manager: MagicMock

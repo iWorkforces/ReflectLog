@@ -182,7 +182,7 @@ class TestConfigDefaults:
     def test_frozen_raises_on_mutation(self):
         cfg = self._make_config()
         with pytest.raises(AttributeError):
-            cfg.port = 1234  # ty: ignore[invalid-assignment]
+            type(cfg).__setattr__(cfg, "port", 1234)
 
 
 # ---------------------------------------------------------------------------

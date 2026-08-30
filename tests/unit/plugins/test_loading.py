@@ -22,6 +22,8 @@ from reflectlog.plugins.registry import (
     PluginState,
 )
 
+assert PluginState is not None
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

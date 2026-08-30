@@ -25,6 +25,7 @@ from reflectlog.application.memory.engine_factory import (
 )
 from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.application.utils.logging import StructuredLogger
+from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 from reflectlog.infrastructure.usearch_engine import USearchEngine
@@ -95,7 +96,7 @@ class TestEngineFactoryResult:
             semantic_engine=semantic,
             tantivy_engine=tantivy,
             fusion_engine=fusion,
-            reranker_engine="cross_encoder",
+            reranker_engine=RerankerEngine.CROSS_ENCODER,
             enable_hybrid_search=True,
         )
 
@@ -111,7 +112,7 @@ class TestEngineFactoryResult:
             semantic_engine=cast(USearchEngine, Mock()),
             tantivy_engine=None,
             fusion_engine=cast(FusionEngine, Mock()),
-            reranker_engine="none",
+            reranker_engine=RerankerEngine.NONE,
             enable_hybrid_search=False,
         )
 

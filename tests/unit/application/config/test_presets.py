@@ -16,6 +16,7 @@ from reflectlog.application.config.presets import (
     get_active_preset,
     get_preset_summary,
 )
+from reflectlog.core.enums import RerankerEngine
 
 # ---------------------------------------------------------------------------
 # ConfigPreset dataclass
@@ -54,7 +55,7 @@ class TestConfigPreset:
             search_score_threshold=0.5,
             fusion_rrf_k=60,
             overfetch_multiplier=3,
-            reranker_engine="cross_encoder",
+            reranker_engine=RerankerEngine.CROSS_ENCODER,
             enable_recency_boost=True,
             recency_decay_rate=0.02,
             enable_smart_replace=True,

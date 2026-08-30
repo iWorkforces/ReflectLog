@@ -1056,7 +1056,7 @@ class TestUSearchEngineAddBatch:
                     raise RuntimeError("index full")
                 original_add(key, vector)
 
-            engine.index.add = boom
+            engine.index.add = boom  # ty: ignore[invalid-assignment]
             with pytest.raises(RuntimeError, match="Failed to add memory batch"):
                 _ = engine.add_batch("user1", ["idx1", "idx2"], infer=False)
             assert engine.get_all("user1") == []
@@ -1484,7 +1484,7 @@ class TestUSearchEngineContextManager:
         config, embedder, _ = temp_engine
 
         with pytest.raises(ValueError, match="test error"):
-            with USearchEngine(config=config, embedder=embedder) as engine:
+            with USearchEngine(config=config, embedder=embedder) as _engine:
                 raise ValueError("test error")
 
     def test_close_with_no_memory_store(

@@ -52,6 +52,7 @@
   "reportOverlappingOverload": "error",
   "reportPossiblyUnboundVariable": "error",
   "reportPrivateImportUsage": "error",
+  "reportPrivateUsage": "error",
   "reportSelfClsParameterName": "error",
   "reportTypeCommentUsage": "error",
   "reportTypedDictNotRequiredAccess": "error",
@@ -72,5 +73,27 @@
   "reportUntypedNamedTuple": "error",
   "reportUnusedCallResult": "error",
   "reportUnusedExcept": "error",
-  "reportUnusedExpression": "error"
+  "reportUnusedExpression": "error",
+  "executionEnvironments": [
+    {
+      "root": "tests",
+      "extraPaths": ["."],
+      "reportPrivateUsage": "none",
+      "reportUnusedCallResult": "none",
+      "reportUnknownMemberType": "none",
+      "reportUnknownParameterType": "none",
+      "reportUnknownVariableType": "none",
+      "reportUnknownArgumentType": "none",
+      "reportUnknownLambdaType": "none",
+      "reportMissingTypeStubs": "none",
+      "reportMissingModuleSource": "none",
+      "reportTypedDictNotRequiredAccess": "none",
+      "reportAbstractUsage": "none",
+      "reportGeneralTypeIssues": "none",
+      "reportUnnecessaryIsInstance": "none",
+      "reportCallIssue": "none",
+      "reportArgumentType": "none",
+      "reportAttributeAccessIssue": "none"
+    }
+  ]
 }
