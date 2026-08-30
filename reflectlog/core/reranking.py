@@ -7,6 +7,8 @@ additional signals like LLM relevance or cross-encoder similarity.
 
 from typing import Protocol, TypedDict, runtime_checkable
 
+from reflectlog.core.enums import CrossEncoderDevice, RerankerEngine
+
 
 class RerankerMetadata(TypedDict, total=False):
     provider: str
@@ -155,7 +157,7 @@ class IRerankerConfig(Protocol):
     """
 
     @property
-    def reranker_engine(self) -> str:
+    def reranker_engine(self) -> RerankerEngine:
         """Reranker engine type."""
         ...
 
@@ -175,6 +177,6 @@ class IRerankerConfig(Protocol):
         ...
 
     @property
-    def cross_encoder_device(self) -> str:
+    def cross_encoder_device(self) -> CrossEncoderDevice:
         """Cross-encoder device: cpu, cuda, mps."""
         ...

@@ -8,6 +8,7 @@ consistent interface to the application layer.
 
 from typing import Protocol, runtime_checkable
 
+from reflectlog.core.enums import EngineReadiness
 from reflectlog.core.types import MemoryRecord
 
 
@@ -261,7 +262,7 @@ class IMemoryManager(Protocol):
         """Return how many add/delete/replace intents are still pending."""
         ...
 
-    def search_engine_status(self) -> dict[str, str]:
+    def search_engine_status(self) -> dict[str, EngineReadiness]:
         """Return public readiness of search engines for health checks."""
         ...
 

@@ -7,7 +7,7 @@ or "find reranker plugins".
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from reflectlog.core.access import optional_attr
@@ -22,7 +22,7 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-class PluginState(Enum):
+class PluginState(StrEnum):
     """Plugin lifecycle states."""
 
     DISCOVERED = "discovered"

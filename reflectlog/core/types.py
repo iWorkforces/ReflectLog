@@ -13,14 +13,15 @@ Types defined here:
 
 from dataclasses import dataclass
 from typing import (
-    Literal,
     Protocol,
     TypedDict,
     runtime_checkable,
 )
 
-ReplacementTransitionStatus = Literal["pending", "completed"]
-IndexIntentKind = Literal["add", "delete", "replace"]
+from reflectlog.core.enums import TransitionKind, TransitionStatus
+
+ReplacementTransitionStatus = TransitionStatus
+IndexIntentKind = TransitionKind
 
 
 class MemoryRecord(TypedDict, total=False):
@@ -50,8 +51,8 @@ class ReplacementTransition:
     archive_id: int
     reason: str
     confidence: float
-    status: ReplacementTransitionStatus
-    kind: IndexIntentKind = "replace"
+    status: TransitionStatus
+    kind: TransitionKind = TransitionKind.REPLACE
 
 
 @dataclass(frozen=True)
@@ -107,7 +108,7 @@ class IArchiveMemoryStore(Protocol):
         self,
         *,
         workspace_id: str,
-        kind: str,
+        kind: TransitionKind,
         content: str,
         after_id: int,
     ) -> bool: ...

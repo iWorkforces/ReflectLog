@@ -30,7 +30,7 @@ Example:
         service = SearchService(search_config=SearchConfigAdapter(config))
 """
 
-from typing import TYPE_CHECKING, Literal, assert_never, final
+from typing import TYPE_CHECKING, assert_never, final
 
 from reflectlog.core.config import (
     IAppConfig,
@@ -41,31 +41,29 @@ from reflectlog.core.config import (
     IServerConfig,
     IStorageConfig,
 )
-from reflectlog.core.exceptions import ConfigurationError
+from reflectlog.core.enums import (
+    CrossEncoderDevice,
+    DistanceMetric,
+    LlmProvider,
+    RerankerEngine,
+    TransportMode,
+    parse_str_enum,
+)
 
 if TYPE_CHECKING:
     from reflectlog.application.config.settings import Config
 
 
-type RerankerEngine = Literal["cross_encoder", "none"]
-
-
 def _validated_reranker_engine(reranker_engine: RerankerEngine) -> RerankerEngine:
-    if reranker_engine == "cross_encoder":
-        return "cross_encoder"
-    if reranker_engine == "none":
-        return "none"
+    if reranker_engine == RerankerEngine.CROSS_ENCODER:
+        return RerankerEngine.CROSS_ENCODER
+    if reranker_engine == RerankerEngine.NONE:
+        return RerankerEngine.NONE
     assert_never(reranker_engine)
 
 
 def _coerce_reranker_engine(value: str) -> RerankerEngine:
-    if value == "cross_encoder":
-        return _validated_reranker_engine("cross_encoder")
-    if value == "none":
-        return _validated_reranker_engine("none")
-    raise ConfigurationError(
-        f"Invalid RERANKER_ENGINE: '{value}'. Valid options: cross_encoder, none"
-    )
+    return parse_str_enum(RerankerEngine, value, field="RERANKER_ENGINE")
 
 
 @final
@@ -98,7 +96,7 @@ class ConfigAdapter(IAppConfig):
 
     # IServerConfig properties
     @property
-    def transport(self) -> Literal["stdio", "http", "sse", "streamable-http"]:
+    def transport(self) -> TransportMode:
         """Transport mode for MCP server."""
         return self._config.transport
 
@@ -232,9 +230,9 @@ class ConfigAdapter(IAppConfig):
         return self._config.embedding_dims
 
     @property
-    def metric(self) -> Literal["cosine", "euclidean", "inner_product"]:
+    def metric(self) -> DistanceMetric:
         """Similarity metric for vector search."""
-        return "cosine"
+        return DistanceMetric.COSINE
 
     # IRerankerConfig properties
     @property
@@ -253,7 +251,7 @@ class ConfigAdapter(IAppConfig):
         return self._config.cross_encoder_model
 
     @property
-    def cross_encoder_device(self) -> str:
+    def cross_encoder_device(self) -> CrossEncoderDevice:
         """Device for cross-encoder: cpu, cuda, mps."""
         return self._config.cross_encoder_device
 
@@ -268,7 +266,7 @@ class ConfigAdapter(IAppConfig):
         return self._config.openrouter_api_key.get_secret_value()
 
     @property
-    def llm_provider(self) -> str:
+    def llm_provider(self) -> LlmProvider:
         """LLM provider: openai or anthropic."""
         return self._config.llm_provider
 
@@ -401,7 +399,7 @@ class ServerConfigAdapter(IServerConfig):
         self._config = config
 
     @property
-    def transport(self) -> Literal["stdio", "http", "sse", "streamable-http"]:
+    def transport(self) -> TransportMode:
         return self._config.transport
 
     @property
@@ -507,8 +505,8 @@ class StorageConfigAdapter(IStorageConfig):
         return self._config.embedding_dims
 
     @property
-    def metric(self) -> Literal["cosine", "euclidean", "inner_product"]:
-        return "cosine"
+    def metric(self) -> DistanceMetric:
+        return DistanceMetric.COSINE
 
     @property
     def usearch_exact_search(self) -> bool:
@@ -565,7 +563,7 @@ class RerankerConfigAdapter(IRerankerConfig):
         return self._config.cross_encoder_model
 
     @property
-    def cross_encoder_device(self) -> str:
+    def cross_encoder_device(self) -> CrossEncoderDevice:
         return self._config.cross_encoder_device
 
     @property
@@ -577,7 +575,7 @@ class RerankerConfigAdapter(IRerankerConfig):
         return self._config.openrouter_api_key.get_secret_value()
 
     @property
-    def llm_provider(self) -> str:
+    def llm_provider(self) -> LlmProvider:
         return self._config.llm_provider
 
     @property

@@ -18,7 +18,15 @@ Example:
         ...
 """
 
-from typing import Literal, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
+
+from reflectlog.core.enums import (
+    CrossEncoderDevice,
+    DistanceMetric,
+    LlmProvider,
+    RerankerEngine,
+    TransportMode,
+)
 
 
 @runtime_checkable
@@ -26,7 +34,7 @@ class IServerConfig(Protocol):
     """Protocol for server-level configuration."""
 
     @property
-    def transport(self) -> Literal["stdio", "http", "sse", "streamable-http"]:
+    def transport(self) -> TransportMode:
         """Transport mode for MCP server."""
         ...
 
@@ -86,7 +94,7 @@ class ISearchConfig(Protocol):
         ...
 
     @property
-    def reranker_engine(self) -> Literal["cross_encoder", "none"]:
+    def reranker_engine(self) -> RerankerEngine:
         """Reranking engine type."""
         ...
 
@@ -131,7 +139,7 @@ class IStorageConfig(Protocol):
         ...
 
     @property
-    def metric(self) -> Literal["cosine", "euclidean", "inner_product"]:
+    def metric(self) -> DistanceMetric:
         """Similarity metric for vector search."""
         ...
 
@@ -186,7 +194,7 @@ class IRerankerConfig(Protocol):
         ...
 
     @property
-    def llm_provider(self) -> str:
+    def llm_provider(self) -> LlmProvider:
         """LLM provider: openai or anthropic."""
         ...
 
@@ -241,7 +249,7 @@ class IRerankerConfig(Protocol):
         ...
 
     @property
-    def cross_encoder_device(self) -> str:
+    def cross_encoder_device(self) -> CrossEncoderDevice:
         """Device for cross-encoder: cpu, cuda, mps."""
         ...
 
