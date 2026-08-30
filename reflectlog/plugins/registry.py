@@ -10,8 +10,6 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
-from reflectlog.core.access import optional_attr
-
 
 def utc_now() -> datetime:
     """Get current UTC time in a timezone-aware format.
@@ -113,17 +111,12 @@ class PluginRegistry[T]:
             PluginMetadata for the registered plugin.
         """
         if metadata is None:
-            # Auto-generate metadata from plugin
-            # Use getattr with default to satisfy type checker
-            raw_name = optional_attr(plugin, "plugin_name")
-            name = raw_name if isinstance(raw_name, str) and raw_name else type(plugin).__name__
-
-            raw_version = optional_attr(plugin, "plugin_version")
-            version = (
-                raw_version
-                if isinstance(raw_version, str) and raw_version
-                else type(plugin).__module__.split(".")[-1]
-            )
+            if isinstance(plugin, IPluggable):
+                name = plugin.plugin_name or type(plugin).__name__
+                version = plugin.plugin_version or type(plugin).__module__.split(".")[-1]
+            else:
+                name = type(plugin).__name__
+                version = type(plugin).__module__.split(".")[-1]
 
             metadata = PluginMetadata(
                 name=name,

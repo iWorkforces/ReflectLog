@@ -8,6 +8,7 @@ Types defined here:
     MemoryRecord: TypedDict for memory entries.
     Embeddings: Protocol for embedding providers.
     IArchiveMemoryStore: Protocol for archive operations.
+    IStoredMemory: Protocol for stored memory rows.
     ISemanticSearchEngine: Protocol for semantic search engines.
 """
 
@@ -67,8 +68,27 @@ class ReplacementTransitionRequest:
     confidence: float
 
 
+@runtime_checkable
+class IStoredMemory(Protocol):
+    """A stored memory row returned by the archive store."""
+
+    @property
+    def id(self) -> int: ...
+
+    @property
+    def workspace_id(self) -> str: ...
+
+    @property
+    def content(self) -> str: ...
+
+    @property
+    def created_at(self) -> str: ...
+
+
 class IArchiveMemoryStore(Protocol):
-    def get(self, memory_id: int) -> object | None: ...
+    db_path: str
+
+    def get(self, memory_id: int) -> IStoredMemory | None: ...
 
     def archive(
         self,
@@ -120,6 +140,8 @@ class IArchiveMemoryStore(Protocol):
     ) -> ReplacementTransition | None: ...
 
     def complete_replacement_transition(self, transition_id: int) -> None: ...
+
+    def close(self) -> None: ...
 
 
 @runtime_checkable
@@ -226,6 +248,11 @@ class ISemanticSearchEngine(Protocol):
     @property
     def name(self) -> str:
         """Engine name for identification."""
+        ...
+
+    @property
+    def embedder(self) -> Embeddings:
+        """Embedding provider used to vectorize memories."""
         ...
 
     def add(self, workspace_id: str, content: str, infer: bool) -> None:

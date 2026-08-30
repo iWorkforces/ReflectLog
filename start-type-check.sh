@@ -138,6 +138,8 @@ from pathlib import Path
 
 patterns = (
     re.compile(r"\bggetattr\s*\("),
+    re.compile(r"\boptional_attr\s*\("),
+    re.compile(r"\binvoke_if_callable\s*\("),
     re.compile(r"type\([^)]+\)\.__dict__"),
     re.compile(r"\bclass_callable\s*\("),
 )
@@ -154,7 +156,7 @@ if hits:
     sys.exit(1)
 PY
     then
-        echo -e "${GREEN}✅ No getattr() or type().__dict__ probes found${NC}"
+        echo -e "${GREEN}✅ No getattr() / optional_attr() / type().__dict__ probes found${NC}"
         echo ""
         return 0
     fi

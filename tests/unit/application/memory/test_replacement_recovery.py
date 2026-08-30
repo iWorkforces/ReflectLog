@@ -17,9 +17,7 @@ from reflectlog.core.types import ReplacementTransition
 from reflectlog.infrastructure.memory_store import MemoryStore
 
 
-def _stub_journal(semantic: MagicMock) -> None:
-    semantic.memory_store.list_pending_transitions.return_value = []
-    semantic.memory_store.has_later_intent.return_value = False
+def _stub_contains(semantic: MagicMock) -> None:
     def _contains(memory_id: int) -> bool:
         index = semantic.index
         if isinstance(index, (set, dict)):
@@ -27,6 +25,12 @@ def _stub_journal(semantic: MagicMock) -> None:
         return False
 
     semantic.contains_id.side_effect = _contains
+
+
+def _stub_journal(semantic: MagicMock) -> None:
+    semantic.memory_store.list_pending_transitions.return_value = []
+    semantic.memory_store.has_later_intent.return_value = False
+    _stub_contains(semantic)
 
 
 def _transition() -> ReplacementTransition:
@@ -228,6 +232,7 @@ class TestApplyPendingTransition:
 
     def test_converged_requires_old_id_gone(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         def get_live_id(_workspace_id: str, content: str) -> int:
             return 11 if content == "old convention" else 99
 
@@ -242,6 +247,7 @@ class TestApplyPendingTransition:
 
     def test_converged_when_old_text_live_under_new_id(self) -> None:
         semantic = MagicMock()
+        _stub_journal(semantic)
         def get_live_id(_workspace_id: str, content: str) -> int:
             return 22 if content == "old convention" else 99
 
@@ -262,7 +268,7 @@ class TestApplyPendingTransition:
     def test_converged_false_when_index_missing(self) -> None:
         semantic = MagicMock()
         semantic.get_id_by_content.return_value = 99
-        semantic.index = None
+        semantic.contains_id.return_value = None
         assert (
             replacement_converged(
                 _transition(), semantic_engine=semantic, tantivy_engine=None
@@ -278,6 +284,7 @@ class TestReconcilePendingReplacements:
     def test_noops_for_mock_store(self) -> None:
         semantic = MagicMock()
         semantic.memory_store = MagicMock()
+        semantic.memory_store.db_path = ""
         count = reconcile_pending_replacements(
             semantic_engine=semantic,
             tantivy_engine=None,
@@ -360,6 +367,7 @@ class TestReconcilePendingReplacements:
             )
             semantic = MagicMock()
             semantic.memory_store = store
+            _stub_contains(semantic)
 
             def get_id(_workspace_id: str, content: str) -> int | None:
                 return 99 if content == "new convention" else None
@@ -395,6 +403,7 @@ class TestReconcilePendingReplacements:
             )
             semantic = MagicMock()
             semantic.memory_store = store
+            _stub_contains(semantic)
             semantic.get_id_by_content.return_value = 99
             semantic.index = {99: object()}
 
@@ -427,6 +436,7 @@ class TestReconcilePendingReplacements:
             )
             semantic = MagicMock()
             semantic.memory_store = store
+            _stub_contains(semantic)
             def get_replacement_id(_workspace_id: str, content: str) -> int | None:
                 return 99 if content == "new convention" else None
 
@@ -486,6 +496,7 @@ class TestReconcilePendingReplacements:
             _ = store.begin_delete_intents("proj-b", [(11, "hello")])
             semantic = MagicMock()
             semantic.memory_store = store
+            _stub_contains(semantic)
             semantic.get_id_by_content.return_value = None
             semantic.add.return_value = None
             semantic.index = {1}
@@ -515,6 +526,7 @@ class TestReconcilePendingReplacements:
             store.complete_replacement_transition(deleted.id)
             semantic = MagicMock()
             semantic.memory_store = store
+            _stub_contains(semantic)
             semantic.get_id_by_content.return_value = None
             semantic.index = set()
             completed = apply_pending_transition(

@@ -78,7 +78,7 @@ Python 3.14 MCP memory server. USearch semantic + Tantivy FTS + RRF fusion, opti
 - Do not pad short embed batches with `[]`; fail closed.
 - Do not min-max a single fusion list (drops near-ties at threshold 0.8).
 - Do not treat MagicMock auto-attrs as real APIs. Put the method on the protocol and call it.
-- Do not use `getattr` or `type(obj).__dict__.get(...)`. Use typed attribute access or `optional_attr()` for third-party objects.
+- Do not use `getattr`, `optional_attr()`, `invoke_if_callable()`, or `type(obj).__dict__.get(...)`. Put the member on a protocol or stub and access it directly.
 - Do not expose secrets, tokens, or API keys in logs, exceptions, or tests.
 
 ## UNIQUE STYLES

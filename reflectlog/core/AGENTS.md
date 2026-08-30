@@ -16,7 +16,7 @@ core/
 ├── reranking.py         # Reranking protocols (IReranker, IRerankerProvider, IRankingResult, IRerankerConfig)
 ├── tools.py             # Tool protocols (ITool, IToolRegistry, IToolLoader, ToolParameter, ToolDefinition)
 ├── logging.py           # Logging protocols (ILoggingService, ILogSink, LogLevel)
-└── types.py             # Canonical types (ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore)
+└── types.py             # Canonical types (ISemanticSearchEngine, IStoredMemory, MemoryRecord, Embeddings, IArchiveMemoryStore)
 ```
 
 ## WHERE TO LOOK
@@ -32,7 +32,7 @@ core/
 | Config adaptation | config_adapters.py | ConfigAdapter, SearchConfigAdapter, etc. |
 | Tool registration | tools.py | ITool, IToolRegistry |
 | Logging abstraction | logging.py | ILoggingService, ILogSink |
-| Canonical types | types.py | ISemanticSearchEngine, MemoryRecord, Embeddings, IArchiveMemoryStore |
+| Canonical types | types.py | ISemanticSearchEngine, IStoredMemory, MemoryRecord, Embeddings, IArchiveMemoryStore |
 
 ## CONVENTIONS
 

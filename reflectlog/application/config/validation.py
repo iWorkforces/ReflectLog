@@ -6,8 +6,9 @@ ensuring that all settings are valid and consistent before the server starts.
 
 from dataclasses import dataclass
 import re
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
+from reflectlog.application.config.settings import Config
 from reflectlog.core.enums import (
     CrossEncoderDevice,
     FusionMethod,
@@ -658,174 +659,114 @@ class ConfigurationValidator:
         return "\n".join(lines)
 
 
-def _get_attr(config: object, name: str) -> object | None:
-    """Get an attribute from a config object, returning None if not found."""
-    from reflectlog.core.access import optional_attr
-
-    return optional_attr(config, name)
-
-
 def _validate_server_config(
     validator: ConfigurationValidator,
-    config: object,
+    config: Config,
 ) -> None:
     """Validate server transport, port, and workspace ID."""
-    workspace_id = _get_attr(config, "workspace_id")
-    if isinstance(workspace_id, str) and workspace_id:
-        _ = validator.validate_workspace_id(workspace_id)
-
-    transport = _get_attr(config, "transport")
-    if isinstance(transport, str) and transport:
-        _ = validator.validate_transport(transport)
-
-    port = _get_attr(config, "port")
-    if isinstance(port, int):
-        _ = validator.validate_port(port)
+    _ = validator.validate_workspace_id(config.workspace_id)
+    _ = validator.validate_transport(config.transport)
+    _ = validator.validate_port(config.port)
 
 
 def _validate_search_config(
     validator: ConfigurationValidator,
-    config: object,
+    config: Config,
 ) -> None:
     """Validate search limit, threshold, and percentage fields."""
-    percentage_fields = [
-        ("search_score_threshold", "SEARCH_SCORE_THRESHOLD"),
-        ("fusion_ranking_threshold", "FUSION_RANKING_THRESHOLD"),
-        ("cross_encoder_score_threshold", "CROSS_ENCODER_SCORE_THRESHOLD"),
-        ("smart_replace_threshold", "SMART_REPLACE_THRESHOLD"),
-        ("smart_replace_min_similarity", "SMART_REPLACE_MIN_SIMILARITY"),
+    percentage_fields: list[tuple[str, float]] = [
+        ("SEARCH_SCORE_THRESHOLD", config.search_score_threshold),
+        ("FUSION_RANKING_THRESHOLD", config.fusion_ranking_threshold),
+        ("CROSS_ENCODER_SCORE_THRESHOLD", config.cross_encoder_score_threshold),
+        ("SMART_REPLACE_THRESHOLD", config.smart_replace_threshold),
+        ("SMART_REPLACE_MIN_SIMILARITY", config.smart_replace_min_similarity),
         (
-            "tantivy_compaction_threshold_ratio",
             "TANTIVY_COMPACTION_THRESHOLD_RATIO",
+            config.tantivy_compaction_threshold_ratio,
         ),
-        ("recency_decay_rate", "RECENCY_DECAY_RATE"),
+        ("RECENCY_DECAY_RATE", config.recency_decay_rate),
     ]
+    for field_name, value in percentage_fields:
+        _ = validator.validate_percentage(field_name, value)
 
-    for attr_name, field_name in percentage_fields:
-        value = _get_attr(config, attr_name)
-        if isinstance(value, (int, float)):
-            _ = validator.validate_percentage(field_name, float(value))
-
-    positive_int_fields = [
-        ("search_limit", "SEARCH_LIMIT", 1),
-        ("remove_search_limit", "REMOVE_SEARCH_LIMIT", 1),
-        ("fusion_rrf_k", "FUSION_RRF_K", 1),
-        ("rerank_max_concurrency", "RERANK_MAX_CONCURRENCY", 1),
-        ("cross_encoder_batch_size", "CROSS_ENCODER_BATCH_SIZE", 1),
-        ("cross_encoder_max_length", "CROSS_ENCODER_MAX_LENGTH", 1),
-        ("add_max_concurrency", "ADD_MAX_CONCURRENCY", 1),
-        ("embedding_batch_size", "EMBEDDING_BATCH_SIZE", 1),
-        ("embedding_cache_size", "EMBEDDING_CACHE_SIZE", 1),
+    positive_int_fields: list[tuple[str, int]] = [
+        ("SEARCH_LIMIT", config.search_limit),
+        ("REMOVE_SEARCH_LIMIT", config.remove_search_limit),
+        ("FUSION_RRF_K", config.fusion_rrf_k),
+        ("RERANK_MAX_CONCURRENCY", config.rerank_max_concurrency),
+        ("CROSS_ENCODER_BATCH_SIZE", config.cross_encoder_batch_size),
+        ("CROSS_ENCODER_MAX_LENGTH", config.cross_encoder_max_length),
+        ("ADD_MAX_CONCURRENCY", config.add_max_concurrency),
+        ("EMBEDDING_BATCH_SIZE", config.embedding_batch_size),
+        ("EMBEDDING_CACHE_SIZE", config.embedding_cache_size),
     ]
-
-    for attr_name, field_name, min_val in positive_int_fields:
-        value = _get_attr(config, attr_name)
-        if isinstance(value, int):
-            _ = validator.validate_positive_int(field_name, value, min_val)
+    for field_name, value in positive_int_fields:
+        _ = validator.validate_positive_int(field_name, value)
 
 
 def _validate_storage_config(
     validator: ConfigurationValidator,
-    config: object,
+    config: Config,
 ) -> None:
     """Validate memory lengths and logical dependencies."""
-    min_length = _get_attr(config, "min_message_length")
-    max_length = _get_attr(config, "max_message_length")
-    if isinstance(min_length, int) and isinstance(max_length, int):
-        _ = validator.validate_memory_lengths(min_length, max_length)
-
-    enable_hybrid_search = _get_attr(config, "enable_hybrid_search")
-    enable_rrf_fusion = _get_attr(config, "enable_rrf_fusion")
-    reranker_engine = _get_attr(config, "reranker_engine")
+    _ = validator.validate_memory_lengths(
+        config.min_memory_length, config.max_memory_length
+    )
     _ = validator.validate_dependencies(
-        enable_hybrid_search if isinstance(enable_hybrid_search, bool) else True,
-        enable_rrf_fusion if isinstance(enable_rrf_fusion, bool) else True,
-        reranker_engine
-        if isinstance(reranker_engine, str) and reranker_engine
-        else RerankerEngine.CROSS_ENCODER,
+        config.enable_hybrid_search,
+        config.enable_rrf_fusion,
+        config.reranker_engine,
     )
 
 
 def _validate_embedder_config(
     validator: ConfigurationValidator,
-    config: object,
+    config: Config,
 ) -> None:
     """Validate fusion method and fusion weights."""
-    fusion_method = _get_attr(config, "fusion_method")
-    if isinstance(fusion_method, str) and fusion_method:
-        _ = validator.validate_fusion_method(fusion_method)
-
-    fusion_weights = _get_attr(config, "fusion_weights")
-    if fusion_weights is not None:
-        if not isinstance(fusion_weights, list):
+    _ = validator.validate_fusion_method(config.fusion_method)
+    fusion_weights = config.fusion_weights
+    if fusion_weights is None:
+        return
+    if len(fusion_weights) < 2:
+        raise ConfigurationError(
+            "fusion_weights must have at least 2 elements for weighted RRF"
+        )
+    for i, weight in enumerate(fusion_weights):
+        if weight < 0:
             raise ConfigurationError(
-                f"fusion_weights must be a list, got {type(fusion_weights).__name__}"
+                f"fusion_weights[{i}] must be non-negative, got {weight}"
             )
-        typed_weights: list[object] = cast(list[object], fusion_weights)
-        if len(typed_weights) < 2:
-            raise ConfigurationError(
-                "fusion_weights must have at least 2 elements for weighted RRF"
-            )
-        for i, w in enumerate(typed_weights):
-            if not isinstance(w, (int, float)):
-                raise ConfigurationError(
-                    f"fusion_weights[{i}] must be a number, got {type(w).__name__}"
-                )
-            if w < 0:
-                raise ConfigurationError(
-                    f"fusion_weights[{i}] must be non-negative, got {w}"
-                )
 
 
 def _validate_reranker_config(
     validator: ConfigurationValidator,
-    config: object,
+    config: Config,
 ) -> None:
-    """Validate reranker engine, LLM provider, cross-encoder, and circuit breaker."""
-    reranker_engine = _get_attr(config, "reranker_engine")
-    if isinstance(reranker_engine, str) and reranker_engine:
-        _ = validator.validate_reranker_engine(reranker_engine)
-
-    llm_provider = _get_attr(config, "llm_provider")
-    if isinstance(llm_provider, str) and llm_provider:
-        _ = validator.validate_llm_provider(llm_provider)
-
-    cross_encoder_device = _get_attr(config, "cross_encoder_device")
-    if isinstance(cross_encoder_device, str) and cross_encoder_device:
-        _ = validator.validate_cross_encoder_device(cross_encoder_device)
-
-    circuit_breaker_enabled = _get_attr(config, "circuit_breaker_enabled")
-    if isinstance(circuit_breaker_enabled, bool) and circuit_breaker_enabled:
-        failure_threshold = _get_attr(config, "circuit_breaker_failure_threshold")
-        timeout = _get_attr(config, "circuit_breaker_timeout")
-        success_threshold = _get_attr(config, "circuit_breaker_success_threshold")
-
-        _ = validator.validate_circuit_breaker_settings(
-            circuit_breaker_enabled,
-            failure_threshold if isinstance(failure_threshold, int) else 5,
-            timeout if isinstance(timeout, (int, float)) else 60.0,
-            success_threshold if isinstance(success_threshold, int) else 2,
-        )
+    """Validate reranker engine, LLM provider, and cross-encoder device."""
+    _ = validator.validate_reranker_engine(config.reranker_engine)
+    _ = validator.validate_llm_provider(config.llm_provider)
+    _ = validator.validate_cross_encoder_device(config.cross_encoder_device)
 
 
 def _validate_security_fields(
     validator: ConfigurationValidator,
-    config: object,
+    config: Config,
 ) -> None:
     """Validate API key formats and security-sensitive fields."""
-    openrouter_api_key = _get_attr(config, "openrouter_api_key")
-    if isinstance(openrouter_api_key, str) and openrouter_api_key:
-        _ = validator.validate_openrouter_api_key_format(openrouter_api_key)
+    api_key = config.openrouter_api_key.get_secret_value()
+    if api_key:
+        _ = validator.validate_openrouter_api_key_format(api_key)
 
 
-def validate_config(config: object) -> list[ValidationError]:
+def validate_config(config: Config) -> list[ValidationError]:
     """Validate a configuration object.
 
     This is a convenience function that creates a validator and runs
-    all validation checks on the given configuration object.
+    all validation checks on the given configuration.
 
     Args:
-        config: A Config object (or object with similar attributes)
+        config: Application configuration.
 
     Returns:
         List of validation errors (empty if valid)

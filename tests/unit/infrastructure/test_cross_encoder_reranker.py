@@ -668,96 +668,25 @@ class TestModelPropertyWithLogger:
 class TestSuppressFastTokenizerWarning:
     '''Test _suppress_fast_tokenizer_warning method.'''
 
-    def test_tokenizer_found_on_model_directly(self) -> None:
-        '''Test suppression when tokenizer is accessible directly on model.'''
+    def test_installs_warnings_filter(self) -> None:
+        '''Suppression uses a warnings filter, not tokenizer attribute probes.'''
         config = CrossEncoderConfig()
 
         with patch("FlagEmbedding.FlagReranker"):
             reranker = CrossEncoderReranker(config=config)
-
-            mock_model = MagicMock()
-            mock_tokenizer = MagicMock()
-            mock_tokenizer.deprecation_warnings = {}
-            mock_model.tokenizer = mock_tokenizer
-            reranker._model = mock_model
-
-            reranker._suppress_fast_tokenizer_warning()
-
-            # Should set the deprecation flag directly
-            assert (
-                mock_tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"]
-                is True
-            )
-
-    def test_tokenizer_found_via_model_model(self) -> None:
-        '''Test suppression when tokenizer found via model.model (lines 247-249).'''
-        config = CrossEncoderConfig()
-
-        with patch("FlagEmbedding.FlagReranker"):
-            reranker = CrossEncoderReranker(config=config)
-
-            mock_inner_model = MagicMock()
-            mock_tokenizer = MagicMock()
-            mock_tokenizer.deprecation_warnings = {}
-            mock_inner_model.tokenizer = mock_tokenizer
-
-            mock_model = MagicMock(spec=[])
-            # No direct tokenizer attribute, but model.model.tokenizer exists
-            mock_model.model = mock_inner_model
-            reranker._model = mock_model
-
-            reranker._suppress_fast_tokenizer_warning()
-
-            # Should find tokenizer via model.model and set the flag
-            assert (
-                mock_tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"]
-                is True
-            )
-
-    def test_no_tokenizer_falls_back_to_warnings_filter(self) -> None:
-        '''Test warnings.filterwarnings fallback when no tokenizer found (line 257).'''
-        config = CrossEncoderConfig()
-
-        with patch("FlagEmbedding.FlagReranker"):
-            reranker = CrossEncoderReranker(config=config)
-
-            # Model with no tokenizer attribute at all
-            mock_model = MagicMock(spec=[])
-            mock_model.model = MagicMock(spec=[])
-            reranker._model = mock_model
+            reranker._model = MagicMock()
 
             with patch(
                 "reflectlog.infrastructure.cross_encoder_reranker.warnings"
             ) as mock_warnings:
                 reranker._suppress_fast_tokenizer_warning()
 
-                # Should fall back to warnings.filterwarnings
                 mock_warnings.filterwarnings.assert_called_once_with(
                     "ignore",
                     message=r"You're using a \w+TokenizerFast tokenizer.*using the `__call__` method is faster",
                     category=UserWarning,
                     module=r"transformers\.tokenization_utils_base",
                 )
-
-    def test_tokenizer_without_deprecation_warnings_attr(self) -> None:
-        '''Test fallback when tokenizer exists but lacks deprecation_warnings.'''
-        config = CrossEncoderConfig()
-
-        with patch("FlagEmbedding.FlagReranker"):
-            reranker = CrossEncoderReranker(config=config)
-
-            mock_model = MagicMock()
-            mock_tokenizer = MagicMock(spec=[])  # No deprecation_warnings
-            mock_model.tokenizer = mock_tokenizer
-            reranker._model = mock_model
-
-            with patch(
-                "reflectlog.infrastructure.cross_encoder_reranker.warnings"
-            ) as mock_warnings:
-                reranker._suppress_fast_tokenizer_warning()
-
-                # Should fall back to warnings.filterwarnings
-                mock_warnings.filterwarnings.assert_called_once()
 
 
 class TestRerankDisabledWithLogger:

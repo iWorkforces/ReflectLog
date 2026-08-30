@@ -59,8 +59,7 @@ def _abandon_without_persist(manager: MemoryManager) -> None:
     """Drop in-memory indexes without commit, like a SIGKILL."""
     engine = manager._semantic_engine
     store = engine.memory_store
-    if store is not None:
-        store.close()
+    store.close()
     if isinstance(engine, USearchEngine) and engine._index is not None:
         engine._index = None
     tantivy = manager._tantivy_engine
@@ -77,7 +76,9 @@ def _assert_converged(manager: MemoryManager) -> None:
     assert memories == [NEW]
     new_id = manager.get_id_by_content(NEW)
     assert new_id is not None
-    index = manager._semantic_engine.index
+    engine = manager._semantic_engine
+    assert isinstance(engine, USearchEngine)
+    index = engine.index
     assert index is not None
     assert new_id in index
     assert manager.get_id_by_content(OLD) is None
@@ -416,7 +417,9 @@ class TestReplacementRecoveryIntegration:
                 assert manager.get_id_by_content(OLD) is None
                 loser_id = manager.get_id_by_content(loser)
                 winner_id = manager.get_id_by_content(winner)
-                index = manager._semantic_engine.index
+                engine = manager._semantic_engine
+                assert isinstance(engine, USearchEngine)
+                index = engine.index
                 assert loser_id is not None
                 assert winner_id is not None
                 assert index is not None

@@ -23,7 +23,6 @@ import warnings
 from asyncer import asyncify
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from reflectlog.core.access import optional_attr
 from reflectlog.core.config import IAppConfig
 from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.logging import IStructuredLogger
@@ -219,28 +218,8 @@ class CrossEncoderReranker(BaseModel):
 
         The warning "You're using a XLMRobertaTokenizerFast tokenizer..."
         is informational and not actionable since FlagReranker handles
-        tokenization internally. This method suppresses it via two approaches:
-
-        1. Set the tokenizer's deprecation_warnings flag (if accessible)
-        2. Add a global warnings filter for this specific message
+        tokenization internally.
         """
-        # Approach 1: Try to set the tokenizer's deprecation flag directly
-        # This is the cleanest solution if the tokenizer is accessible
-        if self._model is not None:
-            # FlagReranker may store tokenizer in different attributes
-            tokenizer = optional_attr(self._model, "tokenizer")
-            if tokenizer is None:
-                # Try accessing via the model's internal structure
-                model_obj = optional_attr(self._model, "model")
-                if model_obj is not None:
-                    tokenizer = optional_attr(model_obj, "tokenizer")
-
-            if tokenizer is not None and hasattr(tokenizer, "deprecation_warnings"):
-                tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
-                return
-
-        # Approach 2: Use warnings filter as fallback
-        # This catches the warning regardless of tokenizer accessibility
         warnings.filterwarnings(
             "ignore",
             message=r"You're using a \w+TokenizerFast tokenizer.*using the `__call__` method is faster",

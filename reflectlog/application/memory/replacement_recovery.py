@@ -9,11 +9,9 @@ SQLite or hybrid Tantivy still disagree.
 from __future__ import annotations
 
 from contextlib import AbstractContextManager, nullcontext
-import operator
 import os
 from typing import TYPE_CHECKING, cast
 
-from reflectlog.core.access import optional_attr
 from reflectlog.core.enums import TransitionKind
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import (
@@ -414,8 +412,7 @@ def _recovery_store(
 ) -> IArchiveMemoryStore | None:
     """Return a transition store when pending rows can be listed."""
     store = semantic_engine.memory_store
-    db_path = optional_attr(store, "db_path")
-    if isinstance(db_path, str) and db_path and not os.path.exists(db_path):
+    if store.db_path and not os.path.exists(store.db_path):
         return None
     return store
 
@@ -463,28 +460,12 @@ def _reindex_if_vector_missing(
 
 def _vector_present(semantic_engine: ISemanticSearchEngine, memory_id: int) -> bool:
     """Return True only when a real index contains ``memory_id``."""
-    return _index_contains(semantic_engine, memory_id) is True
+    return semantic_engine.contains_id(memory_id) is True
 
 
 def _vector_absent(semantic_engine: ISemanticSearchEngine, memory_id: int) -> bool:
     """Return True only when a real index is missing ``memory_id``."""
-    return _index_contains(semantic_engine, memory_id) is False
-
-
-def _index_contains(
-    semantic_engine: ISemanticSearchEngine, memory_id: int
-) -> bool | None:
-    """Return membership, or None when the index cannot be inspected."""
-    result = semantic_engine.contains_id(memory_id)
-    if isinstance(result, bool):
-        return result
-    index = optional_attr(semantic_engine, "index")
-    if index is None:
-        return None
-    try:
-        return bool(operator.contains(index, memory_id))
-    except TypeError:
-        return None
+    return semantic_engine.contains_id(memory_id) is False
 
 
 def _precompute_add_vectors(
@@ -493,12 +474,7 @@ def _precompute_add_vectors(
     logger: IStructuredLogger,
 ) -> dict[str, list[float]]:
     """Embed missing add/replace text outside the write lock."""
-    embedder = optional_attr(semantic_engine, "embedder")
-    embed_query = (
-        optional_attr(embedder, "embed_query") if embedder is not None else None
-    )
-    if not callable(embed_query):
-        return {}
+    embedder = semantic_engine.embedder
     needed: list[str] = []
     seen: set[str] = set()
     for transition in pending:
@@ -517,7 +493,7 @@ def _precompute_add_vectors(
     vectors: dict[str, list[float]] = {}
     for content in needed:
         try:
-            raw = embed_query(content)
+            raw = embedder.embed_query(content)
         except Exception as exc:
             logger.warning(
                 "Pre-embed for recovery add failed; will retry under lock",

@@ -19,7 +19,6 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
 
-from reflectlog.core.access import optional_attr
 from reflectlog.core.config import IAppConfig
 from reflectlog.core.exceptions import InitializationError, SearchError
 from reflectlog.core.logging import IStructuredLogger
@@ -1159,13 +1158,7 @@ class TantivyEngine(BaseModel):
         num_docs: int | None = None
 
         try:
-            num_docs_attr = optional_attr(searcher, "num_docs")
-            if callable(num_docs_attr):
-                num_docs_result = num_docs_attr()
-                if isinstance(num_docs_result, (int, float)):
-                    num_docs = int(num_docs_result)
-            elif isinstance(num_docs_attr, (int, float)):
-                num_docs = int(num_docs_attr)
+            num_docs = searcher.num_docs()
         except Exception as e:
             if self.logger:
                 self.logger.debug(
