@@ -695,6 +695,30 @@ class TestTantivySoftDelete:
 
             engine.close()
 
+    def test_search_keeps_live_hits_after_many_tombstones(self) -> None:
+        '''Live FTS hits survive when unique tombstones exceed the limit.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                workspace_id="test",
+                index_path=tmpdir,
+                soft_delete_enabled=True,
+            )
+            engine = TantivyEngine(config)
+            engine.add("test", "keep this live note")
+            for index in range(8):
+                text = f"delete this note {index}"
+                engine.add("test", text)
+            engine.commit()
+            for index in range(8):
+                assert engine.soft_delete("test", f"delete this note {index}")
+            engine.commit()
+
+            results = engine.search("note", "test", limit=3)
+            messages = [memory for memory, _score in results]
+            assert "keep this live note" in messages
+            assert all(not item.startswith("delete this note") for item in messages)
+            engine.close()
+
     def test_search_filters_tombstoned_memories(self) -> None:
         '''Test that search excludes tombstoned messages.'''
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1507,6 +1531,47 @@ class TestGetAllDocsAllWorkspaces:
             workspace_ids = {pid for pid, _ in results}
             assert "proj-a" in workspace_ids
             assert "proj-b" in workspace_ids
+
+    def test_all_workspaces_omits_tombstoned_content(self) -> None:
+        '''Rebuild scans must not treat tombstoned texts as live.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                workspace_id="test",
+                index_path=tmpdir,
+                soft_delete_enabled=True,
+            )
+            engine = TantivyEngine(config)
+            engine.add("proj-a", "keep me")
+            engine.add("proj-a", "drop me")
+            engine.commit()
+            assert engine.soft_delete("proj-a", "drop me")
+            engine.commit()
+
+            results = engine._get_all_docs_all_workspaces()
+            contents = {content for _workspace, content in results}
+            assert "keep me" in contents
+            assert "drop me" not in contents
+            engine.close()
+
+    def test_rebuild_delete_does_not_resurrect_tombstones(self) -> None:
+        '''A later hard delete must not revive earlier soft-deleted texts.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(
+                workspace_id="test",
+                index_path=tmpdir,
+                soft_delete_enabled=True,
+            )
+            engine = TantivyEngine(config)
+            engine.add("test", "old tomb")
+            engine.add("test", "later gone")
+            engine.commit()
+            assert engine.soft_delete("test", "old tomb")
+            engine.commit()
+            assert engine._delete_via_rebuild("test", "later gone") is True
+
+            messages = [memory for memory, _score in engine.search("old", "test", limit=5)]
+            assert "old tomb" not in messages
+            engine.close()
 
     def test_all_workspaces_index_none_returns_empty(self) -> None:
         '''Test _get_all_docs_all_workspaces returns [] when _index is None.'''

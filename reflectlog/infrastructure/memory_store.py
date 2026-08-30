@@ -143,19 +143,28 @@ class MemoryStore(BaseModel):
                     if db_dir:
                         os.makedirs(db_dir, exist_ok=True)
 
-                    self._conn = sqlite3.connect(
+                    conn = sqlite3.connect(
                         self.db_path,
                         check_same_thread=False,
                         timeout=self.timeout,
                     )
-                    _ = self._conn.execute("PRAGMA journal_mode=WAL")
-                    _ = self._conn.execute("PRAGMA synchronous=NORMAL")
-                    # Set busy timeout to handle concurrent access gracefully
-                    _ = self._conn.execute(
+                    _ = conn.execute("PRAGMA journal_mode=WAL")
+                    _ = conn.execute("PRAGMA synchronous=NORMAL")
+                    _ = conn.execute(
                         f"PRAGMA busy_timeout = {int(self.timeout * 1000)}"
                     )
-                    self._create_schema()
-                    self._conn.commit()
+                    cursor = conn.cursor()
+                    try:
+                        self._create_memories_schema(cursor)
+                        self._create_archive_schema(cursor)
+                        self._create_transition_schema(cursor)
+                        conn.commit()
+                    except Exception:
+                        cursor.close()
+                        conn.close()
+                        raise
+                    cursor.close()
+                    self._conn = conn
 
                     if self.logger:
                         self.logger.debug(
