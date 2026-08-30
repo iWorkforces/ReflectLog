@@ -96,7 +96,13 @@ class StructuredLogger(IStructuredLogger):
         exc_info: bool = False,
     ) -> None:
         """Log error message with structured data."""
-        self.logger.error(message, extra=self._merge_extra(extra), exc_info=exc_info)
+        from .security import sanitize_for_logging
+
+        self.logger.error(
+            sanitize_for_logging(message),
+            extra=self._merge_extra(extra),
+            exc_info=exc_info,
+        )
 
     @override
     def warning(
@@ -106,7 +112,13 @@ class StructuredLogger(IStructuredLogger):
         exc_info: bool = False,
     ) -> None:
         """Log warning message with structured data."""
-        self.logger.warning(message, extra=self._merge_extra(extra), exc_info=exc_info)
+        from .security import sanitize_for_logging
+
+        self.logger.warning(
+            sanitize_for_logging(message),
+            extra=self._merge_extra(extra),
+            exc_info=exc_info,
+        )
 
     @override
     def debug(
@@ -116,7 +128,13 @@ class StructuredLogger(IStructuredLogger):
         exc_info: bool = False,
     ) -> None:
         """Log debug message with structured data."""
-        self.logger.debug(message, extra=self._merge_extra(extra), exc_info=exc_info)
+        from .security import sanitize_for_logging
+
+        self.logger.debug(
+            sanitize_for_logging(message),
+            extra=self._merge_extra(extra),
+            exc_info=exc_info,
+        )
 
     @contextmanager
     def operation(self, operation_name: str, **kwargs: Any):

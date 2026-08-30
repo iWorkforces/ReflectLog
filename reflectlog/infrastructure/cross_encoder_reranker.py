@@ -318,7 +318,7 @@ class CrossEncoderReranker(BaseModel):
             self.config.enable_recency_boost
             and self.config.recency_decay_rate > 0
             and bool(timestamp_map)
-            and all(bool(timestamp_map.get(doc)) for doc, _ in scored)
+            and any(bool(timestamp_map.get(doc)) for doc, _ in scored)
         )
         return self._post_processor.apply_decay(
             scored,
@@ -344,17 +344,16 @@ class CrossEncoderReranker(BaseModel):
             },
         )
 
-        for idx, (doc, score) in enumerate(scored, 1):
+        for idx, (_doc, score) in enumerate(scored, 1):
             status = "[KEEP]" if score >= threshold else "[FILTER]"
-            preview = doc[:60] + "..." if len(doc) > 60 else doc
             self.logger.debug(
-                f"      [{idx}] {status} score={score:.4f} -> {preview}",
+                f"      [{idx}] {status} score={score:.4f}",
                 extra={
                     "candidate_index": idx,
                     "score": score,
                     "threshold": threshold,
                     "status": "keep" if score >= threshold else "filter",
-                    "message_preview": preview,
+                    "memory_length": len(_doc),
                 },
             )
 

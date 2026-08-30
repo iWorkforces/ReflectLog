@@ -15,7 +15,6 @@ from reflectlog.core.enums import FusionMethod, FusionNormalization
 from reflectlog.utility.scoring import (
     compute_rrf_scores_batch,
     compute_weighted_rrf_scores_batch,
-    normalize_scores_minmax,
 )
 
 from .base import FusionEngine
@@ -31,7 +30,6 @@ SUPPORTED_NORMALIZATIONS: frozenset[FusionNormalization] = frozenset(
 
 # Default normalization per fusion method (applied to inputs before fusion)
 # Note: We use None for RRF since it works on ranks, not scores
-# Output scores are normalized in _normalize_output_scores()
 DEFAULT_NORMALIZATIONS: dict[FusionMethod, FusionNormalization | None] = {
     FusionMethod.RRF: None,
     FusionMethod.SUM: None,
@@ -202,38 +200,6 @@ class RanxFusionEngine(FusionEngine):
 
         return results
 
-    def _normalize_output_scores(
-        self, results: list[tuple[str, float]]
-    ) -> list[tuple[str, float]]:
-        """Normalize output scores to 0-1 range using min-max normalization.
-
-        This ensures fusion scores are comparable to threshold values (e.g., 0.8).
-
-        Performance: Uses numba-accelerated normalization for vectorized operations.
-
-        Args:
-            results: List of (memory, score) tuples.
-
-        Returns:
-            List with scores normalized to 0-1 range.
-        """
-        if not results:
-            return results
-
-        memories = [msg for msg, _ in results]
-        scores = np.array([score for _, score in results], dtype=np.float64)
-        # Zero-range RRF (disjoint rank-1 ties) must stay at 1.0 so the
-        # default fusion_ranking_threshold=0.8 does not drop every hit.
-        # Do not use shared min-max here: that maps a tie to 0.5.
-        if len(results) == 1 or float(np.max(scores)) == float(np.min(scores)):
-            return [(msg, 1.0) for msg in memories]
-
-        normalized_scores = normalize_scores_minmax(scores)
-        return [
-            (msg, float(score))
-            for msg, score in zip(memories, normalized_scores, strict=True)
-        ]
-
     def _fuse_rrf_numba(
         self, result_sets: list[list[tuple[str, float]]]
     ) -> list[tuple[str, float]]:
@@ -371,23 +337,21 @@ class RanxFusionEngine(FusionEngine):
                 ) from fuse_error
             raise
 
-        # Convert back to tuple format
+        # Convert back to tuple format. Do not min-max: a leftover 0.8
+        # fusion gate then keeps only the top hit.
         sorted_results = self._convert_from_run(combined)
-
-        # Normalize output scores to 0-1 range for consistent thresholding
-        normalized_results = self._normalize_output_scores(sorted_results)
 
         if self.logger:
             self.logger.debug(
-                f"Fusion completed: {len(normalized_results)} unique results "
+                f"Fusion completed: {len(sorted_results)} unique results "
                 f"from {len(non_empty)} result sets",
                 extra={
                     "method": self._method,
                     "normalization": self._normalization,
                     "input_sets": len(result_sets),
                     "non_empty_sets": len(non_empty),
-                    "unique_count": len(normalized_results),
+                    "unique_count": len(sorted_results),
                 },
             )
 
-        return normalized_results
+        return sorted_results

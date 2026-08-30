@@ -21,11 +21,11 @@ class FlagRerankerProtocol(Protocol):
 
     def compute_score(
         self,
-        sentence_pairs: list[tuple[str, str]],
+        sentence_pairs: list[tuple[str, str]] | list[list[str]],
         *,
         batch_size: int = 256,
         max_length: int = 512,
-        normalize: bool = True,
+        normalize: bool = False,
     ) -> float | list[float]:
         """Compute relevance scores for query-document pairs.
 
@@ -40,3 +40,24 @@ class FlagRerankerProtocol(Protocol):
             Scores are normalized to 0-1 range when normalize=True.
         """
         ...
+
+
+class FlagReranker:
+    """FlagEmbedding FlagReranker constructor used by ReflectLog."""
+
+    def __init__(
+        self,
+        model_name_or_path: str,
+        *,
+        use_fp16: bool = False,
+        devices: list[str] | None = None,
+    ) -> None: ...
+
+    def compute_score(
+        self,
+        sentence_pairs: list[tuple[str, str]] | list[list[str]],
+        *,
+        batch_size: int = 256,
+        max_length: int = 512,
+        normalize: bool = False,
+    ) -> float | list[float]: ...

@@ -321,6 +321,12 @@ class TantivyEngine(BaseModel):
                 if memory is not None:
                     msg_str = memory
                     # Skip tombstoned memories and duplicates
+                    is_deleted_val = doc.get_first("is_deleted")
+                    is_deleted = (
+                        int(is_deleted_val) if is_deleted_val is not None else 0
+                    )
+                    if is_deleted == 1:
+                        continue
                     if msg_str not in tombstoned_memories and msg_str not in seen:
                         results.append(msg_str)
                         seen.add(msg_str)
@@ -389,14 +395,22 @@ class TantivyEngine(BaseModel):
 
             top_docs = searcher.search(query=query, limit=doc_limit)
 
+            live: list[tuple[str, str]] = []
+            tombs: set[tuple[str, str]] = set()
             for _, doc_addr in top_docs.hits:
                 doc = searcher.doc(doc_addr)
                 workspace_id = doc.get_first("workspace_id")
                 memory = doc.get_first("content")
-                if workspace_id is not None and memory is not None:
-                    results.append((workspace_id, memory))
+                if workspace_id is None or memory is None:
+                    continue
+                is_deleted_val = doc.get_first("is_deleted")
+                is_deleted = int(is_deleted_val) if is_deleted_val is not None else 0
+                if is_deleted == 1:
+                    tombs.add((workspace_id, memory))
+                    continue
+                live.append((workspace_id, memory))
 
-            return results
+            return [item for item in live if item not in tombs]
 
         except Exception as e:
             if self.logger:
@@ -675,7 +689,10 @@ class TantivyEngine(BaseModel):
                 return []
 
             tombstoned_memories = self._get_tombstoned_memories(workspace_id)
-            extra = min(len(tombstoned_memories), limit) if tombstoned_memories else 0
+            # Each unique tombstone still occupies two query hits (live
+            # original + tombstone doc). Fetch both plus the requested live
+            # page so leftover deletes cannot starve FTS.
+            extra = 2 * len(tombstoned_memories)
             search_limit = limit + extra
 
             parsed_query = self._build_search_query(query, workspace_id)
@@ -694,7 +711,7 @@ class TantivyEngine(BaseModel):
                     "Tantivy query parsing failed",
                     extra={
                         "workspace_id": self.config.workspace_id,
-                        "query": query[:100],
+                        "query_length": len(query),
                         "error": str(e),
                         "error_type": "QueryParseError",
                     },
@@ -764,7 +781,10 @@ class TantivyEngine(BaseModel):
                 continue
 
             if self.logger:
-                self.logger.debug(f"Tantivy match: {memory[:100]}...")
+                self.logger.debug(
+                    "Tantivy match",
+                    extra={"memory_length": len(memory)},
+                )
             seen.add(memory)
             results.append((memory, score))
 
@@ -853,7 +873,7 @@ class TantivyEngine(BaseModel):
                         "Soft-delete: memory not found",
                         extra={
                             "workspace_id": workspace_id,
-                            "memory_preview": content[:50] if content else "",
+                            "memory_length": len(content) if content else 0,
                         },
                     )
                 return False
@@ -872,7 +892,7 @@ class TantivyEngine(BaseModel):
                 "Soft-delete: tombstone added",
                 extra={
                     "workspace_id": workspace_id,
-                    "memory_preview": content[:50] if content else "",
+                    "memory_length": len(content) if content else 0,
                     "tombstones_added": needed,
                 },
             )
@@ -982,17 +1002,27 @@ class TantivyEngine(BaseModel):
         *,
         verify_exists: bool = True,
     ) -> int:
-        """Soft-delete many memories and commit once."""
+        """Delete many memories and commit once.
+
+        Honors ``soft_delete_enabled``: tombstones when true, one rebuild
+        per item when false.
+        """
         if not contents:
             return 0
+        if self.config.soft_delete_enabled:
+            deleted = 0
+            for content in contents:
+                if self.soft_delete(
+                    workspace_id, content, verify_exists=verify_exists
+                ):
+                    deleted += 1
+            if deleted:
+                self.commit()
+            return deleted
         deleted = 0
         for content in contents:
-            if self.soft_delete(
-                workspace_id, content, verify_exists=verify_exists
-            ):
+            if self._delete_via_rebuild(workspace_id, content):
                 deleted += 1
-        if deleted:
-            self.commit()
         return deleted
 
     def _delete_via_rebuild(self, workspace_id: str, content: str) -> bool:
@@ -1011,7 +1041,7 @@ class TantivyEngine(BaseModel):
                     "Tantivy delete: document not found",
                     extra={
                         "workspace_id": workspace_id,
-                        "memory_preview": content[:50] if content else "",
+                        "memory_length": len(content) if content else 0,
                     },
                 )
             return False
@@ -1028,7 +1058,7 @@ class TantivyEngine(BaseModel):
                 "Tantivy delete: found document(s) to delete",
                 extra={
                     "workspace_id": workspace_id,
-                    "memory_preview": content[:50] if content else "",
+                    "memory_length": len(content) if content else 0,
                     "deleted_count": deleted_count,
                     "remaining_count": len(docs_to_keep),
                 },
@@ -1041,7 +1071,7 @@ class TantivyEngine(BaseModel):
                 "Tantivy delete: completed successfully",
                 extra={
                     "workspace_id": workspace_id,
-                    "memory_preview": content[:50] if content else "",
+                    "memory_length": len(content) if content else 0,
                     "deleted_count": deleted_count,
                 },
             )
@@ -1064,7 +1094,7 @@ class TantivyEngine(BaseModel):
 
         extra: dict[str, object] = {
             "workspace_id": workspace_id,
-            "memory_preview": content[:50] if content else "",
+            "memory_length": len(content) if content else 0,
             "error": str(error),
             "error_type": error_type,
         }

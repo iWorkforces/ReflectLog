@@ -120,6 +120,17 @@ def apply_pending_transition(
         if tantivy_engine is not None:
             tantivy_engine.commit()
         semantic_engine.commit()
+        if not _delete_converged(
+            transition,
+            semantic_engine,
+            tantivy_engine,
+            later_add=False,
+        ):
+            logger.warning(
+                "Superseded replace not complete; old text still live",
+                extra={"transition_id": transition.id},
+            )
+            return False
         store.complete_replacement_transition(transition.id)
         logger.info(
             "Completed replace intent superseded by a later delete or replace",
@@ -253,7 +264,12 @@ def _apply_pending_add(
             vector=(precomputed_vectors or {}).get(transition.new_content),
         )
     else:
-        _reindex_if_vector_missing(semantic_engine, existing_id, transition)
+        _reindex_if_vector_missing(
+            semantic_engine,
+            existing_id,
+            transition,
+            vector=(precomputed_vectors or {}).get(transition.new_content),
+        )
 
     if tantivy_engine is not None and not _tantivy_has(
         tantivy_engine, transition.workspace_id, transition.new_content
@@ -292,7 +308,11 @@ def _apply_pending_delete(
         and not later_add
         and not _old_text_live_under_new_id(transition, semantic_engine)
     ):
-        _ = tantivy_engine.delete(transition.workspace_id, transition.old_content)
+        _ = tantivy_engine.delete(
+            transition.workspace_id,
+            transition.old_content,
+            verify_exists=False,
+        )
 
     if tantivy_engine is not None:
         tantivy_engine.commit()
@@ -403,7 +423,11 @@ def _remove_recorded_old(
 
     if _old_text_live_under_new_id(transition, semantic_engine):
         return
-    _ = tantivy_engine.delete(transition.workspace_id, transition.old_content)
+    _ = tantivy_engine.delete(
+        transition.workspace_id,
+        transition.old_content,
+        verify_exists=False,
+    )
 
 
 def _recovery_store(
@@ -431,7 +455,9 @@ def _ensure_replacement_present(
     if existing_id is None:
         _insert_recovered_add(semantic_engine, transition, vector=vector)
     else:
-        _reindex_if_vector_missing(semantic_engine, existing_id, transition)
+        _reindex_if_vector_missing(
+            semantic_engine, existing_id, transition, vector=vector
+        )
 
     if tantivy_engine is None:
         return
@@ -445,12 +471,21 @@ def _reindex_if_vector_missing(
     semantic_engine: ISemanticSearchEngine,
     existing_id: int,
     transition: ReplacementTransition,
+    vector: list[float] | None = None,
 ) -> None:
     """Re-add a SQLite row whose USearch vector was not committed."""
     if _vector_present(semantic_engine, existing_id):
         return
 
     semantic_engine.delete(memory_id=str(existing_id))
+    if vector is not None:
+        _ = semantic_engine.add_batch(
+            transition.workspace_id,
+            [transition.new_content],
+            infer=False,
+            vectors=[vector],
+        )
+        return
     semantic_engine.add(
         workspace_id=transition.workspace_id,
         content=transition.new_content,
@@ -483,10 +518,10 @@ def _precompute_add_vectors(
         content = transition.new_content
         if not content or content in seen:
             continue
-        if (
-            semantic_engine.get_id_by_content(transition.workspace_id, content)
-            is not None
-        ):
+        existing_id = semantic_engine.get_id_by_content(
+            transition.workspace_id, content
+        )
+        if existing_id is not None and _vector_present(semantic_engine, existing_id):
             continue
         seen.add(content)
         needed.append(content)
