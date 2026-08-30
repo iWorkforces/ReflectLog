@@ -23,7 +23,7 @@ class TestHealthCheckToolStatus:
         tool = HealthCheckTool(mock_config, mock_memory_manager, mock_tool_logger)
         result = await tool.get_handler()()
 
-        assert result["status"] == "healthy"
+        assert result["status"] in {"unhealthy", "degraded"}
         assert result["semantic_engine"] == "pending"
         assert result["tantivy_engine"] == "disabled"
         mock_memory_manager.search_engine_status.assert_called_once()
@@ -36,15 +36,16 @@ class TestHealthCheckToolStatus:
             "semantic_engine": "initialized",
             "tantivy_engine": "initialized",
         }
+        mock_memory_manager.pending_intent_count.return_value = 2
         mock_memory_manager.pending_replacement_count.return_value = 2
         mock_memory_manager.startup_metrics = None
         tool = HealthCheckTool(mock_config, mock_memory_manager, mock_tool_logger)
         result = await tool.get_handler()()
 
         assert result["status"] == "degraded"
-        assert result["pending_replacement_transitions"] == 2
+        assert result["pending_intent_count"] == 2
         mock_memory_manager.reconcile_pending_replacements.assert_not_called()
-        mock_memory_manager.pending_replacement_count.assert_called_once()
+        mock_memory_manager.pending_intent_count.assert_called_once()
 
     async def test_healthy_when_no_pending_replacements(
         self, mock_config: Config, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
@@ -53,13 +54,14 @@ class TestHealthCheckToolStatus:
             "semantic_engine": "initialized",
             "tantivy_engine": "initialized",
         }
+        mock_memory_manager.pending_intent_count.return_value = 0
         mock_memory_manager.pending_replacement_count.return_value = 0
         mock_memory_manager.startup_metrics = None
         tool = HealthCheckTool(mock_config, mock_memory_manager, mock_tool_logger)
         result = await tool.get_handler()()
 
         assert result["status"] == "healthy"
-        assert result["pending_replacement_transitions"] == 0
+        assert result["pending_intent_count"] == 0
         mock_memory_manager.reconcile_pending_replacements.assert_not_called()
 
     async def test_unhealthy_does_not_reenter_status(

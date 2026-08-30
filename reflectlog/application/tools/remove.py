@@ -6,7 +6,7 @@ from asyncer import asyncify
 
 from reflectlog.core.exceptions import StorageError
 
-from ..utils.validation import truncate_memory
+from ..utils.validation import validate_memories
 from .base import BaseTool
 
 
@@ -73,6 +73,12 @@ class RemoveTool(BaseTool):
                 self.logger.info("Remove called with empty list, skipping")
                 return
 
+            is_valid, error_msg = validate_memories(
+                memories, self.config.min_memory_length, self.config.max_memory_length
+            )
+            if not is_valid:
+                raise ValueError(f"Invalid memory: {error_msg}")
+
             self.log_invocation(
                 "remove",
                 requested_count=len(memories),
@@ -87,15 +93,13 @@ class RemoveTool(BaseTool):
                 },
             )
 
-            for idx, memory in enumerate(memories, 1):
-                self.logger.info(
-                    f"  [{idx}/{len(memories)}] Target: {truncate_memory(memory)}",
-                    extra={
-                        "tool": "remove",
-                        "memory_index": idx,
-                        "total_memories": len(memories),
-                    },
-                )
+            self.logger.info(
+                f"  {len(memories)} removal target(s)",
+                extra={
+                    "tool": "remove",
+                    "total_memories": len(memories),
+                },
+            )
 
             unique_memories = list(dict.fromkeys(memories))
             actual_removed = 0
@@ -115,8 +119,8 @@ class RemoveTool(BaseTool):
                     deleted_set = set(deleted)
                     actual_removed = len(deleted_set)
                     memories_not_found = [
-                        truncate_memory(memory, 50)
-                        for memory in unique_memories
+                        f"index:{idx}"
+                        for idx, memory in enumerate(unique_memories)
                         if memory not in deleted_set
                     ]
                 else:
@@ -125,7 +129,7 @@ class RemoveTool(BaseTool):
                             memory, memory_idx, len(unique_memories)
                         )
                         if removed_count == 0:
-                            memories_not_found.append(truncate_memory(memory, 50))
+                            memories_not_found.append(f"index:{memory_idx}")
                         else:
                             actual_removed += removed_count
 
@@ -192,7 +196,7 @@ class RemoveTool(BaseTool):
             Number of occurrences removed.
         """
         self.logger.info(
-            f"[{memory_idx}/{total_memories}] Searching for memory: {truncate_memory(memory)}",
+            f"[{memory_idx}/{total_memories}] Searching for memory",
             extra={
                 "tool": "remove",
                 "memory_index": memory_idx,
@@ -317,10 +321,9 @@ class RemoveTool(BaseTool):
 
         for idx, candidate in enumerate(sorted_candidates[:3], 1):
             score = candidate.get("score", 0.0)
-            preview = truncate_memory(candidate.get("memory", ""), max_length=50)
 
             self.logger.info(
-                f"[{memory_idx}/{total_memories}]   [{idx}] Score: {score:.4f} → {preview}",
+                f"[{memory_idx}/{total_memories}]   [{idx}] Score: {score:.4f}",
                 extra={
                     "tool": "remove",
                     "memory_index": memory_idx,

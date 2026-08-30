@@ -241,28 +241,20 @@ class IMemoryManager(Protocol):
         """Whether hybrid search is enabled."""
         ...
 
-    async def add_memories(
+    async def add_memories_async(
         self,
         memories: list[str],
         dry_run: bool = False,
-    ) -> dict[str, int]:
-        """Add multiple memories with processing.
-
-        Args:
-            memories: List of memories to store.
-            dry_run: If True, only check without making changes.
-
-        Returns:
-            Result dict with stored, skipped, replaced counts.
-        """
+    ) -> object:
+        """Add memories through the 3-phase pipeline."""
         ...
 
-    async def get_all(self) -> list[str]:
-        """Retrieve all stored memories.
+    def add_memories(self, memories: list[str]) -> int:
+        """Synchronous add used by tests and recovery seeding."""
+        ...
 
-        Returns:
-            List of all memory strings.
-        """
+    def get_all(self) -> list[str]:
+        """Retrieve all stored memories from the semantic backend."""
         ...
 
     async def search(
@@ -270,32 +262,17 @@ class IMemoryManager(Protocol):
         query: str,
         limit: int | None = None,
     ) -> list[str]:
-        """Search memories.
-
-        Args:
-            query: Search query.
-            limit: Maximum results.
-
-        Returns:
-            List of matching memory strings.
-        """
+        """Hybrid search."""
         ...
 
-    async def delete_by_memory(self, memory: str) -> bool:
-        """Delete a memory by its content.
-
-        Args:
-            memory: Memory content to delete.
-
-        Returns:
-            True if deleted, False if not found.
-        """
+    def delete_by_memory(self, memory: str) -> bool:
+        """Delete one memory by exact content."""
         ...
 
     def delete_memories(self, memories: list[str]) -> list[str]:
         """Delete many memories and return the contents that were removed."""
         ...
 
-    async def close(self) -> None:
+    def close(self) -> None:
         """Release resources and persist data."""
         ...

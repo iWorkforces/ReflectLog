@@ -21,15 +21,17 @@ class GetAllTool(BaseTool):
     def get_instruction_snippet(self) -> str:
         """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
-            "    • get_all() -> list[str]\n"
-            "      Retrieve all stored memories. Returns empty list if none stored."
+            "    • get_all(limit: int | None = None, offset: int = 0) -> list[str]\n"
+            "      Retrieve stored memories with an optional page. Default cap 1000."
         )
 
     @override
     def get_handler(self):
         """Get the async tool handler function."""
 
-        async def get_all() -> list[str]:
+        async def get_all(
+            limit: int | None = None, offset: int = 0
+        ) -> list[str]:
             """Retrieve all stored memories (async).
 
             Returns all memories currently in the memory store. Order is determined
@@ -55,8 +57,22 @@ class GetAllTool(BaseTool):
                 self.log_invocation("get_all")
 
                 memories = await asyncify(self.memory.get_all)()
-                self.log_completion("get_all", count=len(memories))
-                return memories
+                start = max(0, offset)
+                page_size = self.config.get_all_limit if limit is None else max(0, limit)
+                page_size = min(page_size, self.config.get_all_limit)
+                page = memories[start : start + page_size]
+                if start + len(page) < len(memories):
+                    self.logger.warning(
+                        "get_all truncated",
+                        extra={
+                            "tool": "get_all",
+                            "returned": len(page),
+                            "total": len(memories),
+                            "offset": start,
+                        },
+                    )
+                self.log_completion("get_all", count=len(page), total=len(memories))
+                return page
 
             except Exception as e:
                 self.log_error("get_all", e)

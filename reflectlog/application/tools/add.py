@@ -4,8 +4,7 @@ from typing import override
 
 from reflectlog.core.exceptions import StorageError
 
-from ..constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
-from ..utils.validation import truncate_memory, validate_memories
+from ..utils.validation import validate_add_batch, validate_memories
 from .base import BaseTool
 
 
@@ -21,16 +20,16 @@ class AddTool(BaseTool):
     def get_instruction_snippet(self) -> str:
         """Get the instruction snippet for MCP_INSTRUCTIONS."""
         return (
-            "    • add(memories: list[str])\n"
+            "    • add(memories: list[str], dry_run: bool = False) -> dict\n"
             "      Add memories with semantic embeddings. Empty lists are no-op.\n"
-            "      Memories must be 1-30720 characters, non-whitespace."
+            "      Returns stored/skipped/replaced counts. dry_run previews replacements."
         )
 
     @override
     def get_handler(self):
         """Get the async tool handler function."""
 
-        async def add(memories: list[str], dry_run: bool = False) -> None:
+        async def add(memories: list[str], dry_run: bool = False) -> dict[str, object]:
             """Add memories to the memory store with parallel processing (async).
 
             This tool stores one or more text memories in the memory store using
@@ -68,12 +67,22 @@ class AddTool(BaseTool):
             if not memories:
                 self.log_invocation("add", count=0)
                 self.logger.info("Add called with empty list, nothing to store")
-                return
+                return {
+                    "stored_count": 0,
+                    "skipped_count": 0,
+                    "replaced_count": 0,
+                    "replacements": [],
+                    "dry_run": dry_run,
+                }
 
             # Validate memories
             is_valid, error_msg = validate_memories(
                 memories, self.config.min_memory_length, self.config.max_memory_length
             )
+            if is_valid:
+                is_valid, error_msg = validate_add_batch(
+                    memories, self.config.max_add_batch, self.config.max_add_chars
+                )
 
             if not is_valid:
                 self.log_error("add", ValueError(error_msg), count=len(memories))
@@ -95,27 +104,14 @@ class AddTool(BaseTool):
                 hybrid_mode=self.config.enable_hybrid_search,
             )
 
-            # Log memory previews (throttled for large batches)
-            log_limit = min(len(memories), LOG_ADD_MEMORY_PREVIEW_LIMIT)
-            for idx, memory in enumerate(memories[:log_limit], 1):
-                preview = truncate_memory(memory, max_length=80)
-                self.logger.info(
-                    f"  Memory {idx}/{len(memories)} ({len(memory):,} chars): {preview}",
-                    extra={
-                        "tool": "add",
-                        "memory_index": idx,
-                        "memory_length": len(memory),
-                    },
-                )
-            if len(memories) > log_limit:
-                self.logger.info(
-                    f"  ... {len(memories) - log_limit} more memory(ies) omitted from logs",
-                    extra={
-                        "tool": "add",
-                        "omitted_count": len(memories) - log_limit,
-                        "memory_count": len(memories),
-                    },
-                )
+            self.logger.info(
+                f"  {len(memories)} memory payload(s), {total_chars:,} characters",
+                extra={
+                    "tool": "add",
+                    "memory_count": len(memories),
+                    "total_characters": total_chars,
+                },
+            )
 
             # Store memories using async method for better concurrency
             try:
@@ -159,16 +155,13 @@ class AddTool(BaseTool):
                         },
                     )
 
-                # Log replacement details if any
-                for replacement in result.replacements:
+                if result.replacements:
                     self.logger.info(
-                        f"  Replaced: '{replacement.old_memory[:50]}...' → "
-                        f"'{replacement.new_memory[:50]}...' (confidence: {replacement.confidence:.2f})",
+                        f"  {len(result.replacements)} replacement(s)",
                         extra={
                             "tool": "add",
                             "action": "replacement",
-                            "confidence": replacement.confidence,
-                            "reason": replacement.reason,
+                            "replacement_count": len(result.replacements),
                         },
                     )
 
@@ -181,6 +174,21 @@ class AddTool(BaseTool):
                 )
 
                 self.log_completion("add", requested=len(memories), stored=stored_count)
+                return {
+                    "stored_count": stored_count,
+                    "skipped_count": skipped_count,
+                    "replaced_count": replaced_count,
+                    "replacements": [
+                        {
+                            "old_memory": replacement.old_memory,
+                            "new_memory": replacement.new_memory,
+                            "confidence": replacement.confidence,
+                            "reason": replacement.reason,
+                        }
+                        for replacement in result.replacements
+                    ],
+                    "dry_run": dry_run,
+                }
 
             except Exception as e:
                 self._raise_tool_error(
@@ -190,5 +198,6 @@ class AddTool(BaseTool):
                     message="Failed to add memories to memory store",
                     count=len(memories),
                 )
+                raise
 
         return add

@@ -1,24 +1,7 @@
 """Memory validation utilities for ReflectLog Server."""
 
-import re
 from typing import Any
 import unicodedata
-
-# SQL injection patterns for basic detection
-_SQL_INJECTION_PATTERNS = [
-    r"(?i)\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION)\b.*\bFROM\b",
-    r"(?i)\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION)\b.*\bWHERE\b",
-    r"(?i)\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION)\b.*\bINTO\b",
-    r"(?i);.*\b(DROP|DELETE|UPDATE|INSERT)\b",
-    r"(?i)'.*OR.*'.*=.*'",
-    r"(?i)'.*UNION.*SELECT",
-    r"(?i)'.*;.*DROP",
-    r"(?i)\bEXEC\b.*\bXP_CMD\b",
-    r"(?i)\bEXEC\b.*\bSP_OA\b",
-]
-
-# Pre-compiled regex patterns for performance
-_SQL_INJECTION_REGEX = [re.compile(pattern) for pattern in _SQL_INJECTION_PATTERNS]
 
 # Allowed control characters (tab, newline, carriage return)
 _ALLOWED_CONTROL_CHARS = {"\t", "\n", "\r"}
@@ -81,14 +64,18 @@ def validate_memories(
                     f"Memory at index {i} contains control characters at position {memory.index(char)}",
                 )
 
-        # Check for SQL injection patterns
-        for pattern in _SQL_INJECTION_REGEX:
-            if pattern.search(memory):
-                return (
-                    False,
-                    f"Memory at index {i} contains potentially harmful content (SQL injection pattern)",
-                )
+    return True, None
 
+
+def validate_add_batch(
+    memories: list[str], max_batch: int, max_chars: int
+) -> tuple[bool, str | None]:
+    """Reject oversized add payloads before embed/persist."""
+    if len(memories) > max_batch:
+        return False, f"Too many memories in one add (max: {max_batch})"
+    total_chars = sum(len(item) for item in memories if isinstance(item, str))
+    if total_chars > max_chars:
+        return False, f"Add payload too large (max: {max_chars} characters)"
     return True, None
 
 
