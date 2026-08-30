@@ -44,6 +44,7 @@ def _make_config(
     config.fusion_rrf_k = 60
     config.reranker_engine = reranker_engine
     config.search_score_threshold = 0.0
+    config.cross_encoder_top_k = 20
     config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
     config.overfetch_multiplier = 3
     config.overfetch_adaptive = True
@@ -674,6 +675,39 @@ class TestBackendFailureContracts:
         with pytest.raises(SearchError, match="Failed to execute search"):
             await pipeline.execute(_make_context(enable_hybrid_search=True))
 
+    async def test_tantivy_error_and_empty_semantic_raises_search_error(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = []
+        tantivy = MagicMock()
+        tantivy.search.side_effect = RuntimeError("tantivy boom")
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        with pytest.raises(SearchError, match="Failed to execute search"):
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+    @pytest.mark.asyncio
+    async def test_search_score_threshold_drops_weak_semantic_hits(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [
+            ("strong", 0.9, _TS),
+            ("weak", 0.1, _TS),
+        ]
+        tantivy = MagicMock()
+        tantivy.search.return_value = []
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("strong", 0.9)]
+        config = _make_config()
+        config.search_score_threshold = 0.5
+        pipeline = _make_pipeline(
+            semantic=semantic, tantivy=tantivy, fusion=fusion, config=config
+        )
+
+        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
+
+        assert result.memories == ["strong"]
+        assert all(msg != "weak" for msg, _, _ in result.semantic_results)
+
     @pytest.mark.asyncio
     async def test_tantivy_none_returns_empty(self) -> None:
         pipeline = _make_pipeline(semantic=MagicMock(), tantivy=None)
@@ -736,7 +770,7 @@ class TestRerankerSettings:
             "test query",
             [("a", 0.4), ("b", 0.3)],
             {"a": _TS, "b": _TS},
-            top_k=5,
+            top_k=20,
         )
         assert result.memories == ["b", "a"]
 
@@ -1143,6 +1177,14 @@ class TestSearchResponsiveness:
 
             def is_ready(self) -> bool:
                 return False
+
+            def count(self, workspace_id: str) -> int:
+                _ = workspace_id
+                index_threads.append(threading.get_ident())
+                entered.set()
+                if not loop_progressed.wait(timeout=_BACKEND_WAIT_TIMEOUT):
+                    raise TimeoutError("event loop did not progress during index get")
+                return index_size
 
             @property
             def _index(self) -> range:

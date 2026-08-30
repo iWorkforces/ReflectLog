@@ -33,7 +33,8 @@ def mock_config() -> Mock:
     config.fusion_ranking_threshold = 0.1
     config.fusion_rrf_k = 60
     config.reranker_engine = "none"
-    config.search_score_threshold = 0.5
+    config.search_score_threshold = 0.0
+    config.cross_encoder_top_k = 20
     config.cross_encoder_model = "BAAI/bge-reranker-v2-m3"
     config.overfetch_multiplier = 3
     config.overfetch_adaptive = True
@@ -444,7 +445,7 @@ class TestRerankCrossEncoder:
 
         assert reranked == [("msg1", 0.95)]
         mock_reranker.rerank_async.assert_awaited_once_with(
-            ctx.query, results, top_k=ctx.limit
+            ctx.query, results, top_k=20
         )
 
         # Verify logging calls happened

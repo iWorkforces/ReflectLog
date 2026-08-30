@@ -190,8 +190,13 @@ class SearchPipeline:
         results, search_error = soon_results.value
         if search_error is not None:
             raise search_error
+        results = self._filter_semantic_threshold(results)
 
         timestamp_map = {msg: created_at for msg, _, created_at in results}
+        contents = [msg for msg, _, _ in results]
+        timestamp_map = self._complete_timestamp_map(
+            timestamp_map, contents, context.workspace_id
+        )
         paired = [(msg, score) for msg, score, _ in results]
         if len(paired) > 1:
             paired = await self._step4_reranking(context, paired, timestamp_map, 2)
@@ -208,6 +213,7 @@ class SearchPipeline:
         """Execute 4-step hybrid search pipeline."""
         # Step 1: Parallel Search
         semantic_results, tantivy_results = await self._step1_parallel_search(context)
+        semantic_results = self._filter_semantic_threshold(semantic_results)
 
         timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
@@ -307,6 +313,10 @@ class SearchPipeline:
             raise SearchError(
                 f"Failed to execute search: {semantic_error}"
             ) from semantic_error
+        if tantivy_error is not None and not semantic_results:
+            raise SearchError(
+                f"Failed to execute search: {tantivy_error}"
+            ) from tantivy_error
 
         self.logger.info(
             f"Both engines completed (semantic: {len(semantic_results)}, tantivy: {len(tantivy_results)})",
@@ -662,11 +672,14 @@ class SearchPipeline:
         try:
             if timestamp_map is None:
                 reranked_results = await cross_encoder_reranker.rerank_async(
-                    context.query, results, top_k=context.limit
+                    context.query, results, top_k=self._cross_encoder_top_k(context)
                 )
             else:
                 reranked_results = await cross_encoder_reranker.rerank_async(
-                    context.query, results, timestamp_map, top_k=context.limit
+                    context.query,
+                    results,
+                    timestamp_map,
+                    top_k=self._cross_encoder_top_k(context),
                 )
         except Exception as exc:
             self.logger.warning(
@@ -785,6 +798,30 @@ class SearchPipeline:
         except Exception:
             return completed
         return completed
+
+    def _filter_semantic_threshold(
+        self, results: list[tuple[str, float, str]]
+    ) -> list[tuple[str, float, str]]:
+        """Drop USearch hits below SEARCH_SCORE_THRESHOLD before fusion."""
+        try:
+            threshold = float(self.config.search_score_threshold)
+        except (TypeError, ValueError):
+            return results
+        if threshold <= 0:
+            return results
+        return [
+            (memory, score, created_at)
+            for memory, score, created_at in results
+            if score >= threshold
+        ]
+
+    def _cross_encoder_top_k(self, context: SearchContext) -> int:
+        """CE window is at least the user limit and the configured top_k."""
+        try:
+            configured = int(self.config.cross_encoder_top_k)
+        except (TypeError, ValueError):
+            configured = context.limit
+        return max(1, configured, context.limit)
 
 
 def calculate_adaptive_overfetch(limit: int, index_size: int, config: Config) -> int:
