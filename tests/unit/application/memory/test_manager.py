@@ -109,6 +109,8 @@ def _make_manager(
 
         mock_tantivy = MagicMock()
         mock_tantivy.is_ready.return_value = False
+        mock_tantivy.delete.return_value = True
+        mock_tantivy.find_by_exact_match.return_value = []
         mock_tantivy.delete_batch.side_effect = (
             lambda _workspace, contents, verify_exists=True: len(contents)
         )
@@ -565,8 +567,28 @@ class TestDeleteOperations:
         manager.delete_by_id("42")
         mock_usearch.delete.assert_called_once_with(memory_id="42")
         mock_usearch.commit.assert_called()
-        mock_tantivy.delete.assert_called_once_with("test_project", "known")
+        mock_tantivy.delete.assert_called_once_with(
+            "test_project", "known", verify_exists=True
+        )
         mock_tantivy.commit.assert_called()
+
+    def test_delete_by_id_tantivy_false_is_inconsistent(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        class _Store:
+            def get(self, memory_id: int) -> object:
+                return type("Rec", (), {"content": "known"})()
+
+            def begin_delete_intents(
+                self, workspace_id: str, items: list[tuple[int, str]]
+            ) -> list[object]:
+                return []
+
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
+        mock_usearch.memory_store = _Store()
+        mock_tantivy.delete.return_value = False
+        with pytest.raises(InconsistentStateError, match="Tantivy"):
+            manager.delete_by_id("42")
 
     def test_delete_by_id_exception_raises_storage_error(
         self, mock_config: Config, mock_logger: LogCapture
@@ -807,13 +829,11 @@ class TestCloseErrorPaths:
         mock_usearch.close.assert_called_once()
         mock_tantivy.close.assert_called_once()
 
-    def test_pending_intent_count_fail_soft(
+    def test_pending_intent_count_propagates_list_failure(
         self, mock_config: Config, mock_logger: LogCapture
     ):
-        """Missing store or listing errors do not raise from health reads."""
+        """Journal listing errors must surface so health cannot report zero."""
         manager, _mock_usearch, _ = _make_manager(mock_config, mock_logger)
-        manager._semantic_engine = None
-        assert manager.pending_intent_count() == 0
 
         class BrokenStore:
             def list_pending_transitions(self) -> list[object]:
@@ -823,7 +843,8 @@ class TestCloseErrorPaths:
             memory_store = BrokenStore()
 
         manager._semantic_engine = BrokenEngine()
-        assert manager.pending_intent_count() == 0
+        with pytest.raises(RuntimeError, match="journal locked"):
+            _ = manager.pending_intent_count()
 
 
 # ---------------------------------------------------------------------------

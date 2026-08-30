@@ -92,3 +92,23 @@ class TestHealthCheckToolStatus:
         assert result["diagnostics"]["semantic_engine"] == EngineReadiness.UNKNOWN
         assert result["diagnostics"]["tantivy_engine"] == EngineReadiness.UNKNOWN
         assert mock_memory_manager.search_engine_status.call_count == 1
+
+    async def test_unhealthy_when_journal_cannot_be_listed(
+        self,
+        mock_config: Config,
+        mock_memory_manager: MagicMock,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        mock_memory_manager.search_engine_status.return_value = {
+            "semantic_engine": EngineReadiness.INITIALIZED,
+            "tantivy_engine": EngineReadiness.INITIALIZED,
+        }
+        mock_memory_manager.pending_intent_count.side_effect = RuntimeError(
+            "journal locked"
+        )
+        mock_memory_manager.startup_metrics = None
+        tool = HealthCheckTool(mock_config, mock_memory_manager, mock_tool_logger)
+        result = await tool.get_handler()()
+
+        assert result["status"] == HealthStatus.UNHEALTHY
+        assert result["error_type"] == "RuntimeError"

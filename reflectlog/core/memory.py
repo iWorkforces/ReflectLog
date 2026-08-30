@@ -259,7 +259,11 @@ class IMemoryManager(Protocol):
         ...
 
     def pending_intent_count(self) -> int:
-        """Return how many add/delete/replace intents are still pending."""
+        """Return how many add/delete/replace intents are still pending.
+
+        Raises if the journal cannot be listed so health cannot report
+        a healthy zero while leftover rows are unreadable.
+        """
         ...
 
     def search_engine_status(self) -> dict[str, EngineReadiness]:

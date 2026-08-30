@@ -989,6 +989,12 @@ class TestHealthCheckTool:
     async def test_health_check_returns_healthy_status(self, mcp_server):
         '''Test health check returns healthy status with all components.'''
         class ReadyEngine:
+            memory_store = type(
+                "Store",
+                (),
+                {"list_pending_transitions": staticmethod(lambda: [])},
+            )()
+
             def is_ready(self) -> bool:
                 return True
 
@@ -1018,6 +1024,12 @@ class TestHealthCheckTool:
         '''Test health check when Tantivy is disabled.'''
 
         class ReadyEngine:
+            memory_store = type(
+                "Store",
+                (),
+                {"list_pending_transitions": staticmethod(lambda: [])},
+            )()
+
             def is_ready(self) -> bool:
                 return True
 
@@ -1057,6 +1069,12 @@ class TestHealthCheckTool:
     async def test_health_check_with_different_reranker(self, mcp_server):
         '''Test health check reports configured reranker engine.'''
         class ReadyEngine:
+            memory_store = type(
+                "Store",
+                (),
+                {"list_pending_transitions": staticmethod(lambda: [])},
+            )()
+
             def is_ready(self) -> bool:
                 return True
 

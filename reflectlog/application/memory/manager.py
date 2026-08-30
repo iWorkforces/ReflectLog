@@ -327,11 +327,19 @@ class MemoryManager:
         return self.pending_intent_count()
 
     def pending_intent_count(self) -> int:
-        """Return how many add/delete/replace intents are still pending."""
-        try:
-            return len(self._semantic_engine.memory_store.list_pending_transitions())
-        except Exception:
+        """Return how many add/delete/replace intents are still pending.
+
+        A missing engine or store is treated as zero leftover intents.
+        Listing failures propagate so health cannot report a healthy zero
+        while the journal is unreadable.
+        """
+        store = optional_attr(self._semantic_engine, "memory_store")
+        if store is None:
             return 0
+        list_pending = optional_attr(store, "list_pending_transitions")
+        if not callable(list_pending):
+            raise StorageError("Journal store cannot list pending transitions")
+        return len(list_pending())
 
     def _log_configuration(self) -> None:
         """Log the final configuration state after initialization."""
@@ -951,10 +959,19 @@ class MemoryManager:
                 self._semantic_engine.delete(memory_id=memory_id)
                 self._semantic_engine.commit()
                 if content is not None and self._tantivy_engine is not None:
-                    _ = self._tantivy_engine.delete(self.workspace_id, content)
+                    deleted = self._tantivy_engine.delete(
+                        self.workspace_id, content, verify_exists=True
+                    )
+                    if deleted is not True:
+                        raise InconsistentStateError(
+                            "USearch deletion succeeded but Tantivy "
+                            f"did not delete {content!r}"
+                        )
                     self._tantivy_engine.commit()
                 if delete_intents:
                     self._complete_delete_intents(delete_intents)
+            except InconsistentStateError:
+                raise
             except Exception as e:
                 raise StorageError(f"Failed to delete memory: {e}") from e
 
@@ -1100,13 +1117,19 @@ class MemoryManager:
         )
 
     def _complete_add_intents(self, intents: list[ReplacementTransition]) -> None:
-        """Mark add intents complete when the content is live in SQLite."""
+        """Mark add intents complete when SQLite and Tantivy both have the text."""
         store = self._semantic_engine.memory_store
         for intent in intents:
             if intent.kind != TransitionKind.ADD:
                 continue
             if self.get_id_by_content(intent.new_content) is None:
                 continue
+            if self._tantivy_engine is not None:
+                matches = self._tantivy_engine.find_by_exact_match(
+                    self.workspace_id, intent.new_content
+                )
+                if intent.new_content not in matches:
+                    continue
             store.complete_replacement_transition(intent.id)
 
     def _record_delete_intents(
@@ -1120,7 +1143,7 @@ class MemoryManager:
         )
 
     def _complete_delete_intents(self, intents: list[ReplacementTransition]) -> None:
-        """Mark delete intents complete when the recorded id is gone."""
+        """Mark delete intents complete when the recorded id and FTS copy are gone."""
         store = self._semantic_engine.memory_store
         for intent in intents:
             if intent.kind != TransitionKind.DELETE:
@@ -1129,6 +1152,12 @@ class MemoryManager:
                 continue
             if self._semantic_engine.contains_id(intent.old_memory_id) is not False:
                 continue
+            if self._tantivy_engine is not None:
+                matches = self._tantivy_engine.find_by_exact_match(
+                    self.workspace_id, intent.old_content
+                )
+                if intent.old_content in matches:
+                    continue
             store.complete_replacement_transition(intent.id)
 
     def get_id_by_content(self, content: str) -> int | None:
