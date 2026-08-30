@@ -171,7 +171,9 @@ class LangchainQwenEmbeddings(BaseModel):
             dimensions=self.config.embedding_dims,
             encoding_format="float",
         )
-        return embeddings[0] if embeddings else []
+        if not embeddings or not embeddings[0]:
+            raise RuntimeError("Embedding produced an empty vector")
+        return embeddings[0]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed search docs using synchronous client with retries and batching.
@@ -203,6 +205,8 @@ class LangchainQwenEmbeddings(BaseModel):
                 encoding_format="float",
             )
             results.extend(batch_embeddings)
+        if len(results) != len(texts) or any(not item for item in results):
+            raise RuntimeError("Embedding produced an empty or incomplete batch")
         return results
 
     async def _async_embed_with_retry(self, **kwargs: Any) -> list[list[float]]:
@@ -249,7 +253,9 @@ class LangchainQwenEmbeddings(BaseModel):
             dimensions=self.config.embedding_dims,
             encoding_format="float",
         )
-        return embeddings[0] if embeddings else []
+        if not embeddings or not embeddings[0]:
+            raise RuntimeError("Embedding produced an empty vector")
+        return embeddings[0]
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         """Async version: Embed search docs with batching and concurrent execution.
@@ -325,6 +331,9 @@ class LangchainQwenEmbeddings(BaseModel):
             for start_idx, batch_texts in batches:
                 _ = tg.start_soon(embed_batch, start_idx, batch_texts)
 
+        for embedding in results:
+            if not embedding:
+                raise RuntimeError("Embedding produced an empty vector")
         return results
 
     async def aclose(self) -> None:

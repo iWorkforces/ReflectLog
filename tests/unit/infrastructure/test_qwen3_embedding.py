@@ -203,6 +203,16 @@ class TestSyncEmbedQuery:
         result = mock_embeddings.embed_query("test text")
         assert result == [0.1, 0.2, 0.3]
 
+    def test_embed_query_empty_payload_raises(
+        self, mock_embeddings: LangchainQwenEmbeddings
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.data = []
+        mock_embeddings._client = MagicMock()
+        mock_embeddings._client.embeddings.create.return_value = mock_response
+        with pytest.raises(RuntimeError, match="empty vector"):
+            mock_embeddings.embed_query("test text")
+
     def test_embed_query_replaces_newlines(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
