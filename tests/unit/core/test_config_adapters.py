@@ -205,7 +205,7 @@ class TestConfigAdapter:
     ) -> None:
         """fusion_threshold maps to Config.fusion_ranking_threshold."""
         adapter = ConfigAdapter(minimal_config)
-        assert adapter.fusion_threshold == 0.8
+        assert adapter.fusion_threshold == 0.0
 
     def test_reranker_engine_default(self, minimal_config: Config) -> None:
         """Default reranker_engine is 'cross_encoder'."""
@@ -228,9 +228,9 @@ class TestConfigAdapter:
         assert adapter.enable_recency_boost is True
 
     def test_recency_decay_rate_default(self, minimal_config: Config) -> None:
-        """Default recency_decay_rate is 0.01."""
+        """Default recency_decay_rate is 0.001."""
         adapter = ConfigAdapter(minimal_config)
-        assert adapter.recency_decay_rate == 0.01
+        assert adapter.recency_decay_rate == 0.001
 
     # -- IStorageConfig properties --
 
@@ -558,11 +558,11 @@ class TestSearchConfigAdapter:
         assert adapter.enable_hybrid_search is True
         assert adapter.enable_rrf_fusion is True
         assert adapter.fusion_rrf_k == 60
-        assert adapter.fusion_threshold == 0.8
+        assert adapter.fusion_threshold == 0.0
         assert adapter.reranker_engine == "cross_encoder"
         assert adapter.search_score_threshold == 0.5
         assert adapter.enable_recency_boost is True
-        assert adapter.recency_decay_rate == 0.01
+        assert adapter.recency_decay_rate == 0.001
 
 
 # ---------------------------------------------------------------------------
@@ -621,6 +621,27 @@ class TestStorageConfigAdapter:
         assert adapter.tantivy_index_path == "indexes/test-project/tantivy"
         assert adapter.embedding_dims == 3072
         assert adapter.metric == "cosine"
+        assert adapter.usearch_exact_search is False
+        assert adapter.usearch_exact_search_threshold == 256
+
+    def test_usearch_exact_search_forwards_non_defaults(
+        self, custom_config: Config
+    ) -> None:
+        """Exact-search knobs must not be dropped by the adapter."""
+        from dataclasses import replace
+
+        from reflectlog.infrastructure.usearch_engine import USearchConfig
+
+        tuned = replace(
+            custom_config,
+            usearch_exact_search=True,
+            usearch_exact_search_threshold=256,
+        )
+        adapter = ConfigAdapter(tuned)
+        assert adapter.usearch_exact_search is True
+        built = USearchConfig.from_config(adapter)
+        assert built.exact_search is True
+        assert built.exact_search_threshold == 256
 
 
 # ---------------------------------------------------------------------------

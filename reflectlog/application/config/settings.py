@@ -88,6 +88,9 @@ class SecurityConfigDict(TypedDict):
     max_memory_length: int
     min_memory_length: int
     deduplicate_memories: bool
+    max_add_batch: int
+    max_add_chars: int
+    get_all_limit: int
 
 
 class LoggingConfigDict(TypedDict):
@@ -205,13 +208,16 @@ class Config:
     fusion_method: str = "rrf"  # rrf, sum, mnz, max, bordafuse
     fusion_normalization: str | None = None  # min-max, max, sum, zmuv, rank, borda
     fusion_rrf_k: int = 60  # RRF k parameter (lower = more weight to top ranks)
-    fusion_ranking_threshold: float = 0.8  # Min normalized RRF score to keep (0-1)
+    fusion_ranking_threshold: float = 0.0  # Raw RRF cutoff; 0.0 keeps all fused hits
     enable_rrf_fusion: bool = True  # Enable RRF fusion (false = concatenate results)
     fusion_weights: list[float] | None = None  # Per-run weights for weighted RRF
 
     # Memory validation settings
     max_memory_length: int = 30720
     min_memory_length: int = 1
+    max_add_batch: int = 100
+    max_add_chars: int = 500_000
+    get_all_limit: int = 1000
 
     # Reranker engine selection
     reranker_engine: str = "cross_encoder"  # "cross_encoder" or "none"
@@ -233,12 +239,12 @@ class Config:
     cross_encoder_max_length: int = 512  # Max token length for query-doc pairs
 
     # Unified reranker settings
-    reranker_min_results: int = 0  # Safety net: min results to return (0 = disabled)
+    reranker_min_results: int = 1  # Safety net: keep at least the best CE hit
     reranker_batch_normalize: bool = True  # Enable batch min-max normalization
 
     # Temporal-aware reranking settings (recency boost for memories)
     enable_recency_boost: bool = True  # Include memory age in reranking context
-    recency_decay_rate: float = 0.01  # Decay rate per hour: exp(-rate * hours_old)
+    recency_decay_rate: float = 0.001  # ~29-day half-life; 0.01 is opt-in
 
     # Memory behavior
     deduplicate_memories: bool = True
@@ -371,7 +377,7 @@ class Config:
             "fusion_normalization": os.environ.get("FUSION_NORMALIZATION") or None,
             "fusion_rrf_k": int(os.environ.get("FUSION_RRF_K", "60")),
             "fusion_ranking_threshold": float(
-                os.environ.get("FUSION_RANKING_THRESHOLD", "0.8")
+                os.environ.get("FUSION_RANKING_THRESHOLD", "0.0")
             ),
             "enable_rrf_fusion": os.environ.get("ENABLE_RRF_FUSION", "true").lower()
             == "true",
@@ -468,7 +474,7 @@ class Config:
                 os.environ.get("CROSS_ENCODER_MAX_LENGTH", "512")
             ),
             "reranker_min_results": max(
-                0, int(os.environ.get("RERANKER_MIN_RESULTS", "0"))
+                0, int(os.environ.get("RERANKER_MIN_RESULTS", "1"))
             ),
             "reranker_batch_normalize": os.environ.get(
                 "RERANKER_BATCH_NORMALIZE", "true"
@@ -479,7 +485,7 @@ class Config:
             ).lower()
             == "true",
             "recency_decay_rate": max(
-                0.0, float(os.environ.get("RECENCY_DECAY_RATE", "0.01"))
+                0.0, float(os.environ.get("RECENCY_DECAY_RATE", "0.001"))
             ),
         }
 
@@ -493,6 +499,9 @@ class Config:
                 "DEDUPLICATE_MEMORIES", "true"
             ).lower()
             == "true",
+            "max_add_batch": max(1, int(os.environ.get("MAX_ADD_BATCH", "100"))),
+            "max_add_chars": max(1, int(os.environ.get("MAX_ADD_CHARS", "500000"))),
+            "get_all_limit": max(1, int(os.environ.get("GET_ALL_LIMIT", "1000"))),
         }
 
     @staticmethod

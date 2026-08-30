@@ -187,7 +187,19 @@ class ConfigAdapter(IAppConfig):
     @property
     def tantivy_index_path(self) -> str:
         """Path to Tantivy index files."""
-        return f"indexes/{self._config.workspace_id}/tantivy"
+        return self._config.tantivy_index_path_template.format(
+            workspace_id=self._config.workspace_id
+        )
+
+    @property
+    def usearch_exact_search(self) -> bool:
+        """Whether USearch should use exact search."""
+        return self._config.usearch_exact_search
+
+    @property
+    def usearch_exact_search_threshold(self) -> int:
+        """Index size below which USearch switches to exact search."""
+        return self._config.usearch_exact_search_threshold
 
     @property
     def embedding_dims(self) -> int:
@@ -461,7 +473,9 @@ class StorageConfigAdapter(IStorageConfig):
 
     @property
     def tantivy_index_path(self) -> str:
-        return f"indexes/{self._config.workspace_id}/tantivy"
+        return self._config.tantivy_index_path_template.format(
+            workspace_id=self._config.workspace_id
+        )
 
     @property
     def embedding_dims(self) -> int:
@@ -470,6 +484,14 @@ class StorageConfigAdapter(IStorageConfig):
     @property
     def metric(self) -> Literal["cosine", "euclidean", "inner_product"]:
         return "cosine"
+
+    @property
+    def usearch_exact_search(self) -> bool:
+        return self._config.usearch_exact_search
+
+    @property
+    def usearch_exact_search_threshold(self) -> int:
+        return self._config.usearch_exact_search_threshold
 
 
 @final

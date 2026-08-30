@@ -135,6 +135,16 @@ class IStorageConfig(Protocol):
         """Similarity metric for vector search."""
         ...
 
+    @property
+    def usearch_exact_search(self) -> bool:
+        """Whether USearch should use exact search."""
+        ...
+
+    @property
+    def usearch_exact_search_threshold(self) -> int:
+        """Index size below which USearch switches to exact search."""
+        ...
+
 
 @runtime_checkable
 class IRerankerConfig(Protocol):

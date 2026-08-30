@@ -149,6 +149,9 @@ def apply_preset_to_env(preset: ConfigPreset) -> None:
     if preset.enable_hybrid_search is not None:
         os.environ["ENABLE_HYBRID_SEARCH"] = str(preset.enable_hybrid_search).lower()
 
+    if preset.search_score_threshold is not None:
+        os.environ["SEARCH_SCORE_THRESHOLD"] = str(preset.search_score_threshold)
+
     if preset.fusion_rrf_k is not None:
         os.environ["FUSION_RRF_K"] = str(preset.fusion_rrf_k)
 
