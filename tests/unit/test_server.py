@@ -199,6 +199,77 @@ class TestCLIArgumentParsing:
             assert exc_info.value.code == 0
 
 
+def _run_cli(args: list[str]):
+    import subprocess
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    return subprocess.run(
+        ["uv", "run", "--frozen", "--no-sync", "reflectlog", *args],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.unit
+class TestLightweightCliMetadata:
+    """Help/version exit before importing FastMCP, search, Numba, or ranx."""
+
+    def test_version_matches_installed_distribution(self) -> None:
+        from importlib.metadata import version
+
+        completed = _run_cli(["--version"])
+        assert completed.returncode == 0
+        assert completed.stdout.strip() == f"reflectlog {version('reflectlog')}"
+
+    def test_help_exits_zero(self) -> None:
+        completed = _run_cli(["--help"])
+        assert completed.returncode == 0
+        assert "transport" in completed.stdout.lower()
+
+    def test_version_does_not_import_heavy_modules(self) -> None:
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        repo = Path(__file__).resolve().parents[2]
+        script = """
+import sys
+sys.argv = ["reflectlog", "--version"]
+from reflectlog.server import main
+try:
+    main()
+except SystemExit as exc:
+    assert exc.code == 0
+heavy = {
+    name
+    for name in sys.modules
+    if name == "ranx"
+    or name == "numba"
+    or name.startswith("fastmcp")
+    or name.startswith("reflectlog.application.mcp_server")
+    or name.startswith("reflectlog.utility.scoring")
+    or name.startswith("reflectlog.infrastructure")
+}
+assert not heavy, sorted(heavy)
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    def test_invalid_argument_does_not_construct_server(self) -> None:
+        completed = _run_cli(["--definitely-invalid"])
+        assert completed.returncode != 0
+        assert "unrecognized arguments" in completed.stderr
+
+
 @pytest.mark.unit
 class TestEnvironmentConfiguration:
     '''Test environment variable configuration.'''
