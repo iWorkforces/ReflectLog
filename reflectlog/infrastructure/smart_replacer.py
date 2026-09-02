@@ -187,23 +187,27 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
         Returns:
             Tuple of (should_replace, confidence, reason).
         """
-        try:
-            _ = max_retries
-            _ = retry_delay
-            return await self._detect_replacement_once(prompt)
+        last_exception: Exception | None = None
+        attempts = max(1, max_retries)
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self._detect_replacement_once(prompt)
+            except Exception as exc:
+                last_exception = exc
+                if self._logger:
+                    self._logger.warning(
+                        "OpenAI replacement detection failed",
+                        extra={
+                            "attempt": attempt,
+                            "max_retries": attempts,
+                            "error": str(exc),
+                        },
+                    )
+                if attempt < attempts:
+                    await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))
 
-        except Exception as e:
-            if self._logger:
-                self._logger.warning(
-                    f"OpenAI replacement detection failed after {max_retries} retries",
-                    extra={
-                        "max_retries": max_retries,
-                        "error": str(e),
-                    },
-                )
-
-            error_msg = str(e) if e else "Unknown error"
-            return (False, 0.0, f"Error: {error_msg}")
+        error_msg = str(last_exception) if last_exception else "Unknown error"
+        return (False, 0.0, f"Error: {error_msg}")
 
 
 class AnthropicReplacementProvider:
