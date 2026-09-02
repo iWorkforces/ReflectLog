@@ -22,7 +22,7 @@ from reflectlog.application.memory.search_strategies import (
     calculate_adaptive_overfetch,
 )
 from reflectlog.application.utils.logging import StructuredLogger
-from reflectlog.core.exceptions import SearchError
+from reflectlog.core.exceptions import InitializationError, SearchError
 from reflectlog.core.logging import IStructuredLogger
 
 # ---------------------------------------------------------------------------
@@ -1369,6 +1369,138 @@ class TestSearchResponsiveness:
             query="q", workspace_id="test_project", limit=expected_overfetch
         )
         tantivy.search.assert_called_once_with("q", "test_project", expected_overfetch)
+
+    @pytest.mark.asyncio
+    async def test_manager_search_recovery_offload(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        loop_progressed = threading.Event()
+        loop_thread = threading.get_ident()
+        recover_threads: list[int] = []
+        ticks_after_enter = 0
+
+        config = MagicMock()
+        config.workspace_id = "test_project"
+        config.enable_hybrid_search = False
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.enable_rrf_fusion = True
+        config.fusion_ranking_threshold = 0.0
+        config.search_limit = 10
+        config.overfetch_adaptive = False
+        config.overfetch_max_multiplier = 3.0
+        config.overfetch_min_multiplier = 1.5
+        config.overfetch_multiplier = 3
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        semantic = MagicMock()
+        semantic.search.return_value = [("mem", 0.9, _TS)]
+        semantic.count.return_value = 1
+        semantic.ensure_initialized = MagicMock()
+        semantic.is_ready.return_value = True
+        semantic.memory_store.exists_many.return_value = {"mem"}
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("mem", 0.4)]
+        manager._semantic_engine = semantic
+        manager._tantivy_engine = None
+        manager.is_hybrid_search = False
+        manager._search_pipeline = SearchPipeline(
+            semantic_engine=cast(Any, semantic),
+            tantivy_engine=None,
+            fusion_engine=fusion,
+            config=config,
+            logger=manager.logger,
+            memory_manager=manager,
+        )
+
+        def blocking_reconcile() -> int:
+            recover_threads.append(threading.get_ident())
+            entered.set()
+            if not release.wait(timeout=_BACKEND_WAIT_TIMEOUT):
+                raise TimeoutError("recovery was not released")
+            return 0
+
+        manager.reconcile_pending_replacements = blocking_reconcile
+
+        async def ticker() -> None:
+            nonlocal ticks_after_enter
+            while True:
+                if entered.is_set():
+                    ticks_after_enter += 1
+                    loop_progressed.set()
+                    if ticks_after_enter >= 3:
+                        release.set()
+                await asyncio.sleep(0)
+                if release.is_set() and ticks_after_enter >= 3:
+                    break
+
+        ticker_task = asyncio.create_task(ticker())
+        _ = await asyncio.wait_for(manager.search("q", limit=5), timeout=5)
+        ticker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker_task
+
+        assert ticks_after_enter >= 3
+        assert recover_threads
+        assert recover_threads[0] != loop_thread
+        semantic.search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_manager_search_recovery_initialization_error_aborts(self) -> None:
+        config = MagicMock()
+        config.workspace_id = "test_project"
+        config.enable_hybrid_search = False
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.enable_rrf_fusion = True
+        config.fusion_ranking_threshold = 0.0
+        config.search_limit = 10
+        config.overfetch_adaptive = False
+        config.overfetch_max_multiplier = 3.0
+        config.overfetch_min_multiplier = 1.5
+        config.overfetch_multiplier = 3
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        semantic = MagicMock()
+        manager._semantic_engine = semantic
+        manager._tantivy_engine = None
+        cause = InitializationError("index missing")
+
+        def boom() -> int:
+            raise cause
+
+        manager.reconcile_pending_replacements = boom
+        with pytest.raises(InitializationError) as exc_info:
+            _ = await manager.search("q")
+        assert exc_info.value is cause
+        semantic.search.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

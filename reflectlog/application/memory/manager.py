@@ -774,7 +774,7 @@ class MemoryManager:
         if not query.strip():
             return []
         try:
-            _ = self.reconcile_pending_replacements()
+            _ = await asyncify(self.reconcile_pending_replacements)()
         except InitializationError:
             raise
         except Exception as exc:
