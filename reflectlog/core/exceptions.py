@@ -91,6 +91,24 @@ class StorageError(ReflectLogError):
     pass
 
 
+class StorageCoordinationError(StorageError):
+    """Raised when workspace lease or generation coordination fails."""
+
+    pass
+
+
+class LeaseTimeoutError(StorageCoordinationError):
+    """Raised when a workspace lease cannot be acquired in time."""
+
+    pass
+
+
+class GenerationError(StorageCoordinationError):
+    """Raised when the storage generation sidecar is unreadable or invalid."""
+
+    pass
+
+
 class DuplicateError(StorageError):
     """Raised when a duplicate entry is detected.
 
