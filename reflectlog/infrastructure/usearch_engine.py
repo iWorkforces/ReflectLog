@@ -67,19 +67,23 @@ def _fsync_directory(path: str) -> None:
         return
 
 
-def _cleanup_orphan_hnsw_temps(index_path: str) -> None:
+def _cleanup_orphan_hnsw_temps(index_path: str, *, only_pid: int | None = None) -> None:
     directory = os.path.dirname(index_path) or "."
     base = os.path.basename(index_path)
+    own_prefix = f"{base}.{os.getpid()}."
     try:
         names = os.listdir(directory)
     except OSError:
         return
     for name in names:
-        if name.startswith(f"{base}.") and name.endswith(".tmp"):
-            try:
-                os.remove(os.path.join(directory, name))
-            except OSError:
-                continue
+        if not name.startswith(f"{base}.") or not name.endswith(".tmp"):
+            continue
+        if only_pid is not None and not name.startswith(own_prefix):
+            continue
+        try:
+            os.remove(os.path.join(directory, name))
+        except OSError:
+            continue
 
 
 def _sqlite_memory_count(db_path: str) -> int | None:
@@ -265,11 +269,17 @@ class USearchEngine(BaseModel):
         super().__init__(config=config, embedder=embedder, logger=logger, **kwargs)
 
     def _reject_populated_hnsw_without_db(self, hnsw_size: int) -> None:
-        """Refuse a loaded HNSW when SQLite is missing, empty, or unreadable."""
+        """Refuse a loaded HNSW that cannot be paired with SQLite SoT."""
+        sqlite_rows = _sqlite_memory_count(self.config.db_path)
         if hnsw_size <= 0:
+            if sqlite_rows is not None and sqlite_rows > 0:
+                raise InitializationError(
+                    "USearch index is empty but SQLite has "
+                    f"{sqlite_rows} memories at {self.config.db_path}. "
+                    "Refusing to load an empty HNSW over populated rows."
+                )
             return
         db_missing = not os.path.exists(self.config.db_path)
-        sqlite_rows = _sqlite_memory_count(self.config.db_path)
         if sqlite_rows is not None and sqlite_rows > 0:
             return
         detail = (
@@ -314,7 +324,9 @@ class USearchEngine(BaseModel):
                     index_dir = os.path.dirname(self.config.index_path)
                     if index_dir:
                         os.makedirs(index_dir, exist_ok=True)
-                    _cleanup_orphan_hnsw_temps(self.config.index_path)
+                    _cleanup_orphan_hnsw_temps(
+                        self.config.index_path, only_pid=os.getpid()
+                    )
 
                     # Optimization: Try restore first, avoid extra os.path.exists() call
                     # This is faster for existing indices (one less syscall)
@@ -451,10 +463,21 @@ class USearchEngine(BaseModel):
     @contextmanager
     def _write_lease(self) -> Generator[None]:
         coordinator = self.coordinator
-        if coordinator is None or coordinator.is_held(self.config.workspace_id):
+        if coordinator is None or coordinator.is_held(
+            self.config.workspace_id, LeaseMode.EXCLUSIVE
+        ):
             yield
             return
         with coordinator.acquire(self.config.workspace_id, LeaseMode.EXCLUSIVE):
+            yield
+
+    @contextmanager
+    def _read_lease(self) -> Generator[None]:
+        coordinator = self.coordinator
+        if coordinator is None or coordinator.is_held(self.config.workspace_id):
+            yield
+            return
+        with coordinator.acquire(self.config.workspace_id, LeaseMode.SHARED):
             yield
 
     def refresh(self) -> None:
@@ -464,9 +487,13 @@ class USearchEngine(BaseModel):
 
     def _maybe_reload_external(self) -> None:
         """Reload the HNSW when another writer published a newer file."""
-        if self._dirty:
-            return
         current = _index_file_identity(self.config.index_path)
+        if self._dirty:
+            if current is not None and current != self._seen_identity:
+                raise StorageError(
+                    "Refusing to publish a stale in-memory HNSW over a newer file"
+                )
+            return
         if current == self._seen_identity:
             return
         if current is None:
@@ -486,6 +513,13 @@ class USearchEngine(BaseModel):
         directory = os.path.dirname(live_path) or "."
         os.makedirs(directory, exist_ok=True)
         temp_path = f"{live_path}.{os.getpid()}.{time.time_ns()}.tmp"
+        coordinator = self.coordinator
+        if coordinator is None or coordinator.is_held(
+            self.config.workspace_id, LeaseMode.EXCLUSIVE
+        ):
+            _cleanup_orphan_hnsw_temps(live_path)
+        else:
+            _cleanup_orphan_hnsw_temps(live_path, only_pid=os.getpid())
         self._emit_publish_hook("before_save")
         try:
             self.index.save(temp_path)
@@ -940,8 +974,10 @@ class USearchEngine(BaseModel):
         query_vector = self.embedder.embed_query(query)
         query_np = np.array(query_vector, dtype=np.float32)
         overfetch_limit = min(max(limit * 3, 1), len(self.index))
-        with self._index_lock:
-            return self.index.search(query_np, overfetch_limit, exact=use_exact)
+        with self._read_lease():
+            self._maybe_reload_external()
+            with self._index_lock:
+                return self.index.search(query_np, overfetch_limit, exact=use_exact)
 
     def _filter_matches_by_workspace(
         self,
@@ -1120,6 +1156,8 @@ class USearchEngine(BaseModel):
                             "size": len(self.index),
                         },
                     )
+        except StorageError:
+            raise
         except Exception as e:
             if self.logger:
                 self.logger.error(

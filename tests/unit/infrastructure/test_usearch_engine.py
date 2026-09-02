@@ -815,9 +815,10 @@ class TestUSearchEngineIndexInit:
         assert store.count(config.workspace_id) == 0
         store.close()
 
-    def test_empty_restored_index_with_populated_sqlite_is_allowed(
+    def test_empty_restored_index_with_populated_sqlite_fails_closed(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
+        from reflectlog.core.exceptions import InitializationError
         from reflectlog.infrastructure.memory_store import MemoryStore
 
         config, embedder, _ = temp_engine
@@ -830,8 +831,8 @@ class TestUSearchEngineIndexInit:
         engine = USearchEngine(config=config, embedder=embedder)
         with patch("reflectlog.infrastructure.usearch_engine.Index") as mock_index_cls:
             mock_index_cls.restore.return_value = restored
-            loaded = engine.index
-        assert loaded is restored
+            with pytest.raises(InitializationError, match="empty"):
+                _ = engine.index
 
     def test_restore_success_with_missing_sqlite_fails_closed(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
@@ -1708,12 +1709,60 @@ class TestAtomicUSearchPublication:
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
         config, embedder, _tmpdir = temp_engine
-        orphan = config.index_path + ".9999.tmp"
+        orphan = f"{config.index_path}.{os.getpid()}.9999.tmp"
+        foreign = f"{config.index_path}.1.9999.tmp"
         with open(orphan, "wb") as handle:
             handle.write(b"orphan")
+        with open(foreign, "wb") as handle:
+            handle.write(b"foreign")
         engine = USearchEngine(config=config, embedder=embedder)
         try:
             _ = engine.index
             assert not os.path.exists(orphan)
+            assert os.path.exists(foreign)
         finally:
             engine.close()
+
+    def test_empty_hnsw_over_populated_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from usearch.index import Index
+
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _tmpdir = temp_engine
+        writer = USearchEngine(config=config, embedder=embedder)
+        writer.add("test", "kept", infer=False)
+        writer.commit()
+        writer.close()
+        empty = Index(ndim=config.embedding_dims, metric=config.metric, dtype="f32")
+        empty.save(config.index_path)
+        with pytest.raises(InitializationError, match="empty"):
+            doomed = USearchEngine(config=config, embedder=embedder)
+            try:
+                _ = doomed.index
+            finally:
+                doomed.close()
+
+    def test_dirty_commit_refuses_newer_live_file(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.core.exceptions import StorageError
+
+        config, embedder, _tmpdir = temp_engine
+        seed = USearchEngine(config=config, embedder=embedder)
+        seed.add("test", "seed-row", infer=False)
+        seed.commit()
+        seed.close()
+        stale = USearchEngine(config=config, embedder=embedder)
+        writer = USearchEngine(config=config, embedder=embedder)
+        try:
+            _ = stale.index
+            stale.add("test", "stale-row", infer=False)
+            writer.add("test", "newer-row", infer=False)
+            writer.commit()
+            with pytest.raises(StorageError, match="stale"):
+                stale.commit()
+        finally:
+            stale.close()
+            writer.close()

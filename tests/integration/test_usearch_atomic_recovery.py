@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import multiprocessing.synchronize
 import os
 from pathlib import Path
 
@@ -102,8 +103,9 @@ def test_kill_at_publish_failpoint_keeps_valid_index(tmp_path: Path, step: str) 
             _ = inspector.index
             temps = [name for name in os.listdir(tmp_path) if name.endswith(".tmp")]
             assert temps == []
-            assert "kept" in inspector.get_all("ws")
-            assert len(inspector.index) >= 1
+            rows = inspector.get_all("ws")
+            assert "kept" in rows
+            assert len(inspector.index) == 1
         finally:
             inspector.close()
     finally:

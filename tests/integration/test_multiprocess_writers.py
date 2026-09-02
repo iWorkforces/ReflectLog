@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import multiprocessing.synchronize
 import os
 from pathlib import Path
 
@@ -61,8 +62,9 @@ def _writer(
         result.put(-1)
         engine.close()
         return
-    added = engine.add_batch(workspace_id, contents, infer=False)
-    engine.commit()
+    with coordinator.acquire(workspace_id):
+        added = engine.add_batch(workspace_id, contents, infer=False)
+        engine.commit()
     result.put(len(added))
     engine.close()
 
