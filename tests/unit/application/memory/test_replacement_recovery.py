@@ -317,6 +317,30 @@ class TestReconcilePendingReplacements:
         )
         assert count == 0
 
+    def test_failed_precompute_leaves_add_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            _ = store.begin_add_intents("proj", ["ghost-content"])
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.embedder.embed_query.side_effect = RuntimeError("provider down")
+            semantic.get_id_by_content.return_value = None
+            semantic.ensure_initialized = MagicMock()
+            count = reconcile_pending_replacements(
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                write_lock=threading.Lock(),
+                lock=threading.RLock(),
+                logger=MagicMock(),
+            )
+            assert count == 0
+            pending = store.list_pending_transitions()
+            assert len(pending) == 1
+            assert pending[0].new_content == "ghost-content"
+            semantic.add.assert_not_called()
+            semantic.add_batch.assert_not_called()
+            store.close()
+
     def test_noops_when_nothing_is_pending(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))

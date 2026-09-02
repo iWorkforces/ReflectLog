@@ -14,7 +14,7 @@ from reflectlog.core.prompts import format_replacement_detection_prompt
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
-from reflectlog.utility.retry import async_retry_with_backoff
+
 
 
 class ReplacementDecision(BaseModel):
@@ -189,10 +189,9 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
             Tuple of (should_replace, confidence, reason).
         """
         try:
-            retry = async_retry_with_backoff(
-                max_retries=max_retries, base_delay=retry_delay
-            )
-            return await retry(self._detect_replacement_once)(prompt)
+            _ = max_retries
+            _ = retry_delay
+            return await self._detect_replacement_once(prompt)
 
         except Exception as e:
             if self._logger:

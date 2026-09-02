@@ -61,6 +61,7 @@ class TestLangchainQwenEmbeddingsInitialization:
                 base_url="https://openrouter.ai/api/v1",
                 http_client=ANY,
                 timeout=60.0,
+                max_retries=2,
             )
             mock_async_client.assert_not_called()
 
@@ -91,6 +92,7 @@ class TestLangchainQwenEmbeddingsInitialization:
                 base_url="https://openrouter.ai/api/v1",
                 http_client=ANY,
                 timeout=60.0,
+                max_retries=2,
             )
             mock_async_client.assert_not_called()
 
@@ -236,7 +238,7 @@ class TestSyncEmbedQuery:
         mock_embeddings._client = None
 
         with pytest.raises(
-            RuntimeError, match="Embedding request failed after retries"
+            RuntimeError, match="Qwen embeddings client is not initialized"
         ):
             mock_embeddings.embed_query("test")
 
@@ -620,32 +622,24 @@ class TestAsyncEmbedRetryFailure:
             return LangchainQwenEmbeddings(config=config)
 
     @pytest.mark.asyncio
-    async def test_async_embed_with_retry_raises_after_all_attempts(
+    async def test_async_embed_raises_after_one_sdk_owned_attempt(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
+        cause = ConnectionError("network down")
         mock_async_client = AsyncMock()
-        mock_async_client.embeddings.create = AsyncMock(
-            side_effect=ConnectionError("network down")
-        )
+        mock_async_client.embeddings.create = AsyncMock(side_effect=cause)
         mock_embeddings._async_client = mock_async_client
 
-        with (
-            patch(
-                "reflectlog.infrastructure.embeddings.qwen3_embedding.anyio.sleep",
-                new_callable=AsyncMock,
-            ),
-            pytest.raises(
-                RuntimeError, match="Async embedding request failed after retries"
-            ),
-        ):
-            await mock_embeddings._async_embed_with_retry(
+        with pytest.raises(RuntimeError, match="Async embedding request failed") as exc:
+            await mock_embeddings._async_embed(
                 input=["test"],
                 model="qwen/qwen-2.5-3b-instruct",
                 dimensions=1536,
                 encoding_format="float",
             )
 
-        assert mock_async_client.embeddings.create.call_count == 3
+        assert mock_async_client.embeddings.create.call_count == 1
+        assert exc.value.__cause__ is cause
 
 
 class TestAembedDocumentsBatchFailure:

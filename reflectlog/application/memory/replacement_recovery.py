@@ -153,7 +153,7 @@ def apply_pending_transition(
         transition,
         semantic_engine=semantic_engine,
         tantivy_engine=tantivy_engine,
-        vector=(precomputed_vectors or {}).get(transition.new_content),
+        precomputed_vectors=precomputed_vectors,
     )
     _remove_recorded_old(transition, semantic_engine, tantivy_engine)
 
@@ -273,18 +273,35 @@ def _apply_pending_add(
     existing_id = semantic_engine.get_id_by_content(
         transition.workspace_id, transition.new_content
     )
+    vector = (
+        None
+        if precomputed_vectors is None
+        else precomputed_vectors.get(transition.new_content)
+    )
     if existing_id is None:
-        _insert_recovered_add(
-            semantic_engine,
-            transition,
-            vector=(precomputed_vectors or {}).get(transition.new_content),
-        )
+        if precomputed_vectors is not None and vector is None:
+            logger.warning(
+                "Add intent not complete; precomputed vector missing",
+                extra={"transition_id": transition.id},
+            )
+            return False
+        _insert_recovered_add(semantic_engine, transition, vector=vector)
     else:
+        if (
+            precomputed_vectors is not None
+            and not _vector_present(semantic_engine, existing_id)
+            and vector is None
+        ):
+            logger.warning(
+                "Add intent not complete; precomputed vector missing",
+                extra={"transition_id": transition.id},
+            )
+            return False
         _reindex_if_vector_missing(
             semantic_engine,
             existing_id,
             transition,
-            vector=(precomputed_vectors or {}).get(transition.new_content),
+            vector=vector,
         )
 
     if tantivy_engine is not None and not _tantivy_has(
@@ -486,15 +503,24 @@ def _ensure_replacement_present(
     *,
     semantic_engine: ISemanticSearchEngine,
     tantivy_engine: TantivyEngine | None,
-    vector: list[float] | None = None,
+    precomputed_vectors: dict[str, list[float]] | None = None,
 ) -> None:
     """Insert the replacement when SQLite/USearch or Tantivy still lacks it."""
     existing_id = semantic_engine.get_id_by_content(
         transition.workspace_id, transition.new_content
     )
+    vector = (
+        None
+        if precomputed_vectors is None
+        else precomputed_vectors.get(transition.new_content)
+    )
     if existing_id is None:
+        if precomputed_vectors is not None and vector is None:
+            return
         _insert_recovered_add(semantic_engine, transition, vector=vector)
-    else:
+    elif not _vector_present(semantic_engine, existing_id):
+        if precomputed_vectors is not None and vector is None:
+            return
         _reindex_if_vector_missing(
             semantic_engine, existing_id, transition, vector=vector
         )
@@ -571,7 +597,7 @@ def _precompute_add_vectors(
             raw = embedder.embed_query(content)
         except Exception as exc:
             logger.warning(
-                "Pre-embed for recovery add failed; will retry under lock",
+                "Pre-embed for recovery add failed; leaving intent pending",
                 extra={"error": str(exc)},
             )
             continue
