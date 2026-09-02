@@ -8,12 +8,14 @@ SQLite or hybrid Tantivy still disagree.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 import os
 from typing import TYPE_CHECKING, cast
 
 from reflectlog.core.enums import TransitionKind
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 from reflectlog.core.types import (
     IArchiveMemoryStore,
     ISemanticSearchEngine,
@@ -31,6 +33,9 @@ def reconcile_pending_replacements(
     write_lock: AbstractContextManager[object],
     lock: AbstractContextManager[object] | None = None,
     logger: IStructuredLogger,
+    coordinator: IStorageCoordinator | None = None,
+    workspace_id: str = "",
+    orchestration_hook: Callable[[str], None] | None = None,
 ) -> int:
     """Finish pending replacements using the semantic store as source of truth.
 
@@ -55,7 +60,15 @@ def reconcile_pending_replacements(
 
     completed = 0
     inner_lock = lock if lock is not None else nullcontext()
-    with write_lock, inner_lock:
+    lease = (
+        coordinator.acquire(workspace_id, LeaseMode.EXCLUSIVE)
+        if coordinator is not None and workspace_id
+        else nullcontext()
+    )
+    with lease, write_lock, inner_lock:
+        semantic_engine.ensure_initialized()
+        if tantivy_engine is not None:
+            tantivy_engine.ensure_initialized()
         snapshot = _pending_rows(store.list_pending_transitions())
         pending_ids = {row.id for row in snapshot}
         for transition in snapshot:

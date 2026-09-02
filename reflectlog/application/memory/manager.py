@@ -428,6 +428,9 @@ class MemoryManager:
             write_lock=self._write_lock,
             lock=self._lock,
             logger=self.logger,
+            coordinator=self._coordinator,
+            workspace_id=self.workspace_id,
+            orchestration_hook=self._emit_orchestration_hook,
         )
 
     def pending_replacement_count(self) -> int:

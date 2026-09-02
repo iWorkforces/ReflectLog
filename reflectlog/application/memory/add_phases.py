@@ -1186,6 +1186,9 @@ class StoragePhase:
             write_lock=self._write_lock,
             lock=self._lock,
             logger=self.logger,
+            coordinator=self._coordinator,
+            workspace_id=self._workspace_id,
+            orchestration_hook=self._orchestration_hook,
         )
 
 

@@ -751,6 +751,74 @@ class TestReconcilePendingReplacements:
             semantic.add.assert_not_called()
             store.close()
 
+    def test_reconcile_uses_coordinator_lease(self) -> None:
+        acquired: list[str] = []
+
+        class _Lease:
+            def __enter__(self) -> _Lease:
+                acquired.append("lease")
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        class _Coordinator:
+            timeout = 1.0
+
+            def acquire(
+                self,
+                workspace_id: str,
+                mode: object = None,
+                *,
+                timeout: float | None = None,
+            ) -> _Lease:
+                _ = workspace_id, mode, timeout
+                return _Lease()
+
+            def read_generation(self, workspace_id: str) -> int:
+                _ = workspace_id
+                return 0
+
+            def publish_generation(self, workspace_id: str, generation: int) -> None:
+                _ = workspace_id, generation
+
+            def is_held(self, workspace_id: str, mode: object = None) -> bool:
+                _ = workspace_id, mode
+                return False
+
+            def paths_for(self, workspace_id: str) -> object:
+                _ = workspace_id
+                return None
+
+        semantic = MagicMock()
+        row = ReplacementTransition(
+            id=1,
+            workspace_id="ws",
+            old_memory_id=1,
+            old_content="old",
+            new_content="new",
+            archive_id=1,
+            reason="test",
+            confidence=1.0,
+            status=TransitionStatus.PENDING,
+            kind=TransitionKind.ADD,
+        )
+        semantic.memory_store.list_pending_transitions.return_value = [row]
+        semantic.memory_store.has_later_intent.return_value = False
+        semantic.get_id_by_content.return_value = 1
+        semantic.contains_id.return_value = True
+        count = reconcile_pending_replacements(
+            semantic_engine=semantic,
+            tantivy_engine=None,
+            write_lock=threading.Lock(),
+            lock=threading.RLock(),
+            logger=MagicMock(),
+            coordinator=_Coordinator(),
+            workspace_id="ws",
+        )
+        assert acquired == ["lease"]
+        assert count >= 0
+
     def test_reconcile_replace_then_earlier_add_does_not_reinsert_old_text(
         self,
     ) -> None:
