@@ -1,6 +1,8 @@
 """Type stubs for fastmcp.client.client module."""
 
-from typing import Literal, TypeAlias
+# ruff: noqa: N803, N815
+
+from typing import Literal
 
 class TextContent:
     """Text payload returned by an MCP tool."""
@@ -24,7 +26,7 @@ class EmbeddedResource:
     mimeType: str | None
     text: str
 
-ToolContent: TypeAlias = TextContent | ImageContent | EmbeddedResource
+type ToolContent = TextContent | ImageContent | EmbeddedResource
 
 class CallToolResult:
     """Result from calling an MCP tool."""

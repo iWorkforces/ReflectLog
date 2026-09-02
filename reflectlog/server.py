@@ -34,10 +34,10 @@ def _server_cls() -> Any:
     global FastMCPServer
     loaded = FastMCPServer
     if loaded is None:
-        from reflectlog.application.mcp_server import FastMCPServer as server_cls
+        from reflectlog.application.mcp_server import FastMCPServer as LoadedServer
 
-        FastMCPServer = server_cls
-        loaded = server_cls
+        FastMCPServer = LoadedServer
+        loaded = LoadedServer
     return loaded
 
 

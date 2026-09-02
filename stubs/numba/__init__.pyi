@@ -1,3 +1,4 @@
+# ruff: noqa: N801
 """Type stubs for numba library.
 
 This provides type hints for the numba JIT compiler decorators and functions

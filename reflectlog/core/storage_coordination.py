@@ -69,9 +69,7 @@ class IStorageCoordinator(Protocol):
 
     def publish_generation(self, workspace_id: str, generation: int) -> None: ...
 
-    def is_held(
-        self, workspace_id: str, mode: LeaseMode | None = None
-    ) -> bool: ...
+    def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool: ...
 
 
 def exclusive_lease(
@@ -81,9 +79,7 @@ def exclusive_lease(
     timeout: float | None = None,
 ) -> AbstractContextManager[IStorageLease]:
     """Acquire an exclusive workspace lease."""
-    return coordinator.acquire(
-        workspace_id, LeaseMode.EXCLUSIVE, timeout=timeout
-    )
+    return coordinator.acquire(workspace_id, LeaseMode.EXCLUSIVE, timeout=timeout)
 
 
 def shared_lease(

@@ -21,6 +21,7 @@ def _callable_name(func: object) -> str:
         return func.__name__
     return type(func).__name__
 
+
 # Transient exceptions that are safe to retry
 # Connection errors, timeouts, and temporary server issues
 _TRANSIENT_EXCEPTIONS: tuple[type[Exception], ...] = (

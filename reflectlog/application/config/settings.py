@@ -95,9 +95,7 @@ def _parse_fusion_weights() -> list[float] | None:
                 "Invalid FUSION_WEIGHTS: expected a number"
             ) from exc
         if not math.isfinite(value):
-            raise ConfigurationError(
-                "Invalid FUSION_WEIGHTS: expected a finite number"
-            )
+            raise ConfigurationError("Invalid FUSION_WEIGHTS: expected a finite number")
         weights.append(value)
     return weights or None
 
@@ -526,9 +524,7 @@ class Config:
             "reranker_engine": reranker_engine,
             "llm_provider": llm_provider,
             "llm_model": os.environ.get("LLM_MODEL", "x-ai/grok-4.1-fast"),
-            "search_score_threshold": _parse_env_float(
-                "SEARCH_SCORE_THRESHOLD", "0.5"
-            ),
+            "search_score_threshold": _parse_env_float("SEARCH_SCORE_THRESHOLD", "0.5"),
             "rerank_max_concurrency": _parse_env_int(
                 "RERANK_MAX_CONCURRENCY", "10", minimum=1
             ),

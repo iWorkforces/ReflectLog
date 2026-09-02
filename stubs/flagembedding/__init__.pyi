@@ -41,7 +41,6 @@ class FlagRerankerProtocol(Protocol):
         """
         ...
 
-
 class FlagReranker:
     """FlagEmbedding FlagReranker constructor used by ReflectLog."""
 
@@ -52,7 +51,6 @@ class FlagReranker:
         use_fp16: bool = False,
         devices: list[str] | None = None,
     ) -> None: ...
-
     def compute_score(
         self,
         sentence_pairs: list[tuple[str, str]] | list[list[str]],

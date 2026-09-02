@@ -270,9 +270,7 @@ class IMemoryManager(Protocol):
         """Return public readiness of search engines for health checks."""
         ...
 
-    def get_all(
-        self, limit: int | None = None, offset: int = 0
-    ) -> list[str]:
+    def get_all(self, limit: int | None = None, offset: int = 0) -> list[str]:
         """Retrieve stored memories from the semantic backend."""
         ...
 
