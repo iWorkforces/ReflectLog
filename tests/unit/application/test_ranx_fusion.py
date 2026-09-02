@@ -304,8 +304,11 @@ class TestRanxFusionEngineDifferentMethods:
         results2: List[Tuple[str, float]] = [("B", 0.8)]
 
         with patch(
-            "reflectlog.application.memory.fusion.ranx_fusion.ranx_fuse",
-            side_effect=TypeError("weights not supported"),
+            "reflectlog.application.memory.fusion.ranx_fusion._load_ranx",
+            return_value=(
+                MagicMock(),
+                MagicMock(side_effect=TypeError("weights not supported")),
+            ),
         ):
             with pytest.raises(RuntimeError, match="refusing unweighted fallback"):
                 engine.fuse(results1, results2)
@@ -342,3 +345,58 @@ class TestCreateFusionEngineFactory:
         engine = create_fusion_engine(logger=mock_logger)
         assert isinstance(engine, RanxFusionEngine)
         assert engine.logger is mock_logger
+
+
+@pytest.mark.unit
+class TestRanxLazyImport:
+    """Default RRF stays local; ranx loads only for ranx-backed methods."""
+
+    def test_local_rrf_does_not_import_ranx(self) -> None:
+        script = """
+import sys
+from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
+engine = RanxFusionEngine(method="rrf")
+fused = engine.fuse([("A", 0.9)], [("B", 0.8)])
+assert fused[0][0] in {"A", "B"}
+assert "ranx" not in sys.modules
+"""
+        completed = _run_fresh_python(script)
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    def test_ranx_method_imports_ranx_and_fuses(self) -> None:
+        script = """
+import sys
+from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
+engine = RanxFusionEngine(method="sum")
+fused = engine.fuse([("A", 0.9), ("B", 0.8)], [("B", 0.9), ("C", 0.7)])
+assert fused[0][0] == "B"
+assert "ranx" in sys.modules
+"""
+        completed = _run_fresh_python(script)
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    def test_unrelated_runtime_warning_still_fails(self) -> None:
+        script = """
+import warnings
+warnings.simplefilter("error")
+warnings.warn("unrelated fusion warning", RuntimeWarning)
+"""
+        completed = _run_fresh_python(script)
+        assert completed.returncode != 0
+        assert "RuntimeWarning" in completed.stderr
+
+
+def _run_fresh_python(script: str):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[3]
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=None,
+    )
