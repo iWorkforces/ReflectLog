@@ -372,10 +372,22 @@ class TantivyEngine(BaseModel):
     def _lease(self, mode: LeaseMode) -> Generator[None]:
         """Acquire a coordinator lease, reusing a nest already held by this engine."""
         coordinator = self.coordinator
-        if (
-            coordinator is None
-            or self._lease_depth > 0
-            or coordinator.is_held(self.config.workspace_id)
+        if coordinator is None or self._lease_depth > 0:
+            self._lease_depth += 1
+            try:
+                yield
+            finally:
+                self._lease_depth -= 1
+            return
+        if coordinator.is_held(self.config.workspace_id, LeaseMode.EXCLUSIVE):
+            self._lease_depth += 1
+            try:
+                yield
+            finally:
+                self._lease_depth -= 1
+            return
+        if mode is LeaseMode.SHARED and coordinator.is_held(
+            self.config.workspace_id, LeaseMode.SHARED
         ):
             self._lease_depth += 1
             try:
@@ -1015,6 +1027,10 @@ class TantivyEngine(BaseModel):
         """Reject operations after close() has released the index."""
         if self._closed:
             raise SearchError("TantivyEngine is closed")
+
+    def refresh(self) -> None:
+        """Reload committed segments so an external writer becomes visible."""
+        self._refresh_reader()
 
     def ensure_initialized(self) -> None:
         """Ensure the engine is fully initialized (thread-safe).

@@ -67,23 +67,32 @@ class TestTantivyEngineInitialization:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
             engine = TantivyEngine(config)
-            assert engine.config.workspace_id == "test-project"
-            assert engine.name == "tantivy"
+            try:
+                assert engine.config.workspace_id == "test-project"
+                assert engine.name == "tantivy"
+            finally:
+                engine.close()
 
     def test_init_with_dict_config(self) -> None:
         """Test initialization with dict config."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dict = {"workspace_id": "test-project", "index_path": tmpdir}
             engine = TantivyEngine(config_dict)
-            assert engine.config.workspace_id == "test-project"
+            try:
+                assert engine.config.workspace_id == "test-project"
+            finally:
+                engine.close()
 
     def test_init_creates_index_directory(self) -> None:
         """Test that initialization creates the index directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             index_path = os.path.join(tmpdir, "new_index")
             config = TantivyConfig(workspace_id="test", index_path=index_path)
-            TantivyEngine(config)
-            assert os.path.isdir(index_path)
+            engine = TantivyEngine(config)
+            try:
+                assert os.path.isdir(index_path)
+            finally:
+                engine.close()
 
     def test_init_with_logger(self) -> None:
         """Test initialization with logger."""
@@ -91,9 +100,12 @@ class TestTantivyEngineInitialization:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
-            assert engine.logger is mock_logger
-            # Logger should have been called during initialization
-            assert mock_logger.info.called
+            try:
+                assert engine.logger is mock_logger
+                # Logger should have been called during initialization
+                assert mock_logger.info.called
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit

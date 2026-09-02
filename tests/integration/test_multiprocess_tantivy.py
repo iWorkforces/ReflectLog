@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import multiprocessing.synchronize
 import os
 from pathlib import Path
 
