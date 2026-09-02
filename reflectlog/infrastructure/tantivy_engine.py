@@ -145,7 +145,7 @@ class TantivyEngine(BaseModel):
     _index: tantivy.Index | None = PrivateAttr(default=None)
     _writer: tantivy.IndexWriter | None = PrivateAttr(default=None)
     _searcher: tantivy.Searcher | None = PrivateAttr(default=None)
-    _lease_depth: int = PrivateAttr(default=0)
+    _lease_local: threading.local = PrivateAttr(default_factory=threading.local)
     _seen_generation: int = PrivateAttr(default=0)
     # Instance-level locks for thread-safe operations
     # Note: Using RLock (re-entrant) because add() holds lock and
@@ -368,56 +368,69 @@ class TantivyEngine(BaseModel):
                 self._searcher = self._index.searcher()
         return self._searcher
 
+    def _thread_lease_depth(self) -> int:
+        local = self._lease_local
+        try:
+            depth = local.depth
+        except AttributeError:
+            local.depth = 0
+            return 0
+        return depth if isinstance(depth, int) else 0
+
+    def _bump_thread_lease(self, delta: int) -> None:
+        self._lease_local.depth = self._thread_lease_depth() + delta
+
     @contextmanager
     def _lease(self, mode: LeaseMode) -> Generator[None]:
-        """Acquire a coordinator lease, reusing a nest already held by this engine."""
+        """Acquire a coordinator lease, reusing a nest already held by this thread."""
         coordinator = self.coordinator
-        if coordinator is None or self._lease_depth > 0:
-            self._lease_depth += 1
+        if coordinator is None or self._thread_lease_depth() > 0:
+            self._bump_thread_lease(1)
             try:
                 yield
             finally:
-                self._lease_depth -= 1
+                self._bump_thread_lease(-1)
             return
         if coordinator.is_held(self.config.workspace_id, LeaseMode.EXCLUSIVE):
-            self._lease_depth += 1
+            self._bump_thread_lease(1)
             try:
                 yield
             finally:
-                self._lease_depth -= 1
+                self._bump_thread_lease(-1)
             return
         if mode is LeaseMode.SHARED and coordinator.is_held(
             self.config.workspace_id, LeaseMode.SHARED
         ):
-            self._lease_depth += 1
+            self._bump_thread_lease(1)
             try:
                 yield
             finally:
-                self._lease_depth -= 1
+                self._bump_thread_lease(-1)
             return
         with coordinator.acquire(self.config.workspace_id, mode):
-            self._lease_depth += 1
+            self._bump_thread_lease(1)
             try:
                 yield
             finally:
-                self._lease_depth -= 1
+                self._bump_thread_lease(-1)
 
     def _refresh_reader(self) -> None:
         """Reload committed segments so an external writer becomes visible."""
         if self._index is None:
             return
         coordinator = self.coordinator
+        current_generation = 0
         generation_changed = False
         if coordinator is not None:
             current_generation = coordinator.read_generation(self.config.workspace_id)
             generation_changed = current_generation != self._seen_generation
-            self._seen_generation = current_generation
         self._index.reload()
         with self._searcher_lock:
             self._searcher = self._index.searcher()
         if generation_changed:
             # External generation bump: conservative invalidation.
             self._invalidate_tombstone_cache()
+            self._seen_generation = current_generation
 
     def _finalize_writer(
         self, *, relinquish: bool, invalidate_all: bool = False
