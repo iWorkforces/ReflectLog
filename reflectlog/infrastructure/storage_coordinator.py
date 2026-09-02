@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 import threading
 import time
@@ -24,6 +24,10 @@ LOCK_NAME = ".reflectlog.writer.lock"
 GENERATION_NAME = ".reflectlog.storage-generation"
 
 
+def _empty_holder_map() -> dict[int, int]:
+    return {}
+
+
 @dataclass
 class _WorkspaceLeaseState:
     mutex: threading.Lock
@@ -31,7 +35,20 @@ class _WorkspaceLeaseState:
     os_lock: portalocker.Lock | None = None
     exclusive_depth: int = 0
     exclusive_owner: int | None = None
-    shared_depth: int = 0
+    shared_holders: dict[int, int] = field(default_factory=_empty_holder_map)
+
+    def shared_depth(self) -> int:
+        return sum(self.shared_holders.values())
+
+    def add_shared(self, owner: int) -> None:
+        self.shared_holders[owner] = self.shared_holders.get(owner, 0) + 1
+
+    def drop_shared(self, owner: int) -> None:
+        remaining = self.shared_holders.get(owner, 0) - 1
+        if remaining <= 0:
+            _ = self.shared_holders.pop(owner, None)
+        else:
+            self.shared_holders[owner] = remaining
 
 
 @dataclass
@@ -161,30 +178,43 @@ class PortalockerStorageCoordinator:
                     if state.exclusive_depth > 0 and state.exclusive_owner == owner:
                         state.exclusive_depth += 1
                         break
-                    if state.exclusive_depth > 0 or state.shared_depth > 0:
+                    if state.exclusive_depth > 0:
                         _ = state.cond.wait(timeout=remaining)
                         continue
-                    self._take_os_lock(paths, LeaseMode.EXCLUSIVE, remaining, state)
+                    other_shared = sum(
+                        count
+                        for thread_id, count in state.shared_holders.items()
+                        if thread_id != owner
+                    )
+                    if other_shared > 0:
+                        _ = state.cond.wait(timeout=remaining)
+                        continue
+                    if state.os_lock is None:
+                        self._take_os_lock(paths, LeaseMode.EXCLUSIVE, remaining, state)
                     state.exclusive_depth = 1
                     state.exclusive_owner = owner
                     break
-                if state.exclusive_depth > 0 or (
-                    state.shared_depth > 0 and state.os_lock is not None
-                ):
-                    state.shared_depth += 1
+                if state.exclusive_depth > 0:
+                    if state.exclusive_owner == owner:
+                        state.add_shared(owner)
+                        break
+                    _ = state.cond.wait(timeout=remaining)
+                    continue
+                if state.shared_depth() > 0 and state.os_lock is not None:
+                    state.add_shared(owner)
                     break
                 self._take_os_lock(paths, LeaseMode.SHARED, remaining, state)
-                state.shared_depth = 1
+                state.add_shared(owner)
                 break
 
         return _PortalockerLease(
             workspace_id=paths.workspace_id,
             mode=mode,
-            _on_release=self._release_callback(paths.workspace_id, mode),
+            _on_release=self._release_callback(paths.workspace_id, mode, owner),
         )
 
     def _release_callback(
-        self, workspace_id: str, mode: LeaseMode
+        self, workspace_id: str, mode: LeaseMode, owner: int
     ) -> Callable[[], None]:
         def _on_release() -> None:
             state = self._state_for(workspace_id)
@@ -194,9 +224,9 @@ class PortalockerStorageCoordinator:
                     if state.exclusive_depth == 0:
                         state.exclusive_owner = None
                 else:
-                    state.shared_depth = max(0, state.shared_depth - 1)
+                    state.drop_shared(owner)
                 lock = None
-                if state.exclusive_depth == 0 and state.shared_depth == 0:
+                if state.exclusive_depth == 0 and state.shared_depth() == 0:
                     lock = state.os_lock
                     state.os_lock = None
                 try:
@@ -208,15 +238,20 @@ class PortalockerStorageCoordinator:
         return _on_release
 
     def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
-        """Return True when this process already holds a lease for the workspace."""
+        """Return True when the calling thread already holds a lease."""
         safe_id = validate_workspace_id(workspace_id).lower()
+        owner = threading.get_ident()
         state = self._state_for(safe_id)
         with state.cond:
+            owns_exclusive = (
+                state.exclusive_depth > 0 and state.exclusive_owner == owner
+            )
+            owns_shared = owner in state.shared_holders
             if mode is None:
-                return state.exclusive_depth > 0 or state.shared_depth > 0
+                return owns_exclusive or owns_shared
             if mode is LeaseMode.EXCLUSIVE:
-                return state.exclusive_depth > 0
-            return state.shared_depth > 0 or state.exclusive_depth > 0
+                return owns_exclusive
+            return owns_shared or owns_exclusive
 
     def read_generation(self, workspace_id: str) -> int:
         path = self.paths_for(workspace_id).generation_path

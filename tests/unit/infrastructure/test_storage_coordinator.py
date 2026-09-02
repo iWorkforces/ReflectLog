@@ -204,6 +204,49 @@ def test_exclusive_waits_for_other_thread_exclusive(
     assert acquired.is_set()
 
 
+def test_shared_waits_for_other_thread_exclusive(
+    tmp_path: Path,
+) -> None:
+    import threading
+
+    coordinator = PortalockerStorageCoordinator(str(tmp_path / "indexes"), timeout=1.0)
+    started = threading.Event()
+    release = threading.Event()
+
+    def _hold_exclusive() -> None:
+        with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+            started.set()
+            _ = release.wait(timeout=2.0)
+
+    holder = threading.Thread(target=_hold_exclusive)
+    holder.start()
+    assert started.wait(timeout=2.0)
+    acquired = threading.Event()
+
+    def _take_shared() -> None:
+        with coordinator.acquire("alpha", LeaseMode.SHARED):
+            acquired.set()
+
+    waiter = threading.Thread(target=_take_shared)
+    waiter.start()
+    waiter.join(timeout=0.2)
+    assert not acquired.is_set()
+    assert not coordinator.is_held("alpha", LeaseMode.EXCLUSIVE)
+    release.set()
+    waiter.join(timeout=2.0)
+    holder.join(timeout=2.0)
+    assert acquired.is_set()
+
+
+def test_same_thread_shared_reuses_exclusive(
+    coordinator: PortalockerStorageCoordinator,
+) -> None:
+    with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+        assert coordinator.is_held("alpha", LeaseMode.EXCLUSIVE)
+        with coordinator.acquire("alpha", LeaseMode.SHARED):
+            assert coordinator.is_held("alpha", LeaseMode.SHARED)
+
+
 def test_sidecar_paths_are_stable(
     coordinator: PortalockerStorageCoordinator,
 ) -> None:
