@@ -405,6 +405,8 @@ class MemoryManager:
             write_lock=self._write_lock,
             lock=self._lock,
             ensure_open=self._ensure_open,
+            coordinator=self._coordinator,
+            orchestration_hook=self._emit_orchestration_hook,
         )
         self._add_pipeline = AddPipeline(
             duplicate_detection_phase=self._duplicate_detection_phase,

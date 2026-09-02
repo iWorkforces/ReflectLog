@@ -1716,3 +1716,27 @@ class TestPersistListForAdd:
         assert called is not None
         persisted = called.args[0]
         assert persisted == ["fresh"]
+
+
+@pytest.mark.unit
+class TestStoragePhaseCoordination:
+    def test_revalidate_drops_stale_duplicate(self, mock_config, mock_logger) -> None:
+        from reflectlog.application.memory.add_phases import StoragePhase
+
+        semantic = MagicMock()
+        semantic.get_id_by_content.return_value = 9
+        semantic.embedder.embed_documents.return_value = [[0.1, 0.2]]
+        semantic.add_batch.return_value = []
+        semantic.memory_store.begin_add_intents.return_value = []
+        phase = StoragePhase(
+            semantic_engine=semantic,
+            tantivy_engine=None,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        mock_config.deduplicate_memories = True
+        kept, vectors = phase._revalidate_persist_inputs(
+            ["dup"], [[0.1, 0.2]], {}
+        )
+        assert kept == []
+        assert vectors == []

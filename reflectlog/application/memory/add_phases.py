@@ -25,6 +25,7 @@ from asyncer import asyncify, create_task_group
 
 from reflectlog.core.enums import TransitionKind
 from reflectlog.core.exceptions import InconsistentStateError, StorageError
+from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 
 from ...core.logging import IStructuredLogger
 from ...core.types import (
@@ -603,6 +604,8 @@ class StoragePhase:
         write_lock: AbstractContextManager[object] | None = None,
         lock: AbstractContextManager[object] | None = None,
         ensure_open: Callable[[], None] | None = None,
+        coordinator: IStorageCoordinator | None = None,
+        orchestration_hook: Callable[[str], None] | None = None,
     ):
         """Initialize storage phase.
 
@@ -626,6 +629,8 @@ class StoragePhase:
         self._write_lock = write_lock
         self._lock = lock
         self._ensure_open = ensure_open
+        self._coordinator = coordinator
+        self._orchestration_hook = orchestration_hook
 
     async def execute(
         self,
@@ -693,6 +698,17 @@ class StoragePhase:
     ) -> tuple[int, list[ReplacementInfo]]:
         """Embed outside the write lock, then record, delete, add, and commit."""
         vectors = self._embed_for_persist(memories)
+        if self._coordinator is not None:
+            with self._coordinator.acquire(self._workspace_id, LeaseMode.EXCLUSIVE):
+                return self._persist_under_locks(memories, replacement_map, vectors)
+        return self._persist_under_locks(memories, replacement_map, vectors)
+
+    def _persist_under_locks(
+        self,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+        vectors: list[list[float]] | None,
+    ) -> tuple[int, list[ReplacementInfo]]:
         if self._write_lock is None:
             self._require_open()
             return self._persist_replacements_unlocked(
@@ -715,6 +731,50 @@ class StoragePhase:
         if self._ensure_open is not None:
             self._ensure_open()
 
+    def _revalidate_persist_inputs(
+        self,
+        memories: list[str],
+        vectors: list[list[float]] | None,
+        replacement_map: dict[str, list[ReplacementInfo]],
+    ) -> tuple[list[str], list[list[float]] | None]:
+        """Drop identities that appeared after phase-2 decisions."""
+        kept: list[str] = []
+        kept_vectors: list[list[float]] = []
+        for index, memory in enumerate(memories):
+            if (
+                memory not in replacement_map
+                and self.config.deduplicate_memories
+                and self._has_exact_match(memory)
+            ):
+                continue
+            kept.append(memory)
+            if vectors is not None:
+                kept_vectors.append(vectors[index])
+        if vectors is None:
+            return kept, None
+        return kept, kept_vectors
+
+    def _emit_orchestration_hook(self, step: str) -> None:
+        hook = self._orchestration_hook
+        if hook is not None:
+            hook(step)
+
+    def _publish_then_complete(
+        self,
+        transitions: list[ReplacementTransition],
+        add_intents: list[ReplacementTransition],
+    ) -> None:
+        coordinator = self._coordinator
+        if coordinator is not None:
+            current = coordinator.read_generation(self._workspace_id)
+            self._emit_orchestration_hook("before_generation")
+            coordinator.publish_generation(self._workspace_id, current + 1)
+            self._emit_orchestration_hook("after_generation")
+        self._emit_orchestration_hook("before_intent")
+        self._complete_if_converged(transitions)
+        self._complete_add_intents(add_intents)
+        self._emit_orchestration_hook("after_intent")
+
     def _embed_for_persist(self, memories: list[str]) -> list[list[float]] | None:
         """Compute document embeddings before taking the write lock."""
         if not memories:
@@ -736,6 +796,10 @@ class StoragePhase:
         vectors: list[list[float]] | None = None,
     ) -> tuple[int, list[ReplacementInfo]]:
         """Mutate indexes while the caller already holds ``_write_lock``."""
+        if self._coordinator is not None:
+            memories, vectors = self._revalidate_persist_inputs(
+                memories, vectors, replacement_map
+            )
         planned, replacements = self._plan_replacements(memories, replacement_map)
         replacement_olds = {info.old_memory for info, _memory, _old_id in planned}
         persist_memories, persist_vectors = self._exclude_replacement_olds(
@@ -752,8 +816,7 @@ class StoragePhase:
             if self._tantivy_engine is not None:
                 self._tantivy_engine.commit()
             self._semantic_engine.commit()
-        self._complete_if_converged(transitions)
-        self._complete_add_intents(add_intents)
+        self._publish_then_complete(transitions, add_intents)
         return stored_count, replacements
 
     def _plan_replacements(
