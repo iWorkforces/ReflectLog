@@ -10,9 +10,12 @@ Clean Architecture Compliance:
     Dependency Inversion Principle from SOLID.
 """
 
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 import threading
+import time
 from typing import TYPE_CHECKING, Any, Self, final
 
 if TYPE_CHECKING:
@@ -28,6 +31,7 @@ from reflectlog.core.config import IAppConfig
 from reflectlog.core.enums import EmbedderProvider
 from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 from reflectlog.core.types import Embeddings, IStoredMemory
 from reflectlog.utility.scoring import distance_to_similarity_cosine
 from reflectlog.utility.security import validate_workspace_id
@@ -36,6 +40,46 @@ from reflectlog.utility.security import validate_workspace_id
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
     """Type guard to check if config is a dict."""
     return isinstance(config, dict)
+
+
+def _index_file_identity(path: str) -> tuple[int, int] | None:
+    """Return (mtime_ns, size) for a live HNSW file, or None if missing."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return (int(stat.st_mtime_ns), int(stat.st_size))
+
+
+def _fsync_path(path: str) -> None:
+    handle = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(handle)
+    finally:
+        os.close(handle)
+
+
+def _fsync_directory(path: str) -> None:
+    directory = os.path.dirname(path) or "."
+    try:
+        _fsync_path(directory)
+    except OSError:
+        return
+
+
+def _cleanup_orphan_hnsw_temps(index_path: str) -> None:
+    directory = os.path.dirname(index_path) or "."
+    base = os.path.basename(index_path)
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return
+    for name in names:
+        if name.startswith(f"{base}.") and name.endswith(".tmp"):
+            try:
+                os.remove(os.path.join(directory, name))
+            except OSError:
+                continue
 
 
 def _sqlite_memory_count(db_path: str) -> int | None:
@@ -188,6 +232,8 @@ class USearchEngine(BaseModel):
     config: USearchConfig
     embedder: Embeddings
     logger: IStructuredLogger | None = None
+    coordinator: IStorageCoordinator | None = None
+    publish_hook: Callable[[str], None] | None = None
 
     _index: Index | None = PrivateAttr(default=None)
     _memory_store: MemoryStore | None = PrivateAttr(default=None)
@@ -196,6 +242,7 @@ class USearchEngine(BaseModel):
     _index_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
     _dirty: bool = PrivateAttr(default=False)
     _closed: bool = PrivateAttr(default=False)
+    _seen_identity: tuple[int, int] | None = PrivateAttr(default=None)
 
     def __init__(
         self,
@@ -267,6 +314,7 @@ class USearchEngine(BaseModel):
                     index_dir = os.path.dirname(self.config.index_path)
                     if index_dir:
                         os.makedirs(index_dir, exist_ok=True)
+                    _cleanup_orphan_hnsw_temps(self.config.index_path)
 
                     # Optimization: Try restore first, avoid extra os.path.exists() call
                     # This is faster for existing indices (one less syscall)
@@ -278,6 +326,9 @@ class USearchEngine(BaseModel):
                             )
                         self._reject_populated_hnsw_without_db(len(loaded_index))
                         self._index = loaded_index
+                        self._seen_identity = _index_file_identity(
+                            self.config.index_path
+                        )
                         if self.logger:
                             self.logger.info(
                                 "Loaded existing USearch index",
@@ -334,6 +385,9 @@ class USearchEngine(BaseModel):
                         )
                         new_index.save(self.config.index_path)
                         self._index = new_index
+                        self._seen_identity = _index_file_identity(
+                            self.config.index_path
+                        )
                         if self.logger:
                             self.logger.info(
                                 "Created new USearch index",
@@ -389,6 +443,70 @@ class USearchEngine(BaseModel):
 
         return self._memory_store
 
+    def _emit_publish_hook(self, step: str) -> None:
+        hook = self.publish_hook
+        if hook is not None:
+            hook(step)
+
+    @contextmanager
+    def _write_lease(self) -> Generator[None]:
+        coordinator = self.coordinator
+        if coordinator is None:
+            yield
+            return
+        with coordinator.acquire(self.config.workspace_id, LeaseMode.EXCLUSIVE):
+            yield
+
+    def _maybe_reload_external(self) -> None:
+        """Reload the HNSW when another writer published a newer file."""
+        if self._dirty:
+            return
+        current = _index_file_identity(self.config.index_path)
+        if current == self._seen_identity:
+            return
+        if current is None:
+            return
+        loaded = Index.restore(self.config.index_path)
+        if loaded is None:
+            raise RuntimeError(
+                f"Index.restore() returned None for {self.config.index_path}"
+            )
+        self._reject_populated_hnsw_without_db(len(loaded))
+        self._index = loaded
+        self._seen_identity = current
+
+    def _publish_index(self) -> None:
+        """Atomically replace the live HNSW with a validated temp snapshot."""
+        live_path = self.config.index_path
+        directory = os.path.dirname(live_path) or "."
+        os.makedirs(directory, exist_ok=True)
+        temp_path = f"{live_path}.{os.getpid()}.{time.time_ns()}.tmp"
+        self._emit_publish_hook("before_save")
+        try:
+            self.index.save(temp_path)
+            self._emit_publish_hook("after_temp_save")
+            validated = Index.restore(temp_path)
+            if validated is None:
+                raise RuntimeError("Temp HNSW restore returned None")
+            if len(validated) != len(self.index):
+                raise RuntimeError("Temp HNSW size does not match in-memory index")
+            self._emit_publish_hook("after_temp_validate")
+            _fsync_path(temp_path)
+            self._emit_publish_hook("after_fsync")
+            self._emit_publish_hook("before_replace")
+            os.replace(temp_path, live_path)
+            self._emit_publish_hook("after_replace")
+            _fsync_directory(live_path)
+            self._dirty = False
+            self._seen_identity = _index_file_identity(live_path)
+        except Exception:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+            raise
+
     def add(
         self,
         workspace_id: str,
@@ -405,7 +523,46 @@ class USearchEngine(BaseModel):
         Raises:
             RuntimeError: If add operation fails.
         """
-        mem_id = None  # Track mem_id for rollback on embedding failure
+        try:
+            with self._write_lease():
+                _ = self.index
+                self._maybe_reload_external()
+                self._add_unlocked(workspace_id, content, infer)
+            return
+        except (RuntimeError, StorageError) as e:
+            if "Duplicate memory" in str(e):
+                if self.logger:
+                    self.logger.debug(
+                        "Skipping duplicate memory (detected by DB constraint)",
+                        extra={"workspace_id": self.config.workspace_id},
+                    )
+                return
+            if self.logger:
+                self.logger.error(
+                    "Failed to add memory to USearch index",
+                    extra={
+                        "workspace_id": self.config.workspace_id,
+                        "error": str(e),
+                    },
+                )
+            raise
+        except Exception as e:
+            if self.logger:
+                self.logger.error(
+                    "Failed to add memory to USearch index",
+                    extra={
+                        "workspace_id": self.config.workspace_id,
+                        "error": str(e),
+                    },
+                )
+            raise RuntimeError(f"Failed to add memory: {e}") from e
+
+    def _add_unlocked(
+        self,
+        workspace_id: str,
+        content: str,
+        infer: bool,
+    ) -> None:
         try:
             _ = self.index
             if infer and self.logger:
@@ -512,6 +669,18 @@ class USearchEngine(BaseModel):
         if not contents:
             return []
 
+        with self._write_lease():
+            _ = self.index
+            self._maybe_reload_external()
+            return self._add_batch_unlocked(workspace_id, contents, infer, vectors)
+
+    def _add_batch_unlocked(
+        self,
+        workspace_id: str,
+        contents: list[str],
+        infer: bool,
+        vectors: list[list[float]] | None,
+    ) -> list[str]:
         _ = self.index
         if infer and self.logger:
             self.logger.warning(
@@ -868,11 +1037,14 @@ class USearchEngine(BaseModel):
         try:
             mem_id = int(memory_id)
 
-            deleted = self.memory_store.delete(mem_id)
-            with self._index_lock:
-                if mem_id in self.index:
-                    self.index.remove(mem_id)
-                    self._dirty = True
+            with self._write_lease():
+                _ = self.index
+                self._maybe_reload_external()
+                deleted = self.memory_store.delete(mem_id)
+                with self._index_lock:
+                    if mem_id in self.index:
+                        self.index.remove(mem_id)
+                        self._dirty = True
 
             if self.logger:
                 if deleted:
@@ -932,9 +1104,10 @@ class USearchEngine(BaseModel):
         """
         try:
             if self._index is not None and self._dirty:
-                with self._index_lock:
-                    self.index.save(self.config.index_path)
-                self._dirty = False
+                with self._write_lease():
+                    self._maybe_reload_external()
+                    with self._index_lock:
+                        self._publish_index()
                 if self.logger:
                     self.logger.debug(
                         "USearch index saved",

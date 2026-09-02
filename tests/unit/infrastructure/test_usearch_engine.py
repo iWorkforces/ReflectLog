@@ -1584,3 +1584,144 @@ class TestUSearchEngineContextManager:
             _ = engine.index
         with pytest.raises(StorageError, match="USearchEngine is closed"):
             _ = engine.memory_store
+
+
+class TestAtomicUSearchPublication:
+    """External refresh and atomic HNSW publication."""
+
+    def test_stale_second_engine_refreshes_before_mutate(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        config, embedder, _ = temp_engine
+        stale = USearchEngine(config=config, embedder=embedder)
+        writer = USearchEngine(config=config, embedder=embedder)
+        try:
+            _ = stale.index
+            writer.add("test", "first-row", infer=False)
+            writer.commit()
+            stale.add("test", "second-row", infer=False)
+            stale.commit()
+        finally:
+            stale.close()
+            writer.close()
+
+        reopened = USearchEngine(config=config, embedder=embedder)
+        try:
+            assert set(reopened.get_all("test")) == {"first-row", "second-row"}
+            assert len(reopened.index) == 2
+        finally:
+            reopened.close()
+
+    def test_failpoint_before_replace_keeps_previous_index(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        config, embedder, tmpdir = temp_engine
+        first = USearchEngine(config=config, embedder=embedder)
+        first.add("test", "kept", infer=False)
+        first.commit()
+        first.close()
+
+        def boom(step: str) -> None:
+            if step == "before_replace":
+                raise RuntimeError("injected publish fail")
+
+        second = USearchEngine(
+            config=config, embedder=embedder, publish_hook=boom
+        )
+        try:
+            second.add("test", "new-row", infer=False)
+            with pytest.raises(RuntimeError, match="Failed to save USearch index"):
+                second.commit()
+        finally:
+            second.close()
+
+        temps = [
+            name
+            for name in os.listdir(tmpdir)
+            if name.endswith(".tmp")
+        ]
+        assert temps == []
+        reopened = USearchEngine(config=config, embedder=embedder)
+        try:
+            assert "kept" in reopened.get_all("test")
+            assert len(reopened.index) >= 1
+        finally:
+            reopened.close()
+
+    @pytest.mark.parametrize(
+        "step",
+        [
+            "before_save",
+            "after_temp_save",
+            "after_temp_validate",
+            "after_fsync",
+            "before_replace",
+        ],
+    )
+    def test_failpoints_keep_previous_or_complete_index(
+        self,
+        temp_engine: tuple[USearchConfig, MockEmbedder, str],
+        step: str,
+    ) -> None:
+        config, embedder, tmpdir = temp_engine
+        first = USearchEngine(config=config, embedder=embedder)
+        first.add("test", "kept", infer=False)
+        first.commit()
+        first.close()
+
+        def boom(name: str) -> None:
+            if name == step:
+                raise RuntimeError(f"injected {step}")
+
+        second = USearchEngine(
+            config=config, embedder=embedder, publish_hook=boom
+        )
+        try:
+            second.add("test", "new-row", infer=False)
+            with pytest.raises(RuntimeError, match="Failed to save USearch index"):
+                second.commit()
+        finally:
+            second.close()
+
+        temps = [name for name in os.listdir(tmpdir) if name.endswith(".tmp")]
+        assert temps == []
+        reopened = USearchEngine(config=config, embedder=embedder)
+        try:
+            assert "kept" in reopened.get_all("test")
+            assert len(reopened.index) >= 1
+        finally:
+            reopened.close()
+
+    def test_publish_does_not_advance_generation(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.infrastructure.storage_coordinator import (
+            PortalockerStorageCoordinator,
+        )
+
+        config, embedder, tmpdir = temp_engine
+        coordinator = PortalockerStorageCoordinator(tmpdir, timeout=1.0)
+        engine = USearchEngine(
+            config=config, embedder=embedder, coordinator=coordinator
+        )
+        try:
+            assert coordinator.read_generation(config.workspace_id) == 0
+            engine.add("test", "gen-row", infer=False)
+            engine.commit()
+            assert coordinator.read_generation(config.workspace_id) == 0
+        finally:
+            engine.close()
+
+    def test_startup_removes_orphan_temp_files(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        config, embedder, _tmpdir = temp_engine
+        orphan = config.index_path + ".9999.tmp"
+        with open(orphan, "wb") as handle:
+            handle.write(b"orphan")
+        engine = USearchEngine(config=config, embedder=embedder)
+        try:
+            _ = engine.index
+            assert not os.path.exists(orphan)
+        finally:
+            engine.close()
