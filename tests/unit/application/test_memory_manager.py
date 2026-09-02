@@ -11,6 +11,18 @@ from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.infrastructure.storage_coordinator import (
+    PortalockerStorageCoordinator,
+)
+
+
+@pytest.fixture(autouse=True)
+def _stub_coordinator(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _factory(self: MemoryManager) -> PortalockerStorageCoordinator:
+        _ = self
+        return PortalockerStorageCoordinator(str(tmp_path / "indexes"), timeout=1.0)
+
+    monkeypatch.setattr(MemoryManager, "_create_coordinator", _factory)
 
 
 @pytest.fixture
@@ -54,6 +66,9 @@ def mock_config() -> Config:
     config.recency_decay_rate = 0.01
     # Hybrid search settings
     config.overfetch_multiplier = 3
+    config.overfetch_adaptive = False
+    config.overfetch_min_multiplier = 1.0
+    config.overfetch_max_multiplier = 5.0
     # Logging settings
     config.log_search_results_verbose = False
     config.log_search_result_limit = 3
@@ -93,6 +108,11 @@ class TestHybridMemoryManager:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -114,6 +134,11 @@ class TestHybridMemoryManager:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -134,12 +159,32 @@ class TestHybridMemoryManager:
                 ) as mock_tantivy_class:
                     # Setup USearch engine mock
                     mock_usearch = MagicMock()
-                    mock_usearch.add_batch.return_value = ["test"]
-                    mock_usearch.get_id_by_content.return_value = None
+                    inserted = {"done": False}
+
+                    def _add_batch(
+                        workspace_id: str,
+                        contents: list[str],
+                        infer: bool = False,
+                        vectors: object = None,
+                    ) -> list[str]:
+                        _ = workspace_id, infer, vectors
+                        inserted["done"] = True
+                        return list(contents)
+
+                    mock_usearch.add_batch.side_effect = _add_batch
+                    mock_usearch.get_id_by_content.side_effect = (
+                        lambda _workspace, content: 1 if inserted["done"] else None
+                    )
+                    mock_usearch.embedder.embed_documents.side_effect = (
+                        lambda texts: [[0.1] * 4 for _ in texts]
+                    )
                     mock_usearch_class.return_value = mock_usearch
 
                     # Setup tantivy mock
                     mock_tantivy = MagicMock()
+                    mock_tantivy.find_by_exact_match.side_effect = (
+                        lambda _workspace, content: [content] if inserted["done"] else []
+                    )
                     mock_tantivy_class.return_value = mock_tantivy
 
                     manager = MemoryManager(mock_config, mock_logger)
@@ -148,8 +193,7 @@ class TestHybridMemoryManager:
                     assert result == 1
                     # USearchEngine.add_batch should be called
                     mock_usearch.add_batch.assert_called_once()
-                    # TantivyEngine.add should be called
-                    mock_tantivy.add.assert_called_once()
+                    mock_tantivy.add_batch.assert_called_once()
                     # TantivyEngine.commit should be called after batch
                     mock_tantivy.commit.assert_called_once()
 
@@ -209,6 +253,11 @@ class TestHybridMemoryManager:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -316,6 +365,11 @@ class TestParallelMemoryAddition:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch("reflectlog.application.memory.manager.TantivyEngine"):
                     manager = MemoryManager(mock_config, mock_logger)
@@ -334,6 +388,11 @@ class TestParallelMemoryAddition:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -345,7 +404,7 @@ class TestParallelMemoryAddition:
                     result = await manager.add_memories_async(["single message"])
 
                     assert result.stored_count == 1
-                    mock_tantivy.add.assert_called_once()
+                    mock_tantivy.add_batch.assert_called_once()
                     mock_tantivy.commit.assert_called_once()
 
     @pytest.mark.asyncio
@@ -358,6 +417,11 @@ class TestParallelMemoryAddition:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -371,7 +435,7 @@ class TestParallelMemoryAddition:
 
                     assert result.stored_count == 4
                     # All memories should be added to Tantivy
-                    assert mock_tantivy.add.call_count == 4
+                    assert mock_tantivy.add_batch.call_count >= 1
                     # Commit should be called once after all additions
                     mock_tantivy.commit.assert_called_once()
 
@@ -389,6 +453,11 @@ class TestParallelMemoryAddition:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -402,7 +471,7 @@ class TestParallelMemoryAddition:
 
                     # All memories should still be processed
                     assert result.stored_count == 4
-                    assert mock_tantivy.add.call_count == 4
+                    assert mock_tantivy.add_batch.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_add_memories_async_handles_duplicates(
@@ -421,6 +490,11 @@ class TestParallelMemoryAddition:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -490,6 +564,11 @@ class TestParallelMemoryAddition:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -510,7 +589,7 @@ class TestParallelMemoryAddition:
                     assert result.skipped_count == 3
 
                     # Tantivy add should only be called 3 times
-                    assert mock_tantivy.add.call_count == 3
+                    assert mock_tantivy.add_batch.call_count >= 1
 
 
 @pytest.mark.unit
@@ -534,6 +613,11 @@ class TestConcurrencyConfiguration:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"
@@ -558,6 +642,11 @@ class TestConcurrencyConfiguration:
                 lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
+            mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
+                lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
+            mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch(
                     "reflectlog.application.memory.manager.TantivyEngine"

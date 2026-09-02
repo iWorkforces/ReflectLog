@@ -451,11 +451,16 @@ class USearchEngine(BaseModel):
     @contextmanager
     def _write_lease(self) -> Generator[None]:
         coordinator = self.coordinator
-        if coordinator is None:
+        if coordinator is None or coordinator.is_held(self.config.workspace_id):
             yield
             return
         with coordinator.acquire(self.config.workspace_id, LeaseMode.EXCLUSIVE):
             yield
+
+    def refresh(self) -> None:
+        """Reload a newer HNSW published by another writer."""
+        _ = self.index
+        self._maybe_reload_external()
 
     def _maybe_reload_external(self) -> None:
         """Reload the HNSW when another writer published a newer file."""

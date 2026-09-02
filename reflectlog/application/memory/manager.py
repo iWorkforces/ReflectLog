@@ -28,10 +28,12 @@ Example:
     )
 """
 
-from contextlib import suppress
+from collections.abc import Callable, Generator
+from contextlib import contextmanager, suppress
+import os
 import threading
 import time
-from typing import Any, Protocol, final
+from typing import Any, Protocol, final, runtime_checkable
 
 from asyncer import asyncify
 
@@ -61,7 +63,9 @@ from ...core.enums import (
     TransitionKind,
 )
 from ...core.logging import IStructuredLogger
+from ...core.storage_coordination import IStorageCoordinator, LeaseMode
 from ...core.types import ISemanticSearchEngine, ReplacementTransition
+from ...infrastructure.storage_coordinator import PortalockerStorageCoordinator
 from ..config.settings import Config
 from .add_phases import (
     AddPipeline,
@@ -89,17 +93,38 @@ class _ReadyEngine(Protocol):
     def is_ready(self) -> bool: ...
 
 
+@runtime_checkable
+class _RefreshableEngine(Protocol):
+    def refresh(self) -> None: ...
+
+
+@runtime_checkable
+class _ExactMatchEngine(Protocol):
+    def find_by_exact_match(
+        self, workspace_id: str, content: str
+    ) -> list[str]: ...
+
+
 @final
 class MemoryManager:
     """Manages memory storage and retrieval using USearch with SQLite backend."""
 
-    def __init__(self, config: Config, logger: IStructuredLogger | None):
+    def __init__(
+        self,
+        config: Config,
+        logger: IStructuredLogger | None,
+        *,
+        coordinator: IStorageCoordinator | None = None,
+        orchestration_hook: Callable[[str], None] | None = None,
+    ):
         """Initialize Hybrid MemoryManager with USearch semantic
         & Tantivy full-text engines.
 
         Args:
             config: Application configuration.
             logger: Structured logger instance.
+            coordinator: Optional workspace storage coordinator.
+            orchestration_hook: Test-only failpoint invoked at generation/intent seams.
         """
         super().__init__()
         if logger is None:
@@ -108,8 +133,10 @@ class MemoryManager:
         self.config = config
         self.logger: IStructuredLogger = logger
         self.workspace_id = config.workspace_id
+        self.orchestration_hook = orchestration_hook
 
         self._init_locks()
+        self._coordinator = coordinator or self._create_coordinator()
         self.is_hybrid_search = self.config.enable_hybrid_search
         try:
             self._init_semantic_engine()
@@ -156,6 +183,79 @@ class MemoryManager:
         self._reranker_lock = threading.RLock()
         self._smart_replacer_lock = threading.RLock()
 
+    def _create_coordinator(self) -> IStorageCoordinator:
+        root = os.path.abspath(ConfigAdapter(self.config).storage_path)
+        return PortalockerStorageCoordinator(root)
+
+    def _emit_orchestration_hook(self, step: str) -> None:
+        hook = self.orchestration_hook
+        if hook is not None:
+            hook(step)
+
+    @contextmanager
+    def _exclusive_workspace(self) -> Generator[None]:
+        with self._coordinator.acquire(self.workspace_id, LeaseMode.EXCLUSIVE):
+            yield
+
+    @contextmanager
+    def _shared_workspace(self) -> Generator[None]:
+        with self._coordinator.acquire(self.workspace_id, LeaseMode.SHARED):
+            yield
+
+    def _publish_converged_generation(self) -> None:
+        current = self._coordinator.read_generation(self.workspace_id)
+        self._emit_orchestration_hook("before_generation")
+        self._coordinator.publish_generation(self.workspace_id, current + 1)
+        self._emit_orchestration_hook("after_generation")
+
+    def _complete_intents_after_generation(
+        self, completer: Callable[[], None]
+    ) -> None:
+        self._publish_converged_generation()
+        self._emit_orchestration_hook("before_intent")
+        completer()
+        self._emit_orchestration_hook("after_intent")
+
+    def _refresh_engines(self) -> None:
+        engine = self._semantic_engine
+        if isinstance(engine, _RefreshableEngine):
+            engine.refresh()
+
+    def _tantivy_has(self, content: str) -> bool | None:
+        engine: object = self._tantivy_engine
+        if engine is None or not isinstance(engine, _ExactMatchEngine):
+            return None
+        matches: object = engine.find_by_exact_match(self.workspace_id, content)
+        if not isinstance(matches, list):
+            return None
+        return content in matches
+
+    def _validate_contents_present(self, contents: list[str]) -> None:
+        for content in contents:
+            sqlite_id = self.get_id_by_content(content)
+            tantivy_has = self._tantivy_has(content)
+            if sqlite_id is None and tantivy_has is True:
+                raise InconsistentStateError(
+                    "SQLite is missing a memory after a coordinated write"
+                )
+            if sqlite_id is not None and tantivy_has is False:
+                raise InconsistentStateError(
+                    "Tantivy is missing a memory after a coordinated write"
+                )
+
+    def _validate_contents_absent(self, contents: list[str]) -> None:
+        for content in contents:
+            sqlite_id = self.get_id_by_content(content)
+            tantivy_has = self._tantivy_has(content)
+            if sqlite_id is not None and tantivy_has is True:
+                raise InconsistentStateError(
+                    "SQLite and Tantivy still have a memory after a coordinated delete"
+                )
+            if sqlite_id is None and tantivy_has is True:
+                raise InconsistentStateError(
+                    "Tantivy still has a memory after a coordinated delete"
+                )
+
     def _init_semantic_engine(self) -> None:
         """Create USearch semantic engine with optional embedding cache."""
         config = self.config
@@ -182,7 +282,10 @@ class MemoryManager:
         else:
             embedder = base_embedder
         self._semantic_engine: ISemanticSearchEngine = USearchEngine(
-            usearch_config, embedder=embedder, logger=self.logger
+            usearch_config,
+            embedder=embedder,
+            logger=self.logger,
+            coordinator=self._coordinator,
         )
 
     def _init_search_engine(self) -> None:
@@ -200,7 +303,11 @@ class MemoryManager:
                 compaction_max_tombstones=self.config.tantivy_compaction_max_tombstones,
                 tombstone_ttl_days=self.config.tantivy_tombstone_ttl_days,
             )
-            self._tantivy_engine = TantivyEngine(tantivy_config, logger=self.logger)
+            self._tantivy_engine = TantivyEngine(
+                tantivy_config,
+                logger=self.logger,
+                coordinator=self._coordinator,
+            )
 
     def _init_fusion_engine(self) -> None:
         """Create fusion engine for hybrid ranking."""
@@ -617,8 +724,9 @@ class MemoryManager:
         if len(vectors) != len(memories_to_add) or any(not item for item in vectors):
             raise StorageError("Embedding batch size mismatch or empty vector")
 
-        with self._write_lock, self._lock:
+        with self._exclusive_workspace(), self._write_lock, self._lock:
             self._ensure_open()
+            self._refresh_engines()
             persist_memories: list[str] = []
             persist_vectors: list[list[float]] = []
             for memory, vector in zip(memories_to_add, vectors, strict=True):
@@ -662,7 +770,10 @@ class MemoryManager:
                 "  USearch index committed",
                 extra={"engine": "usearch"},
             )
-            self._complete_add_intents(add_intents)
+            self._validate_contents_present(inserted_memories)
+            self._complete_intents_after_generation(
+                lambda: self._complete_add_intents(add_intents)
+            )
 
             return stored_count
 
@@ -706,8 +817,9 @@ class MemoryManager:
     def count(self) -> int:
         """Return how many memories exist in this workspace."""
         self._ensure_open()
-        with self._lock:
+        with self._shared_workspace(), self._lock:
             self._ensure_open()
+            self._refresh_engines()
             return self._semantic_engine.count(self.workspace_id)
 
     def get_all(self, limit: int | None = None, offset: int = 0) -> list[str]:
@@ -723,8 +835,9 @@ class MemoryManager:
         """
         self._ensure_open()
         try:
-            with self._lock:
+            with self._shared_workspace(), self._lock:
                 self._ensure_open()
+                self._refresh_engines()
                 memories = self._semantic_engine.get_all(
                     workspace_id=self.workspace_id,
                     limit=limit,
@@ -803,8 +916,11 @@ class MemoryManager:
             workspace_id=self.workspace_id,
         )
 
-        # Execute search pipeline
-        result = await self._search_pipeline.execute(context)
+        # Execute search pipeline under a shared lease so readers see
+        # the latest published generation without blocking writers' embeds.
+        with self._shared_workspace():
+            self._refresh_engines()
+            result = await self._search_pipeline.execute(context)
 
         return result.memories
 
@@ -902,8 +1018,9 @@ class MemoryManager:
             StorageError: If deletion fails.
         """
         self._ensure_open()
-        with self._write_lock, self._lock:
+        with self._exclusive_workspace(), self._write_lock, self._lock:
             self._ensure_open()
+            self._refresh_engines()
             try:
                 numeric_id = int(memory_id)
                 record = self._semantic_engine.memory_store.get(numeric_id)
@@ -924,8 +1041,11 @@ class MemoryManager:
                             f"did not delete memory_id={memory_id}"
                         )
                     self._tantivy_engine.commit()
+                self._validate_contents_absent([content])
                 if delete_intents:
-                    self._complete_delete_intents(delete_intents)
+                    self._complete_intents_after_generation(
+                        lambda: self._complete_delete_intents(delete_intents)
+                    )
             except InconsistentStateError:
                 raise
             except Exception as e:
@@ -951,8 +1071,9 @@ class MemoryManager:
             RuntimeError: If deletion fails or results in inconsistent state.
         """
         self._ensure_open()
-        with self._write_lock, self._lock:
+        with self._exclusive_workspace(), self._write_lock, self._lock:
             self._ensure_open()
+            self._refresh_engines()
             try:
                 # 1. Look up the SQLite ID from the memory content
                 mem_id = self.get_id_by_content(memory)
@@ -1003,7 +1124,10 @@ class MemoryManager:
                             f"{tantivy_error}"
                         ) from tantivy_error
 
-                self._complete_delete_intents(delete_intents)
+                self._validate_contents_absent([memory])
+                self._complete_intents_after_generation(
+                    lambda: self._complete_delete_intents(delete_intents)
+                )
                 self.logger.debug(
                     "Memory deleted from hybrid storage",
                     extra={
@@ -1035,8 +1159,9 @@ class MemoryManager:
         unique = list(dict.fromkeys(memories))
         if not unique:
             return []
-        with self._write_lock, self._lock:
+        with self._exclusive_workspace(), self._write_lock, self._lock:
             self._ensure_open()
+            self._refresh_engines()
             found: list[tuple[int, str]] = []
             for memory in unique:
                 mem_id = self.get_id_by_content(memory)
@@ -1067,7 +1192,10 @@ class MemoryManager:
                     ) from tantivy_error
             if found:
                 self._semantic_engine.commit()
-                self._complete_delete_intents(delete_intents)
+                self._validate_contents_absent(contents)
+                self._complete_intents_after_generation(
+                    lambda: self._complete_delete_intents(delete_intents)
+                )
             orphaned = [
                 memory for memory in unique if memory not in contents
             ]
@@ -1233,7 +1361,7 @@ class MemoryManager:
         to prevent data loss.
         """
         persist_ok = True
-        with self._write_lock, self._lock:
+        with self._exclusive_workspace(), self._write_lock, self._lock:
             if self._closed or self._closing:
                 return
             self._closing = True

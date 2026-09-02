@@ -152,6 +152,19 @@ class PortalockerStorageCoordinator:
 
         return _on_release
 
+    def is_held(
+        self, workspace_id: str, mode: LeaseMode | None = None
+    ) -> bool:
+        """Return True when this process already holds a lease for the workspace."""
+        safe_id = validate_workspace_id(workspace_id).lower()
+        with self._local:
+            if mode is None:
+                return any(
+                    key[0] == safe_id and depth > 0
+                    for key, depth in self._lease_depth.items()
+                )
+            return self._lease_depth.get((safe_id, mode), 0) > 0
+
     def read_generation(self, workspace_id: str) -> int:
         path = self.paths_for(workspace_id).generation_path
         if not os.path.exists(path):

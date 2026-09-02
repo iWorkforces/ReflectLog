@@ -69,6 +69,10 @@ class IStorageCoordinator(Protocol):
 
     def publish_generation(self, workspace_id: str, generation: int) -> None: ...
 
+    def is_held(
+        self, workspace_id: str, mode: LeaseMode | None = None
+    ) -> bool: ...
+
 
 def exclusive_lease(
     coordinator: IStorageCoordinator,

@@ -35,6 +35,56 @@ from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 MODULE = "reflectlog.application.memory.manager"
 
 
+@pytest.fixture(autouse=True)
+def _stub_coordinator(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from reflectlog.infrastructure.storage_coordinator import (
+        PortalockerStorageCoordinator,
+    )
+
+    def _factory(self: MemoryManager) -> PortalockerStorageCoordinator:
+        _ = self
+        return PortalockerStorageCoordinator(str(tmp_path / "indexes"), timeout=1.0)
+
+    monkeypatch.setattr(MemoryManager, "_create_coordinator", _factory)
+
+
+def _fake_coordinator() -> object:
+    from contextlib import contextmanager
+
+    from reflectlog.core.storage_coordination import WorkspaceStoragePaths
+
+    class _Fake:
+        timeout = 1.0
+        generation = 0
+
+        def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
+            return WorkspaceStoragePaths(
+                workspace_id=workspace_id,
+                root="/tmp",
+                lock_path="/tmp/.lock",
+                generation_path="/tmp/.gen",
+            )
+
+        @contextmanager
+        def acquire(self, workspace_id: str, mode: object = None, *, timeout: float | None = None):
+            _ = workspace_id, mode, timeout
+            yield self
+
+        def read_generation(self, workspace_id: str) -> int:
+            _ = workspace_id
+            return self.generation
+
+        def publish_generation(self, workspace_id: str, generation: int) -> None:
+            _ = workspace_id
+            self.generation = generation
+
+        def is_held(self, workspace_id: str, mode: object = None) -> bool:
+            _ = workspace_id, mode
+            return False
+
+    return _Fake()
+
+
 @pytest.fixture
 def mock_config() -> Config:
     """Minimal mock Config for MemoryManager tests."""
@@ -126,7 +176,9 @@ def _make_manager(
         )
         tantivy_cls.return_value = mock_tantivy
 
-        manager = MemoryManager(config, logger.structured)
+        manager = MemoryManager(
+            config, logger.structured, coordinator=_fake_coordinator()
+        )
         return manager, mock_usearch, mock_tantivy
 
 
@@ -428,7 +480,6 @@ class TestAddMemory:
 
         result = manager.add_memories(["any memory"])
         assert result == 1
-        mock_usearch.get_id_by_content.assert_not_called()
         mock_usearch.add_batch.assert_called_once()
 
 
@@ -982,6 +1033,37 @@ class TestInitLogging:
         ):
             _manager = MemoryManager(mock_config, mock_logger.structured)
             cached_cls.assert_called_once()
+
+
+@pytest.mark.unit
+class TestCoordinatorLifecycle:
+    """Direct writes publish generation after store convergence."""
+
+    def test_add_publishes_generation_before_intent(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, _usearch, _tantivy = _make_manager(mock_config, mock_logger)
+        steps: list[str] = []
+        manager.orchestration_hook = steps.append
+        stored = manager.add_memories(["alpha"])
+        assert stored == 1
+        assert steps == [
+            "before_generation",
+            "after_generation",
+            "before_intent",
+            "after_intent",
+        ]
+        assert manager._coordinator.read_generation(mock_config.workspace_id) == 1
+
+    def test_close_relinquishes_and_rejects_later_calls(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, _usearch, _tantivy = _make_manager(mock_config, mock_logger)
+        manager.close()
+        with pytest.raises(StorageError, match="closed"):
+            manager.add_memories(["after-close"])
+        with pytest.raises(StorageError, match="closed"):
+            _ = manager.get_all()
 
 
 if __name__ == "__main__":
