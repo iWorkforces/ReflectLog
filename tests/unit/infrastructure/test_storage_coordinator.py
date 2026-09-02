@@ -107,6 +107,103 @@ def test_lock_file_remains_after_release(
     assert lock_path.exists()
 
 
+def test_concurrent_shared_leases_do_not_drop_os_lock(
+    tmp_path: Path,
+) -> None:
+    import threading
+
+    coordinator = PortalockerStorageCoordinator(str(tmp_path / "indexes"), timeout=1.0)
+    started = threading.Event()
+    release = threading.Event()
+    errors: list[str] = []
+
+    def _hold_shared() -> None:
+        try:
+            with coordinator.acquire("alpha", LeaseMode.SHARED):
+                started.set()
+                _ = release.wait(timeout=2.0)
+        except Exception as exc:
+            errors.append(str(exc))
+
+    holder = threading.Thread(target=_hold_shared)
+    holder.start()
+    assert started.wait(timeout=2.0)
+    with coordinator.acquire("alpha", LeaseMode.SHARED):
+        assert coordinator.is_held("alpha", LeaseMode.SHARED)
+    release.set()
+    holder.join(timeout=2.0)
+    assert errors == []
+    waiter = PortalockerStorageCoordinator(str(tmp_path / "indexes"), timeout=0.2)
+    with waiter.acquire("alpha"):
+        waiter.publish_generation("alpha", 1)
+
+
+def test_exclusive_waits_for_same_process_shared(
+    tmp_path: Path,
+) -> None:
+    import threading
+
+    coordinator = PortalockerStorageCoordinator(str(tmp_path / "indexes"), timeout=1.0)
+    started = threading.Event()
+    release = threading.Event()
+
+    def _hold_shared() -> None:
+        with coordinator.acquire("alpha", LeaseMode.SHARED):
+            started.set()
+            _ = release.wait(timeout=2.0)
+
+    holder = threading.Thread(target=_hold_shared)
+    holder.start()
+    assert started.wait(timeout=2.0)
+    acquired = threading.Event()
+
+    def _take_exclusive() -> None:
+        with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+            acquired.set()
+
+    waiter = threading.Thread(target=_take_exclusive)
+    waiter.start()
+    waiter.join(timeout=0.2)
+    assert not acquired.is_set()
+    release.set()
+    waiter.join(timeout=2.0)
+    holder.join(timeout=2.0)
+    assert acquired.is_set()
+
+
+def test_exclusive_waits_for_other_thread_exclusive(
+    tmp_path: Path,
+) -> None:
+    import threading
+
+    coordinator = PortalockerStorageCoordinator(str(tmp_path / "indexes"), timeout=1.0)
+    started = threading.Event()
+    release = threading.Event()
+
+    def _hold_exclusive() -> None:
+        with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+            started.set()
+            _ = release.wait(timeout=2.0)
+
+    holder = threading.Thread(target=_hold_exclusive)
+    holder.start()
+    assert started.wait(timeout=2.0)
+    acquired = threading.Event()
+
+    def _take_exclusive() -> None:
+        with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+            acquired.set()
+
+    waiter = threading.Thread(target=_take_exclusive)
+    waiter.start()
+    waiter.join(timeout=0.2)
+    assert not acquired.is_set()
+    release.set()
+    waiter.join(timeout=2.0)
+    holder.join(timeout=2.0)
+    assert acquired.is_set()
+
+
 def test_sidecar_paths_are_stable(
     coordinator: PortalockerStorageCoordinator,
 ) -> None:

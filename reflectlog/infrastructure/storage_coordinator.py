@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import os
 import threading
+import time
 
 import portalocker
 from portalocker.exceptions import AlreadyLocked, LockException
@@ -21,6 +22,16 @@ from reflectlog.utility.security import validate_workspace_id
 PRODUCTION_LEASE_TIMEOUT = 30.0
 LOCK_NAME = ".reflectlog.writer.lock"
 GENERATION_NAME = ".reflectlog.storage-generation"
+
+
+@dataclass
+class _WorkspaceLeaseState:
+    mutex: threading.Lock
+    cond: threading.Condition
+    os_lock: portalocker.Lock | None = None
+    exclusive_depth: int = 0
+    exclusive_owner: int | None = None
+    shared_depth: int = 0
 
 
 @dataclass
@@ -65,8 +76,7 @@ class PortalockerStorageCoordinator:
         self._indexes_root = os.path.abspath(indexes_root)
         self._timeout = timeout
         self._local = threading.RLock()
-        self._lease_depth: dict[tuple[str, LeaseMode], int] = {}
-        self._os_locks: dict[tuple[str, LeaseMode], portalocker.Lock] = {}
+        self._states: dict[str, _WorkspaceLeaseState] = {}
 
     @property
     def timeout(self) -> float:
@@ -81,6 +91,42 @@ class PortalockerStorageCoordinator:
             lock_path=os.path.join(root, LOCK_NAME),
             generation_path=os.path.join(root, GENERATION_NAME),
         )
+
+    def _state_for(self, workspace_id: str) -> _WorkspaceLeaseState:
+        with self._local:
+            state = self._states.get(workspace_id)
+            if state is None:
+                mutex = threading.Lock()
+                state = _WorkspaceLeaseState(
+                    mutex=mutex, cond=threading.Condition(mutex)
+                )
+                self._states[workspace_id] = state
+            return state
+
+    def _take_os_lock(
+        self,
+        paths: WorkspaceStoragePaths,
+        mode: LeaseMode,
+        wait: float,
+        state: _WorkspaceLeaseState,
+    ) -> None:
+        flags = (
+            portalocker.LOCK_EX | portalocker.LOCK_NB
+            if mode is LeaseMode.EXCLUSIVE
+            else portalocker.LOCK_SH | portalocker.LOCK_NB
+        )
+        lock = portalocker.Lock(paths.lock_path, timeout=wait, flags=flags)
+        try:
+            _ = lock.acquire()
+        except AlreadyLocked as exc:
+            raise LeaseTimeoutError(
+                f"Timed out acquiring {mode} lease for {paths.workspace_id}"
+            ) from exc
+        except LockException as exc:
+            raise LeaseTimeoutError(
+                f"Failed to acquire {mode} lease for {paths.workspace_id}"
+            ) from exc
+        state.os_lock = lock
 
     def acquire(
         self,
@@ -100,68 +146,77 @@ class PortalockerStorageCoordinator:
             with open(paths.lock_path, "a", encoding="utf-8") as handle:
                 _ = handle.write("")
 
-        key = (paths.workspace_id, mode)
-        with self._local:
-            depth = self._lease_depth.get(key, 0)
-            if depth > 0:
-                self._lease_depth[key] = depth + 1
-                return _PortalockerLease(
-                    workspace_id=paths.workspace_id,
-                    mode=mode,
-                    _on_release=self._release_callback(key),
-                )
+        state = self._state_for(paths.workspace_id)
+        deadline = time.monotonic() + wait
+        exclusive = mode is LeaseMode.EXCLUSIVE
+        owner = threading.get_ident()
+        with state.cond:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise LeaseTimeoutError(
+                        f"Timed out acquiring {mode} lease for {paths.workspace_id}"
+                    )
+                if exclusive:
+                    if state.exclusive_depth > 0 and state.exclusive_owner == owner:
+                        state.exclusive_depth += 1
+                        break
+                    if state.exclusive_depth > 0 or state.shared_depth > 0:
+                        _ = state.cond.wait(timeout=remaining)
+                        continue
+                    self._take_os_lock(paths, LeaseMode.EXCLUSIVE, remaining, state)
+                    state.exclusive_depth = 1
+                    state.exclusive_owner = owner
+                    break
+                if state.exclusive_depth > 0 or (
+                    state.shared_depth > 0 and state.os_lock is not None
+                ):
+                    state.shared_depth += 1
+                    break
+                self._take_os_lock(paths, LeaseMode.SHARED, remaining, state)
+                state.shared_depth = 1
+                break
 
-        flags = (
-            portalocker.LOCK_EX | portalocker.LOCK_NB
-            if mode is LeaseMode.EXCLUSIVE
-            else portalocker.LOCK_SH | portalocker.LOCK_NB
-        )
-        lock = portalocker.Lock(paths.lock_path, timeout=wait, flags=flags)
-        try:
-            _ = lock.acquire()
-        except AlreadyLocked as exc:
-            raise LeaseTimeoutError(
-                f"Timed out acquiring {mode} lease for {paths.workspace_id}"
-            ) from exc
-        except LockException as exc:
-            raise LeaseTimeoutError(
-                f"Failed to acquire {mode} lease for {paths.workspace_id}"
-            ) from exc
-
-        with self._local:
-            self._lease_depth[key] = 1
-            self._os_locks[key] = lock
         return _PortalockerLease(
             workspace_id=paths.workspace_id,
             mode=mode,
-            _on_release=self._release_callback(key),
+            _on_release=self._release_callback(paths.workspace_id, mode),
         )
 
-    def _release_callback(self, key: tuple[str, LeaseMode]) -> Callable[[], None]:
+    def _release_callback(
+        self, workspace_id: str, mode: LeaseMode
+    ) -> Callable[[], None]:
         def _on_release() -> None:
-            with self._local:
-                depth = self._lease_depth.get(key, 0)
-                if depth <= 1:
-                    _ = self._lease_depth.pop(key, None)
-                    lock = self._os_locks.pop(key, None)
+            state = self._state_for(workspace_id)
+            with state.cond:
+                if mode is LeaseMode.EXCLUSIVE:
+                    state.exclusive_depth = max(0, state.exclusive_depth - 1)
+                    if state.exclusive_depth == 0:
+                        state.exclusive_owner = None
                 else:
-                    self._lease_depth[key] = depth - 1
-                    lock = None
-            if lock is not None:
-                lock.release()
+                    state.shared_depth = max(0, state.shared_depth - 1)
+                lock = None
+                if state.exclusive_depth == 0 and state.shared_depth == 0:
+                    lock = state.os_lock
+                    state.os_lock = None
+                try:
+                    if lock is not None:
+                        lock.release()
+                finally:
+                    state.cond.notify_all()
 
         return _on_release
 
     def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
         """Return True when this process already holds a lease for the workspace."""
         safe_id = validate_workspace_id(workspace_id).lower()
-        with self._local:
+        state = self._state_for(safe_id)
+        with state.cond:
             if mode is None:
-                return any(
-                    key[0] == safe_id and depth > 0
-                    for key, depth in self._lease_depth.items()
-                )
-            return self._lease_depth.get((safe_id, mode), 0) > 0
+                return state.exclusive_depth > 0 or state.shared_depth > 0
+            if mode is LeaseMode.EXCLUSIVE:
+                return state.exclusive_depth > 0
+            return state.shared_depth > 0 or state.exclusive_depth > 0
 
     def read_generation(self, workspace_id: str) -> int:
         path = self.paths_for(workspace_id).generation_path
