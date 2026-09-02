@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import signal
 import sys
 import tempfile
@@ -90,3 +91,41 @@ def test_second_signal_restores_default() -> None:
         handler(signal.SIGINT, None)
         handler(signal.SIGINT, None)
         raise_signal.assert_called_once_with(signal.SIGINT)
+
+
+def _child_wait_for_term(path: str) -> None:
+    import signal as sig
+    import time
+
+    def _handler(signum: int, frame: object) -> None:
+        Path(path).write_text(f"got-{signum}", encoding="utf-8")
+        raise SystemExit(0)
+
+    _ = sig.signal(sig.SIGTERM, _handler)
+    _ = sig.signal(sig.SIGINT, _handler)
+    Path(path).write_text("ready", encoding="utf-8")
+    for _ in range(200):
+        time.sleep(0.05)
+
+
+def test_graceful_signal_sigterm_child(tmp_path: Path) -> None:
+    if sys.platform == "win32":
+        pytest.skip("POSIX SIGTERM path")
+    marker = tmp_path / "marker.txt"
+    ctx = __import__("multiprocessing").get_context("spawn")
+    child = ctx.Process(target=_child_wait_for_term, args=(str(marker),))
+    child.start()
+    try:
+        for _ in range(100):
+            if marker.exists() and marker.read_text(encoding="utf-8") == "ready":
+                break
+            __import__("time").sleep(0.05)
+        assert marker.exists()
+        os.kill(child.pid, signal.SIGTERM)
+        child.join(timeout=10.0)
+        assert child.exitcode == 0
+        assert marker.read_text(encoding="utf-8") == f"got-{signal.SIGTERM}"
+    finally:
+        if child.is_alive():
+            child.kill()
+            child.join(timeout=5.0)
