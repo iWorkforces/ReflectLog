@@ -98,11 +98,6 @@ class _RefreshableEngine(Protocol):
     def refresh(self) -> None: ...
 
 
-@runtime_checkable
-class _ExactMatchEngine(Protocol):
-    def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]: ...
-
-
 @final
 class MemoryManager:
     """Manages memory storage and retrieval using USearch with SQLite backend."""
@@ -218,13 +213,10 @@ class MemoryManager:
             engine.refresh()
 
     def _tantivy_has(self, content: str) -> bool | None:
-        engine: object = self._tantivy_engine
-        if engine is None or not isinstance(engine, _ExactMatchEngine):
+        engine = self._tantivy_engine
+        if engine is None:
             return None
-        matches: object = engine.find_by_exact_match(self.workspace_id, content)
-        if not isinstance(matches, list):
-            return None
-        return content in matches
+        return content in engine.find_by_exact_match(self.workspace_id, content)
 
     def _validate_contents_present(self, contents: list[str]) -> None:
         for content in contents:
@@ -234,6 +226,12 @@ class MemoryManager:
                 raise InconsistentStateError(
                     "SQLite is missing a memory after a coordinated write"
                 )
+            if sqlite_id is not None:
+                has_vector = self._semantic_engine.contains_id(sqlite_id)
+                if has_vector is False:
+                    raise InconsistentStateError(
+                        "USearch is missing a vector after a coordinated write"
+                    )
             if sqlite_id is not None and tantivy_has is False:
                 raise InconsistentStateError(
                     "Tantivy is missing a memory after a coordinated write"
@@ -917,11 +915,10 @@ class MemoryManager:
             workspace_id=self.workspace_id,
         )
 
-        # Execute search pipeline under a shared lease so readers see
-        # the latest published generation without blocking writers' embeds.
-        with self._shared_workspace():
-            self._refresh_engines()
-            result = await self._search_pipeline.execute(context)
+        # Backend reads take their own short shared leases. Do not hold
+        # SHARED across embed, fusion, or cross-encoder rerank.
+        self._refresh_engines()
+        result = await self._search_pipeline.execute(context)
 
         return result.memories
 
@@ -1265,7 +1262,9 @@ class MemoryManager:
         if deleted is not True:
             return False
         self._tantivy_engine.commit()
-        self._complete_matching_delete_intents(content)
+        self._complete_intents_after_generation(
+            lambda: self._complete_matching_delete_intents(content)
+        )
         return True
 
     def _finish_orphan_delete_by_id(self, memory_id: int) -> None:
@@ -1288,7 +1287,9 @@ class MemoryManager:
                 self.workspace_id, content, verify_exists=False
             )
             self._tantivy_engine.commit()
-        self._complete_matching_delete_intents(content)
+        self._complete_intents_after_generation(
+            lambda: self._complete_matching_delete_intents(content)
+        )
 
     def _complete_matching_delete_intents(self, content: str) -> None:
         """Mark pending delete rows complete when FTS no longer has the text."""

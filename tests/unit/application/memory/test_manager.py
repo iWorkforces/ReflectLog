@@ -24,6 +24,7 @@ from reflectlog.core.exceptions import (
     SearchError,
     StorageError,
 )
+from reflectlog.core.storage_coordination import IStorageCoordinator
 from reflectlog.core.types import ISemanticSearchEngine
 from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
 from reflectlog.infrastructure.tantivy_engine import TantivyEngine
@@ -48,14 +49,21 @@ def _stub_coordinator(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(MemoryManager, "_create_coordinator", _factory)
 
 
-def _fake_coordinator() -> object:
-    from contextlib import contextmanager
+_ = _stub_coordinator
 
-    from reflectlog.core.storage_coordination import WorkspaceStoragePaths
+
+def _fake_coordinator() -> IStorageCoordinator:
+    from reflectlog.core.storage_coordination import (
+        IStorageLease,
+        LeaseMode,
+        WorkspaceStoragePaths,
+    )
 
     class _Fake:
         timeout = 1.0
         generation = 0
+        workspace_id = "test"
+        mode = LeaseMode.EXCLUSIVE
 
         def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
             return WorkspaceStoragePaths(
@@ -65,16 +73,32 @@ def _fake_coordinator() -> object:
                 generation_path="/tmp/.gen",
             )
 
-        @contextmanager
         def acquire(
             self,
             workspace_id: str,
-            mode: object = None,
+            mode: LeaseMode = LeaseMode.EXCLUSIVE,
             *,
             timeout: float | None = None,
-        ):
-            _ = workspace_id, mode, timeout
-            yield self
+        ) -> IStorageLease:
+            _ = workspace_id, timeout
+            self.workspace_id = workspace_id
+            self.mode = mode
+            return self
+
+        def release(self) -> None:
+            return None
+
+        def __enter__(self) -> IStorageLease:
+            return self
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            traceback: object,
+        ) -> None:
+            _ = exc_type, exc, traceback
+            return None
 
         def read_generation(self, workspace_id: str) -> int:
             _ = workspace_id
@@ -84,7 +108,7 @@ def _fake_coordinator() -> object:
             _ = workspace_id
             self.generation = generation
 
-        def is_held(self, workspace_id: str, mode: object = None) -> bool:
+        def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
             _ = workspace_id, mode
             return False
 
@@ -162,7 +186,7 @@ def _make_manager(
         mock_usearch = MagicMock()
         mock_usearch.add_batch.side_effect = _return_inserted_memories
         mock_usearch.get_id_by_content.return_value = None
-        mock_usearch.contains_id.return_value = False
+        mock_usearch.contains_id.return_value = None
         mock_usearch.count.return_value = 0
         mock_usearch.is_ready.return_value = False
         mock_usearch.embedder.embed_documents.side_effect = lambda texts: [
@@ -555,8 +579,9 @@ class TestAddMemory:
     ):
         """When deduplicate_memories=False, skip duplicate check."""
         mock_config = replace(mock_config, deduplicate_memories=False)
-        manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
+        manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 11
+        mock_tantivy.find_by_exact_match.return_value = ["any memory"]
 
         result = manager.add_memories(["any memory"])
         assert result == 1
@@ -888,6 +913,10 @@ class TestDeleteOperations:
             def __init__(self) -> None:
                 self.calls: list[tuple[str, list[str], bool]] = []
 
+            def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]:
+                _ = workspace_id, content
+                return []
+
             def delete_batch(
                 self,
                 workspace_id: str,
@@ -913,6 +942,10 @@ class TestDeleteOperations:
         mock_usearch.get_id_by_content.return_value = 7
 
         class ShortTantivy:
+            def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]:
+                _ = workspace_id
+                return [content]
+
             def delete_batch(
                 self,
                 workspace_id: str,
