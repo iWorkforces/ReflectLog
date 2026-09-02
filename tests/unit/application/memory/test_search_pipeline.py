@@ -682,18 +682,36 @@ class TestBackendFailureContracts:
         assert result.tantivy_results == []
 
     @pytest.mark.asyncio
-    async def test_semantic_error_and_empty_tantivy_success_returns_empty(
+    async def test_semantic_error_and_empty_tantivy_success_raises_search_error(
         self,
     ) -> None:
+        cause = RuntimeError("embed fail")
         semantic = MagicMock()
-        semantic.search.side_effect = RuntimeError("embed fail")
+        semantic.search.side_effect = cause
         semantic.memory_store.exists_many.side_effect = lambda *_args: set()
         tantivy = MagicMock()
         tantivy.search.return_value = []
         pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
 
-        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
-        assert result.memories == []
+        with pytest.raises(SearchError, match="Failed to execute search") as exc_info:
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert exc_info.value.__cause__ is cause
+
+    @pytest.mark.asyncio
+    async def test_semantic_error_and_stale_only_fts_raises_search_error(
+        self,
+    ) -> None:
+        cause = RuntimeError("embed fail")
+        semantic = MagicMock()
+        semantic.search.side_effect = cause
+        semantic.memory_store.exists_many.side_effect = lambda *_args: set()
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("deleted text", 4.0)]
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        with pytest.raises(SearchError, match="Failed to execute search") as exc_info:
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert exc_info.value.__cause__ is cause
 
     async def test_semantic_error_and_tantivy_none_raises_search_error(self) -> None:
         semantic = MagicMock()

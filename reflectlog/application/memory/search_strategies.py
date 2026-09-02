@@ -212,11 +212,24 @@ class SearchPipeline:
     async def _execute_hybrid_search(self, context: SearchContext) -> SearchResult:
         """Execute 4-step hybrid search pipeline."""
         # Step 1: Parallel Search
-        semantic_results, tantivy_results = await self._step1_parallel_search(context)
+        (
+            semantic_results,
+            tantivy_results,
+            semantic_error,
+            tantivy_error,
+        ) = await self._step1_parallel_search(context)
         semantic_results = self._filter_semantic_threshold(semantic_results)
         tantivy_results = await asyncify(self._filter_live_hits)(
             tantivy_results, context.workspace_id
         )
+        if semantic_error is not None and not tantivy_results:
+            raise SearchError(
+                f"Failed to execute search: {semantic_error}"
+            ) from semantic_error
+        if tantivy_error is not None and not semantic_results:
+            raise SearchError(
+                f"Failed to execute search: {tantivy_error}"
+            ) from tantivy_error
 
         timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
@@ -287,7 +300,12 @@ class SearchPipeline:
 
     async def _step1_parallel_search(
         self, context: SearchContext
-    ) -> tuple[list[tuple[str, float, str]], list[tuple[str, float]]]:
+    ) -> tuple[
+        list[tuple[str, float, str]],
+        list[tuple[str, float]],
+        Exception | None,
+        Exception | None,
+    ]:
         """Step 1: Execute parallel search on both engines."""
         self.logger.info(
             "STEP 1: Executing parallel search engines...",
@@ -311,16 +329,6 @@ class SearchPipeline:
 
         semantic_results, semantic_error = soon_semantic.value
         tantivy_results, tantivy_error = soon_tantivy.value
-        if semantic_error is not None and (
-            tantivy_error is not None or self._tantivy_engine is None
-        ):
-            raise SearchError(
-                f"Failed to execute search: {semantic_error}"
-            ) from semantic_error
-        if tantivy_error is not None and not semantic_results:
-            raise SearchError(
-                f"Failed to execute search: {tantivy_error}"
-            ) from tantivy_error
 
         self.logger.info(
             f"Both engines completed (semantic: {len(semantic_results)}, tantivy: {len(tantivy_results)})",
@@ -332,7 +340,7 @@ class SearchPipeline:
             },
         )
 
-        return semantic_results, tantivy_results
+        return semantic_results, tantivy_results, semantic_error, tantivy_error
 
     async def _search_semantic(
         self, query: str, limit: int, workspace_id: str
