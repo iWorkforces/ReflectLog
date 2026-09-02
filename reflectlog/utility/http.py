@@ -88,6 +88,38 @@ class HttpClientFactory:
             max_keepalive_connections=cls.get_max_keepalive_connections(),
         )
 
+    @staticmethod
+    def _first[T](override: T | None, default: T) -> T:
+        return default if override is None else override
+
+    @classmethod
+    def _limits_from_overrides(
+        cls,
+        max_connections: int | None,
+        max_keepalive_connections: int | None,
+    ) -> httpx.Limits:
+        return httpx.Limits(
+            max_connections=cls._first(max_connections, cls.get_max_connections()),
+            max_keepalive_connections=cls._first(
+                max_keepalive_connections, cls.get_max_keepalive_connections()
+            ),
+        )
+
+    @classmethod
+    def _timeout_from_overrides(
+        cls,
+        connect_timeout: float | None,
+        read_timeout: float | None,
+        write_timeout: float | None,
+    ) -> httpx.Timeout:
+        connect = cls._first(connect_timeout, cls.get_connect_timeout())
+        return httpx.Timeout(
+            connect=connect,
+            read=cls._first(read_timeout, cls.get_read_timeout()),
+            write=cls._first(write_timeout, cls.get_write_timeout()),
+            pool=connect,
+        )
+
     @classmethod
     def get_httpx_timeout(cls) -> httpx.Timeout:
         """Get httpx timeout from configuration.
@@ -135,18 +167,14 @@ class HttpClientFactory:
             if cls._httpx_client is not None:
                 return cls._httpx_client
 
-            _ = (
-                max_connections,
-                max_keepalive_connections,
-                connect_timeout,
-                read_timeout,
-                write_timeout,
-                http2,
-            )
             cls._httpx_client = httpx.Client(
-                limits=cls.get_httpx_limits(),
-                timeout=cls.get_httpx_timeout(),
-                http2=True,
+                limits=cls._limits_from_overrides(
+                    max_connections, max_keepalive_connections
+                ),
+                timeout=cls._timeout_from_overrides(
+                    connect_timeout, read_timeout, write_timeout
+                ),
+                http2=http2,
                 follow_redirects=False,
             )
 
@@ -185,18 +213,14 @@ class HttpClientFactory:
             if cls._async_httpx_client is not None:
                 return cls._async_httpx_client
 
-            _ = (
-                max_connections,
-                max_keepalive_connections,
-                connect_timeout,
-                read_timeout,
-                write_timeout,
-                http2,
-            )
             cls._async_httpx_client = httpx.AsyncClient(
-                limits=cls.get_httpx_limits(),
-                timeout=cls.get_httpx_timeout(),
-                http2=True,
+                limits=cls._limits_from_overrides(
+                    max_connections, max_keepalive_connections
+                ),
+                timeout=cls._timeout_from_overrides(
+                    connect_timeout, read_timeout, write_timeout
+                ),
+                http2=http2,
                 follow_redirects=False,
             )
 
@@ -235,16 +259,17 @@ class HttpClientFactory:
                 return cls._aiohttp_client
 
             connector = aiohttp.TCPConnector(
-                limit=max_connections or cls.get_max_connections(),
-                limit_per_host=max_keepalive_connections
-                or cls.get_max_keepalive_connections(),
+                limit=cls._first(max_connections, cls.get_max_connections()),
+                limit_per_host=cls._first(
+                    max_keepalive_connections, cls.get_max_keepalive_connections()
+                ),
                 ttl_dns_cache=300,
                 enable_cleanup_closed=True,
             )
 
             timeout = aiohttp.ClientTimeout(
-                connect=connect_timeout or cls.get_connect_timeout(),
-                sock_read=read_timeout or cls.get_read_timeout(),
+                connect=cls._first(connect_timeout, cls.get_connect_timeout()),
+                sock_read=cls._first(read_timeout, cls.get_read_timeout()),
             )
 
             cls._aiohttp_client = aiohttp.ClientSession(
