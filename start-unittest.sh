@@ -41,20 +41,16 @@ VENV_DIR="venv"
 COVERAGE_MIN=90  # Minimum coverage percentage
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 
+uv_run() {
+    command uv run --frozen --no-sync "$@"
+}
+
 run_python() {
-    if [ -x "$VENV_PYTHON" ]; then
-        "$VENV_PYTHON" "$@"
-    else
-        uv run python "$@"
-    fi
+    uv_run python "$@"
 }
 
 run_pytest() {
-    if [ -x "$VENV_PYTHON" ]; then
-        "$VENV_PYTHON" -m pytest "$@"
-    else
-        uv run pytest "$@"
-    fi
+    uv_run pytest "$@"
 }
 
 pip_install() {
@@ -82,61 +78,24 @@ echo -e "${BLUE}🧪 ReflectLog - Unit Testing${NC}"
 echo -e "${BLUE}=====================================${NC}"
 echo ""
 
-# Function to check if uv is installed
+# Function to require uv without installing it
 check_uv() {
     if ! command -v uv &> /dev/null; then
-        echo -e "${YELLOW}📦 uv not found, installing...${NC}"
-
-        # Install uv using the official installer
-        if command -v curl &> /dev/null; then
-            echo -e "${CYAN}Installing uv via curl...${NC}"
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-        elif command -v wget &> /dev/null; then
-            echo -e "${CYAN}Installing uv via wget...${NC}"
-            wget -qO- https://astral.sh/uv/install.sh | sh
-        else
-            echo -e "${RED}❌ Neither curl nor wget found. Please install uv manually${NC}"
-            echo -e "${YELLOW}Visit: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
-
-        # Source the shell profile to make uv available
-        if [ -f "$HOME/.bashrc" ]; then
-            source "$HOME/.bashrc"
-        elif [ -f "$HOME/.zshrc" ]; then
-            source "$HOME/.zshrc"
-        fi
-
-        # Add uv to PATH for this session if not already available
-        if ! command -v uv &> /dev/null && [ -f "$HOME/.cargo/bin/uv" ]; then
-            export PATH="$HOME/.cargo/bin:$PATH"
-        fi
-
-        # Verify installation
-        if ! command -v uv &> /dev/null; then
-            echo -e "${RED}❌ Failed to install uv${NC}"
-            echo -e "${YELLOW}Please install uv manually: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
+        echo -e "${RED}❌ uv is required but was not found${NC}"
+        echo -e "${YELLOW}Install uv separately: https://docs.astral.sh/uv/getting-started/installation/${NC}"
+        exit 1
     fi
 
     echo -e "${GREEN}✅ uv is available${NC}"
     echo -e "${CYAN}Version: $(uv --version)${NC}"
 }
 
-# Function to check if pytest is installed
+# Function to check if pytest is available in the locked environment
 check_pytest() {
     if ! run_python -c "import pytest" &> /dev/null; then
-        echo -e "${YELLOW}📦 pytest not found, installing...${NC}"
-        echo -e "${CYAN}Installing pytest and dependencies...${NC}"
-        pip_install pytest pytest-asyncio pytest-cov pytest-xdist
-
-        # Verify installation
-        if ! run_python -c "import pytest" &> /dev/null; then
-            echo -e "${RED}❌ Failed to install pytest${NC}"
-            echo -e "${YELLOW}Please install pytest manually: python -m pip install pytest${NC}"
-            exit 1
-        fi
+        echo -e "${RED}❌ pytest is not available in the frozen environment${NC}"
+        echo -e "${YELLOW}Prepare the environment separately: uv sync --frozen${NC}"
+        exit 1
     fi
 
     echo -e "${GREEN}✅ pytest is available${NC}"
@@ -202,8 +161,8 @@ run_tests() {
     echo -e "${BLUE}🧪 Running all tests...${NC}"
     echo ""
 
-    # Run pytest with verbose output
-    if run_pytest "$TEST_DIR" -v; then
+    # Run pytest with verbose output using configured testpaths
+    if run_pytest -v; then
         echo ""
         echo -e "${GREEN}✅ All tests passed!${NC}"
         return 0
@@ -219,21 +178,9 @@ run_tests_coverage() {
     echo -e "${BLUE}📊 Running tests with coverage analysis...${NC}"
     echo ""
 
-    # Run pytest with coverage
-    if run_pytest "$TEST_DIR" -v --cov=reflectlog --cov-report=term-missing --cov-report=html; then
+    if run_pytest -v --cov=reflectlog --cov-report=term-missing --cov-fail-under="$COVERAGE_MIN"; then
         echo ""
         echo -e "${GREEN}✅ Tests completed with coverage report${NC}"
-        echo -e "${CYAN}📁 HTML coverage report: htmlcov/index.html${NC}"
-
-        # Check coverage percentage
-        COVERAGE=$(run_pytest "$TEST_DIR" --cov=reflectlog --cov-report=term | grep "TOTAL" | awk '{print $NF}' | sed 's/%//' || echo "0")
-        if [ ! -z "$COVERAGE" ] && [ "$COVERAGE" != "0" ]; then
-            if [ $(echo "$COVERAGE >= $COVERAGE_MIN" | bc -l 2>/dev/null || echo 0) -eq 1 ]; then
-                echo -e "${GREEN}✅ Coverage ${COVERAGE}% meets minimum requirement of ${COVERAGE_MIN}%${NC}"
-            else
-                echo -e "${YELLOW}⚠️  Coverage ${COVERAGE}% is below minimum requirement of ${COVERAGE_MIN}%${NC}"
-            fi
-        fi
         return 0
     else
         echo ""
@@ -467,7 +414,6 @@ main() {
             --stats)
                 check_uv
                 check_pytest
-                ensure_test_structure
                 show_test_stats
                 exit 0
                 ;;
@@ -478,7 +424,6 @@ main() {
                 exit 0
                 ;;
             --list)
-                ensure_test_structure
                 list_test_files
                 exit 0
                 ;;
@@ -502,8 +447,6 @@ main() {
     # Execute main workflow
     check_uv
     check_pytest
-    upgrade_pytest
-    ensure_test_structure
 
     # Only try to find test files if we're not in list mode
     if ! find_test_files && [ "$ACTION" != "file" ]; then

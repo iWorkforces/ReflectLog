@@ -23,79 +23,32 @@ echo -e "${BLUE}🔍 ReflectLog - Code Linting${NC}"
 echo -e "${BLUE}=====================================${NC}"
 echo ""
 
-# Function to check if uv is installed
+uv_run() {
+    command uv run --frozen --no-sync "$@"
+}
+
+# Function to require uv without installing it
 check_uv() {
     if ! command -v uv &> /dev/null; then
-        echo -e "${YELLOW}📦 uv not found, installing...${NC}"
-
-        # Install uv using the official installer
-        if command -v curl &> /dev/null; then
-            echo -e "${CYAN}Installing uv via curl...${NC}"
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-        elif command -v wget &> /dev/null; then
-            echo -e "${CYAN}Installing uv via wget...${NC}"
-            wget -qO- https://astral.sh/uv/install.sh | sh
-        else
-            echo -e "${RED}❌ Neither curl nor wget found. Please install uv manually${NC}"
-            echo -e "${YELLOW}Visit: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
-
-        # Source the shell profile to make uv available
-        if [ -f "$HOME/.bashrc" ]; then
-            source "$HOME/.bashrc"
-        elif [ -f "$HOME/.zshrc" ]; then
-            source "$HOME/.zshrc"
-        fi
-
-        # Add uv to PATH for this session if not already available
-        if ! command -v uv &> /dev/null && [ -f "$HOME/.cargo/bin/uv" ]; then
-            export PATH="$HOME/.cargo/bin:$PATH"
-        fi
-
-        # Verify installation
-        if ! command -v uv &> /dev/null; then
-            echo -e "${RED}❌ Failed to install uv${NC}"
-            echo -e "${YELLOW}Please install uv manually: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
+        echo -e "${RED}❌ uv is required but was not found${NC}"
+        echo -e "${YELLOW}Install uv separately: https://docs.astral.sh/uv/getting-started/installation/${NC}"
+        exit 1
     fi
 
     echo -e "${GREEN}✅ uv is available${NC}"
     echo -e "${CYAN}Version: $(uv --version)${NC}"
 }
 
-# Function to check if ruff is installed
+# Function to check if ruff is available in the locked environment
 check_ruff() {
-    if ! command -v ruff &> /dev/null; then
-        echo -e "${YELLOW}📦 ruff not found, installing...${NC}"
-
-        # Use uv to install ruff if available, otherwise fall back to pip
-        if command -v uv &> /dev/null; then
-            echo -e "${CYAN}Installing ruff via uv...${NC}"
-            uv pip install ruff
-        elif [[ "$VIRTUAL_ENV" != "" ]]; then
-            echo -e "${GREEN}✅ Using active virtual environment${NC}"
-            pip install ruff
-        elif [ -d "$VENV_DIR" ]; then
-            echo -e "${YELLOW}🔧 Activating virtual environment...${NC}"
-            source "$VENV_DIR/bin/activate"
-            pip install ruff
-        else
-            echo -e "${YELLOW}🔧 Installing ruff globally...${NC}"
-            pip install --user ruff
-        fi
-
-        # Verify installation
-        if ! command -v ruff &> /dev/null; then
-            echo -e "${RED}❌ Failed to install ruff${NC}"
-            echo -e "${YELLOW}Please install ruff manually: pip install ruff${NC}"
-            exit 1
-        fi
+    if ! uv_run ruff --version &> /dev/null; then
+        echo -e "${RED}❌ ruff is not available in the frozen environment${NC}"
+        echo -e "${YELLOW}Prepare the environment separately: uv sync --frozen${NC}"
+        exit 1
     fi
 
     echo -e "${GREEN}✅ ruff is available${NC}"
-    echo -e "${CYAN}Version: $(uv run ruff --version)${NC}"
+    echo -e "${CYAN}Version: $(uv_run ruff --version)${NC}"
 }
 
 # Function to upgrade ruff to latest version
@@ -175,8 +128,8 @@ run_check() {
     echo -e "${BLUE}🔍 Running ruff check (dry run)...${NC}"
     echo ""
 
-    # Run ruff check with detailed output (only reflectlog directory, tests excluded)
-    if uv run ruff check reflectlog --output-format=full; then
+    if uv_run ruff check reflectlog tests scripts --output-format=full \
+        && uv_run ruff format --check reflectlog tests scripts; then
         echo ""
         echo -e "${GREEN}✅ No linting issues found!${NC}"
         return 0
@@ -194,12 +147,12 @@ run_check_stats() {
 
     # Get statistics by rule (only reflectlog directory, tests excluded)
     echo -e "${CYAN}Issues by rule:${NC}"
-    uv run ruff check reflectlog --output-format=concise | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c | sort -nr || true
+    uv_run ruff check reflectlog tests scripts --output-format=concise | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c | sort -nr || true
     echo ""
 
     # Get statistics by file
     echo -e "${CYAN}Files with issues:${NC}"
-    uv run ruff check reflectlog --output-format=concise | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
+    uv_run ruff check reflectlog tests scripts --output-format=concise | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
     echo ""
 }
 
@@ -517,7 +470,6 @@ main() {
     # Execute main workflow
     check_uv
     check_ruff
-    upgrade_ruff
     find_python_files
     show_config
 
