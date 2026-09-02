@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import os
 from pathlib import Path
 import signal
 import sys
 import tempfile
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -75,10 +77,10 @@ def test_graceful_signal_registers_posix_handlers() -> None:
 
 
 def test_second_signal_restores_default() -> None:
-    registered: dict[int, object] = {}
+    registered: dict[int, Callable[[int, object | None], None]] = {}
 
     def _capture(signum: int, handler: object) -> object:
-        registered[signum] = handler
+        registered[signum] = cast(Callable[[int, object | None], None], handler)
         return None
 
     with (
@@ -90,10 +92,13 @@ def test_second_signal_restores_default() -> None:
         server_cls.return_value = lambda: MagicMock()
         _ = _start_server(sys.stderr, 0.0, {})
         handler = registered[signal.SIGINT]
-        assert callable(handler)
         handler(signal.SIGINT, None)
         handler(signal.SIGINT, None)
         raise_signal.assert_called_once_with(signal.SIGINT)
+        assert registered[signal.SIGINT] is signal.SIG_DFL
+        assert registered[signal.SIGTERM] is signal.SIG_DFL
+        if sys.platform == "win32":
+            assert registered[signal.SIGBREAK] is signal.SIG_DFL
 
 
 def _child_wait_for_term(path: str) -> None:
@@ -124,7 +129,9 @@ def test_graceful_signal_sigterm_child(tmp_path: Path) -> None:
                 break
             __import__("time").sleep(0.05)
         assert marker.exists()
-        os.kill(child.pid, signal.SIGTERM)
+        child_pid = child.pid
+        assert child_pid is not None
+        os.kill(child_pid, signal.SIGTERM)
         child.join(timeout=10.0)
         assert child.exitcode == 0
         assert marker.read_text(encoding="utf-8") == f"got-{signal.SIGTERM}"

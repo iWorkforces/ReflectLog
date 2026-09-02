@@ -694,6 +694,8 @@ class TestGracefulShutdown:
             handler(signal.SIGINT, None)
             mock_signal.assert_any_call(signal.SIGINT, signal.SIG_DFL)
             mock_signal.assert_any_call(signal.SIGTERM, signal.SIG_DFL)
+            if sys.platform == "win32":
+                mock_signal.assert_any_call(signal.SIGBREAK, signal.SIG_DFL)
             mock_raise.assert_called_once_with(signal.SIGINT)
 
     @patch.dict(os.environ, {}, clear=True)

@@ -293,6 +293,8 @@ def _start_server(
         if shutting_down["value"]:
             _ = signal.signal(signal.SIGINT, signal.SIG_DFL)
             _ = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            if sys.platform == "win32":
+                _ = signal.signal(signal.SIGBREAK, signal.SIG_DFL)
             signal.raise_signal(signum)
             return
         shutting_down["value"] = True
