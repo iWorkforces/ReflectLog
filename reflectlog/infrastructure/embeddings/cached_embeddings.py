@@ -1,5 +1,9 @@
 """Cached embeddings wrapper for query embedding LRU caching."""
 
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass, field
 import hashlib
 import threading
 
@@ -8,6 +12,13 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import Embeddings
+
+
+@dataclass
+class _SyncInFlight:
+    event: threading.Event = field(default_factory=threading.Event)
+    value: list[float] | None = None
+    error: BaseException | None = None
 
 
 class CachedEmbeddings(BaseModel):
@@ -60,6 +71,12 @@ class CachedEmbeddings(BaseModel):
     _cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _hits: int = PrivateAttr(default=0)
     _misses: int = PrivateAttr(default=0)
+    _coalesced: int = PrivateAttr(default=0)
+    _sync_inflight: dict[str, _SyncInFlight] = PrivateAttr(default_factory=dict)
+    _async_inflight: dict[str, asyncio.Future[list[float]]] = PrivateAttr(
+        default_factory=dict
+    )
+    _async_gate: asyncio.Lock | None = PrivateAttr(default=None)
 
     def model_post_init(self, _context: object, /) -> None:
         """Bind LRU capacity to the configured cache_size."""
@@ -122,38 +139,66 @@ class CachedEmbeddings(BaseModel):
             return self.embedder.embed_query(text)
 
         cache_key = self._hash_query(text)
-        cached = self._get_cached(cache_key)
+        leader = False
+        flight: _SyncInFlight | None = None
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                self._hits += 1
+                if self.logger:
+                    self.logger.debug(
+                        "Embedding cache HIT",
+                        extra={
+                            "cache_key": cache_key[:8],
+                            "hits": self._hits,
+                            "misses": self._misses,
+                        },
+                    )
+                return cached
+            existing = self._sync_inflight.get(cache_key)
+            if existing is not None:
+                self._coalesced += 1
+                flight = existing
+            else:
+                flight = _SyncInFlight()
+                self._sync_inflight[cache_key] = flight
+                leader = True
+                self._misses += 1
 
-        if cached is not None:
+        if not leader:
+            assert flight is not None
+            _ = flight.event.wait()
+            if flight.error is not None:
+                raise flight.error
+            if flight.value is None:
+                raise RuntimeError("Embedding produced an empty vector")
+            return flight.value
+
+        assert flight is not None
+        try:
+            embedding = self.embedder.embed_query(text)
+            if not embedding:
+                raise RuntimeError("Embedding produced an empty vector")
+            self._set_cached(cache_key, embedding)
+            flight.value = embedding
             if self.logger:
                 self.logger.debug(
-                    "Embedding cache HIT",
+                    "Embedding cache MISS",
                     extra={
                         "cache_key": cache_key[:8],
                         "hits": self._hits,
                         "misses": self._misses,
+                        "cache_size": self._cache.currsize,
                     },
                 )
-            return cached
-
-        # Cache miss - compute embedding
-        embedding = self.embedder.embed_query(text)
-        if not embedding:
-            raise RuntimeError("Embedding produced an empty vector")
-        self._set_cached(cache_key, embedding)
-
-        if self.logger:
-            self.logger.debug(
-                "Embedding cache MISS",
-                extra={
-                    "cache_key": cache_key[:8],
-                    "hits": self._hits,
-                    "misses": self._misses,
-                    "cache_size": self._cache.currsize,
-                },
-            )
-
-        return embedding
+            return embedding
+        except BaseException as exc:
+            flight.error = exc
+            raise
+        finally:
+            with self._cache_lock:
+                _ = self._sync_inflight.pop(cache_key, None)
+            flight.event.set()
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed documents, reusing per-text LRU entries from embed_query.
@@ -210,38 +255,64 @@ class CachedEmbeddings(BaseModel):
             return await self.embedder.aembed_query(text)
 
         cache_key = self._hash_query(text)
-        cached = self._get_cached(cache_key)
+        gate = self._ensure_async_gate()
+        leader = False
+        shared: asyncio.Future[list[float]] | None = None
+        async with gate:
+            with self._cache_lock:
+                cached = self._cache.get(cache_key)
+                if cached is not None:
+                    self._hits += 1
+                    if self.logger:
+                        self.logger.debug(
+                            "Embedding cache HIT (async)",
+                            extra={
+                                "cache_key": cache_key[:8],
+                                "hits": self._hits,
+                                "misses": self._misses,
+                            },
+                        )
+                    return cached
+                existing_future = self._async_inflight.get(cache_key)
+                if existing_future is not None:
+                    self._coalesced += 1
+                    shared = existing_future
+                else:
+                    shared = asyncio.get_running_loop().create_future()
+                    self._async_inflight[cache_key] = shared
+                    leader = True
+                    self._misses += 1
 
-        if cached is not None:
+        if not leader:
+            assert shared is not None
+            return await asyncio.shield(shared)
+
+        assert shared is not None
+        try:
+            embedding = await self.embedder.aembed_query(text)
+            if not embedding:
+                raise RuntimeError("Embedding produced an empty vector")
+            self._set_cached(cache_key, embedding)
+            if not shared.done():
+                shared.set_result(embedding)
             if self.logger:
                 self.logger.debug(
-                    "Embedding cache HIT (async)",
+                    "Embedding cache MISS (async)",
                     extra={
                         "cache_key": cache_key[:8],
                         "hits": self._hits,
                         "misses": self._misses,
+                        "cache_size": self._cache.currsize,
                     },
                 )
-            return cached
-
-        # Cache miss - compute embedding asynchronously
-        embedding = await self.embedder.aembed_query(text)
-        if not embedding:
-            raise RuntimeError("Embedding produced an empty vector")
-        self._set_cached(cache_key, embedding)
-
-        if self.logger:
-            self.logger.debug(
-                "Embedding cache MISS (async)",
-                extra={
-                    "cache_key": cache_key[:8],
-                    "hits": self._hits,
-                    "misses": self._misses,
-                    "cache_size": self._cache.currsize,
-                },
-            )
-
-        return embedding
+            return embedding
+        except BaseException as exc:
+            if not shared.done():
+                shared.set_exception(exc)
+            raise
+        finally:
+            async with gate:
+                _ = self._async_inflight.pop(cache_key, None)
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         """Async version of embed_documents with the same per-text LRU.
@@ -294,6 +365,7 @@ class CachedEmbeddings(BaseModel):
         return {
             "hits": self._hits,
             "misses": self._misses,
+            "coalesced": self._coalesced,
             "size": self._cache.currsize,
             "max_size": self.cache_size,
         }
@@ -303,3 +375,11 @@ class CachedEmbeddings(BaseModel):
         self._cache.clear()
         self._hits = 0
         self._misses = 0
+        self._coalesced = 0
+
+    def _ensure_async_gate(self) -> asyncio.Lock:
+        gate = self._async_gate
+        if gate is None:
+            gate = asyncio.Lock()
+            self._async_gate = gate
+        return gate

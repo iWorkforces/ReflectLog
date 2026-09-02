@@ -481,7 +481,13 @@ class TestGetCacheStats:
     def test_initial_stats(self, cached: CachedEmbeddings) -> None:
         '''Test stats are correct initially.'''
         stats = cached.get_cache_stats()
-        assert stats == {"hits": 0, "misses": 0, "size": 0, "max_size": 5}
+        assert stats == {
+            "hits": 0,
+            "misses": 0,
+            "coalesced": 0,
+            "size": 0,
+            "max_size": 5,
+        }
 
     def test_stats_after_operations(
         self, cached: CachedEmbeddings, mock_embedder: MagicMock
@@ -539,3 +545,157 @@ class TestClearCache:
         cached.clear_cache()
         cached.embed_query("a")
         mock_embedder.embed_query.assert_called_once_with("a")
+
+
+class TestSingleFlightConcurrent:
+    """Same-key misses share one provider call; distinct keys stay independent."""
+
+    def test_sync_same_key_single_provider_call(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        import threading
+
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_embed(text: str) -> list[float]:
+            _ = text
+            entered.set()
+            assert release.wait(timeout=2.0)
+            return [9.0, 8.0]
+
+        mock_embedder.embed_query.side_effect = slow_embed
+        results: list[list[float]] = []
+        errors: list[BaseException] = []
+
+        def worker() -> None:
+            try:
+                results.append(cached.embed_query("same-key"))
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        assert entered.wait(timeout=2.0)
+        release.set()
+        for thread in threads:
+            thread.join(timeout=2.0)
+        assert errors == []
+        assert results == [[9.0, 8.0]] * 8
+        mock_embedder.embed_query.assert_called_once_with("same-key")
+        assert cached.get_cache_stats()["size"] == 1
+
+    def test_sync_distinct_keys_are_not_serialized(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        import threading
+
+        started_a = threading.Event()
+        started_b = threading.Event()
+
+        def parallel_embed(text: str) -> list[float]:
+            if text == "alpha":
+                started_a.set()
+                assert started_b.wait(timeout=2.0)
+                return [1.0]
+            started_b.set()
+            assert started_a.wait(timeout=2.0)
+            return [2.0]
+
+        mock_embedder.embed_query.side_effect = parallel_embed
+        results: dict[str, list[float]] = {}
+
+        def worker(query: str) -> None:
+            results[query] = cached.embed_query(query)
+
+        threads = [
+            threading.Thread(target=worker, args=("alpha",)),
+            threading.Thread(target=worker, args=("beta",)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2.0)
+        assert results == {"alpha": [1.0], "beta": [2.0]}
+        assert mock_embedder.embed_query.call_count == 2
+
+    def test_sync_leader_failure_is_not_cached(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        import threading
+
+        mock_embedder.embed_query.side_effect = RuntimeError("provider down")
+        errors: list[BaseException] = []
+
+        def worker() -> None:
+            try:
+                cached.embed_query("boom")
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2.0)
+        assert len(errors) == 4
+        assert all(str(exc) == "provider down" for exc in errors)
+        assert cached.get_cache_stats()["size"] == 0
+        mock_embedder.embed_query.side_effect = None
+        mock_embedder.embed_query.return_value = [3.0]
+        assert cached.embed_query("boom") == [3.0]
+        mock_embedder.embed_query.assert_called()
+
+    async def test_async_same_key_single_provider_call(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        import asyncio
+
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_embed(text: str) -> list[float]:
+            _ = text
+            entered.set()
+            await asyncio.wait_for(release.wait(), timeout=2.0)
+            return [4.0, 5.0]
+
+        mock_embedder.aembed_query.side_effect = slow_embed
+        tasks = [
+            asyncio.create_task(cached.aembed_query("async-same")) for _ in range(8)
+        ]
+        await asyncio.wait_for(entered.wait(), timeout=2.0)
+        release.set()
+        results = await asyncio.gather(*tasks)
+        assert results == [[4.0, 5.0]] * 8
+        assert mock_embedder.aembed_query.await_count == 1
+        assert cached.get_cache_stats()["size"] == 1
+
+    async def test_async_waiter_cancel_does_not_poison_leader(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        import asyncio
+
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_embed(text: str) -> list[float]:
+            _ = text
+            entered.set()
+            await asyncio.wait_for(release.wait(), timeout=2.0)
+            return [6.0]
+
+        mock_embedder.aembed_query.side_effect = slow_embed
+        keeper = asyncio.create_task(cached.aembed_query("cancel-key"))
+        await asyncio.wait_for(entered.wait(), timeout=2.0)
+        waiter = asyncio.create_task(cached.aembed_query("cancel-key"))
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        release.set()
+        assert await keeper == [6.0]
+        assert mock_embedder.aembed_query.await_count == 1
+        assert await cached.aembed_query("cancel-key") == [6.0]
+        assert mock_embedder.aembed_query.await_count == 1
