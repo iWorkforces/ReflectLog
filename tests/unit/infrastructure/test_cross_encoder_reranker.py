@@ -920,6 +920,51 @@ class TestRecencyDecay:
             assert result[0] == ("doc1", 0.9)
             assert result[1] == ("doc2", 0.8)
 
+    def test_partial_timestamps_do_not_reverse_post_ce_order(self) -> None:
+        """A stronger old hit must not lose to a weaker hit that lacks a stamp."""
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.0,
+            batch_normalize=False,
+            enable_recency_boost=True,
+            recency_decay_rate=0.01,
+        )
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8]
+            result = reranker.rerank(
+                "query",
+                [("old-strong", 0.7), ("new-weak", 0.6)],
+                timestamp_map={"old-strong": "2020-01-01T00:00:00+00:00"},
+            )
+        assert result[0] == ("old-strong", 0.9)
+        assert result[1] == ("new-weak", 0.8)
+
+    def test_invalid_timestamp_disables_recency_for_batch(self) -> None:
+        config = CrossEncoderConfig(
+            enabled=True,
+            top_k=10,
+            score_threshold=0.0,
+            batch_normalize=False,
+            enable_recency_boost=True,
+            recency_decay_rate=0.01,
+        )
+        with patch("FlagEmbedding.FlagReranker"):
+            reranker = CrossEncoderReranker(config=config)
+            reranker._model = MagicMock()
+            assert reranker._model is not None
+            reranker._model.compute_score.return_value = [0.9, 0.8]
+            result = reranker.rerank(
+                "query",
+                [("a", 0.7), ("b", 0.6)],
+                timestamp_map={"a": "2026-08-29T00:00:00+00:00", "b": "not-a-time"},
+            )
+        assert result[0] == ("a", 0.9)
+        assert result[1] == ("b", 0.8)
+
     def test_recency_decay_skipped_when_no_timestamp_map(self) -> None:
         '''Test recency decay is skipped when timestamp_map is None.'''
         config = CrossEncoderConfig(

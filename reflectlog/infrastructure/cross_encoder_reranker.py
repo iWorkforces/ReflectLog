@@ -15,6 +15,7 @@ Example:
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 import importlib
 import threading
 from typing import Protocol, final
@@ -29,6 +30,17 @@ from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.reranker_post_processor import (
     RerankerPostProcessor,
 )
+
+
+def _valid_iso_timestamp(value: str | None) -> bool:
+    """Return True when value is a parseable non-empty ISO timestamp."""
+    if not value:
+        return False
+    try:
+        _ = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -313,12 +325,15 @@ class CrossEncoderReranker(BaseModel):
         scored: list[tuple[str, float]],
         timestamp_map: dict[str, str] | None,
     ) -> list[tuple[str, float]]:
-        """Reorder survivors by recency. Missing or empty timestamps disable decay."""
+        """Reorder survivors by recency only when every candidate has a stamp."""
         decay_enabled = (
             self.config.enable_recency_boost
             and self.config.recency_decay_rate > 0
             and bool(timestamp_map)
-            and any(bool(timestamp_map.get(doc)) for doc, _ in scored)
+            and bool(scored)
+            and all(
+                _valid_iso_timestamp(timestamp_map.get(doc)) for doc, _ in scored
+            )
         )
         return self._post_processor.apply_decay(
             scored,
