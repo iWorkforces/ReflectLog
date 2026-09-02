@@ -46,7 +46,9 @@ class GetAllTool(BaseTool):
                 self.log_invocation(ToolName.GET_ALL)
 
                 start = max(0, offset)
-                page_size = self.config.get_all_limit if limit is None else max(0, limit)
+                page_size = (
+                    self.config.get_all_limit if limit is None else max(0, limit)
+                )
                 page_size = min(page_size, self.config.get_all_limit)
                 page = await asyncify(self.memory.get_all)(
                     limit=page_size, offset=start

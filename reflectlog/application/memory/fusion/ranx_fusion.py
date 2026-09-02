@@ -2,8 +2,8 @@
 
 import logging
 import math
-import warnings
 from typing import TYPE_CHECKING, Any, final, override
+import warnings
 
 if TYPE_CHECKING:
     from reflectlog.core.logging import IStructuredLogger
@@ -280,9 +280,7 @@ class RanxFusionEngine(FusionEngine):
                     f"{len(result_sets)} result sets"
                 )
             weight_arr = np.asarray(self._weights, dtype=np.float64)
-            scores = compute_weighted_rrf_scores_batch(
-                ranks, weight_arr, k=self._rrf_k
-            )
+            scores = compute_weighted_rrf_scores_batch(ranks, weight_arr, k=self._rrf_k)
         else:
             scores = compute_rrf_scores_batch(ranks, k=self._rrf_k)
         paired = [(docs[idx], float(scores[idx])) for idx in range(len(docs))]

@@ -37,8 +37,6 @@ TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize t
 LOG_QUERY_TRUNCATE_LENGTH = 100
 
 
-
-
 @dataclass
 class SearchContext:
     """Context object for search pipeline execution.
@@ -544,9 +542,7 @@ class SearchPipeline:
             },
         )
 
-        return self._filter_by_fusion_threshold(
-            results, threshold, context.query
-        )
+        return self._filter_by_fusion_threshold(results, threshold, context.query)
 
     def _effective_fusion_threshold(
         self, results: list[tuple[str, float]], n_backends: int = 2
@@ -555,7 +551,7 @@ class SearchPipeline:
         try:
             threshold = float(self.config.fusion_ranking_threshold)
             k = max(1, int(self.config.fusion_rrf_k))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0.0
         if not results:
             return threshold
@@ -568,7 +564,7 @@ class SearchPipeline:
                     if not isinstance(weight, (int, float)):
                         raise TypeError("fusion weight is not numeric")
                     weight_sum += float(weight)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 weight_sum = 0.0
         if weight_sum <= 0.0:
             weight_sum = float(max(2, n_backends))
@@ -786,9 +782,7 @@ class SearchPipeline:
     ) -> dict[str, str]:
         """Resolve created_at for every candidate. Empty map disables recency."""
         completed = {
-            content: stamp
-            for content, stamp in timestamp_map.items()
-            if stamp
+            content: stamp for content, stamp in timestamp_map.items() if stamp
         }
         missing = [content for content in contents if content not in completed]
         if not missing:
@@ -818,17 +812,13 @@ class SearchPipeline:
         try:
             store = self._semantic_engine.memory_store
             present = _string_set(
-                store.exists_many(
-                    workspace_id, [memory for memory, _score in results]
-                )
+                store.exists_many(workspace_id, [memory for memory, _score in results])
             )
-        except (AttributeError, TypeError):
+        except AttributeError, TypeError:
             return []
         if present is None:
             return []
-        return [
-            (memory, score) for memory, score in results if memory in present
-        ]
+        return [(memory, score) for memory, score in results if memory in present]
 
     def _filter_semantic_threshold(
         self, results: list[tuple[str, float, str]]
@@ -836,7 +826,7 @@ class SearchPipeline:
         """Drop USearch hits below SEARCH_SCORE_THRESHOLD before fusion."""
         try:
             threshold = float(self.config.search_score_threshold)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return results
         if threshold <= 0:
             return results
@@ -850,7 +840,7 @@ class SearchPipeline:
         """CE window is at least the user limit and the configured top_k."""
         try:
             configured = int(self.config.cross_encoder_top_k)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             configured = context.limit
         return max(1, configured, context.limit)
 

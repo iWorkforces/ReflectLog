@@ -203,9 +203,7 @@ class DuplicateDetectionPhase:
         # Step 2: Batch duplicate detection against existing storage
         duplicate_flags: dict[str, bool] = {}
         store = self._semantic_engine.memory_store
-        present = await asyncify(store.exists_many)(
-            self._workspace_id, unique_memories
-        )
+        present = await asyncify(store.exists_many)(self._workspace_id, unique_memories)
         for memory in unique_memories:
             duplicate_flags[memory] = memory in present
 
@@ -934,9 +932,7 @@ class StoragePhase:
         try:
             return store.begin_replacement_transitions(requests)
         except Exception as e:
-            raise StorageError(
-                f"Failed to record replacement transition: {e}"
-            ) from e
+            raise StorageError(f"Failed to record replacement transition: {e}") from e
 
     def _delete_recorded_olds(self, transitions: list[ReplacementTransition]) -> None:
         """Delete each recorded old memory after transitions are durable."""
@@ -1205,9 +1201,7 @@ def _persist_list_for_add(
     also omits every storage duplicate so the preview matches live unique-skip.
     """
     replacement_olds = {
-        info.old_memory
-        for infos in replacement_map.values()
-        for info in infos
+        info.old_memory for infos in replacement_map.values() for info in infos
     }
     if dry_run:
         return list(unique_memories), len(storage_duplicates)

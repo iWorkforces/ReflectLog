@@ -110,9 +110,7 @@ class RemoveTool(BaseTool):
             memories_not_found: list[str] = []
 
             try:
-                deleted = await asyncify(self.memory.delete_memories)(
-                    unique_memories
-                )
+                deleted = await asyncify(self.memory.delete_memories)(unique_memories)
                 deleted_set = set(deleted)
                 actual_removed = len(deleted_set)
                 memories_not_found = [

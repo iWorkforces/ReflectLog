@@ -180,9 +180,7 @@ class EngineFactory:
             compaction_max_tombstones=config.tantivy_compaction_max_tombstones,
             tombstone_ttl_days=config.tantivy_tombstone_ttl_days,
         )
-        return TantivyEngine(
-            tantivy_config, logger=logger, coordinator=coordinator
-        )
+        return TantivyEngine(tantivy_config, logger=logger, coordinator=coordinator)
 
     def _create_fusion_engine(
         self,

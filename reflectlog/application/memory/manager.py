@@ -100,9 +100,7 @@ class _RefreshableEngine(Protocol):
 
 @runtime_checkable
 class _ExactMatchEngine(Protocol):
-    def find_by_exact_match(
-        self, workspace_id: str, content: str
-    ) -> list[str]: ...
+    def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]: ...
 
 
 @final
@@ -208,9 +206,7 @@ class MemoryManager:
         self._coordinator.publish_generation(self.workspace_id, current + 1)
         self._emit_orchestration_hook("after_generation")
 
-    def _complete_intents_after_generation(
-        self, completer: Callable[[], None]
-    ) -> None:
+    def _complete_intents_after_generation(self, completer: Callable[[], None]) -> None:
         self._publish_converged_generation()
         self._emit_orchestration_hook("before_intent")
         completer()
@@ -1201,9 +1197,7 @@ class MemoryManager:
                 self._complete_intents_after_generation(
                     lambda: self._complete_delete_intents(delete_intents)
                 )
-            orphaned = [
-                memory for memory in unique if memory not in contents
-            ]
+            orphaned = [memory for memory in unique if memory not in contents]
             for memory in orphaned:
                 if self._finish_orphan_tantivy_delete(memory):
                     contents.append(memory)
@@ -1280,8 +1274,7 @@ class MemoryManager:
         for row in self._semantic_engine.memory_store.list_pending_transitions():
             if (
                 row.old_memory_id == memory_id
-                and row.kind
-                in {TransitionKind.DELETE, TransitionKind.REPLACE}
+                and row.kind in {TransitionKind.DELETE, TransitionKind.REPLACE}
                 and row.old_content
             ):
                 content = row.old_content
@@ -1309,9 +1302,8 @@ class MemoryManager:
                 continue
             if (
                 self._tantivy_engine is not None
-                and content in self._tantivy_engine.find_by_exact_match(
-                    self.workspace_id, content
-                )
+                and content
+                in self._tantivy_engine.find_by_exact_match(self.workspace_id, content)
             ):
                 continue
             store.complete_replacement_transition(row.id)
