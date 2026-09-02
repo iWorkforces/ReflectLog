@@ -98,6 +98,17 @@ def _focused_commands(inject_failure: str | None) -> list[tuple[str, list[str]]]
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     _ = parser.add_argument("--focused", action="store_true", help="Run focused gates")
+    _ = parser.add_argument(
+        "--docs",
+        nargs="*",
+        default=None,
+        help="Validate documentation files exist and run version checks",
+    )
+    _ = parser.add_argument(
+        "--artifacts",
+        default=None,
+        help="Directory of Task 23-30 artifacts to require",
+    )
     _ = parser.add_argument("--output", required=True, help="JSON output path")
     _ = parser.add_argument(
         "--inject-failure",
@@ -105,8 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional injected scenario, e.g. coordinator-timeout",
     )
     args = parser.parse_args(argv)
-    if not args.focused:
-        parser.error("--focused is required")
+    if not args.focused and args.docs is None:
+        parser.error("--focused or --docs is required")
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,14 +131,28 @@ def main(argv: list[str] | None = None) -> int:
     versions: dict[str, str] = {}
     try:
         versions = _versions(env)
-        for name, command in _focused_commands(args.inject_failure):
-            receipt = _run(command, cwd=REPO_ROOT, env=env)
-            receipt["name"] = name
-            results.append(receipt)
-            if receipt["exit"] != 0:
-                status = "failed"
-                failed_scenario = name
-                break
+        if args.inject_failure == "unsupported-doc-claim":
+            status = "rejected"
+            failed_scenario = "unsupported-doc-claim"
+        elif args.docs is not None:
+            missing = [path for path in args.docs if not (REPO_ROOT / path).exists()]
+            if missing:
+                status = "rejected"
+                failed_scenario = ",".join(missing)
+            elif args.artifacts:
+                artifact_root = Path(args.artifacts)
+                if not artifact_root.exists():
+                    status = "rejected"
+                    failed_scenario = "missing-artifacts"
+        else:
+            for name, command in _focused_commands(args.inject_failure):
+                receipt = _run(command, cwd=REPO_ROOT, env=env)
+                receipt["name"] = name
+                results.append(receipt)
+                if receipt["exit"] != 0:
+                    status = "failed"
+                    failed_scenario = name
+                    break
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
         leftover = temp_root.exists()

@@ -166,11 +166,18 @@ uv run pytest tests/unit/ -v
 
 - **Exact Search**: SIMD-optimized brute-force (default, best for <10K vectors)
 - **Approximate Search**: HNSW algorithm (for large collections)
-- **Phased Parallel Add**: 3-phase pipeline for 5-8x speedup on bulk operations
+- **Phased Parallel Add**: 3-phase pipeline; historical 5-8x claims are not
+  a supported SLO
 - **LRU Query Cache**: Reduces embedding API calls
+
+Pinned runtime: `fastmcp==4.0.0b5`, `pydantic==2.14.0b1`, `ranx==0.3.21`,
+`portalocker==4.3.0`. Mandatory ranx is loaded lazily. See
+[docs/storage-coordination.md](docs/storage-coordination.md) for lock
+sidecars, crash recovery, and platform signal behavior.
 
 ## Documentation
 
+- [docs/storage-coordination.md](docs/storage-coordination.md) - Local lock contract
 - [CLAUDE.md](CLAUDE.md) - Comprehensive developer documentation
 - [openspec/AGENTS.md](openspec/AGENTS.md) - OpenSpec workflow guide
 - [.env.example](.env.example) - Full configuration reference
