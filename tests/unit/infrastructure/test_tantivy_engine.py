@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import tantivy
 
-from reflectlog.core.exceptions import SearchError
+from reflectlog.core.exceptions import ConfigurationError, SearchError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.tantivy_engine import (
     DEFAULT_TANTIVY_DOC_LIMIT,
@@ -36,6 +36,24 @@ class TestTantivyConfig:
         config = TantivyConfig(workspace_id="test", index_path="/tmp/test")
         with pytest.raises(AttributeError):
             config.workspace_id = "new-project"  # type: ignore
+
+    def test_tombstone_cache_max_size_zero_raises(self) -> None:
+        '''Zero cache capacity is a typed config error, not a silent clamp.'''
+        with pytest.raises(ConfigurationError, match="tombstone_cache_max_size"):
+            _ = TantivyConfig(
+                workspace_id="test",
+                index_path="/tmp/test",
+                tombstone_cache_max_size=0,
+            )
+
+    def test_tombstone_cache_max_size_negative_raises(self) -> None:
+        '''Negative cache capacity is a typed config error.'''
+        with pytest.raises(ConfigurationError, match="tombstone_cache_max_size"):
+            _ = TantivyConfig(
+                workspace_id="test",
+                index_path="/tmp/test",
+                tombstone_cache_max_size=-1,
+            )
 
 
 @pytest.mark.unit
@@ -1401,6 +1419,7 @@ class TestTantivyConfigFromDict:
         assert config.soft_delete_enabled is True
         assert config.compaction_threshold_ratio == 0.2
         assert config.compaction_max_tombstones == 10000
+        assert config.tombstone_cache_max_size == 100
 
     def test_from_dict_with_none_values(self) -> None:
         '''Test from_dict handles None values for workspace_id and index_path.'''
@@ -1408,6 +1427,28 @@ class TestTantivyConfigFromDict:
         config = TantivyConfig.from_dict(data)
         assert config.workspace_id == ""
         assert config.index_path == ""
+
+    def test_from_dict_tombstone_cache_max_size_zero_raises(self) -> None:
+        '''from_dict rejects a zero cache capacity with ConfigurationError.'''
+        with pytest.raises(ConfigurationError, match="tombstone_cache_max_size"):
+            _ = TantivyConfig.from_dict(
+                {
+                    "workspace_id": "test",
+                    "index_path": "/tmp/test",
+                    "tombstone_cache_max_size": 0,
+                }
+            )
+
+    def test_from_dict_tombstone_cache_max_size_invalid_raises(self) -> None:
+        '''from_dict rejects a non-integer cache capacity with ConfigurationError.'''
+        with pytest.raises(ConfigurationError, match="tombstone_cache_max_size"):
+            _ = TantivyConfig.from_dict(
+                {
+                    "workspace_id": "test",
+                    "index_path": "/tmp/test",
+                    "tombstone_cache_max_size": "not-an-int",
+                }
+            )
 
 
 @pytest.mark.unit
@@ -1671,6 +1712,145 @@ class TestInvalidateTombstoneCache:
 
             engine._invalidate_tombstone_cache(None)
             assert len(engine._tombstone_cache) == 0
+
+
+@pytest.mark.unit
+class TestTombstoneCacheWorkspaceAndGeneration:
+    '''Workspace-scoped local invalidation and conservative generation reload.'''
+
+    def test_local_commit_preserves_unrelated_workspace_tombstone_cache(self) -> None:
+        '''Local commit drops only the touched workspace cache entry.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
+            engine = TantivyEngine(config)
+            try:
+                engine.add("proj-a", "alpha live")
+                engine.add("proj-b", "bravo live")
+                engine.commit()
+                engine._get_tombstoned_memories("proj-a")
+                engine._get_tombstoned_memories("proj-b")
+                scans_after_warm = engine._tombstone_scan_count
+                assert "proj-a" in engine._tombstone_cache
+                assert "proj-b" in engine._tombstone_cache
+
+                engine.add("proj-a", "alpha extra")
+                engine.commit()
+
+                assert "proj-a" not in engine._tombstone_cache
+                assert "proj-b" in engine._tombstone_cache
+
+                _ = engine._get_tombstoned_memories("proj-b")
+                assert engine._tombstone_scan_count == scans_after_warm
+                _ = engine._get_tombstoned_memories("proj-a")
+                assert engine._tombstone_scan_count == scans_after_warm + 1
+            finally:
+                engine.close()
+
+    def test_unknown_workspace_commit_invalidates_config_workspace_only(self) -> None:
+        '''When dirty workspaces are unknown, only the engine workspace is dropped.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
+            engine = TantivyEngine(config)
+            try:
+                engine.add("proj-a", "alpha live")
+                engine.add("test", "config live")
+                engine.commit()
+                engine._get_tombstoned_memories("proj-a")
+                engine._get_tombstoned_memories("test")
+                assert "proj-a" in engine._tombstone_cache
+                assert "test" in engine._tombstone_cache
+
+                engine.add("proj-b", "bravo live")
+                engine._dirty_workspaces.clear()
+                engine.commit()
+
+                assert "proj-a" in engine._tombstone_cache
+                assert "test" not in engine._tombstone_cache
+            finally:
+                engine.close()
+
+    def test_tombstone_cache_hit_skips_index_scan(self) -> None:
+        '''A warm workspace cache must not rescan the index.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
+            engine = TantivyEngine(config)
+            try:
+                engine.add("test", "live note")
+                engine.commit()
+                first = engine._get_tombstoned_memories("test")
+                scans_after_first = engine._tombstone_scan_count
+                second = engine._get_tombstoned_memories("test")
+                assert first == second
+                assert engine._tombstone_scan_count == scans_after_first
+                cached = engine._tombstone_cache["test"]
+                assert isinstance(cached, frozenset)
+            finally:
+                engine.close()
+
+    def test_external_generation_bump_does_not_serve_stale_live_results(self) -> None:
+        '''A published generation change must drop stale live cache hits.'''
+        from reflectlog.infrastructure.storage_coordinator import (
+            PortalockerStorageCoordinator,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = PortalockerStorageCoordinator(tmpdir, timeout=1.0)
+            index_path = os.path.join(tmpdir, "idx")
+            config = TantivyConfig(workspace_id="ws", index_path=index_path)
+            writer = TantivyEngine(config, coordinator=coordinator)
+            reader = TantivyEngine(config, coordinator=coordinator)
+            try:
+                writer.add("ws", "keep this")
+                writer.add("ws", "delete me")
+                warm_hits = {
+                    memory for memory, _score in reader.search("delete", "ws", 10)
+                }
+                assert "delete me" in warm_hits
+                assert "ws" in reader._tombstone_cache
+                assert "delete me" not in reader._tombstone_cache["ws"]
+
+                assert writer.delete("ws", "delete me") is True
+                coordinator.publish_generation("ws", 1)
+
+                stale_hits = {
+                    memory for memory, _score in reader.search("delete", "ws", 10)
+                }
+                assert "delete me" not in stale_hits
+                keep_hits = {
+                    memory for memory, _score in reader.search("keep", "ws", 10)
+                }
+                assert keep_hits == {"keep this"}
+            finally:
+                writer.close()
+                reader.close()
+
+    def test_soft_delete_commit_invalidates_only_touched_workspace(self) -> None:
+        '''A local tombstone commit must not flush unrelated workspace caches.'''
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
+            engine = TantivyEngine(config)
+            try:
+                engine.add("proj-a", "drop me")
+                engine.add("proj-b", "keep me")
+                engine.commit()
+                engine._get_tombstoned_memories("proj-a")
+                engine._get_tombstoned_memories("proj-b")
+
+                assert engine.soft_delete("proj-a", "drop me")
+                engine.commit()
+
+                assert "proj-a" not in engine._tombstone_cache
+                assert "proj-b" in engine._tombstone_cache
+                hits = [
+                    memory for memory, _score in engine.search("drop", "proj-a", 10)
+                ]
+                assert hits == []
+                keep = [
+                    memory for memory, _score in engine.search("keep", "proj-b", 10)
+                ]
+                assert keep == ["keep me"]
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit

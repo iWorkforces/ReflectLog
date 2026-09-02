@@ -22,7 +22,11 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
 
 from reflectlog.core.config import IAppConfig
-from reflectlog.core.exceptions import InitializationError, SearchError
+from reflectlog.core.exceptions import (
+    ConfigurationError,
+    InitializationError,
+    SearchError,
+)
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 
@@ -56,6 +60,12 @@ class TantivyConfig:
     tombstone_cache_max_size: int = 100
     normalize_scores: bool = True
 
+    def __post_init__(self) -> None:
+        if self.tombstone_cache_max_size <= 0:
+            raise ConfigurationError(
+                "Invalid tombstone_cache_max_size: must be a positive integer"
+            )
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TantivyConfig:
         """Create TantivyConfig from a dictionary with validation.
@@ -68,7 +78,18 @@ class TantivyConfig:
 
         Returns:
             Validated TantivyConfig instance.
+
+        Raises:
+            ConfigurationError: If tombstone_cache_max_size is missing a
+                positive integer representation.
         """
+        raw_cache_size = data.get("tombstone_cache_max_size", 100)
+        try:
+            tombstone_cache_max_size = int(raw_cache_size)
+        except (TypeError, ValueError) as e:
+            raise ConfigurationError(
+                "Invalid tombstone_cache_max_size: expected a positive integer"
+            ) from e
         return cls(
             workspace_id=data.get("workspace_id", "") or "",
             index_path=data.get("index_path", "") or "",
@@ -78,7 +99,7 @@ class TantivyConfig:
             ),
             compaction_max_tombstones=int(data.get("compaction_max_tombstones", 10000)),
             tombstone_ttl_days=int(data.get("tombstone_ttl_days", 7)),
-            tombstone_cache_max_size=int(data.get("tombstone_cache_max_size", 100)),
+            tombstone_cache_max_size=tombstone_cache_max_size,
             normalize_scores=bool(data.get("normalize_scores", True)),
         )
 
@@ -133,11 +154,13 @@ class TantivyEngine(BaseModel):
     # Bounded in-memory tombstone cache for O(1) lookup
     # after first search
     # Uses OrderedDict for LRU eviction when size exceeds tombstone_cache_max_size
-    # Key: workspace_id, Value: set of tombstoned memory contents
-    _tombstone_cache: OrderedDict[str, set[str]] = PrivateAttr(
-        default_factory=lambda: OrderedDict[str, set[str]]()
+    # Key: workspace_id, Value: immutable tombstoned memory contents
+    _tombstone_cache: OrderedDict[str, frozenset[str]] = PrivateAttr(
+        default_factory=lambda: OrderedDict[str, frozenset[str]]()
     )
     _tombstone_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    _dirty_workspaces: set[str] = PrivateAttr(default_factory=set)
+    _tombstone_scan_count: int = PrivateAttr(default=0)
     _searcher_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
     _closed: bool = PrivateAttr(default=False)
 
@@ -349,7 +372,11 @@ class TantivyEngine(BaseModel):
     def _lease(self, mode: LeaseMode) -> Generator[None]:
         """Acquire a coordinator lease, reusing a nest already held by this engine."""
         coordinator = self.coordinator
-        if coordinator is None or self._lease_depth > 0:
+        if (
+            coordinator is None
+            or self._lease_depth > 0
+            or coordinator.is_held(self.config.workspace_id)
+        ):
             self._lease_depth += 1
             try:
                 yield
@@ -367,16 +394,22 @@ class TantivyEngine(BaseModel):
         """Reload committed segments so an external writer becomes visible."""
         if self._index is None:
             return
+        coordinator = self.coordinator
+        generation_changed = False
+        if coordinator is not None:
+            current_generation = coordinator.read_generation(self.config.workspace_id)
+            generation_changed = current_generation != self._seen_generation
+            self._seen_generation = current_generation
         self._index.reload()
         with self._searcher_lock:
             self._searcher = self._index.searcher()
-        coordinator = self.coordinator
-        if coordinator is not None:
-            self._seen_generation = coordinator.read_generation(
-                self.config.workspace_id
-            )
+        if generation_changed:
+            # External generation bump: conservative invalidation.
+            self._invalidate_tombstone_cache()
 
-    def _finalize_writer(self, *, relinquish: bool) -> None:
+    def _finalize_writer(
+        self, *, relinquish: bool, invalidate_all: bool = False
+    ) -> None:
         """Commit the writer, optionally wait/drop it, then refresh the reader."""
         if self._writer is None:
             return
@@ -388,7 +421,12 @@ class TantivyEngine(BaseModel):
             self._index.reload()
             with self._searcher_lock:
                 self._searcher = self._index.searcher()
-        self._invalidate_tombstone_cache()
+        if invalidate_all:
+            self._invalidate_tombstone_cache()
+            with self._tombstone_cache_lock:
+                self._dirty_workspaces.clear()
+        else:
+            self._invalidate_dirty_tombstone_cache()
 
     def _rewrite_index_in_place(self, docs_to_keep: list[tuple[str, str]]) -> None:
         """Replace live documents without swapping the index directory."""
@@ -403,7 +441,7 @@ class TantivyEngine(BaseModel):
                     doc.add_unsigned("is_deleted", 0)
                     doc.add_integer("deleted_at", 0)
                     _ = writer.add_document(doc)
-                self._finalize_writer(relinquish=True)
+                self._finalize_writer(relinquish=True, invalidate_all=True)
 
     def _get_all_docs(self, workspace_id: str) -> list[str]:
         """Get all active (non-tombstoned) documents for a workspace.
@@ -581,6 +619,7 @@ class TantivyEngine(BaseModel):
                 doc.add_integer("deleted_at", 0)  # 0 = not deleted
 
                 _ = self.writer.add_document(doc)
+                self._mark_workspace_dirty(workspace_id)
                 if self.coordinator is not None:
                     self._finalize_writer(relinquish=True)
 
@@ -598,6 +637,7 @@ class TantivyEngine(BaseModel):
                     doc.add_unsigned("is_deleted", 0)
                     doc.add_integer("deleted_at", 0)
                     _ = self.writer.add_document(doc)
+                self._mark_workspace_dirty(workspace_id)
                 if self.coordinator is not None:
                     self._finalize_writer(relinquish=True)
 
@@ -658,6 +698,27 @@ class TantivyEngine(BaseModel):
                             extra={"workspace_id": self.config.workspace_id},
                         )
 
+    def _mark_workspace_dirty(self, workspace_id: str) -> None:
+        """Record a workspace whose tombstone cache must drop on the next commit."""
+        key = workspace_id if workspace_id else self.config.workspace_id
+        with self._tombstone_cache_lock:
+            self._dirty_workspaces.add(key)
+
+    def _invalidate_dirty_tombstone_cache(self) -> None:
+        """Invalidate only workspaces touched by local writes.
+
+        If no dirty workspace is known, drop only the engine config workspace
+        rather than the entire cache.
+        """
+        with self._tombstone_cache_lock:
+            dirty = set(self._dirty_workspaces)
+            self._dirty_workspaces.clear()
+        if not dirty:
+            self._invalidate_tombstone_cache(self.config.workspace_id)
+            return
+        for dirty_workspace_id in dirty:
+            self._invalidate_tombstone_cache(dirty_workspace_id)
+
     def _invalidate_tombstone_cache(self, workspace_id: str | None = None) -> None:
         """Invalidate tombstone cache for a workspace or all workspaces.
 
@@ -707,6 +768,7 @@ class TantivyEngine(BaseModel):
             return set()
 
         try:
+            self._tombstone_scan_count += 1
             doc_limit = self._get_doc_limit()
             pinned = searcher if searcher is not None else self.searcher
 
@@ -734,20 +796,23 @@ class TantivyEngine(BaseModel):
                 else:
                     live_counts[memory] = live_counts.get(memory, 0) + 1
 
-            tombstoned = {
+            tombstoned = frozenset(
                 memory
                 for memory, tombs in tomb_counts.items()
                 if tombs >= live_counts.get(memory, 0)
-            }
+            )
 
             if searcher is None or searcher is self._searcher:
                 with self._tombstone_cache_lock:
-                    if len(self._tombstone_cache) >= self.config.tombstone_cache_max_size:
+                    if (
+                        len(self._tombstone_cache)
+                        >= self.config.tombstone_cache_max_size
+                    ):
                         _ = self._tombstone_cache.popitem(last=False)
                     self._tombstone_cache[workspace_id] = tombstoned
                     self._tombstone_cache.move_to_end(workspace_id)
 
-            return tombstoned
+            return set(tombstoned)
 
         except OSError:
             raise
@@ -1127,6 +1192,7 @@ class TantivyEngine(BaseModel):
                 doc.add_unsigned("is_deleted", 1)
                 doc.add_integer("deleted_at", deleted_at)
                 _ = self.writer.add_document(doc)
+            self._mark_workspace_dirty(workspace_id)
 
     def delete(
         self, workspace_id: str, content: str, *, verify_exists: bool = True
