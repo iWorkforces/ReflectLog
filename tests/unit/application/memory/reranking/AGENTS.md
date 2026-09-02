@@ -25,6 +25,7 @@ def test_normalize_single_item() -> None:
     result = normalize_reranker_scores([("doc", 0.5)])
     assert result == [("doc", 1.0)]
 
+
 def test_normalize_equal_scores() -> None:
     result = normalize_reranker_scores([("a", 0.5), ("b", 0.5)])
     assert all(s == 1.0 for _, s in result)  # equally good

@@ -1,11 +1,11 @@
-'''Unit tests for reranker score normalization and recency decay utilities.
+"""Unit tests for reranker score normalization and recency decay utilities.
 
 Tests cover:
 - normalize_reranker_scores: Batch min-max normalization to [0, 1]
 - apply_threshold_with_safety_net: Threshold filtering with optional safety net
 - calculate_recency_factor: Exponential decay factor from timestamp
 - apply_recency_decay: Apply decay to scored results
-'''
+"""
 
 from datetime import datetime, timedelta, timezone
 import math
@@ -21,22 +21,22 @@ from reflectlog.utility.scoring import (
 
 
 class TestNormalizeRerankerScores:
-    '''Tests for normalize_reranker_scores function.'''
+    """Tests for normalize_reranker_scores function."""
 
     def test_empty_input(self) -> None:
-        '''Empty input should return empty list.'''
+        """Empty input should return empty list."""
         result = normalize_reranker_scores([])
         assert result == []
 
     def test_single_result(self) -> None:
-        '''Single result should get score 1.0 (best by definition).'''
+        """Single result should get score 1.0 (best by definition)."""
         result = normalize_reranker_scores([("doc1", 0.17)])
         assert len(result) == 1
         assert result[0][0] == "doc1"
         assert result[0][1] == 1.0
 
     def test_two_results(self) -> None:
-        '''With two results, best=1.0, worst=0.0.'''
+        """With two results, best=1.0, worst=0.0."""
         result = normalize_reranker_scores([("best", 0.9), ("worst", 0.1)])
         assert len(result) == 2
 
@@ -48,7 +48,7 @@ class TestNormalizeRerankerScores:
         assert worst_result[1] == 0.0
 
     def test_cross_encoder_range(self) -> None:
-        '''CrossEncoder typical range (0.001-0.17) should normalize to 0-1.'''
+        """CrossEncoder typical range (0.001-0.17) should normalize to 0-1."""
         scored = [
             ("doc1", 0.17),  # best
             ("doc2", 0.05),  # middle
@@ -70,7 +70,7 @@ class TestNormalizeRerankerScores:
         assert 0.0 < doc2_result[1] < 1.0
 
     def test_llm_range(self) -> None:
-        '''LLM typical range (0.7-0.9) should normalize to 0-1.'''
+        """LLM typical range (0.7-0.9) should normalize to 0-1."""
         scored = [
             ("doc1", 0.90),  # best
             ("doc2", 0.85),  # middle
@@ -92,7 +92,7 @@ class TestNormalizeRerankerScores:
         assert doc2_result[1] == pytest.approx(0.75)
 
     def test_all_equal_scores(self) -> None:
-        '''All equal scores should become 1.0 (equally good).'''
+        """All equal scores should become 1.0 (equally good)."""
         scored = [
             ("doc1", 0.5),
             ("doc2", 0.5),
@@ -105,7 +105,7 @@ class TestNormalizeRerankerScores:
             assert score == 1.0
 
     def test_preserves_document_order(self) -> None:
-        '''Document order should be preserved.'''
+        """Document order should be preserved."""
         scored = [
             ("first", 0.3),
             ("second", 0.5),
@@ -118,7 +118,7 @@ class TestNormalizeRerankerScores:
         assert result[2][0] == "third"
 
     def test_negative_scores(self) -> None:
-        '''Negative scores should be handled correctly.'''
+        """Negative scores should be handled correctly."""
         scored = [
             ("doc1", 0.5),
             ("doc2", -0.5),
@@ -133,34 +133,34 @@ class TestNormalizeRerankerScores:
 
 
 class TestApplyThresholdWithSafetyNet:
-    '''Tests for apply_threshold_with_safety_net function.'''
+    """Tests for apply_threshold_with_safety_net function."""
 
     def test_empty_input(self) -> None:
-        '''Empty input should return empty list.'''
+        """Empty input should return empty list."""
         result = apply_threshold_with_safety_net([], 0.5)
         assert result == []
 
     def test_all_above_threshold(self) -> None:
-        '''All scores above threshold should be kept.'''
+        """All scores above threshold should be kept."""
         scored = [("doc1", 0.9), ("doc2", 0.7), ("doc3", 0.6)]
         result = apply_threshold_with_safety_net(scored, 0.5)
         assert len(result) == 3
 
     def test_some_below_threshold(self) -> None:
-        '''Scores below threshold should be filtered out.'''
+        """Scores below threshold should be filtered out."""
         scored = [("doc1", 0.9), ("doc2", 0.4), ("doc3", 0.3)]
         result = apply_threshold_with_safety_net(scored, 0.5)
         assert len(result) == 1
         assert result[0][0] == "doc1"
 
     def test_all_below_threshold_no_safety_net(self) -> None:
-        '''All below threshold with min_results=0 should return empty.'''
+        """All below threshold with min_results=0 should return empty."""
         scored = [("doc1", 0.4), ("doc2", 0.3)]
         result = apply_threshold_with_safety_net(scored, 0.5, min_results=0)
         assert result == []
 
     def test_safety_net_when_enabled(self) -> None:
-        '''Safety net should return min_results when all below threshold.'''
+        """Safety net should return min_results when all below threshold."""
         # Results must be sorted by score descending for safety net to work
         scored = [("doc1", 0.4), ("doc2", 0.3), ("doc3", 0.2)]
         result = apply_threshold_with_safety_net(scored, 0.5, min_results=2)
@@ -171,7 +171,7 @@ class TestApplyThresholdWithSafetyNet:
         assert result[1][0] == "doc2"
 
     def test_safety_net_partial_filter(self) -> None:
-        '''Safety net should return min_results when filtered too much.'''
+        """Safety net should return min_results when filtered too much."""
         # 1 passes threshold, but min_results=2
         scored = [("doc1", 0.6), ("doc2", 0.4), ("doc3", 0.3)]
         result = apply_threshold_with_safety_net(scored, 0.5, min_results=2)
@@ -182,7 +182,7 @@ class TestApplyThresholdWithSafetyNet:
         assert result[1][0] == "doc2"
 
     def test_safety_net_not_enough_candidates(self) -> None:
-        '''Safety net should return all available if less than min_results.'''
+        """Safety net should return all available if less than min_results."""
         scored = [("doc1", 0.4)]  # Only 1 candidate, min_results=2
         result = apply_threshold_with_safety_net(scored, 0.5, min_results=2)
 
@@ -191,41 +191,41 @@ class TestApplyThresholdWithSafetyNet:
         assert result[0][0] == "doc1"
 
     def test_threshold_zero(self) -> None:
-        '''Threshold of 0.0 should keep all results.'''
+        """Threshold of 0.0 should keep all results."""
         scored = [("doc1", 0.9), ("doc2", 0.1), ("doc3", 0.0)]
         result = apply_threshold_with_safety_net(scored, 0.0)
         assert len(result) == 3
 
     def test_threshold_one(self) -> None:
-        '''Threshold of 1.0 should only keep perfect scores.'''
+        """Threshold of 1.0 should only keep perfect scores."""
         scored = [("doc1", 1.0), ("doc2", 0.9)]
         result = apply_threshold_with_safety_net(scored, 1.0)
         assert len(result) == 1
         assert result[0][0] == "doc1"
 
     def test_threshold_at_boundary(self) -> None:
-        '''Score equal to threshold should be kept (inclusive).'''
+        """Score equal to threshold should be kept (inclusive)."""
         scored = [("doc1", 0.5), ("doc2", 0.4)]
         result = apply_threshold_with_safety_net(scored, 0.5)
         assert len(result) == 1
         assert result[0][0] == "doc1"
 
     def test_min_results_zero_default(self) -> None:
-        '''Default min_results=0 allows empty results.'''
+        """Default min_results=0 allows empty results."""
         scored = [("doc1", 0.4), ("doc2", 0.3)]
         result = apply_threshold_with_safety_net(scored, 0.5)  # default min_results=0
         assert result == []
 
 
 class TestIntegration:
-    '''Integration tests combining normalization and threshold filtering.'''
+    """Integration tests combining normalization and threshold filtering."""
 
     def test_cross_encoder_workflow(self) -> None:
-        '''Simulate CrossEncoder reranking workflow.
+        """Simulate CrossEncoder reranking workflow.
 
         CrossEncoder produces low scores (0.001-0.17), which after
         normalization become 0-1, making threshold 0.5 useful.
-        '''
+        """
         # Raw CrossEncoder scores (typical range)
         raw_scored = [
             ("doc1", 0.17),  # Best
@@ -276,10 +276,10 @@ class TestIntegration:
 
 
 class TestCalculateRecencyFactor:
-    '''Tests for calculate_recency_factor function.'''
+    """Tests for calculate_recency_factor function."""
 
     def test_just_created_memory(self) -> None:
-        '''Memory created just now should have factor ≈ 1.0.'''
+        """Memory created just now should have factor ≈ 1.0."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         timestamp = now.isoformat()
 
@@ -288,7 +288,7 @@ class TestCalculateRecencyFactor:
         assert factor == pytest.approx(1.0)
 
     def test_two_hours_old(self) -> None:
-        '''Memory 2 hours old with decay 0.01 should have factor ≈ 0.98.'''
+        """Memory 2 hours old with decay 0.01 should have factor ≈ 0.98."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         created_at = now - timedelta(hours=2)
         timestamp = created_at.isoformat()
@@ -300,7 +300,7 @@ class TestCalculateRecencyFactor:
         assert factor == pytest.approx(expected)
 
     def test_half_life_at_69_hours(self) -> None:
-        '''Memory at ~69 hours old with decay 0.01 should have factor ≈ 0.5.'''
+        """Memory at ~69 hours old with decay 0.01 should have factor ≈ 0.5."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         # Half-life: ln(2) / 0.01 ≈ 69.3 hours
         half_life_hours = math.log(2) / 0.01
@@ -312,7 +312,7 @@ class TestCalculateRecencyFactor:
         assert factor == pytest.approx(0.5, rel=0.01)
 
     def test_one_week_old(self) -> None:
-        '''Memory 1 week old (168 hours) should have significant decay.'''
+        """Memory 1 week old (168 hours) should have significant decay."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         created_at = now - timedelta(days=7)
         timestamp = created_at.isoformat()
@@ -324,7 +324,7 @@ class TestCalculateRecencyFactor:
         assert factor == pytest.approx(expected)
 
     def test_higher_decay_rate(self) -> None:
-        '''Higher decay rate should produce faster decay.'''
+        """Higher decay rate should produce faster decay."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         created_at = now - timedelta(hours=10)
         timestamp = created_at.isoformat()
@@ -337,7 +337,7 @@ class TestCalculateRecencyFactor:
         assert factor == pytest.approx(expected)
 
     def test_zero_decay_rate(self) -> None:
-        '''Zero decay rate should always return 1.0 (no decay).'''
+        """Zero decay rate should always return 1.0 (no decay)."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         created_at = now - timedelta(days=30)
         timestamp = created_at.isoformat()
@@ -347,7 +347,7 @@ class TestCalculateRecencyFactor:
         assert factor == pytest.approx(1.0)
 
     def test_invalid_timestamp_returns_one(self) -> None:
-        '''Invalid timestamp should return factor 1.0 (no decay).'''
+        """Invalid timestamp should return factor 1.0 (no decay)."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
 
         factor = calculate_recency_factor("invalid-timestamp", decay_rate=0.01, now=now)
@@ -355,7 +355,7 @@ class TestCalculateRecencyFactor:
         assert factor == 1.0
 
     def test_empty_timestamp_returns_one(self) -> None:
-        '''Empty timestamp should return factor 1.0 (no decay).'''
+        """Empty timestamp should return factor 1.0 (no decay)."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
 
         factor = calculate_recency_factor("", decay_rate=0.01, now=now)
@@ -363,7 +363,7 @@ class TestCalculateRecencyFactor:
         assert factor == 1.0
 
     def test_future_timestamp(self) -> None:
-        '''Future timestamp should return factor 1.0 (no negative decay).'''
+        """Future timestamp should return factor 1.0 (no negative decay)."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         future = now + timedelta(hours=5)
         timestamp = future.isoformat()
@@ -374,7 +374,7 @@ class TestCalculateRecencyFactor:
         assert factor == pytest.approx(1.0)
 
     def test_naive_timestamp_treated_as_utc(self) -> None:
-        '''Naive timestamp (no timezone) should be treated as UTC.'''
+        """Naive timestamp (no timezone) should be treated as UTC."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         created_at = now - timedelta(hours=2)
         # Create naive timestamp (no timezone info)
@@ -386,7 +386,7 @@ class TestCalculateRecencyFactor:
         assert factor == pytest.approx(expected)
 
     def test_different_timezone(self) -> None:
-        '''Timestamp in different timezone should be correctly converted.'''
+        """Timestamp in different timezone should be correctly converted."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         # Create timestamp in UTC+5 (same actual time as 3:00 UTC = 8:00 UTC+5)
         # So 2 hours before now (10:00 UTC) would be 8:00 UTC which is 13:00 UTC+5
@@ -403,15 +403,15 @@ class TestCalculateRecencyFactor:
 
 
 class TestApplyRecencyDecay:
-    '''Tests for apply_recency_decay function.'''
+    """Tests for apply_recency_decay function."""
 
     def test_empty_input(self) -> None:
-        '''Empty input should return empty list.'''
+        """Empty input should return empty list."""
         result = apply_recency_decay([], {}, decay_rate=0.01)
         assert result == []
 
     def test_no_timestamps_keeps_original_scores(self) -> None:
-        '''Documents without timestamps should keep original scores.'''
+        """Documents without timestamps should keep original scores."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         scored = [("doc1", 0.9), ("doc2", 0.8)]
         timestamp_map: dict[str, str] = {}  # Empty map
@@ -423,7 +423,7 @@ class TestApplyRecencyDecay:
         assert result[1] == ("doc2", 0.8)
 
     def test_decay_applied_to_old_document(self) -> None:
-        '''Older document should get decayed score.'''
+        """Older document should get decayed score."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         scored = [("old_doc", 0.9), ("new_doc", 0.8)]
 
@@ -452,7 +452,7 @@ class TestApplyRecencyDecay:
         assert result[1][1] == pytest.approx(expected_old)
 
     def test_reranking_after_decay(self) -> None:
-        '''Decay should cause re-ranking when old doc was initially higher.'''
+        """Decay should cause re-ranking when old doc was initially higher."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
 
         # Old doc has higher initial score but will decay
@@ -480,7 +480,7 @@ class TestApplyRecencyDecay:
         assert result[1][0] == "old_high_score"
 
     def test_partial_timestamps(self) -> None:
-        '''Documents with missing timestamps should keep original scores.'''
+        """Documents with missing timestamps should keep original scores."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         scored = [
             ("doc_with_timestamp", 0.8),
@@ -506,7 +506,7 @@ class TestApplyRecencyDecay:
         assert result[1][1] == pytest.approx(expected_with)
 
     def test_zero_decay_preserves_order(self) -> None:
-        '''Zero decay rate should preserve original scores (but re-sort).'''
+        """Zero decay rate should preserve original scores (but re-sort)."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         scored = [("doc1", 0.6), ("doc2", 0.9), ("doc3", 0.75)]
 
@@ -528,7 +528,7 @@ class TestApplyRecencyDecay:
         assert result[2][1] == pytest.approx(0.6)
 
     def test_all_same_age(self) -> None:
-        '''All documents with same age should have same decay factor.'''
+        """All documents with same age should have same decay factor."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         scored = [("doc1", 0.9), ("doc2", 0.7), ("doc3", 0.8)]
 
@@ -554,10 +554,10 @@ class TestApplyRecencyDecay:
 
 
 class TestRecencyDecayIntegration:
-    '''Integration tests combining recency decay with normalization.'''
+    """Integration tests combining recency decay with normalization."""
 
     def test_full_workflow_with_normalization_and_decay(self) -> None:
-        '''Test complete workflow: normalize -> apply decay -> threshold.'''
+        """Test complete workflow: normalize -> apply decay -> threshold."""
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
 
         # Raw CrossEncoder scores
@@ -604,12 +604,12 @@ class TestRecencyDecayIntegration:
         assert result[1][0] == "old_best_match"
 
     def test_temporal_conflict_resolution(self) -> None:
-        '''Test that newer memory wins in contradictory scenario.
+        """Test that newer memory wins in contradictory scenario.
 
         This simulates the original problem: two contradictory memories
         ("I like cats" vs "I don't like cats anymore") should rank the
         newer one higher when both have similar relevance scores.
-        '''
+        """
         now = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
 
         # Both have identical LLM relevance scores (the original problem)

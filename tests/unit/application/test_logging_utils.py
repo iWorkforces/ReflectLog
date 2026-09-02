@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Unit tests for logging utilities.'''
+"""Unit tests for logging utilities."""
 
 import os
 import sys
@@ -19,27 +19,27 @@ from reflectlog.application.utils.logging import (
 
 @pytest.mark.unit
 class TestFormatFusionScoreStatus:
-    '''Tests for format_fusion_score_status function.'''
+    """Tests for format_fusion_score_status function."""
 
     def test_high_score_above_threshold_returns_keep(self):
-        '''Score above threshold should return KEEP status.'''
+        """Score above threshold should return KEEP status."""
         status, interpretation = format_fusion_score_status(0.8, 0.5)
         assert status == "KEEP"
         assert "High" in interpretation
 
     def test_low_score_below_threshold_returns_filter(self):
-        '''Score below threshold should return FILTER status.'''
+        """Score below threshold should return FILTER status."""
         status, interpretation = format_fusion_score_status(0.3, 0.5)
         assert status == "FILTER"
         assert "Minimal" in interpretation
 
     def test_score_at_threshold_returns_keep(self):
-        '''Score exactly at threshold should return KEEP.'''
+        """Score exactly at threshold should return KEEP."""
         status, _ = format_fusion_score_status(0.5, 0.5)
         assert status == "KEEP"
 
     def test_score_just_below_threshold_returns_filter(self):
-        '''Score just below threshold should return FILTER.'''
+        """Score just below threshold should return FILTER."""
         status, _ = format_fusion_score_status(0.49, 0.5)
         assert status == "FILTER"
 
@@ -56,21 +56,19 @@ class TestFormatFusionScoreStatus:
             (0.0, "Minimal"),
         ],
     )
-    def test_interpretation_ranges(
-        self, score: float, expected_keyword: str
-    ) -> None:
-        '''Test interpretation contains expected keyword for score ranges.'''
+    def test_interpretation_ranges(self, score: float, expected_keyword: str) -> None:
+        """Test interpretation contains expected keyword for score ranges."""
         _, interpretation = format_fusion_score_status(score, 0.5)
         assert expected_keyword in interpretation
 
     def test_zero_score_returns_filter(self):
-        '''Zero score should return FILTER with minimal interpretation.'''
+        """Zero score should return FILTER with minimal interpretation."""
         status, interpretation = format_fusion_score_status(0.0, 0.5)
         assert status == "FILTER"
         assert "Minimal" in interpretation
 
     def test_perfect_score_returns_keep(self):
-        '''Perfect score (1.0) should return KEEP with high interpretation.'''
+        """Perfect score (1.0) should return KEEP with high interpretation."""
         status, interpretation = format_fusion_score_status(1.0, 0.5)
         assert status == "KEEP"
         assert "High" in interpretation

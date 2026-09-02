@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Simple test to verify ENABLE_LLM_INFER functionality.'''
+"""Simple test to verify ENABLE_LLM_INFER functionality."""
 
 import json
 import os
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_infer_disabled():
-    '''Test with ENABLE_LLM_INFER=false (default).'''
+    """Test with ENABLE_LLM_INFER=false (default)."""
     print("\n" + "=" * 70)
     print("🔬 TEST: With LLM Inference DISABLED (default)")
     print("=" * 70)
@@ -87,7 +87,7 @@ async def test_infer_disabled():
 
 
 async def main():
-    '''Run the test.'''
+    """Run the test."""
     print("\n" + "=" * 70)
     print("🎯 ENABLE_LLM_INFER FUNCTIONALITY VERIFICATION")
     print("=" * 70)
@@ -100,7 +100,7 @@ async def main():
     print("\n" + "=" * 70)
     print("🎉 TEST COMPLETE!")
     print("=" * 70)
-    print('''
+    print("""
 Key Insights:
   ✅ ENABLE_LLM_INFER=false (default): Memories stored exactly as provided
   • This is the default behavior for faster, exact storage
@@ -111,7 +111,7 @@ To test with LLM inference enabled:
   1. Stop the current server
   2. Start with: ENABLE_LLM_INFER=true ./start-reflectlog-mcp-server.sh --workspace_id TestInfer
   3. Run this test again to see memories being transformed by the LLM
-    ''')
+    """)
 
 
 if __name__ == "__main__":

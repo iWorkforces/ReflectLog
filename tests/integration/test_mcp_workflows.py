@@ -84,7 +84,9 @@ class WorkflowTool(Protocol):
     def get_handler(self) -> Callable[..., Awaitable[list[str]]]: ...
 
 
-def _tool_handler(server: WorkflowServer, name: str) -> Callable[..., Awaitable[list[str]]]:
+def _tool_handler(
+    server: WorkflowServer, name: str
+) -> Callable[..., Awaitable[list[str]]]:
     for tool in server.tools:
         if tool.get_name() == name:
             return tool.get_handler()
@@ -163,7 +165,9 @@ def _matching_search(
     def search_side_effect(
         query: str, **_kwargs: str | int | None
     ) -> list[SemanticSearchResult]:
-        matching = [memory for memory in stored_memories if query.lower() in memory.lower()]
+        matching = [
+            memory for memory in stored_memories if query.lower() in memory.lower()
+        ]
         return create_search_results(matching)
 
     return search_side_effect
@@ -176,7 +180,9 @@ def _exact_search(
     def search_side_effect(
         query: str, **_kwargs: str | int | None
     ) -> list[SemanticSearchResult]:
-        return create_search_results([memory for memory in stored_memories if memory == query])
+        return create_search_results(
+            [memory for memory in stored_memories if memory == query]
+        )
 
     return search_side_effect
 
@@ -191,7 +197,7 @@ def _delete_from_store(stored_memories: list[str]) -> DeleteCallback:
             return
         try:
             index = int(memory_id)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return
         if 0 <= index < len(stored_memories):
             _ = stored_memories.pop(index)
@@ -293,7 +299,9 @@ class TestMCPWorkflows:
         stored_memories: list[str] = []
         memory = mcp_server.memory_manager.memory
         memory.add_batch.side_effect = _add_to_store(stored_memories)
-        memory.search.side_effect = _exact_search(stored_memories, create_search_results)
+        memory.search.side_effect = _exact_search(
+            stored_memories, create_search_results
+        )
         memory.delete.side_effect = _delete_from_store(stored_memories)
         memory.get_all.side_effect = _all_memories(stored_memories)
         memory.get_id_by_memory.side_effect = _find_memory_id(stored_memories)
@@ -324,7 +332,9 @@ class TestMCPWorkflows:
         stored_memories: list[str] = []
         memory = mcp_server.memory_manager.memory
         memory.add_batch.side_effect = _add_to_store(stored_memories)
-        memory.search.side_effect = _matching_search(stored_memories, create_search_results)
+        memory.search.side_effect = _matching_search(
+            stored_memories, create_search_results
+        )
         memory.delete.side_effect = _delete_from_store(stored_memories)
         memory.get_id_by_memory.side_effect = _find_memory_id(stored_memories)
         memory.get_id_by_content.side_effect = _find_memory_id(stored_memories)
@@ -376,7 +386,9 @@ class TestMCPWorkflows:
         stored_memories: list[str] = []
         memory = mcp_server.memory_manager.memory
         memory.add_batch.side_effect = _add_unique_to_store(stored_memories)
-        memory.search.side_effect = _exact_search(stored_memories, create_search_results)
+        memory.search.side_effect = _exact_search(
+            stored_memories, create_search_results
+        )
         memory.delete.side_effect = _delete_from_store(stored_memories)
         memory.get_all.side_effect = _all_memories(stored_memories)
         memory.get_id_by_memory.side_effect = _find_memory_id(stored_memories)

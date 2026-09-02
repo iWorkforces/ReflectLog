@@ -17,12 +17,13 @@ from reflectlog.server import _start_server
 
 
 def test_lease_handoff_after_close() -> None:
+    import logging
+
     from reflectlog.application.config.settings import Config
     from reflectlog.application.memory.manager import MemoryManager
     from reflectlog.application.utils.logging import StructuredLogger
     from reflectlog.application.utils.security import SecretString
     from reflectlog.core.enums import LlmProvider, RerankerEngine
-    import logging
 
     logger = StructuredLogger(logging.getLogger("shutdown-handoff"))
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -30,7 +31,9 @@ def test_lease_handoff_after_close() -> None:
         config = Config(
             workspace_id="ws",
             openrouter_api_key=SecretString("test"),
-            tantivy_index_path_template=os.path.join(tmpdir, "{workspace_id}", "tantivy"),
+            tantivy_index_path_template=os.path.join(
+                tmpdir, "{workspace_id}", "tantivy"
+            ),
             enable_hybrid_search=False,
             enable_smart_replace=False,
             llm_provider=LlmProvider.OPENAI,

@@ -105,7 +105,9 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -131,7 +133,9 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -175,15 +179,17 @@ class TestHybridMemoryManager:
                     mock_usearch.get_id_by_content.side_effect = (
                         lambda _workspace, content: 1 if inserted["done"] else None
                     )
-                    mock_usearch.embedder.embed_documents.side_effect = (
-                        lambda texts: [[0.1] * 4 for _ in texts]
-                    )
+                    mock_usearch.embedder.embed_documents.side_effect = lambda texts: [
+                        [0.1] * 4 for _ in texts
+                    ]
                     mock_usearch_class.return_value = mock_usearch
 
                     # Setup tantivy mock
                     mock_tantivy = MagicMock()
                     mock_tantivy.find_by_exact_match.side_effect = (
-                        lambda _workspace, content: [content] if inserted["done"] else []
+                        lambda _workspace, content: (
+                            [content] if inserted["done"] else []
+                        )
                     )
                     mock_tantivy_class.return_value = mock_tantivy
 
@@ -250,7 +256,9 @@ class TestHybridMemoryManager:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -362,7 +370,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -385,7 +395,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -414,7 +426,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -450,7 +464,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -487,7 +503,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -561,7 +579,9 @@ class TestParallelMemoryAddition:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -610,7 +630,9 @@ class TestConcurrencyConfiguration:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
@@ -639,7 +661,9 @@ class TestConcurrencyConfiguration:
             "reflectlog.application.memory.manager.USearchEngine"
         ) as mock_usearch_class:
             mock_usearch_class.return_value.add_batch.side_effect = (
-                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: contents if contents is not None else memories
+                lambda workspace_id, memories=None, infer=False, contents=None, vectors=None, **_kwargs: (
+                    contents if contents is not None else memories
+                )
             )
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (

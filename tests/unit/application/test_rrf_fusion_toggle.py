@@ -224,9 +224,7 @@ class TestSearchPipelineWithRRFToggle:
                     mock_usearch_instance.search.return_value = [
                         ("msg1", 0.9, "2024-01-01T00:00:00")
                     ]
-                    mock_usearch_instance.memory_store.list_pending_transitions.return_value = (
-                        []
-                    )
+                    mock_usearch_instance.memory_store.list_pending_transitions.return_value = []
                     mock_usearch.return_value = mock_usearch_instance
 
                     mock_tantivy_instance = Mock()

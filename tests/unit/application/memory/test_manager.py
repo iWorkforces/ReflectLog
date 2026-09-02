@@ -66,7 +66,13 @@ def _fake_coordinator() -> object:
             )
 
         @contextmanager
-        def acquire(self, workspace_id: str, mode: object = None, *, timeout: float | None = None):
+        def acquire(
+            self,
+            workspace_id: str,
+            mode: object = None,
+            *,
+            timeout: float | None = None,
+        ):
             _ = workspace_id, mode, timeout
             yield self
 
@@ -123,7 +129,9 @@ class LogCapture:
         self.structured = StructuredLogger(self._logger)
 
     def messages(self, level: int) -> list[str]:
-        return [record.getMessage() for record in self._records if record.levelno == level]
+        return [
+            record.getMessage() for record in self._records if record.levelno == level
+        ]
 
 
 @pytest.fixture
@@ -157,9 +165,9 @@ def _make_manager(
         mock_usearch.contains_id.return_value = False
         mock_usearch.count.return_value = 0
         mock_usearch.is_ready.return_value = False
-        mock_usearch.embedder.embed_documents.side_effect = (
-            lambda texts: [[0.1] * 4 for _ in texts]
-        )
+        mock_usearch.embedder.embed_documents.side_effect = lambda texts: [
+            [0.1] * 4 for _ in texts
+        ]
         mock_usearch.memory_store.begin_add_intents.return_value = []
         mock_usearch.memory_store.begin_delete_intents.return_value = []
         mock_usearch.memory_store.list_pending_transitions.return_value = []
@@ -191,16 +199,32 @@ def _make_manager(
 class TestEagerInitialization:
     """Tests for _eager_initialize_engines covering uncovered branches."""
 
-    def test_eager_init_reranker_invalid_engine_raises(self, mock_config: Config, mock_logger: LogCapture):
+    def test_eager_init_reranker_invalid_engine_raises(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Invalid reranker_engine should raise ValueError (lines 334-340)."""
-        mock_config = replace(mock_config, eager_initialization=True, eager_initialize_search_engines=False, eager_initialize_reranker=True, reranker_engine="none")
+        mock_config = replace(
+            mock_config,
+            eager_initialization=True,
+            eager_initialize_search_engines=False,
+            eager_initialize_reranker=True,
+            reranker_engine="none",
+        )
 
         with pytest.raises(ValueError, match="Invalid reranker_engine"):
             _make_manager(mock_config, mock_logger)
 
-    def test_eager_init_reranker_returns_none_warns(self, mock_config: Config, mock_logger: LogCapture):
+    def test_eager_init_reranker_returns_none_warns(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Reranker get_reranker returning None should log warning (lines 349-359)."""
-        mock_config = replace(mock_config, eager_initialization=True, eager_initialize_search_engines=False, eager_initialize_reranker=True, reranker_engine="cross_encoder")
+        mock_config = replace(
+            mock_config,
+            eager_initialization=True,
+            eager_initialize_search_engines=False,
+            eager_initialize_reranker=True,
+            reranker_engine="cross_encoder",
+        )
 
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -214,9 +238,17 @@ class TestEagerInitialization:
             manager = MemoryManager(mock_config, mock_logger.structured)
             assert manager._cross_encoder_reranker is not None
 
-    def test_eager_init_reranker_with_cross_encoder(self, mock_config: Config, mock_logger: LogCapture):
+    def test_eager_init_reranker_with_cross_encoder(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Eager init with a valid cross-encoder reranker."""
-        mock_config = replace(mock_config, eager_initialization=True, eager_initialize_search_engines=False, eager_initialize_reranker=True, reranker_engine="cross_encoder")
+        mock_config = replace(
+            mock_config,
+            eager_initialization=True,
+            eager_initialize_search_engines=False,
+            eager_initialize_reranker=True,
+            reranker_engine="cross_encoder",
+        )
 
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -232,18 +264,34 @@ class TestEagerInitialization:
             manager = MemoryManager(mock_config, mock_logger.structured)
             assert manager._cross_encoder_reranker is mock_reranker
 
-    def test_eager_init_smart_replacer_disabled_raises(self, mock_config: Config, mock_logger: LogCapture):
+    def test_eager_init_smart_replacer_disabled_raises(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Eager smart replacer with enable_smart_replace=False raises (lines 364-369)."""
-        mock_config = replace(mock_config, eager_initialization=True, eager_initialize_search_engines=False, eager_initialize_smart_replacer=True, enable_smart_replace=False)
+        mock_config = replace(
+            mock_config,
+            eager_initialization=True,
+            eager_initialize_search_engines=False,
+            eager_initialize_smart_replacer=True,
+            enable_smart_replace=False,
+        )
 
         with pytest.raises(
             ValueError, match="Eager SmartReplacer initialization requested"
         ):
             _make_manager(mock_config, mock_logger)
 
-    def test_eager_init_smart_replacer_enabled(self, mock_config: Config, mock_logger: LogCapture):
+    def test_eager_init_smart_replacer_enabled(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Eager smart replacer with enable_smart_replace=True (lines 371-376)."""
-        mock_config = replace(mock_config, eager_initialization=True, eager_initialize_search_engines=False, eager_initialize_smart_replacer=True, enable_smart_replace=True)
+        mock_config = replace(
+            mock_config,
+            eager_initialization=True,
+            eager_initialize_search_engines=False,
+            eager_initialize_smart_replacer=True,
+            enable_smart_replace=True,
+        )
 
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
@@ -259,9 +307,17 @@ class TestEagerInitialization:
             manager = MemoryManager(mock_config, mock_logger.structured)
             assert manager._smart_replacer is mock_replacer
 
-    def test_eager_init_all_lazy_skipped(self, mock_config: Config, mock_logger: LogCapture):
+    def test_eager_init_all_lazy_skipped(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """All components set to lazy should log skip message (line 390)."""
-        mock_config = replace(mock_config, eager_initialization=True, eager_initialize_search_engines=False, eager_initialize_reranker=False, eager_initialize_smart_replacer=False)
+        mock_config = replace(
+            mock_config,
+            eager_initialization=True,
+            eager_initialize_search_engines=False,
+            eager_initialize_reranker=False,
+            eager_initialize_smart_replacer=False,
+        )
 
         _manager, _, _ = _make_manager(mock_config, mock_logger)
         # Verify skip message was logged
@@ -289,7 +345,9 @@ class TestLazyRerankerProperties:
         manager, _, _ = _make_manager(mock_config, mock_logger)
         assert manager.cross_encoder_reranker is None
 
-    def test_cross_encoder_reranker_lazy_init(self, mock_config: Config, mock_logger: LogCapture):
+    def test_cross_encoder_reranker_lazy_init(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """cross_encoder_reranker lazy initializes (lines 441-463)."""
         mock_config = replace(mock_config, reranker_engine="cross_encoder")
         with (
@@ -308,7 +366,9 @@ class TestLazyRerankerProperties:
             assert result is mock_ce
             ce_cls.assert_called_once()
 
-    def test_cross_encoder_reranker_cached(self, mock_config: Config, mock_logger: LogCapture):
+    def test_cross_encoder_reranker_cached(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """cross_encoder_reranker returns cached on second call (line 435-439)."""
         mock_config = replace(mock_config, reranker_engine="cross_encoder")
         with (
@@ -328,7 +388,9 @@ class TestLazyRerankerProperties:
             assert first is second
             ce_cls.assert_called_once()
 
-    def test_cross_encoder_reranker_double_check(self, mock_config: Config, mock_logger: LogCapture):
+    def test_cross_encoder_reranker_double_check(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """cross_encoder_reranker double-check after lock (lines 444-448)."""
         mock_config = replace(mock_config, reranker_engine="cross_encoder")
         with (
@@ -345,7 +407,9 @@ class TestLazyRerankerProperties:
             result = manager.cross_encoder_reranker
             assert result is sentinel
 
-    def test_get_reranker_cross_encoder_path(self, mock_config: Config, mock_logger: LogCapture):
+    def test_get_reranker_cross_encoder_path(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """get_reranker returns cross_encoder when configured (line 512)."""
         mock_config = replace(mock_config, reranker_engine="cross_encoder")
         with (
@@ -363,7 +427,9 @@ class TestLazyRerankerProperties:
             result = manager.get_reranker()
             assert result is mock_ce
 
-    def test_get_reranker_none_engine(self, mock_config: Config, mock_logger: LogCapture):
+    def test_get_reranker_none_engine(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """get_reranker returns None for "none" engine."""
         mock_config = replace(mock_config, reranker_engine="none")
         manager, _, _ = _make_manager(mock_config, mock_logger)
@@ -379,13 +445,17 @@ class TestLazyRerankerProperties:
 class TestSmartReplacerProperty:
     """Tests for smart_replacer lazy property."""
 
-    def test_smart_replacer_returns_none_when_disabled(self, mock_config: Config, mock_logger: LogCapture):
+    def test_smart_replacer_returns_none_when_disabled(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """smart_replacer returns None when enable_smart_replace=False."""
         mock_config = replace(mock_config, enable_smart_replace=False)
         manager, _, _ = _make_manager(mock_config, mock_logger)
         assert manager.smart_replacer is None
 
-    def test_smart_replacer_double_check_locking(self, mock_config: Config, mock_logger: LogCapture):
+    def test_smart_replacer_double_check_locking(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """smart_replacer double-check after lock (line 483)."""
         mock_config = replace(mock_config, enable_smart_replace=True)
         with (
@@ -402,7 +472,9 @@ class TestSmartReplacerProperty:
             result = manager.smart_replacer
             assert result is sentinel
 
-    def test_smart_replacer_lazy_init(self, mock_config: Config, mock_logger: LogCapture):
+    def test_smart_replacer_lazy_init(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """smart_replacer lazily initializes when enabled."""
         mock_config = replace(mock_config, enable_smart_replace=True)
         with (
@@ -431,7 +503,9 @@ class TestSmartReplacerProperty:
 class TestAddMemory:
     """Tests for the public add_memories path."""
 
-    def test_add_memory_duplicate_skipped(self, mock_config: Config, mock_logger: LogCapture):
+    def test_add_memory_duplicate_skipped(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Existing exact match is not stored again."""
         manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 11
@@ -454,7 +528,9 @@ class TestAddMemory:
         )
         mock_tantivy.add_batch.assert_called_once_with("test_project", ["new memory"])
 
-    def test_add_memory_without_tantivy(self, mock_config: Config, mock_logger: LogCapture):
+    def test_add_memory_without_tantivy(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Add memory without Tantivy engine (semantic only)."""
         mock_config = replace(mock_config, enable_hybrid_search=False)
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
@@ -464,7 +540,9 @@ class TestAddMemory:
         mock_usearch.add_batch.assert_called_once()
         mock_tantivy.add_batch.assert_not_called()
 
-    def test_add_memory_storage_error(self, mock_config: Config, mock_logger: LogCapture):
+    def test_add_memory_storage_error(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Batch insert failures surface as StorageError."""
         manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.add_batch.side_effect = StorageError("disk full")
@@ -472,7 +550,9 @@ class TestAddMemory:
         with pytest.raises(StorageError, match="disk full"):
             manager.add_memories(["error content"])
 
-    def test_add_memory_dedup_disabled(self, mock_config: Config, mock_logger: LogCapture):
+    def test_add_memory_dedup_disabled(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """When deduplicate_memories=False, skip duplicate check."""
         mock_config = replace(mock_config, deduplicate_memories=False)
         manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
@@ -492,14 +572,18 @@ class TestAddMemory:
 class TestAddMemoriesBatchLogging:
     """Tests for add_memories batch dedup and logging edge cases."""
 
-    def test_add_memories_in_batch_duplicate(self, mock_config: Config, mock_logger: LogCapture):
+    def test_add_memories_in_batch_duplicate(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Duplicate within batch should be skipped (lines 593-602)."""
         manager, _mock_usearch, _ = _make_manager(mock_config, mock_logger)
         result = manager.add_memories(["mem1", "mem1", "mem2"])
         # "mem1" repeated: first stored, second skipped
         assert result == 2  # mem1 + mem2
 
-    def test_add_memories_batch_insert_skipped_warning(self, mock_config: Config, mock_logger: LogCapture):
+    def test_add_memories_batch_insert_skipped_warning(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Memories skipped during batch insert should log warning (line 654)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         # add_batch returns only subset - some memories skipped
@@ -516,7 +600,9 @@ class TestAddMemoriesBatchLogging:
         )
         assert warning_logged
 
-    def test_add_memories_stored_log_limit_exceeded(self, mock_config: Config, mock_logger: LogCapture):
+    def test_add_memories_stored_log_limit_exceeded(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """When stored memories exceed LOG_ADD_MEMORY_PREVIEW_LIMIT (line 662)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         # Create more memories than LOG_ADD_MEMORY_PREVIEW_LIMIT (20)
@@ -526,7 +612,9 @@ class TestAddMemoriesBatchLogging:
         result = manager.add_memories(memories)
         assert result == 25
 
-    def test_add_memories_log_limit_exceeded(self, mock_config: Config, mock_logger: LogCapture):
+    def test_add_memories_log_limit_exceeded(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """When total memories exceed LOG_ADD_MEMORY_PREVIEW_LIMIT (line 642)."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         # Create more memories than LOG_ADD_MEMORY_PREVIEW_LIMIT (20)
@@ -553,7 +641,9 @@ class TestSearchIndexSizeException:
     """Tests for search when index size lookup raises exception."""
 
     @pytest.mark.asyncio
-    async def test_search_index_size_exception_fallback(self, mock_config: Config, mock_logger: LogCapture):
+    async def test_search_index_size_exception_fallback(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Exception getting index size should fallback to 0 (lines 774-775)."""
         mock_config = replace(mock_config, reranker_engine="none")
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
@@ -707,7 +797,9 @@ class TestDeleteOperations:
         with pytest.raises(StorageError, match="Failed to delete memory"):
             manager.delete_by_memory("test memory")
 
-    def test_delete_by_memory_not_found(self, mock_config: Config, mock_logger: LogCapture):
+    def test_delete_by_memory_not_found(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """delete_by_memory returns False when not found."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = None
@@ -715,7 +807,9 @@ class TestDeleteOperations:
         result = manager.delete_by_memory("nonexistent")
         assert result is False
 
-    def test_delete_by_memory_success(self, mock_config: Config, mock_logger: LogCapture):
+    def test_delete_by_memory_success(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """delete_by_memory returns True on success."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.get_id_by_content.return_value = 42
@@ -728,7 +822,9 @@ class TestDeleteOperations:
             "test_project", "test memory", verify_exists=True
         )
 
-    def test_delete_by_memory_without_tantivy(self, mock_config: Config, mock_logger: LogCapture):
+    def test_delete_by_memory_without_tantivy(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """delete_by_memory works without Tantivy."""
         mock_config = replace(mock_config, enable_hybrid_search=False)
         with (
@@ -745,8 +841,9 @@ class TestDeleteOperations:
             assert result is True
             mock_usearch.delete.assert_called_once_with(memory_id="42")
 
-
-    def test_delete_memories_returns_found_contents(self, mock_config: Config, mock_logger: LogCapture):
+    def test_delete_memories_returns_found_contents(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """delete_memories returns only contents that existed."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
 
@@ -841,7 +938,9 @@ class TestDeleteOperations:
 class TestCloseErrorPaths:
     """Tests for close method error paths."""
 
-    def test_close_tantivy_error_logged(self, mock_config: Config, mock_logger: LogCapture):
+    def test_close_tantivy_error_logged(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Tantivy close error should be logged not raised (lines 983-991)."""
         manager, _mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.flush.side_effect = RuntimeError("tantivy flush error")
@@ -855,7 +954,9 @@ class TestCloseErrorPaths:
         assert error_logged
         mock_tantivy.close.assert_not_called()
 
-    def test_close_usearch_error_logged(self, mock_config: Config, mock_logger: LogCapture):
+    def test_close_usearch_error_logged(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """USearch close error should be logged not raised (lines 1002-1010)."""
         manager, mock_usearch, _mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_usearch.commit.side_effect = RuntimeError("usearch commit error")
@@ -869,7 +970,9 @@ class TestCloseErrorPaths:
         assert error_logged
         mock_usearch.close.assert_not_called()
 
-    def test_close_both_errors_logged(self, mock_config: Config, mock_logger: LogCapture):
+    def test_close_both_errors_logged(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Both engines failing should both be logged."""
         manager, mock_usearch, mock_tantivy = _make_manager(mock_config, mock_logger)
         mock_tantivy.flush.side_effect = RuntimeError("tantivy error")
@@ -984,7 +1087,9 @@ class TestGetAll:
             workspace_id="test_project", limit=None, offset=0
         )
 
-    def test_get_all_exception_raises_storage_error(self, mock_config: Config, mock_logger: LogCapture):
+    def test_get_all_exception_raises_storage_error(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """get_all wraps exceptions in StorageError."""
         manager, mock_usearch, _ = _make_manager(mock_config, mock_logger)
         mock_usearch.get_all.side_effect = RuntimeError("db error")
@@ -1002,17 +1107,20 @@ class TestGetAll:
 class TestInitLogging:
     """Tests for __init__ logging based on reranker_engine and smart_replace."""
 
-    def test_init_cross_encoder_reranker_logging(self, mock_config: Config, mock_logger: LogCapture):
+    def test_init_cross_encoder_reranker_logging(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Init with cross_encoder reranker logs correctly."""
         mock_config = replace(mock_config, reranker_engine="cross_encoder")
         _make_manager(mock_config, mock_logger)
         ce_logged = any(
-            "CrossEncoder" in message
-            for message in mock_logger.messages(logging.INFO)
+            "CrossEncoder" in message for message in mock_logger.messages(logging.INFO)
         )
         assert ce_logged
 
-    def test_init_smart_replace_enabled_logging(self, mock_config: Config, mock_logger: LogCapture):
+    def test_init_smart_replace_enabled_logging(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Init with smart replace enabled logs correctly."""
         mock_config = replace(mock_config, enable_smart_replace=True)
         _make_manager(mock_config, mock_logger)
@@ -1022,7 +1130,9 @@ class TestInitLogging:
         )
         assert sr_logged
 
-    def test_init_embedding_cache_enabled(self, mock_config: Config, mock_logger: LogCapture):
+    def test_init_embedding_cache_enabled(
+        self, mock_config: Config, mock_logger: LogCapture
+    ):
         """Init with embedding cache enabled wraps embedder."""
         mock_config = replace(mock_config, embedding_cache_enabled=True)
         with (

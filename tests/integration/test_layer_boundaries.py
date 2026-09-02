@@ -213,9 +213,7 @@ class TestProtocolConformanceTantivy:
             "ensure_initialized",
             "is_ready",
         ):
-            assert hasattr(TantivyEngine, attr), (
-                f"TantivyEngine missing {attr}"
-            )
+            assert hasattr(TantivyEngine, attr), f"TantivyEngine missing {attr}"
 
 
 class TestProtocolConformanceCrossEncoder:
@@ -254,9 +252,7 @@ class TestProtocolConformanceMemoryStore:
             "complete_replacement_transition",
             "close",
         ):
-            assert hasattr(MemoryStore, attr), (
-                f"MemoryStore missing {attr}"
-            )
+            assert hasattr(MemoryStore, attr), f"MemoryStore missing {attr}"
 
 
 class TestProtocolConformanceEmbeddings:
@@ -309,32 +305,64 @@ class TestProtocolConformanceConfigAdapter:
         # IStorageConfig + IRerankerConfig + IEmbedderConfig + IReplacementConfig
         required_properties = [
             # IServerConfig
-            "transport", "host", "port", "path", "log_level", "workspace_id",
+            "transport",
+            "host",
+            "port",
+            "path",
+            "log_level",
+            "workspace_id",
             # ISearchConfig
-            "search_limit", "enable_hybrid_search", "enable_rrf_fusion",
-            "fusion_rrf_k", "fusion_threshold", "reranker_engine",
-            "search_score_threshold", "enable_recency_boost", "recency_decay_rate",
+            "search_limit",
+            "enable_hybrid_search",
+            "enable_rrf_fusion",
+            "fusion_rrf_k",
+            "fusion_threshold",
+            "reranker_engine",
+            "search_score_threshold",
+            "enable_recency_boost",
+            "recency_decay_rate",
             # IStorageConfig
-            "storage_path", "usearch_index_path", "tantivy_index_path",
-            "embedding_dims", "metric",
-            "tantivy_normalize_scores", "tantivy_soft_delete_enabled",
+            "storage_path",
+            "usearch_index_path",
+            "tantivy_index_path",
+            "embedding_dims",
+            "metric",
+            "tantivy_normalize_scores",
+            "tantivy_soft_delete_enabled",
             "tantivy_compaction_threshold_ratio",
-            "tantivy_compaction_max_tombstones", "tantivy_tombstone_ttl_days",
+            "tantivy_compaction_max_tombstones",
+            "tantivy_tombstone_ttl_days",
             # IRerankerConfig
-            "llm_model", "llm_api_base_url", "cross_encoder_model",
-            "cross_encoder_device", "reranker_batch_normalize", "llm_api_key",
-            "llm_provider", "rerank_max_concurrency", "cross_encoder_top_k",
-            "cross_encoder_batch_size", "cross_encoder_score_threshold",
-            "cross_encoder_use_fp16", "cross_encoder_normalize",
-            "cross_encoder_max_length", "reranker_min_results",
+            "llm_model",
+            "llm_api_base_url",
+            "cross_encoder_model",
+            "cross_encoder_device",
+            "reranker_batch_normalize",
+            "llm_api_key",
+            "llm_provider",
+            "rerank_max_concurrency",
+            "cross_encoder_top_k",
+            "cross_encoder_batch_size",
+            "cross_encoder_score_threshold",
+            "cross_encoder_use_fp16",
+            "cross_encoder_normalize",
+            "cross_encoder_max_length",
+            "reranker_min_results",
             # IEmbedderConfig
-            "embedding_model", "embedder_provider", "qwen_embedding_dims",
-            "embedding_batch_size", "embedding_max_concurrent_batches",
-            "embedding_cache_enabled", "embedding_cache_size",
+            "embedding_model",
+            "embedder_provider",
+            "qwen_embedding_dims",
+            "embedding_batch_size",
+            "embedding_max_concurrent_batches",
+            "embedding_cache_enabled",
+            "embedding_cache_size",
             # IReplacementConfig
-            "enable_smart_replace", "smart_replace_threshold",
-            "smart_replace_min_similarity", "smart_replace_candidate_limit",
-            "smart_replace_max_retries", "smart_replace_retry_delay",
+            "enable_smart_replace",
+            "smart_replace_threshold",
+            "smart_replace_min_similarity",
+            "smart_replace_candidate_limit",
+            "smart_replace_max_retries",
+            "smart_replace_retry_delay",
         ]
         for prop in required_properties:
             assert hasattr(ConfigAdapter, prop), (
@@ -353,47 +381,96 @@ class TestProtocolConformanceConfigAdapter:
         )
 
         pairs: list[tuple[type, list[str]]] = [
-            (ServerConfigAdapter, [
-                "transport", "host", "port", "path", "log_level", "workspace_id",
-            ]),
-            (SearchConfigAdapter, [
-                "search_limit", "enable_hybrid_search", "enable_rrf_fusion",
-                "fusion_rrf_k", "fusion_threshold", "reranker_engine",
-                "search_score_threshold", "enable_recency_boost",
-                "recency_decay_rate",
-            ]),
-            (StorageConfigAdapter, [
-                "storage_path", "usearch_index_path", "tantivy_index_path",
-                "embedding_dims", "metric",
-                "tantivy_normalize_scores", "tantivy_soft_delete_enabled",
-                "tantivy_compaction_threshold_ratio",
-                "tantivy_compaction_max_tombstones", "tantivy_tombstone_ttl_days",
-            ]),
-            (RerankerConfigAdapter, [
-                "llm_model", "llm_api_base_url", "cross_encoder_model",
-                "cross_encoder_device", "reranker_batch_normalize",
-                "llm_api_key", "llm_provider", "rerank_max_concurrency",
-                "cross_encoder_top_k", "cross_encoder_batch_size",
-                "cross_encoder_score_threshold", "cross_encoder_use_fp16",
-                "cross_encoder_normalize", "cross_encoder_max_length",
-                "reranker_min_results",
-            ]),
-            (EmbedderConfigAdapter, [
-                "embedding_model", "embedder_provider", "qwen_embedding_dims",
-                "embedding_batch_size", "embedding_max_concurrent_batches",
-                "embedding_cache_enabled", "embedding_cache_size",
-            ]),
-            (ReplacementConfigAdapter, [
-                "enable_smart_replace", "smart_replace_threshold",
-                "smart_replace_min_similarity", "smart_replace_candidate_limit",
-                "smart_replace_max_retries", "smart_replace_retry_delay",
-            ]),
+            (
+                ServerConfigAdapter,
+                [
+                    "transport",
+                    "host",
+                    "port",
+                    "path",
+                    "log_level",
+                    "workspace_id",
+                ],
+            ),
+            (
+                SearchConfigAdapter,
+                [
+                    "search_limit",
+                    "enable_hybrid_search",
+                    "enable_rrf_fusion",
+                    "fusion_rrf_k",
+                    "fusion_threshold",
+                    "reranker_engine",
+                    "search_score_threshold",
+                    "enable_recency_boost",
+                    "recency_decay_rate",
+                ],
+            ),
+            (
+                StorageConfigAdapter,
+                [
+                    "storage_path",
+                    "usearch_index_path",
+                    "tantivy_index_path",
+                    "embedding_dims",
+                    "metric",
+                    "tantivy_normalize_scores",
+                    "tantivy_soft_delete_enabled",
+                    "tantivy_compaction_threshold_ratio",
+                    "tantivy_compaction_max_tombstones",
+                    "tantivy_tombstone_ttl_days",
+                ],
+            ),
+            (
+                RerankerConfigAdapter,
+                [
+                    "llm_model",
+                    "llm_api_base_url",
+                    "cross_encoder_model",
+                    "cross_encoder_device",
+                    "reranker_batch_normalize",
+                    "llm_api_key",
+                    "llm_provider",
+                    "rerank_max_concurrency",
+                    "cross_encoder_top_k",
+                    "cross_encoder_batch_size",
+                    "cross_encoder_score_threshold",
+                    "cross_encoder_use_fp16",
+                    "cross_encoder_normalize",
+                    "cross_encoder_max_length",
+                    "reranker_min_results",
+                ],
+            ),
+            (
+                EmbedderConfigAdapter,
+                [
+                    "embedding_model",
+                    "embedder_provider",
+                    "qwen_embedding_dims",
+                    "embedding_batch_size",
+                    "embedding_max_concurrent_batches",
+                    "embedding_cache_enabled",
+                    "embedding_cache_size",
+                ],
+            ),
+            (
+                ReplacementConfigAdapter,
+                [
+                    "enable_smart_replace",
+                    "smart_replace_threshold",
+                    "smart_replace_min_similarity",
+                    "smart_replace_candidate_limit",
+                    "smart_replace_max_retries",
+                    "smart_replace_retry_delay",
+                ],
+            ),
         ]
         for adapter_cls, required_props in pairs:
             for prop in required_props:
                 assert hasattr(adapter_cls, prop), (
                     f"{adapter_cls.__name__} missing {prop}"
                 )
+
 
 # ---------------------------------------------------------------------------
 # 4. Subpackage importability
@@ -425,4 +502,3 @@ class TestSubpackageImportability:
         import reflectlog.infrastructure
 
         assert reflectlog.infrastructure is not None
-

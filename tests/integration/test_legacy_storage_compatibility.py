@@ -210,9 +210,7 @@ def test_later_write_wins_does_not_resurrect_superseded_add() -> None:
             store = manager._semantic_engine.memory_store
             assert isinstance(store, MemoryStore)
             _ = store.begin_add_intents(manager.workspace_id, ["ghost-content"])
-            _ = store.begin_delete_intents(
-                manager.workspace_id, [(0, "ghost-content")]
-            )
+            _ = store.begin_delete_intents(manager.workspace_id, [(0, "ghost-content")])
             completed = manager.reconcile_pending_replacements()
             assert completed >= 1
             assert manager.get_all() == ["keep-me"]

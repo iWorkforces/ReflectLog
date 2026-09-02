@@ -1,4 +1,4 @@
-'''Test to demonstrate verbose logging in the MCP server.'''
+"""Test to demonstrate verbose logging in the MCP server."""
 
 import os
 
@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_verbose_logging():
-    '''Test with a small dataset to see verbose logging.'''
+    """Test with a small dataset to see verbose logging."""
 
     print("\n" + "=" * 70)
     print("Testing Verbose Logging")

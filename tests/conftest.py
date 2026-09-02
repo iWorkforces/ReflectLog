@@ -1,4 +1,4 @@
-'''Shared fixtures and configuration for all tests.'''
+"""Shared fixtures and configuration for all tests."""
 
 from collections.abc import Callable, Generator
 from typing import TYPE_CHECKING
@@ -12,34 +12,34 @@ if TYPE_CHECKING:
 
 
 class MockMemorySearchResult:
-    '''Mock implementation of MemorySearchResult for testing.'''
+    """Mock implementation of MemorySearchResult for testing."""
 
     def __init__(self, text: str, index: int | str):
-        '''Initialize mock search result.
+        """Initialize mock search result.
 
         Args:
             text: The memory text content
             index: Unique identifier for the result
-        '''
+        """
         self._text = text
         self.index = index
 
     def __str__(self) -> str:
-        '''Return string representation.'''
+        """Return string representation."""
         return self._text
 
     def lower(self) -> str:
-        '''Return lowercase version of the text.'''
+        """Return lowercase version of the text."""
         return self._text.lower()
 
 
 @pytest.fixture
 def mock_search_result() -> Callable[[str, int | str], MockMemorySearchResult]:
-    '''Factory fixture for creating mock search results.
+    """Factory fixture for creating mock search results.
 
     Returns:
         Callable that creates MockMemorySearchResult instances
-    '''
+    """
 
     def _create_result(text: str, index: int | str = 0) -> MockMemorySearchResult:
         return MockMemorySearchResult(text, index)
@@ -49,13 +49,14 @@ def mock_search_result() -> Callable[[str, int | str], MockMemorySearchResult]:
 
 @pytest.fixture
 def mock_usearch_engine() -> MagicMock:
-    '''Mock USearchEngine instance for testing.
+    """Mock USearchEngine instance for testing.
 
     Returns:
         MagicMock configured to behave like a USearchEngine instance
-    '''
+    """
     engine = MagicMock()
     engine.add = MagicMock(return_value=None)
+
     def add_batch(
         workspace_id: str,
         messages: list[str] | None = None,
@@ -82,11 +83,11 @@ def mock_usearch_engine() -> MagicMock:
 
 @pytest.fixture
 def mock_memory_class(mock_usearch_engine: MagicMock) -> Generator[MagicMock]:
-    '''Mock USearchEngine class for patching imports.
+    """Mock USearchEngine class for patching imports.
 
     Yields:
         Patched USearchEngine class that returns mock_usearch_engine instance
-    '''
+    """
     with patch("reflectlog.application.memory.manager.USearchEngine") as mock_cls:
         mock_cls.return_value = mock_usearch_engine
         yield mock_cls
@@ -94,14 +95,14 @@ def mock_memory_class(mock_usearch_engine: MagicMock) -> Generator[MagicMock]:
 
 @pytest.fixture
 def set_env_vars(monkeypatch: MonkeyPatch) -> dict[str, str]:
-    '''Set required environment variables for testing.
+    """Set required environment variables for testing.
 
     Args:
         monkeypatch: pytest monkeypatch fixture
 
     Returns:
         Dictionary of set environment variables
-    '''
+    """
     env_vars = {
         "WORKSPACE_ID": "test_project",
         "OPENROUTER_API_KEY": "test_key",
@@ -131,11 +132,11 @@ def set_env_vars(monkeypatch: MonkeyPatch) -> dict[str, str]:
 
 @pytest.fixture
 def unset_workspace_id(monkeypatch: MonkeyPatch) -> None:
-    '''Remove WORKSPACE_ID from environment for testing missing config.
+    """Remove WORKSPACE_ID from environment for testing missing config.
 
     Args:
         monkeypatch: pytest monkeypatch fixture
-    '''
+    """
     monkeypatch.delenv("WORKSPACE_ID", raising=False)
 
 
@@ -143,7 +144,7 @@ def unset_workspace_id(monkeypatch: MonkeyPatch) -> None:
 def mcp_server(
     set_env_vars: dict[str, str], mock_usearch_engine: MagicMock
 ) -> "FastMCPServer":
-    '''Create FastMCPServer instance with mocked dependencies.
+    """Create FastMCPServer instance with mocked dependencies.
 
     Args:
         set_env_vars: Environment variables fixture
@@ -151,7 +152,7 @@ def mcp_server(
 
     Returns:
         FastMCPServer instance for testing
-    '''
+    """
     with (
         patch(
             "reflectlog.application.memory.manager.USearchEngine"
@@ -198,11 +199,11 @@ def mcp_server(
 
 @pytest.fixture
 def sample_memories() -> dict[str, list[str] | dict[str, str]]:
-    '''Provide sample memories for testing.
+    """Provide sample memories for testing.
 
     Returns:
         Dictionary of sample memory lists for various test scenarios
-    '''
+    """
     return {
         "single": ["Hello, World!"],
         "multiple": [
@@ -235,11 +236,11 @@ def sample_memories() -> dict[str, list[str] | dict[str, str]]:
 
 @pytest.fixture
 def mock_logger() -> MagicMock:
-    '''Mock logger for testing logging behavior.
+    """Mock logger for testing logging behavior.
 
     Returns:
         MagicMock configured as a logger
-    '''
+    """
     logger = MagicMock()
     logger.info = MagicMock()
     logger.error = MagicMock()
@@ -249,10 +250,10 @@ def mock_logger() -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def reset_env_after_test():
-    '''Automatically reset environment after each test.
+    """Automatically reset environment after each test.
 
     This fixture runs after every test to ensure clean state.
-    '''
+    """
     yield
     # Reset cached config singleton to avoid cross-test config mutation
     try:
@@ -274,14 +275,14 @@ def reset_env_after_test():
 def create_search_results(
     mock_search_result: Callable[[str, int | str], MockMemorySearchResult],
 ) -> Callable[[list[str]], list[tuple[str, float, str]]]:
-    '''Factory for creating lists of search results in USearchEngine format.
+    """Factory for creating lists of search results in USearchEngine format.
 
     Args:
         mock_search_result: Factory fixture for single results (unused, kept for compatibility)
 
     Returns:
         Callable that creates lists of tuples (memory, score, created_at) for USearchEngine.search()
-    '''
+    """
 
     def _create_results(memories: list[str]) -> list[tuple[str, float, str]]:
         # USearchEngine.search returns List[Tuple[str, float, str]]
@@ -297,12 +298,14 @@ def create_search_results(
 
 
 @pytest.fixture
-def create_search_response() -> Callable[[list[str], bool], dict[str, list[dict[str, str]]]]:
-    '''Factory for creating search response dictionaries.
+def create_search_response() -> Callable[
+    [list[str], bool], dict[str, list[dict[str, str]]]
+]:
+    """Factory for creating search response dictionaries.
 
     Returns:
         Callable that creates search response format: {'results': [{'memory': '...', 'id': '...'}]}
-    '''
+    """
 
     def _create_response(
         memories: list[str], include_ids: bool = True
@@ -319,18 +322,20 @@ def create_search_response() -> Callable[[list[str], bool], dict[str, list[dict[
 
 
 @pytest.fixture
-def get_tool_func(mcp_server: "FastMCPServer") -> Callable[[str], Callable[..., object]]:
-    '''Helper to get tool function by name.
+def get_tool_func(
+    mcp_server: "FastMCPServer",
+) -> Callable[[str], Callable[..., object]]:
+    """Helper to get tool function by name.
 
     Args:
         mcp_server: FastMCPServer instance
 
     Returns:
         Callable that retrieves tool functions by name
-    '''
+    """
 
     def _get_tool(tool_name: str) -> Callable[..., object]:
-        '''Get tool function by name.'''
+        """Get tool function by name."""
         for tool in mcp_server.tools:
             if tool.get_name() == tool_name:
                 return tool.get_handler()
@@ -340,24 +345,32 @@ def get_tool_func(mcp_server: "FastMCPServer") -> Callable[[str], Callable[..., 
 
 
 @pytest.fixture
-def add_tool(get_tool_func: Callable[[str], Callable[..., object]]) -> Callable[..., object]:
-    '''Get the add tool function.'''
+def add_tool(
+    get_tool_func: Callable[[str], Callable[..., object]],
+) -> Callable[..., object]:
+    """Get the add tool function."""
     return get_tool_func("add")
 
 
 @pytest.fixture
-def get_all_tool(get_tool_func: Callable[[str], Callable[..., object]]) -> Callable[..., object]:
-    '''Get the get_all tool function.'''
+def get_all_tool(
+    get_tool_func: Callable[[str], Callable[..., object]],
+) -> Callable[..., object]:
+    """Get the get_all tool function."""
     return get_tool_func("get_all")
 
 
 @pytest.fixture
-def search_tool(get_tool_func: Callable[[str], Callable[..., object]]) -> Callable[..., object]:
-    '''Get the search tool function.'''
+def search_tool(
+    get_tool_func: Callable[[str], Callable[..., object]],
+) -> Callable[..., object]:
+    """Get the search tool function."""
     return get_tool_func("search")
 
 
 @pytest.fixture
-def remove_tool(get_tool_func: Callable[[str], Callable[..., object]]) -> Callable[..., object]:
-    '''Get the remove tool function.'''
+def remove_tool(
+    get_tool_func: Callable[[str], Callable[..., object]],
+) -> Callable[..., object]:
+    """Get the remove tool function."""
     return get_tool_func("remove")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Test case: cats -> dogs replacement.'''
+"""Test case: cats -> dogs replacement."""
 
 import asyncio
 import os
@@ -17,7 +17,7 @@ load_dotenv(os.path.join(project_root, ".env"))
 
 
 async def main():
-    '''Test the cats -> dogs replacement case.'''
+    """Test the cats -> dogs replacement case."""
     workspace_id = "test-cats-dogs"
     index_path = f"indexes/{workspace_id}"
 
@@ -87,7 +87,10 @@ async def main():
             print("   Let's check the similarity score...")
 
             # Check similarity manually
-            from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
+            from reflectlog.infrastructure.smart_replacer import (
+                SmartReplacer,
+                SmartReplacerConfig,
+            )
 
             sr_config = SmartReplacerConfig(
                 api_key="not-used",

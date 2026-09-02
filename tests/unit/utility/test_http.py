@@ -206,9 +206,7 @@ class TestFirstCallOverrides:
     """First non-None constructor values win; later calls do not rebuild."""
 
     def test_http2_false_is_preserved(self) -> None:
-        with patch(
-            "reflectlog.utility.http.httpx.Client", wraps=httpx.Client
-        ) as ctor:
+        with patch("reflectlog.utility.http.httpx.Client", wraps=httpx.Client) as ctor:
             _ = HttpClientFactory.get_httpx_client(http2=False)
         assert ctor.call_args is not None
         assert ctor.call_args.kwargs["http2"] is False

@@ -366,7 +366,9 @@ class TestFromEnvironmentOverrides:
     def test_embedding_max_concurrent_batches_clamped(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        with pytest.raises(ConfigurationError, match="EMBEDDING_MAX_CONCURRENT_BATCHES"):
+        with pytest.raises(
+            ConfigurationError, match="EMBEDDING_MAX_CONCURRENT_BATCHES"
+        ):
             _ = self._with_env(monkeypatch, EMBEDDING_MAX_CONCURRENT_BATCHES="0")
 
     def test_embedding_cache_disabled(self, monkeypatch: pytest.MonkeyPatch):
@@ -834,10 +836,16 @@ class TestPresetIntegration:
             monkeypatch.setenv(k, v)
         monkeypatch.delenv("REFLECTLOG_PROFILE", raising=False)
         # Ensure no leftover preset-applied env vars from prior test
-        for var in ("ENABLE_HYBRID_SEARCH", "SEARCH_LIMIT", "RERANKER_ENGINE",
-                    "ENABLE_RECENCY_BOOST", "ENABLE_SMART_REPLACE",
-                    "EMBEDDING_BATCH_SIZE", "EMBEDDING_MAX_CONCURRENT_BATCHES",
-                    "USEARCH_EXACT_SEARCH"):
+        for var in (
+            "ENABLE_HYBRID_SEARCH",
+            "SEARCH_LIMIT",
+            "RERANKER_ENGINE",
+            "ENABLE_RECENCY_BOOST",
+            "ENABLE_SMART_REPLACE",
+            "EMBEDDING_BATCH_SIZE",
+            "EMBEDDING_MAX_CONCURRENT_BATCHES",
+            "USEARCH_EXACT_SEARCH",
+        ):
             monkeypatch.delenv(var, raising=False)
         cfg = Config.from_environment()
         assert cfg.enable_hybrid_search is True
@@ -1080,9 +1088,7 @@ class TestMalformedNumericSettings:
         assert raw not in message or raw == ""
         assert "sk-test-key-12345" not in message
 
-    def test_valid_boundary_values_parse(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_valid_boundary_values_parse(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = self._load(
             monkeypatch,
             MCP_PORT="1",
@@ -1095,8 +1101,6 @@ class TestMalformedNumericSettings:
         assert cfg.recency_decay_rate == 0.0
         assert cfg.tantivy_tombstone_ttl_days == 0
 
-    def test_port_still_takes_precedence(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_port_still_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = self._load(monkeypatch, PORT="8080", MCP_PORT="7777")
         assert cfg.port == 8080

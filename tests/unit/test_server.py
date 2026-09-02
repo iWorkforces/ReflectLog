@@ -1,4 +1,4 @@
-'''Unit tests for reflectlog/server.py CLI module.'''
+"""Unit tests for reflectlog/server.py CLI module."""
 
 from collections.abc import Callable
 import io
@@ -19,14 +19,19 @@ if str(project_root) not in sys.path:
 
 @pytest.mark.unit
 class TestCLIArgumentParsing:
-    '''Test CLI argument parsing functionality.'''
+    """Test CLI argument parsing functionality."""
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_default_arguments(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test main() with no arguments uses defaults.'''
+    def test_default_arguments(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test main() with no arguments uses defaults."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -48,8 +53,13 @@ class TestCLIArgumentParsing:
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_transport_http_argument(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test --transport http argument.'''
+    def test_transport_http_argument(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test --transport http argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -69,9 +79,12 @@ class TestCLIArgumentParsing:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_transport_stdio_argument(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ):
-        '''Test --transport stdio argument.'''
+        """Test --transport stdio argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -89,8 +102,13 @@ class TestCLIArgumentParsing:
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_port_argument(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test --port argument.'''
+    def test_port_argument(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test --port argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -108,8 +126,13 @@ class TestCLIArgumentParsing:
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_host_argument(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test --host argument.'''
+    def test_host_argument(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test --host argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -127,8 +150,13 @@ class TestCLIArgumentParsing:
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_path_argument(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test --path argument.'''
+    def test_path_argument(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test --path argument."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -146,8 +174,13 @@ class TestCLIArgumentParsing:
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_multiple_arguments(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test multiple arguments together.'''
+    def test_multiple_arguments(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test multiple arguments together."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -176,7 +209,7 @@ class TestCLIArgumentParsing:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_help_argument(self):
-        '''Test --help argument.'''
+        """Test --help argument."""
         from reflectlog.server import main
 
         with patch("sys.argv", ["reflectlog", "--help"]):
@@ -188,7 +221,7 @@ class TestCLIArgumentParsing:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_version_argument(self):
-        '''Test --version argument.'''
+        """Test --version argument."""
         from reflectlog.server import main
 
         with patch("sys.argv", ["reflectlog", "--version"]):
@@ -200,8 +233,8 @@ class TestCLIArgumentParsing:
 
 
 def _run_cli(args: list[str]):
-    import subprocess
     from pathlib import Path
+    import subprocess
 
     repo = Path(__file__).resolve().parents[2]
     return subprocess.run(
@@ -230,9 +263,9 @@ class TestLightweightCliMetadata:
         assert "transport" in completed.stdout.lower()
 
     def test_version_does_not_import_heavy_modules(self) -> None:
+        from pathlib import Path
         import subprocess
         import sys
-        from pathlib import Path
 
         repo = Path(__file__).resolve().parents[2]
         script = """
@@ -272,14 +305,19 @@ assert not heavy, sorted(heavy)
 
 @pytest.mark.unit
 class TestEnvironmentConfiguration:
-    '''Test environment variable configuration.'''
+    """Test environment variable configuration."""
 
     @patch.dict(os.environ, {"MCP_TRANSPORT": "sse"}, clear=True)
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_env_var_transport(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test MCP_TRANSPORT environment variable.'''
+    def test_env_var_transport(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test MCP_TRANSPORT environment variable."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -299,9 +337,12 @@ class TestEnvironmentConfiguration:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_cli_args_override_env_vars(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ):
-        '''Test that CLI arguments override environment variables.'''
+        """Test that CLI arguments override environment variables."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -320,14 +361,19 @@ class TestEnvironmentConfiguration:
 
 @pytest.mark.unit
 class TestServerInitialization:
-    '''Test server initialization and startup.'''
+    """Test server initialization and startup."""
 
     @patch.dict(os.environ, {"WORKSPACE_ID": "test_project"}, clear=True)
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_server_instantiation(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test FastMCPServer is instantiated.'''
+    def test_server_instantiation(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test FastMCPServer is instantiated."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -346,8 +392,13 @@ class TestServerInitialization:
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_server_run_called(self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock) -> None:
-        '''Test server.run() is called.'''
+    def test_server_run_called(
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+    ) -> None:
+        """Test server.run() is called."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -365,7 +416,7 @@ class TestServerInitialization:
 
 @pytest.mark.unit
 class TestOutputStreams:
-    '''Test output stream configuration.'''
+    """Test output stream configuration."""
 
     @patch.dict(os.environ, {"WORKSPACE_ID": "test_project"}, clear=True)
     @patch("sys.stderr")
@@ -374,9 +425,14 @@ class TestOutputStreams:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_stdio_transport_uses_stderr(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock, mock_stdout: MagicMock, mock_stderr: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
+        mock_stdout: MagicMock,
+        mock_stderr: MagicMock,
     ):
-        '''Test stdio transport redirects output to stderr.'''
+        """Test stdio transport redirects output to stderr."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -397,9 +453,12 @@ class TestOutputStreams:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_http_transport_uses_stdout(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ):
-        '''Test http transport uses stdout.'''
+        """Test http transport uses stdout."""
         mock_server = MagicMock()
         mock_server_class.return_value = mock_server
 
@@ -417,11 +476,11 @@ class TestOutputStreams:
 
 @pytest.mark.unit
 class TestWarmupNumbaWithConfig:
-    '''Test warmup_numba_with_config function directly.'''
+    """Test warmup_numba_with_config function directly."""
 
     @patch("reflectlog.server.warmup_numba_functions")
     def test_disabled_without_output_stream(self, mock_warmup: MagicMock) -> None:
-        '''Test warmup disabled without output stream returns None silently.'''
+        """Test warmup disabled without output stream returns None silently."""
         from reflectlog.server import warmup_numba_with_config
 
         result = warmup_numba_with_config(enabled=False, output_stream=None)
@@ -431,7 +490,7 @@ class TestWarmupNumbaWithConfig:
 
     @patch("reflectlog.server.warmup_numba_functions")
     def test_disabled_with_output_stream(self, mock_warmup: MagicMock) -> None:
-        '''Test warmup disabled with output stream prints message (lines 51-53).'''
+        """Test warmup disabled with output stream prints message (lines 51-53)."""
         from reflectlog.server import warmup_numba_with_config
 
         output = io.StringIO()
@@ -443,7 +502,7 @@ class TestWarmupNumbaWithConfig:
 
     @patch("reflectlog.server.warmup_numba_functions")
     def test_invalid_mode_raises_value_error(self, mock_warmup: MagicMock) -> None:
-        '''Test invalid mode raises ValueError (lines 57-58).'''
+        """Test invalid mode raises ValueError (lines 57-58)."""
         from reflectlog.server import warmup_numba_with_config
 
         with pytest.raises(ValueError, match="Invalid NUMBA_WARMUP_MODE"):
@@ -453,7 +512,7 @@ class TestWarmupNumbaWithConfig:
 
     @patch("reflectlog.server.warmup_numba_functions")
     def test_invalid_mode_includes_valid_options(self, mock_warmup: MagicMock) -> None:
-        '''Test ValueError message includes all valid mode options.'''
+        """Test ValueError message includes all valid mode options."""
         from reflectlog.server import warmup_numba_with_config
 
         with pytest.raises(ValueError, match="sync, async, background"):
@@ -461,7 +520,7 @@ class TestWarmupNumbaWithConfig:
 
     @patch("reflectlog.server.warmup_numba_functions")
     def test_sync_mode_with_output_stream(self, mock_warmup: MagicMock) -> None:
-        '''Test sync mode prints progress messages (lines 63-68).'''
+        """Test sync mode prints progress messages (lines 63-68)."""
         from reflectlog.server import warmup_numba_with_config
 
         output = io.StringIO()
@@ -477,7 +536,7 @@ class TestWarmupNumbaWithConfig:
 
     @patch("reflectlog.server.warmup_numba_functions")
     def test_sync_mode_without_output_stream(self, mock_warmup: MagicMock) -> None:
-        '''Test sync mode works without output stream.'''
+        """Test sync mode works without output stream."""
         from reflectlog.server import warmup_numba_with_config
 
         result = warmup_numba_with_config(enabled=True, mode="sync", output_stream=None)
@@ -487,7 +546,7 @@ class TestWarmupNumbaWithConfig:
 
     @patch("reflectlog.server.warmup_numba_functions")
     def test_async_mode_returns_thread(self, mock_warmup: MagicMock) -> None:
-        '''Test async mode returns a non-daemon thread.'''
+        """Test async mode returns a non-daemon thread."""
         from reflectlog.server import warmup_numba_with_config
 
         output = io.StringIO()
@@ -501,8 +560,10 @@ class TestWarmupNumbaWithConfig:
         assert "background thread" in output.getvalue().lower()
 
     @patch("reflectlog.server.warmup_numba_functions")
-    def test_background_mode_returns_daemon_thread(self, mock_warmup: MagicMock) -> None:
-        '''Test background mode returns a daemon thread.'''
+    def test_background_mode_returns_daemon_thread(
+        self, mock_warmup: MagicMock
+    ) -> None:
+        """Test background mode returns a daemon thread."""
         from reflectlog.server import warmup_numba_with_config
 
         output = io.StringIO()
@@ -516,8 +577,10 @@ class TestWarmupNumbaWithConfig:
         assert "background daemon thread" in output.getvalue().lower()
 
     @patch("reflectlog.server.warmup_numba_functions")
-    def test_warmup_worker_exception_prints_warning(self, mock_warmup: MagicMock) -> None:
-        '''Test warmup_worker exception path prints warning (lines 86-88).'''
+    def test_warmup_worker_exception_prints_warning(
+        self, mock_warmup: MagicMock
+    ) -> None:
+        """Test warmup_worker exception path prints warning (lines 86-88)."""
         from reflectlog.server import warmup_numba_with_config
 
         mock_warmup.side_effect = RuntimeError("JIT compilation failed")
@@ -535,8 +598,10 @@ class TestWarmupNumbaWithConfig:
         assert "JIT compilation failed" in output_text
 
     @patch("reflectlog.server.warmup_numba_functions")
-    def test_warmup_worker_exception_without_output_stream(self, mock_warmup: MagicMock) -> None:
-        '''Test warmup_worker exception is silenced without output stream.'''
+    def test_warmup_worker_exception_without_output_stream(
+        self, mock_warmup: MagicMock
+    ) -> None:
+        """Test warmup_worker exception is silenced without output stream."""
         from reflectlog.server import warmup_numba_with_config
 
         mock_warmup.side_effect = RuntimeError("JIT compilation failed")
@@ -552,13 +617,15 @@ class TestWarmupNumbaWithConfig:
 
 @pytest.mark.unit
 class TestGracefulShutdown:
-    '''Test graceful shutdown signal handler (lines 232-242).'''
+    """Test graceful shutdown signal handler (lines 232-242)."""
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_sigint_triggers_graceful_shutdown(self, mock_server_class: MagicMock, mock_warmup: MagicMock) -> None:
-        '''Test SIGINT calls server.close() and sys.exit(0).'''
+    def test_sigint_triggers_graceful_shutdown(
+        self, mock_server_class: MagicMock, mock_warmup: MagicMock
+    ) -> None:
+        """Test SIGINT calls server.close() and sys.exit(0)."""
         from reflectlog.server import main
 
         mock_server = MagicMock()
@@ -596,7 +663,7 @@ class TestGracefulShutdown:
     def test_second_sigint_re_raises_default_signal(
         self, mock_server_class: MagicMock, mock_warmup: MagicMock
     ) -> None:
-        '''A second SIGINT restores SIG_DFL and re-raises the signal.'''
+        """A second SIGINT restores SIG_DFL and re-raises the signal."""
         from reflectlog.server import main
 
         mock_server = MagicMock()
@@ -632,8 +699,10 @@ class TestGracefulShutdown:
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
-    def test_sigterm_triggers_graceful_shutdown(self, mock_server_class: MagicMock, mock_warmup: MagicMock) -> None:
-        '''Test SIGTERM calls server.close() and sys.exit(0).'''
+    def test_sigterm_triggers_graceful_shutdown(
+        self, mock_server_class: MagicMock, mock_warmup: MagicMock
+    ) -> None:
+        """Test SIGTERM calls server.close() and sys.exit(0)."""
         from reflectlog.server import main
 
         mock_server = MagicMock()
@@ -670,7 +739,7 @@ class TestGracefulShutdown:
     def test_graceful_shutdown_when_server_is_none(
         self, mock_server_class: MagicMock, mock_warmup: MagicMock
     ):
-        '''Test graceful shutdown handles server=None (before initialization).'''
+        """Test graceful shutdown handles server=None (before initialization)."""
         from reflectlog.server import main
 
         # Make FastMCPServer raise so server stays None when handler runs
@@ -700,7 +769,7 @@ class TestGracefulShutdown:
 
 @pytest.mark.unit
 class TestStartupTimingVerbose:
-    '''Test STARTUP_TIMING_VERBOSE output (lines 266-268).'''
+    """Test STARTUP_TIMING_VERBOSE output (lines 266-268)."""
 
     @patch.dict(
         os.environ,
@@ -711,9 +780,12 @@ class TestStartupTimingVerbose:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_verbose_timing_prints_breakdown(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ):
-        '''Test verbose startup timing prints phase breakdown (lines 266-268).'''
+        """Test verbose startup timing prints phase breakdown (lines 266-268)."""
         from reflectlog.server import main
 
         mock_server = MagicMock()
@@ -746,9 +818,12 @@ class TestStartupTimingVerbose:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_non_verbose_skips_breakdown(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ):
-        '''Test non-verbose mode does not print timing breakdown.'''
+        """Test non-verbose mode does not print timing breakdown."""
         from reflectlog.server import main
 
         mock_server = MagicMock()
@@ -771,16 +846,19 @@ class TestStartupTimingVerbose:
 
 @pytest.mark.unit
 class TestMainExceptionHandling:
-    '''Test exception handling in main() (lines 274-283).'''
+    """Test exception handling in main() (lines 274-283)."""
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.server.signal.signal")
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_keyboard_interrupt_during_run(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ):
-        '''Test KeyboardInterrupt during server.run() triggers cleanup (lines 274-278).'''
+        """Test KeyboardInterrupt during server.run() triggers cleanup (lines 274-278)."""
         from reflectlog.server import main
 
         mock_server = MagicMock()
@@ -798,9 +876,12 @@ class TestMainExceptionHandling:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_exception_during_run_reraises(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ):
-        '''Test generic Exception during server.run() calls close and re-raises (lines 279-283).'''
+        """Test generic Exception during server.run() calls close and re-raises (lines 279-283)."""
         from reflectlog.server import main
 
         mock_server = MagicMock()
@@ -818,9 +899,12 @@ class TestMainExceptionHandling:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_exception_during_init_no_close(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ) -> None:
-        '''Test exception during FastMCPServer() does not call close on None server.'''
+        """Test exception during FastMCPServer() does not call close on None server."""
         from reflectlog.server import main
 
         mock_server_class.side_effect = RuntimeError("Init failed")
@@ -834,9 +918,12 @@ class TestMainExceptionHandling:
     @patch("reflectlog.server.warmup_numba_functions")
     @patch("reflectlog.server.FastMCPServer")
     def test_keyboard_interrupt_with_none_server(
-        self, mock_server_class: MagicMock, mock_warmup: MagicMock, mock_signal: MagicMock
+        self,
+        mock_server_class: MagicMock,
+        mock_warmup: MagicMock,
+        mock_signal: MagicMock,
     ) -> None:
-        '''Test KeyboardInterrupt when server is None does not call close.'''
+        """Test KeyboardInterrupt when server is None does not call close."""
         from reflectlog.server import main
 
         mock_server_class.side_effect = KeyboardInterrupt

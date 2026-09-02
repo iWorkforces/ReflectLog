@@ -17,7 +17,9 @@ def _write_and_die(
     workspace_id: str,
     ready: multiprocessing.synchronize.Event,
 ) -> None:
-    coordinator = PortalockerStorageCoordinator(os.path.dirname(index_path), timeout=5.0)
+    coordinator = PortalockerStorageCoordinator(
+        os.path.dirname(index_path), timeout=5.0
+    )
     engine = TantivyEngine(
         TantivyConfig(workspace_id=workspace_id, index_path=index_path),
         coordinator=coordinator,

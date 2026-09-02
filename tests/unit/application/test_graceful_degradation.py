@@ -1,8 +1,8 @@
-'''Graceful degradation path tests.
+"""Graceful degradation path tests.
 
 These tests verify that the system degrades gracefully when external
 dependencies (LLM providers, APIs) fail or are unavailable.
-'''
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
@@ -16,11 +16,11 @@ from reflectlog.infrastructure.smart_replacer import (
 
 @pytest.mark.unit
 class TestSmartReplacerDegradation:
-    '''Tests for SmartReplacer graceful degradation.'''
+    """Tests for SmartReplacer graceful degradation."""
 
     @pytest.mark.asyncio
     async def test_replacer_adds_normally_on_llm_failure(self):
-        '''Test that memory is added normally when LLM replacement check fails.'''
+        """Test that memory is added normally when LLM replacement check fails."""
         provider = OpenAIReplacementProvider(
             api_key="test-key",
             base_url="https://api.test.com",
@@ -57,7 +57,7 @@ class TestSmartReplacerDegradation:
 
     @pytest.mark.asyncio
     async def test_replacer_with_retry_success_after_transient_failure(self):
-        '''Test that transient failures are retried successfully.'''
+        """Test that transient failures are retried successfully."""
         provider = OpenAIReplacementProvider(
             api_key="test-key",
             base_url="https://api.test.com",
@@ -110,7 +110,7 @@ class TestSmartReplacerDegradation:
 
     @pytest.mark.asyncio
     async def test_replacer_invalid_json_fallback(self):
-        '''Test that invalid JSON responses are handled gracefully.'''
+        """Test that invalid JSON responses are handled gracefully."""
         provider = OpenAIReplacementProvider(
             api_key="test-key",
             base_url="https://api.test.com",
@@ -143,7 +143,7 @@ class TestSmartReplacerDegradation:
 
     @pytest.mark.asyncio
     async def test_replacer_missing_fields_fallback(self):
-        '''Test that missing fields in JSON are handled gracefully.'''
+        """Test that missing fields in JSON are handled gracefully."""
         provider = OpenAIReplacementProvider(
             api_key="test-key",
             base_url="https://api.test.com",
@@ -203,7 +203,7 @@ class TestSmartReplacerDegradation:
 
     @pytest.mark.asyncio
     async def test_replacer_confidence_clamping(self):
-        '''Test that confidence values are clamped to [0, 1].'''
+        """Test that confidence values are clamped to [0, 1]."""
         provider = OpenAIReplacementProvider(
             api_key="test-key",
             base_url="https://api.test.com",
@@ -244,7 +244,7 @@ class TestSmartReplacerDegradation:
 
     @pytest.mark.asyncio
     async def test_replacer_timeout_handling(self):
-        '''Test that timeouts are handled gracefully.'''
+        """Test that timeouts are handled gracefully."""
         provider = OpenAIReplacementProvider(
             api_key="test-key",
             base_url="https://api.test.com",

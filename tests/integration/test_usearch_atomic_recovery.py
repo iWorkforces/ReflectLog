@@ -59,9 +59,7 @@ def _writer_die_at(
     first.commit()
     first.close()
     ready.set()
-    second = USearchEngine(
-        config=config, embedder=_HashEmbedder(), publish_hook=boom
-    )
+    second = USearchEngine(config=config, embedder=_HashEmbedder(), publish_hook=boom)
     second.add(workspace_id, "new-row", infer=False)
     second.commit()
 
@@ -69,11 +67,15 @@ def _writer_die_at(
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "step",
-    ["before_save", "after_temp_save", "after_temp_validate", "after_fsync", "before_replace"],
+    [
+        "before_save",
+        "after_temp_save",
+        "after_temp_validate",
+        "after_fsync",
+        "before_replace",
+    ],
 )
-def test_kill_at_publish_failpoint_keeps_valid_index(
-    tmp_path: Path, step: str
-) -> None:
+def test_kill_at_publish_failpoint_keeps_valid_index(tmp_path: Path, step: str) -> None:
     index_path = str(tmp_path / "vectors.usearch")
     db_path = str(tmp_path / "memories.db")
     ctx = multiprocessing.get_context("spawn")

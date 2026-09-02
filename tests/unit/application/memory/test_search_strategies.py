@@ -175,7 +175,10 @@ class TestSearchPipelineExecute:
 
     @pytest.mark.asyncio
     async def test_execute_raises_search_error_on_failure(
-        self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock, mock_logger: Mock
+        self,
+        pipeline: SearchPipeline,
+        mock_semantic_engine: MagicMock,
+        mock_logger: Mock,
     ) -> None:
         """execute() wraps unexpected exceptions in SearchError (lines 128-137)."""
         mock_semantic_engine.search.side_effect = RuntimeError("engine boom")
@@ -188,7 +191,9 @@ class TestSearchPipelineExecute:
         mock_logger.error.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_execute_semantic_only(self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock) -> None:
+    async def test_execute_semantic_only(
+        self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock
+    ) -> None:
         """Semantic-only search when hybrid is disabled."""
         mock_semantic_engine.search.return_value = [
             ("msg1", 0.9, "2025-01-01T00:00:00Z"),
@@ -321,7 +326,11 @@ class TestGetReranker:
     """Tests for _get_reranker()."""
 
     def test_returns_none_when_memory_manager_is_none(
-        self, mock_config: Mock, mock_logger: Mock, mock_fusion_engine: MagicMock, mock_semantic_engine: MagicMock
+        self,
+        mock_config: Mock,
+        mock_logger: Mock,
+        mock_fusion_engine: MagicMock,
+        mock_semantic_engine: MagicMock,
     ) -> None:
         """_get_reranker() returns (None, None) when memory_manager is None (line 451)."""
         pipeline = SearchPipeline(
@@ -338,7 +347,10 @@ class TestGetReranker:
         assert rinstance is None
 
     def test_returns_cross_encoder_reranker(
-        self, pipeline: SearchPipeline, mock_config: Mock, mock_memory_manager: MagicMock
+        self,
+        pipeline: SearchPipeline,
+        mock_config: Mock,
+        mock_memory_manager: MagicMock,
     ) -> None:
         """Returns ("cross_encoder", reranker) when configured (line 457)."""
         mock_config.reranker_engine = "cross_encoder"
@@ -350,7 +362,10 @@ class TestGetReranker:
         assert rinstance is mock_reranker
 
     def test_returns_none_when_reranker_is_none(
-        self, pipeline: SearchPipeline, mock_config: Mock, mock_memory_manager: MagicMock
+        self,
+        pipeline: SearchPipeline,
+        mock_config: Mock,
+        mock_memory_manager: MagicMock,
     ) -> None:
         """Returns (None, None) when no lazy reranker instance is available."""
         mock_config.reranker_engine = "cross_encoder"
@@ -372,7 +387,10 @@ class TestStep4Reranking:
 
     @pytest.mark.asyncio
     async def test_cross_encoder_path(
-        self, pipeline: SearchPipeline, mock_config: Mock, mock_memory_manager: MagicMock
+        self,
+        pipeline: SearchPipeline,
+        mock_config: Mock,
+        mock_memory_manager: MagicMock,
     ) -> None:
         """_step4_reranking() delegates to _rerank_cross_encoder (line 475)."""
         mock_config.reranker_engine = "cross_encoder"
@@ -390,7 +408,10 @@ class TestStep4Reranking:
 
     @pytest.mark.asyncio
     async def test_no_reranker_returns_original(
-        self, pipeline: SearchPipeline, mock_config: Mock, mock_memory_manager: MagicMock
+        self,
+        pipeline: SearchPipeline,
+        mock_config: Mock,
+        mock_memory_manager: MagicMock,
     ) -> None:
         """When no reranker is configured, returns results unchanged."""
         mock_config.reranker_engine = "none"
@@ -414,7 +435,10 @@ class TestRerankCrossEncoder:
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_reranker_provided(
-        self, pipeline: SearchPipeline, mock_config: Mock, mock_memory_manager: MagicMock
+        self,
+        pipeline: SearchPipeline,
+        mock_config: Mock,
+        mock_memory_manager: MagicMock,
     ) -> None:
         """Returns results unmodified when cross_encoder_reranker is None (lines 538-541)."""
         mock_config.reranker_engine = "none"
@@ -675,7 +699,10 @@ class TestSearchSemantic:
 
     @pytest.mark.asyncio
     async def test_fallback_on_error(
-        self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock, mock_logger: Mock
+        self,
+        pipeline: SearchPipeline,
+        mock_semantic_engine: MagicMock,
+        mock_logger: Mock,
     ) -> None:
         """Returns empty list and logs warning on exception."""
         mock_semantic_engine.search.side_effect = RuntimeError("embed fail")
@@ -724,7 +751,9 @@ class TestCompleteTimestampMap:
             )
         assert exc_info.value.__cause__ is cause
 
-    def test_fills_missing_from_store(self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock) -> None:
+    def test_fills_missing_from_store(
+        self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock
+    ) -> None:
         class _Stored:
             id = 7
             workspace_id = "proj"

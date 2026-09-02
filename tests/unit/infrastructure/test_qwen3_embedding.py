@@ -1,4 +1,4 @@
-'''Unit tests for LangchainQwenEmbeddings.'''
+"""Unit tests for LangchainQwenEmbeddings."""
 
 from dataclasses import dataclass
 import os
@@ -32,10 +32,10 @@ class EmbeddingResponse:
 
 
 class TestLangchainQwenEmbeddingsInitialization:
-    '''Test initialization of LangchainQwenEmbeddings.'''
+    """Test initialization of LangchainQwenEmbeddings."""
 
     def test_initialization_with_dict_config(self) -> None:
-        '''Test initialization with dictionary configuration.'''
+        """Test initialization with dictionary configuration."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -66,7 +66,7 @@ class TestLangchainQwenEmbeddingsInitialization:
             mock_async_client.assert_not_called()
 
     def test_initialization_with_embedder_config(self) -> None:
-        '''Test initialization with EmbedderConfig.'''
+        """Test initialization with EmbedderConfig."""
         config = EmbedderConfig(
             model="qwen/qwen-2.5-3b-instruct",
             embedding_dims=1536,
@@ -97,7 +97,7 @@ class TestLangchainQwenEmbeddingsInitialization:
             mock_async_client.assert_not_called()
 
     def test_initialization_with_empty_config(self) -> None:
-        '''Test initialization with empty configuration.'''
+        """Test initialization with empty configuration."""
         with (
             patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
             patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
@@ -106,7 +106,7 @@ class TestLangchainQwenEmbeddingsInitialization:
             assert embeddings.config.embedding_dims == 1536  # Default value
 
     def test_api_key_from_environment(self) -> None:
-        '''Test API key from environment variable.'''
+        """Test API key from environment variable."""
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-api-key"}):
             with (
                 patch(
@@ -124,7 +124,7 @@ class TestLangchainQwenEmbeddingsInitialization:
                 assert embeddings.config.api_key == "env-api-key"
 
     def test_base_url_from_environment(self) -> None:
-        '''Test base URL from environment variable.'''
+        """Test base URL from environment variable."""
         with patch.dict(
             os.environ, {"OPENROUTER_BASE_URL": "https://custom.url/api/v1"}
         ):
@@ -144,7 +144,7 @@ class TestLangchainQwenEmbeddingsInitialization:
                 assert embeddings.config.openai_base_url == "https://custom.url/api/v1"
 
     def test_base_url_default_value(self) -> None:
-        '''Test default base URL.'''
+        """Test default base URL."""
         with patch.dict(os.environ, {}, clear=True):
             with (
                 patch(
@@ -164,22 +164,24 @@ class TestLangchainQwenEmbeddingsInitialization:
                 )
 
     def test_deprecated_openai_api_base_warning(self) -> None:
-        '''Test deprecation warning for OPENAI_API_BASE.'''
+        """Test deprecation warning for OPENAI_API_BASE."""
         with patch.dict(os.environ, {"OPENAI_API_BASE": "https://old.url"}):
             with (
                 patch("reflectlog.infrastructure.embeddings.qwen3_embedding.OpenAI"),
-                patch("reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"),
+                patch(
+                    "reflectlog.infrastructure.embeddings.qwen3_embedding.AsyncOpenAI"
+                ),
             ):
                 with pytest.warns(DeprecationWarning, match="OPENAI_API_BASE"):
                     LangchainQwenEmbeddings(config={})
 
 
 class TestSyncEmbedQuery:
-    '''Test synchronous embed_query method.'''
+    """Test synchronous embed_query method."""
 
     @pytest.fixture
     def mock_embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create a mocked LangchainQwenEmbeddings instance.'''
+        """Create a mocked LangchainQwenEmbeddings instance."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -195,7 +197,7 @@ class TestSyncEmbedQuery:
     def test_embed_query_success(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test successful embedding query.'''
+        """Test successful embedding query."""
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
 
@@ -218,7 +220,7 @@ class TestSyncEmbedQuery:
     def test_embed_query_replaces_newlines(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test that newlines are replaced with spaces.'''
+        """Test that newlines are replaced with spaces."""
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
 
@@ -234,7 +236,7 @@ class TestSyncEmbedQuery:
     def test_embed_query_client_not_initialized(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test error when client is not initialized.'''
+        """Test error when client is not initialized."""
         mock_embeddings._client = None
 
         with pytest.raises(
@@ -244,11 +246,11 @@ class TestSyncEmbedQuery:
 
 
 class TestSyncEmbedDocuments:
-    '''Test synchronous embed_documents method.'''
+    """Test synchronous embed_documents method."""
 
     @pytest.fixture
     def mock_embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create a mocked LangchainQwenEmbeddings instance.'''
+        """Create a mocked LangchainQwenEmbeddings instance."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -264,14 +266,14 @@ class TestSyncEmbedDocuments:
     def test_embed_documents_empty_list(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test embedding empty list returns empty list.'''
+        """Test embedding empty list returns empty list."""
         result = mock_embeddings.embed_documents([])
         assert result == []
 
     def test_embed_documents_single_text(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test embedding a single text.'''
+        """Test embedding a single text."""
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
 
@@ -285,7 +287,7 @@ class TestSyncEmbedDocuments:
     def test_embed_documents_multiple_texts(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test embedding multiple texts.'''
+        """Test embedding multiple texts."""
         mock_response = MagicMock()
         mock_response.data = [
             MagicMock(embedding=[0.1, 0.2, 0.3]),
@@ -323,11 +325,11 @@ class TestSyncEmbedDocuments:
 
 
 class TestAsyncEmbedQuery:
-    '''Test asynchronous aembed_query method.'''
+    """Test asynchronous aembed_query method."""
 
     @pytest.fixture
     def mock_embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create a mocked LangchainQwenEmbeddings instance.'''
+        """Create a mocked LangchainQwenEmbeddings instance."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -344,7 +346,7 @@ class TestAsyncEmbedQuery:
     async def test_aembed_query_success(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test successful async embedding query.'''
+        """Test successful async embedding query."""
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
 
@@ -360,7 +362,7 @@ class TestAsyncEmbedQuery:
     async def test_aembed_query_replaces_newlines(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test that newlines are replaced in async version.'''
+        """Test that newlines are replaced in async version."""
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
 
@@ -378,7 +380,7 @@ class TestAsyncEmbedQuery:
     async def test_aembed_query_uses_correct_params(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test that aembed_query uses correct parameters.'''
+        """Test that aembed_query uses correct parameters."""
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
 
@@ -400,7 +402,7 @@ class TestAsyncEmbedQuery:
     async def test_aembed_query_client_not_initialized(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test async client is initialized lazily.'''
+        """Test async client is initialized lazily."""
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
 
@@ -420,11 +422,11 @@ class TestAsyncEmbedQuery:
 
 
 class TestAsyncEmbedDocuments:
-    '''Test asynchronous aembed_documents method.'''
+    """Test asynchronous aembed_documents method."""
 
     @pytest.fixture
     def mock_embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create a mocked LangchainQwenEmbeddings instance.'''
+        """Create a mocked LangchainQwenEmbeddings instance."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -441,7 +443,7 @@ class TestAsyncEmbedDocuments:
     async def test_aembed_documents_empty_list(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test async embedding of empty list.'''
+        """Test async embedding of empty list."""
         result = await mock_embeddings.aembed_documents([])
         assert result == []
 
@@ -449,7 +451,7 @@ class TestAsyncEmbedDocuments:
     async def test_aembed_documents_single_text(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test async embedding of single text.'''
+        """Test async embedding of single text."""
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
 
@@ -466,11 +468,11 @@ class TestAsyncEmbedDocuments:
     async def test_aembed_documents_multiple_texts(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test async embedding of multiple texts with batching.
+        """Test async embedding of multiple texts with batching.
 
         With default batch_size=512, all 3 texts fit in a single batch,
         so only 1 API call should be made.
-        '''
+        """
         call_count = 0
 
         async def mock_create(**kwargs: Unpack[EmbeddingRequest]) -> EmbeddingResponse:
@@ -500,11 +502,11 @@ class TestAsyncEmbedDocuments:
     async def test_aembed_documents_concurrency_limit(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test that batch concurrency is limited by EMBEDDING_MAX_CONCURRENT_BATCHES.
+        """Test that batch concurrency is limited by EMBEDDING_MAX_CONCURRENT_BATCHES.
 
         With batch_size=1, each text becomes its own batch.
         Default max_concurrent_batches=4 should limit concurrent API calls.
-        '''
+        """
         max_concurrent = 0
         current_concurrent = 0
 
@@ -538,11 +540,11 @@ class TestAsyncEmbedDocuments:
     async def test_aembed_documents_parallel_processing(
         self, mock_embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test that batches are processed in parallel.
+        """Test that batches are processed in parallel.
 
         With batch_size=1, each text becomes its own batch.
         All batches should start within a short time window (parallel).
-        '''
+        """
         call_times: list[float] = []
 
         async def mock_create(**kwargs: Unpack[EmbeddingRequest]) -> EmbeddingResponse:
@@ -569,10 +571,10 @@ class TestAsyncEmbedDocuments:
 
 
 class TestConfigurationPriority:
-    '''Test configuration priority (config vs environment variables).'''
+    """Test configuration priority (config vs environment variables)."""
 
     def test_config_takes_priority_over_env(self) -> None:
-        '''Test that config values take priority over environment variables.'''
+        """Test that config values take priority over environment variables."""
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-key"}):
             config = {"api_key": "config-key"}
             with (
@@ -590,7 +592,7 @@ class TestConfigurationPriority:
                 mock_async_client.assert_not_called()
 
     def test_env_used_when_config_not_provided(self) -> None:
-        '''Test that environment variables are used when config not provided.'''
+        """Test that environment variables are used when config not provided."""
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-key"}):
             with (
                 patch(

@@ -1,4 +1,4 @@
-'''Integration tests for LangchainQwenEmbeddings with real API calls.'''
+"""Integration tests for LangchainQwenEmbeddings with real API calls."""
 
 import os
 
@@ -18,11 +18,11 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.integration
 class TestRealAPIEmbedQuery:
-    '''Test embed_query with real API calls.'''
+    """Test embed_query with real API calls."""
 
     @pytest.fixture
     def embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create LangchainQwenEmbeddings instance with real configuration.'''
+        """Create LangchainQwenEmbeddings instance with real configuration."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -34,7 +34,7 @@ class TestRealAPIEmbedQuery:
         return LangchainQwenEmbeddings(config=config)
 
     def test_real_api_embed_query(self, embeddings: LangchainQwenEmbeddings) -> None:
-        '''Test real API call for embed_query.'''
+        """Test real API call for embed_query."""
         result = embeddings.embed_query("Hello, world!")
 
         assert isinstance(result, list)
@@ -44,7 +44,7 @@ class TestRealAPIEmbedQuery:
     def test_real_api_embed_query_with_newlines(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test that newlines are handled correctly in real API calls.'''
+        """Test that newlines are handled correctly in real API calls."""
         text_with_newlines = "Hello\nWorld\nThis is a test"
         result = embeddings.embed_query(text_with_newlines)
 
@@ -54,11 +54,11 @@ class TestRealAPIEmbedQuery:
 
 @pytest.mark.integration
 class TestRealAPIEmbedDocuments:
-    '''Test embed_documents with real API calls.'''
+    """Test embed_documents with real API calls."""
 
     @pytest.fixture
     def embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create LangchainQwenEmbeddings instance with real configuration.'''
+        """Create LangchainQwenEmbeddings instance with real configuration."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -72,7 +72,7 @@ class TestRealAPIEmbedDocuments:
     def test_real_api_embed_documents_single(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test real API call for single document.'''
+        """Test real API call for single document."""
         texts = ["This is a test document."]
         result = embeddings.embed_documents(texts)
 
@@ -84,7 +84,7 @@ class TestRealAPIEmbedDocuments:
     def test_real_api_embed_documents_multiple(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test real API call for multiple documents.'''
+        """Test real API call for multiple documents."""
         texts = [
             "First document about machine learning.",
             "Second document about natural language processing.",
@@ -100,14 +100,14 @@ class TestRealAPIEmbedDocuments:
     def test_real_api_embed_documents_empty(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test that empty list returns empty result.'''
+        """Test that empty list returns empty result."""
         result = embeddings.embed_documents([])
         assert result == []
 
     def test_real_api_embed_documents_batch(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test batch processing with real API.'''
+        """Test batch processing with real API."""
         texts = [f"Document {i} for testing batch processing." for i in range(10)]
         result = embeddings.embed_documents(texts)
 
@@ -119,11 +119,11 @@ class TestRealAPIEmbedDocuments:
 
 @pytest.mark.integration
 class TestRealAPIAsyncEmbedQuery:
-    '''Test aembed_query with real async API calls.'''
+    """Test aembed_query with real async API calls."""
 
     @pytest.fixture
     def embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create LangchainQwenEmbeddings instance with real configuration.'''
+        """Create LangchainQwenEmbeddings instance with real configuration."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -138,7 +138,7 @@ class TestRealAPIAsyncEmbedQuery:
     async def test_real_api_aembed_query(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test real async API call for aembed_query.'''
+        """Test real async API call for aembed_query."""
         result = await embeddings.aembed_query("Hello, async world!")
 
         assert isinstance(result, list)
@@ -149,7 +149,7 @@ class TestRealAPIAsyncEmbedQuery:
     async def test_real_api_aembed_query_multiple_calls(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test multiple async API calls.'''
+        """Test multiple async API calls."""
         import anyio
 
         results: list[list[float]] = [[] for _ in range(3)]
@@ -169,11 +169,11 @@ class TestRealAPIAsyncEmbedQuery:
 
 @pytest.mark.integration
 class TestRealAPIAsyncEmbedDocuments:
-    '''Test aembed_documents with real async API calls.'''
+    """Test aembed_documents with real async API calls."""
 
     @pytest.fixture
     def embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create LangchainQwenEmbeddings instance with real configuration.'''
+        """Create LangchainQwenEmbeddings instance with real configuration."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -188,7 +188,7 @@ class TestRealAPIAsyncEmbedDocuments:
     async def test_real_api_aembed_documents(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test real async API call for aembed_documents.'''
+        """Test real async API call for aembed_documents."""
         texts = [
             "Async document one.",
             "Async document two.",
@@ -205,7 +205,7 @@ class TestRealAPIAsyncEmbedDocuments:
     async def test_real_api_aembed_documents_large_batch(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test async batch processing with many documents.'''
+        """Test async batch processing with many documents."""
         texts = [f"Document {i} for async batch testing." for i in range(20)]
         result = await embeddings.aembed_documents(texts)
 
@@ -217,11 +217,11 @@ class TestRealAPIAsyncEmbedDocuments:
 
 @pytest.mark.integration
 class TestSyncVsAsync:
-    '''Compare sync and async implementations.'''
+    """Compare sync and async implementations."""
 
     @pytest.fixture
     def embeddings(self) -> LangchainQwenEmbeddings:
-        '''Create LangchainQwenEmbeddings instance with real configuration.'''
+        """Create LangchainQwenEmbeddings instance with real configuration."""
         config = {
             "model": "qwen/qwen-2.5-3b-instruct",
             "embedding_dims": 1536,
@@ -236,7 +236,7 @@ class TestSyncVsAsync:
     async def test_sync_and_async_produce_same_results(
         self, embeddings: LangchainQwenEmbeddings
     ) -> None:
-        '''Test that sync and async methods produce identical results.'''
+        """Test that sync and async methods produce identical results."""
         text = "Test text for comparison"
 
         sync_result = embeddings.embed_query(text)

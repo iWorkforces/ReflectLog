@@ -101,12 +101,14 @@ class TestApplyPendingTransition:
     def test_skips_insert_when_replacement_already_present(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_id(_workspace_id: str, content: str) -> int | None:
             return 99 if content == "new convention" else None
 
         semantic.get_id_by_content.side_effect = get_id
         semantic.index = {99}
         tantivy = MagicMock()
+
         def find_existing(_workspace_id: str, content: str) -> list[str]:
             return [content] if content == "new convention" else []
 
@@ -126,6 +128,7 @@ class TestApplyPendingTransition:
     def test_reindexes_missing_vector(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_new_id(_workspace_id: str, content: str) -> int | None:
             return 7 if content == "new convention" else None
 
@@ -156,12 +159,14 @@ class TestApplyPendingTransition:
     def test_skips_tantivy_delete_when_old_text_was_readded(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_current_id(_workspace_id: str, content: str) -> int:
             return 22 if content == "old convention" else 99
 
         semantic.get_id_by_content.side_effect = get_current_id
         semantic.index = {99}
         tantivy = MagicMock()
+
         def find_all(_workspace_id: str, content: str) -> list[str]:
             return [content]
 
@@ -181,12 +186,14 @@ class TestApplyPendingTransition:
     def test_leaves_pending_when_tantivy_still_has_old(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_replacement_id(_workspace_id: str, content: str) -> int | None:
             return 99 if content == "new convention" else None
 
         semantic.get_id_by_content.side_effect = get_replacement_id
         semantic.index = {99}
         tantivy = MagicMock()
+
         def find_all(_workspace_id: str, content: str) -> list[str]:
             return [content]
 
@@ -240,6 +247,7 @@ class TestApplyPendingTransition:
     def test_converged_requires_old_id_gone(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_live_id(_workspace_id: str, content: str) -> int:
             return 11 if content == "old convention" else 99
 
@@ -255,12 +263,14 @@ class TestApplyPendingTransition:
     def test_converged_when_old_text_live_under_new_id(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_live_id(_workspace_id: str, content: str) -> int:
             return 22 if content == "old convention" else 99
 
         semantic.get_id_by_content.side_effect = get_live_id
         semantic.index = {99}
         tantivy = MagicMock()
+
         def find_all(_workspace_id: str, content: str) -> list[str]:
             return [content]
 
@@ -468,12 +478,14 @@ class TestReconcilePendingReplacements:
             semantic = MagicMock()
             semantic.memory_store = store
             _stub_contains(semantic)
+
             def get_replacement_id(_workspace_id: str, content: str) -> int | None:
                 return 99 if content == "new convention" else None
 
             semantic.get_id_by_content.side_effect = get_replacement_id
             semantic.index = {99}
             tantivy = MagicMock()
+
             def find_all(_workspace_id: str, content: str) -> list[str]:
                 return [content]
 
@@ -568,7 +580,9 @@ class TestReconcilePendingReplacements:
             )
             assert completed is True
             semantic.add.assert_not_called()
-            assert all(row.id != replaced.id for row in store.list_pending_transitions())
+            assert all(
+                row.id != replaced.id for row in store.list_pending_transitions()
+            )
             store.close()
 
     def test_completed_later_delete_supersedes_pending_add(self) -> None:
@@ -645,10 +659,8 @@ class TestReconcilePendingReplacements:
             semantic = MagicMock()
             semantic.memory_store = store
             _stub_contains(semantic)
-            semantic.get_id_by_content.side_effect = (
-                lambda workspace_id, content: 22
-                if content == "I moved to Boston"
-                else None
+            semantic.get_id_by_content.side_effect = lambda workspace_id, content: (
+                22 if content == "I moved to Boston" else None
             )
             semantic.index = {22}
             semantic.contains_id.side_effect = lambda memory_id: memory_id == 22
@@ -715,8 +727,8 @@ class TestReconcilePendingReplacements:
             semantic.add.side_effect = add
             semantic.add_batch.side_effect = add_batch
             semantic.delete.side_effect = delete
-            semantic.contains_id.side_effect = (
-                lambda memory_id: memory_id in semantic.index
+            semantic.contains_id.side_effect = lambda memory_id: (
+                memory_id in semantic.index
             )
 
             count = reconcile_pending_replacements(
@@ -870,8 +882,8 @@ class TestReconcilePendingReplacements:
             semantic.add.side_effect = add
             semantic.add_batch.side_effect = add_batch
             semantic.delete.side_effect = delete
-            semantic.contains_id.side_effect = (
-                lambda memory_id: memory_id in semantic.index
+            semantic.contains_id.side_effect = lambda memory_id: (
+                memory_id in semantic.index
             )
 
             count = reconcile_pending_replacements(

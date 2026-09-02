@@ -53,7 +53,10 @@ class TestSearchToolHappyPath:
         assert result == ordered
 
     async def test_search_logs_invocation(
-        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+        self,
+        search_tool_instance: SearchTool,
+        mock_memory_manager: MagicMock,
+        mock_tool_logger: MagicMock,
     ) -> None:
         """Search logs invocation with query parameter."""
         mock_memory_manager.search = AsyncMock(return_value=[])
@@ -68,7 +71,10 @@ class TestSearchToolHappyPath:
         assert invocation_logged
 
     async def test_search_logs_completion(
-        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+        self,
+        search_tool_instance: SearchTool,
+        mock_memory_manager: MagicMock,
+        mock_tool_logger: MagicMock,
     ) -> None:
         """Search logs completion with result count."""
         mock_memory_manager.search = AsyncMock(return_value=["a", "b"])
@@ -113,7 +119,10 @@ class TestSearchToolWhitespaceQuery:
         mock_memory_manager.search.assert_not_called()
 
     async def test_search_no_results_logs_message(
-        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+        self,
+        search_tool_instance: SearchTool,
+        mock_memory_manager: MagicMock,
+        mock_tool_logger: MagicMock,
     ) -> None:
         """No-results search logs appropriate message."""
         mock_memory_manager.search = AsyncMock(return_value=[])
@@ -148,7 +157,10 @@ class TestSearchToolErrorHandling:
         assert exc_info.value.__cause__ is original
 
     async def test_search_error_logs_before_raising(
-        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+        self,
+        search_tool_instance: SearchTool,
+        mock_memory_manager: MagicMock,
+        mock_tool_logger: MagicMock,
     ) -> None:
         """Search error triggers log_error before raising."""
         mock_memory_manager.search = AsyncMock(side_effect=RuntimeError("oops"))
@@ -160,7 +172,10 @@ class TestSearchToolErrorHandling:
         mock_tool_logger.error.assert_called()
 
     async def test_search_error_includes_query_context(
-        self, search_tool_instance: SearchTool, mock_memory_manager: MagicMock, mock_tool_logger: MagicMock
+        self,
+        search_tool_instance: SearchTool,
+        mock_memory_manager: MagicMock,
+        mock_tool_logger: MagicMock,
     ) -> None:
         """Search error log includes query context."""
         mock_memory_manager.search = AsyncMock(side_effect=ValueError("bad"))
@@ -186,7 +201,9 @@ class TestSearchToolMetadata:
         snippet = search_tool_instance.get_instruction_snippet()
         assert "search(query: str)" in snippet
 
-    def test_get_handler_returns_callable(self, search_tool_instance: SearchTool) -> None:
+    def test_get_handler_returns_callable(
+        self, search_tool_instance: SearchTool
+    ) -> None:
         """get_handler returns a callable."""
         handler = search_tool_instance.get_handler()
         assert callable(handler)

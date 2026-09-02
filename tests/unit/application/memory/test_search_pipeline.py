@@ -106,9 +106,7 @@ def _make_pipeline(
             and exists_many.side_effect is None
             and isinstance(exists_many.return_value, MagicMock)
         ):
-            exists_many.side_effect = (
-                lambda _workspace_id, contents: set(contents)
-            )
+            exists_many.side_effect = lambda _workspace_id, contents: set(contents)
     if isinstance(tantivy, MagicMock):
         tantivy.is_ready.return_value = False
     return SearchPipeline(
@@ -172,8 +170,10 @@ class ControllableBackend:
             self.init_entered.set()
         if self.init_barrier is not None:
             _ = self.init_barrier.wait(timeout=_BACKEND_WAIT_TIMEOUT)
-        release = self.init_release if self.init_release is not None else (
-            self.loop_progressed if self.block_on_init else None
+        release = (
+            self.init_release
+            if self.init_release is not None
+            else (self.loop_progressed if self.block_on_init else None)
         )
         if release is not None and not release.wait(timeout=_BACKEND_WAIT_TIMEOUT):
             raise TimeoutError("event loop did not progress while init blocked")
@@ -210,19 +210,13 @@ class TestCanonicalPipelineIdentity:
         import importlib
 
         with pytest.raises(ModuleNotFoundError):
-            _ = importlib.import_module(
-                "reflectlog.application.memory.search_pipeline"
-            )
+            _ = importlib.import_module("reflectlog.application.memory.search_pipeline")
         with pytest.raises(ModuleNotFoundError):
             _ = importlib.import_module("reflectlog.core.search")
         with pytest.raises(ModuleNotFoundError):
-            _ = importlib.import_module(
-                "reflectlog.infrastructure.search.base"
-            )
+            _ = importlib.import_module("reflectlog.infrastructure.search.base")
         with pytest.raises(ModuleNotFoundError):
-            _ = importlib.import_module(
-                "reflectlog.application.memory.protocols"
-            )
+            _ = importlib.import_module("reflectlog.application.memory.protocols")
         with pytest.raises(ModuleNotFoundError):
             _ = importlib.import_module("reflectlog.application.types")
 
@@ -586,9 +580,7 @@ class TestHybridFusionAndFilter:
     def test_filter_stage_empty_and_zero_threshold(self) -> None:
         pipeline = _make_pipeline(semantic=MagicMock())
         assert pipeline._filter_by_fusion_threshold([], 0.5, "q") == []
-        kept = pipeline._filter_by_fusion_threshold(
-            [("a", 0.0), ("b", 0.01)], 0.0, "q"
-        )
+        kept = pipeline._filter_by_fusion_threshold([("a", 0.0), ("b", 0.01)], 0.0, "q")
         assert kept == [("a", 0.0), ("b", 0.01)]
 
 
@@ -625,9 +617,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("from-tantivy", 0.8)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
 
@@ -643,9 +633,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("ok", 0.9)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
 
@@ -672,9 +660,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("ok", 0.9)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
 
@@ -730,9 +716,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("deleted text", 0.01)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
         assert result.tantivy_results == []
@@ -742,9 +726,9 @@ class TestBackendFailureContracts:
     async def test_fts_keeps_live_sqlite_hits_and_drops_deleted(self) -> None:
         semantic = MagicMock()
         semantic.search.return_value = [("keep me", 0.9, _TS)]
-        semantic.memory_store.exists_many.side_effect = (
-            lambda _workspace_id, contents: {item for item in contents if item == "keep me"}
-        )
+        semantic.memory_store.exists_many.side_effect = lambda _workspace_id, contents: {
+            item for item in contents if item == "keep me"
+        }
         tantivy = MagicMock()
         tantivy.search.return_value = [("keep me", 4.0), ("deleted text", 3.0)]
         fusion = MagicMock()
@@ -774,9 +758,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("maybe live", 0.01)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
         assert result.tantivy_results == []
