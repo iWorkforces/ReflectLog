@@ -79,6 +79,16 @@ def _focused_commands(inject_failure: str | None) -> list[tuple[str, list[str]]]
             "cli-version",
             [*UV_RUN, "reflectlog", "--version"],
         ),
+        (
+            "usearch-concurrency",
+            [
+                *UV_RUN,
+                "pytest",
+                "-q",
+                "tests/integration/test_multiprocess_writers.py",
+                "tests/integration/test_usearch_atomic_recovery.py",
+            ],
+        ),
     ]
     if inject_failure == "coordinator-timeout":
         commands.append(
@@ -125,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     env = os.environ.copy()
     env["REFLECTLOG_GATE_TEMP"] = str(temp_root)
     env["PYTHONUNBUFFERED"] = "1"
+    env["RUN_USEARCH_CONCURRENCY_TESTS"] = "1"
     results: list[dict[str, Any]] = []
     status = "ok"
     failed_scenario: str | None = None
@@ -169,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "artifact": str(output_path),
     }
-    output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    _ = output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return 0 if status == "ok" else 1
 
 

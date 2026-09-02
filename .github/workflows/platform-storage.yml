@@ -23,7 +23,9 @@ jobs:
       - name: Focused gates
         run: uv run --frozen --no-sync scripts/run_platform_gates.py --focused --output platform-gates.json
       - name: Coordinator and engine tests
-        run: uv run --frozen --no-sync pytest -q tests/unit/infrastructure/test_storage_coordinator.py tests/unit/infrastructure/test_usearch_engine.py tests/unit/infrastructure/test_tantivy_engine.py tests/unit/test_server.py
+        env:
+          RUN_USEARCH_CONCURRENCY_TESTS: "1"
+        run: uv run --frozen --no-sync pytest -q tests/unit/infrastructure/test_storage_coordinator.py tests/unit/infrastructure/test_usearch_engine.py tests/unit/infrastructure/test_tantivy_engine.py tests/unit/test_server.py tests/integration/test_storage_coordinator_processes.py tests/integration/test_multiprocess_writers.py tests/integration/test_usearch_atomic_recovery.py
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
