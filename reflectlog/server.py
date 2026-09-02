@@ -316,6 +316,8 @@ def _start_server(
 
     _ = signal.signal(signal.SIGINT, graceful_shutdown)
     _ = signal.signal(signal.SIGTERM, graceful_shutdown)
+    if sys.platform == "win32":
+        _ = signal.signal(signal.SIGBREAK, graceful_shutdown)
 
     try:
         phase_start = time.time()
