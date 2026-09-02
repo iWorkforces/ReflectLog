@@ -13,6 +13,7 @@ from reflectlog.application.memory.replacement_recovery import (
     replacement_converged,
 )
 from reflectlog.core.enums import TransitionKind, TransitionStatus
+from reflectlog.core.storage_coordination import LeaseMode, WorkspaceStoragePaths
 from reflectlog.core.types import ReplacementTransition
 from reflectlog.infrastructure.memory_store import MemoryStore
 
@@ -448,15 +449,20 @@ class TestReconcilePendingReplacements:
             semantic.get_id_by_content.return_value = 99
             semantic.index = {99: object()}
 
-            kwargs = {
-                "semantic_engine": semantic,
-                "tantivy_engine": None,
-                "write_lock": threading.Lock(),
-                "lock": threading.RLock(),
-                "logger": MagicMock(),
-            }
-            first = reconcile_pending_replacements(**kwargs)
-            second = reconcile_pending_replacements(**kwargs)
+            first = reconcile_pending_replacements(
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                write_lock=threading.Lock(),
+                lock=threading.RLock(),
+                logger=MagicMock(),
+            )
+            second = reconcile_pending_replacements(
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                write_lock=threading.Lock(),
+                lock=threading.RLock(),
+                logger=MagicMock(),
+            )
 
             assert first == 1
             assert second == 0
@@ -767,40 +773,61 @@ class TestReconcilePendingReplacements:
         acquired: list[str] = []
 
         class _Lease:
+            workspace_id = "ws"
+            mode = LeaseMode.EXCLUSIVE
+
+            def release(self) -> None:
+                return None
+
             def __enter__(self) -> _Lease:
                 acquired.append("lease")
                 return self
 
-            def __exit__(self, *args: object) -> None:
+            def __exit__(
+                self,
+                exc_type: type[BaseException] | None,
+                exc: BaseException | None,
+                traceback: object,
+            ) -> None:
+                _ = exc_type, exc, traceback
                 return None
 
         class _Coordinator:
             timeout = 1.0
+            published: list[int] = []
 
             def acquire(
                 self,
                 workspace_id: str,
-                mode: object = None,
+                mode: LeaseMode = LeaseMode.EXCLUSIVE,
                 *,
                 timeout: float | None = None,
             ) -> _Lease:
-                _ = workspace_id, mode, timeout
-                return _Lease()
+                _ = timeout
+                lease = _Lease()
+                lease.workspace_id = workspace_id
+                lease.mode = mode
+                return lease
 
             def read_generation(self, workspace_id: str) -> int:
                 _ = workspace_id
                 return 0
 
             def publish_generation(self, workspace_id: str, generation: int) -> None:
-                _ = workspace_id, generation
+                _ = workspace_id
+                self.published.append(generation)
 
-            def is_held(self, workspace_id: str, mode: object = None) -> bool:
+            def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
                 _ = workspace_id, mode
                 return False
 
-            def paths_for(self, workspace_id: str) -> object:
-                _ = workspace_id
-                return None
+            def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
+                return WorkspaceStoragePaths(
+                    workspace_id=workspace_id,
+                    root="/tmp",
+                    lock_path="/tmp/.lock",
+                    generation_path="/tmp/.gen",
+                )
 
         semantic = MagicMock()
         row = ReplacementTransition(
@@ -829,7 +856,8 @@ class TestReconcilePendingReplacements:
             workspace_id="ws",
         )
         assert acquired == ["lease"]
-        assert count >= 0
+        assert count >= 1
+        assert _Coordinator.published == [1]
 
     def test_reconcile_replace_then_earlier_add_does_not_reinsert_old_text(
         self,

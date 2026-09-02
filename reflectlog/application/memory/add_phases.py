@@ -761,15 +761,19 @@ class StoragePhase:
         self,
         transitions: list[ReplacementTransition],
         add_intents: list[ReplacementTransition],
+        *,
+        replacement_olds: list[str],
+        should_publish: bool,
     ) -> None:
         coordinator = self._coordinator
-        if coordinator is not None:
+        if coordinator is not None and should_publish:
             current = coordinator.read_generation(self._workspace_id)
             self._emit_orchestration_hook("before_generation")
             coordinator.publish_generation(self._workspace_id, current + 1)
             self._emit_orchestration_hook("after_generation")
         self._emit_orchestration_hook("before_intent")
         self._complete_if_converged(transitions)
+        self._complete_add_intents_for_contents(replacement_olds)
         self._complete_add_intents(add_intents)
         self._emit_orchestration_hook("after_intent")
 
@@ -809,12 +813,17 @@ class StoragePhase:
             persist_memories, dry_run=False, locked=True, vectors=persist_vectors
         )
         self._delete_recorded_olds(transitions)
-        self._complete_add_intents_for_contents(list(replacement_olds))
         if transitions:
             if self._tantivy_engine is not None:
                 self._tantivy_engine.commit()
             self._semantic_engine.commit()
-        self._publish_then_complete(transitions, add_intents)
+        should_publish = bool(transitions) or stored_count > 0
+        self._publish_then_complete(
+            transitions,
+            add_intents,
+            replacement_olds=list(replacement_olds),
+            should_publish=should_publish,
+        )
         return stored_count, replacements
 
     def _plan_replacements(
