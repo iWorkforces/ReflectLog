@@ -272,7 +272,12 @@ class USearchEngine(BaseModel):
         """Refuse a loaded HNSW that cannot be paired with SQLite SoT."""
         sqlite_rows = _sqlite_memory_count(self.config.db_path)
         if hnsw_size <= 0:
-            if sqlite_rows is not None and sqlite_rows > 0:
+            if sqlite_rows is None:
+                raise InitializationError(
+                    "USearch index is empty and SQLite is unreadable "
+                    f"at {self.config.db_path}. Refusing to load an empty HNSW."
+                )
+            if sqlite_rows > 0:
                 raise InitializationError(
                     "USearch index is empty but SQLite has "
                     f"{sqlite_rows} memories at {self.config.db_path}. "
@@ -395,8 +400,8 @@ class USearchEngine(BaseModel):
                             expansion_add=self.config.expansion_add,
                             expansion_search=self.config.expansion_search,
                         )
-                        new_index.save(self.config.index_path)
                         self._index = new_index
+                        self._dirty = False
                         self._seen_identity = _index_file_identity(
                             self.config.index_path
                         )
@@ -485,11 +490,11 @@ class USearchEngine(BaseModel):
         _ = self.index
         self._maybe_reload_external()
 
-    def _maybe_reload_external(self) -> None:
+    def _maybe_reload_external(self, *, refuse_stale: bool = False) -> None:
         """Reload the HNSW when another writer published a newer file."""
         current = _index_file_identity(self.config.index_path)
         if self._dirty:
-            if current is not None and current != self._seen_identity:
+            if refuse_stale and current is not None and current != self._seen_identity:
                 raise StorageError(
                     "Refusing to publish a stale in-memory HNSW over a newer file"
                 )
@@ -561,10 +566,23 @@ class USearchEngine(BaseModel):
             RuntimeError: If add operation fails.
         """
         try:
+            if isinstance(self.get_id_by_content(workspace_id, content), int):
+                if self.logger:
+                    self.logger.debug(
+                        "Skipping duplicate memory (detected by DB constraint)",
+                        extra={"workspace_id": self.config.workspace_id},
+                    )
+                return
+            try:
+                vector = self.embedder.embed_query(content)
+            except Exception as embed_error:
+                raise RuntimeError(
+                    f"Failed to generate embedding: {embed_error}"
+                ) from embed_error
             with self._write_lease():
                 _ = self.index
                 self._maybe_reload_external()
-                self._add_unlocked(workspace_id, content, infer)
+                self._add_unlocked(workspace_id, content, infer, vector)
             return
         except (RuntimeError, StorageError) as e:
             if "Duplicate memory" in str(e):
@@ -599,6 +617,7 @@ class USearchEngine(BaseModel):
         workspace_id: str,
         content: str,
         infer: bool,
+        vector: list[float],
     ) -> None:
         try:
             _ = self.index
@@ -611,25 +630,7 @@ class USearchEngine(BaseModel):
             # Insert into SQLite (relies on UNIQUE INDEX for dedup - no pre-check needed)
             mem_id = self.memory_store.insert(workspace_id, content)
 
-            # Generate embedding with rollback on failure
-            try:
-                vector = self.embedder.embed_query(content)
-                vector_np = np.array(vector, dtype=np.float32)
-            except Exception as embed_error:
-                # Rollback SQLite insert if embedding fails to prevent desynchronization
-                _ = self.memory_store.delete(mem_id)
-                if self.logger:
-                    self.logger.error(
-                        "Embedding generation failed, rolled back SQLite insert",
-                        extra={
-                            "workspace_id": self.config.workspace_id,
-                            "error": str(embed_error),
-                        },
-                    )
-                raise RuntimeError(
-                    f"Failed to generate embedding: {embed_error}"
-                ) from embed_error
-
+            vector_np = np.array(vector, dtype=np.float32)
             if len(vector_np) == 0:
                 _ = self.memory_store.delete(mem_id)
                 raise RuntimeError("Embedding produced an empty vector")
@@ -706,10 +707,23 @@ class USearchEngine(BaseModel):
         if not contents:
             return []
 
+        prepared = vectors
+        if prepared is None:
+            try:
+                prepared = self.embedder.embed_documents(contents)
+            except Exception as embed_error:
+                raise RuntimeError(
+                    f"Failed to add memory batch: {embed_error}"
+                ) from embed_error
+            if len(prepared) != len(contents) or any(not item for item in prepared):
+                raise RuntimeError(
+                    "Failed to add memory batch: Embedding batch size mismatch "
+                    "for USearch add_batch"
+                )
         with self._write_lease():
             _ = self.index
             self._maybe_reload_external()
-            return self._add_batch_unlocked(workspace_id, contents, infer, vectors)
+            return self._add_batch_unlocked(workspace_id, contents, infer, prepared)
 
     def _add_batch_unlocked(
         self,
@@ -907,13 +921,15 @@ class USearchEngine(BaseModel):
             backward compatibility with older data).
         """
         try:
-            if len(self.index) == 0:
-                if self.logger:
-                    self.logger.debug(
-                        "USearch index is empty",
-                        extra={"workspace_id": self.config.workspace_id},
-                    )
-                return []
+            with self._read_lease():
+                self._maybe_reload_external()
+                if len(self.index) == 0:
+                    if self.logger:
+                        self.logger.debug(
+                            "USearch index is empty",
+                            extra={"workspace_id": self.config.workspace_id},
+                        )
+                    return []
 
             use_exact = self._should_use_exact_search()
             self._log_search_mode(use_exact)
@@ -1144,7 +1160,7 @@ class USearchEngine(BaseModel):
         try:
             if self._index is not None and self._dirty:
                 with self._write_lease():
-                    self._maybe_reload_external()
+                    self._maybe_reload_external(refuse_stale=True)
                     with self._index_lock:
                         self._publish_index()
                 if self.logger:

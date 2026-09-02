@@ -792,7 +792,7 @@ class TestUSearchEngineIndexInit:
                 _ = engine.index
             mock_index_cls.assert_not_called()
 
-    def test_new_index_is_saved_before_first_insert(
+    def test_new_index_is_not_saved_until_commit(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
     ) -> None:
         from reflectlog.infrastructure.memory_store import MemoryStore
@@ -810,7 +810,7 @@ class TestUSearchEngineIndexInit:
             mock_index_cls.restore.side_effect = FileNotFoundError("no file")
             mock_index_cls.return_value = created
             _ = engine.index
-            created.save.assert_called_once_with(config.index_path)
+            created.save.assert_not_called()
         store = MemoryStore(db_path=config.db_path)
         assert store.count(config.workspace_id) == 0
         store.close()
@@ -1743,6 +1743,44 @@ class TestAtomicUSearchPublication:
                 _ = doomed.index
             finally:
                 doomed.close()
+
+    def test_empty_hnsw_with_unreadable_sqlite_fails_closed(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from usearch.index import Index
+
+        from reflectlog.core.exceptions import InitializationError
+
+        config, embedder, _tmpdir = temp_engine
+        empty = Index(ndim=config.embedding_dims, metric=config.metric, dtype="f32")
+        empty.save(config.index_path)
+        with patch(
+            "reflectlog.infrastructure.usearch_engine._sqlite_memory_count",
+            return_value=None,
+        ):
+            with pytest.raises(InitializationError, match="unreadable"):
+                doomed = USearchEngine(config=config, embedder=embedder)
+                try:
+                    _ = doomed.index
+                finally:
+                    doomed.close()
+
+    def test_empty_search_reloads_newer_published_file(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        config, embedder, _tmpdir = temp_engine
+        stale = USearchEngine(config=config, embedder=embedder)
+        writer = USearchEngine(config=config, embedder=embedder)
+        try:
+            _ = stale.index
+            assert stale.search("kept", "test", 5) == []
+            writer.add("test", "kept", infer=False)
+            writer.commit()
+            hits = stale.search("kept", "test", 5)
+            assert any(content == "kept" for content, _score, _ts in hits)
+        finally:
+            stale.close()
+            writer.close()
 
     def test_dirty_commit_refuses_newer_live_file(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
