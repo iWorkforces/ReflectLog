@@ -694,9 +694,7 @@ class TestCompleteTimestampMap:
     def test_keeps_semantic_stamps_when_one_lookup_misses(
         self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock
     ) -> None:
-        mock_semantic_engine.get_id_by_content.return_value = None
-        mock_semantic_engine.memory_store = MagicMock()
-        mock_semantic_engine.config = MagicMock(workspace_id="proj")
+        mock_semantic_engine.get_records_by_contents.return_value = []
 
         completed = pipeline._complete_timestamp_map(
             {"known": "2026-01-01T00:00:00+00:00"},
@@ -705,31 +703,35 @@ class TestCompleteTimestampMap:
         )
 
         assert completed == {"known": "2026-01-01T00:00:00+00:00"}
+        mock_semantic_engine.get_records_by_contents.assert_called_once_with(
+            "proj", ["fts-only"]
+        )
+        mock_semantic_engine.get_id_by_content.assert_not_called()
 
-    def test_keeps_completed_on_lookup_exception(
+    def test_lookup_exception_raises_search_error(
         self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock
     ) -> None:
-        mock_semantic_engine.get_id_by_content.side_effect = RuntimeError("store down")
-        mock_semantic_engine.memory_store = MagicMock()
+        from reflectlog.core.exceptions import SearchError
 
-        completed = pipeline._complete_timestamp_map(
-            {"known": "2026-01-01T00:00:00+00:00"},
-            ["known", "fts-only"],
-            "proj",
-        )
+        cause = RuntimeError("store down")
+        mock_semantic_engine.get_records_by_contents.side_effect = cause
 
-        assert completed == {"known": "2026-01-01T00:00:00+00:00"}
+        with pytest.raises(SearchError, match="candidate timestamps") as exc_info:
+            pipeline._complete_timestamp_map(
+                {"known": "2026-01-01T00:00:00+00:00"},
+                ["known", "fts-only"],
+                "proj",
+            )
+        assert exc_info.value.__cause__ is cause
 
     def test_fills_missing_from_store(self, pipeline: SearchPipeline, mock_semantic_engine: MagicMock) -> None:
-        mock_semantic_engine.get_id_by_content.return_value = 7
-
         class _Stored:
             id = 7
             workspace_id = "proj"
             content = "fts-only"
             created_at = "2026-02-01T00:00:00+00:00"
 
-        mock_semantic_engine.memory_store.get.return_value = _Stored()
+        mock_semantic_engine.get_records_by_contents.return_value = [_Stored()]
 
         completed = pipeline._complete_timestamp_map(
             {"known": "2026-01-01T00:00:00+00:00"},
@@ -741,3 +743,4 @@ class TestCompleteTimestampMap:
             "known": "2026-01-01T00:00:00+00:00",
             "fts-only": "2026-02-01T00:00:00+00:00",
         }
+        mock_semantic_engine.get_id_by_content.assert_not_called()

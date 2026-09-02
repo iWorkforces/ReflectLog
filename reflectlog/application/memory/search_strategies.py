@@ -26,7 +26,7 @@ from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.exceptions import SearchError
 
 from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine, IStoredMemory
+from ...core.types import ISemanticSearchEngine
 from ..config.settings import Config
 from ..utils.logging import format_fusion_score_status
 from .fusion.base import FusionEngine
@@ -795,20 +795,16 @@ class SearchPipeline:
             return completed
 
         try:
-            store = self._semantic_engine.memory_store
-            for content in missing:
-                mem_id = self._semantic_engine.get_id_by_content(workspace_id, content)
-                if mem_id is None:
-                    continue
-                stored = store.get(mem_id)
-                if not isinstance(stored, IStoredMemory):
-                    continue
-                created_at = stored.created_at
-                if not created_at:
-                    continue
-                completed[content] = created_at
-        except Exception:
-            return completed
+            records = self._semantic_engine.get_records_by_contents(
+                workspace_id, missing
+            )
+        except Exception as exc:
+            raise SearchError("Failed to load candidate timestamps") from exc
+        for stored in records:
+            created_at = stored.created_at
+            if not created_at:
+                continue
+            completed[stored.content] = created_at
         return completed
 
     def _filter_live_hits(

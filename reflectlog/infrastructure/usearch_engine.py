@@ -28,7 +28,7 @@ from reflectlog.core.config import IAppConfig
 from reflectlog.core.enums import EmbedderProvider
 from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.types import Embeddings
+from reflectlog.core.types import Embeddings, IStoredMemory
 from reflectlog.utility.scoring import distance_to_similarity_cosine
 from reflectlog.utility.security import validate_workspace_id
 
@@ -983,6 +983,12 @@ class USearchEngine(BaseModel):
             The memory ID if found, None otherwise.
         """
         return self.memory_store.get_id_by_content(workspace_id, content)
+
+    def get_records_by_contents(
+        self, workspace_id: str, contents: list[str]
+    ) -> list[IStoredMemory]:
+        """Return stored rows for the requested contents in one workspace."""
+        return list(self.memory_store.get_records_by_contents(workspace_id, contents))
 
     def close(self) -> None:
         """Close resources and cleanup.

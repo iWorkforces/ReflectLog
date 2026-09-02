@@ -1523,6 +1523,21 @@ class TestUSearchEngineGetIdByContent:
         finally:
             engine.close()
 
+    def test_get_records_by_contents_delegates(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        config, embedder, _ = temp_engine
+        engine = USearchEngine(config=config, embedder=embedder)
+        try:
+            engine.add("user1", "bulk-one", infer=False)
+            engine.add("user1", "bulk-two", infer=False)
+            records = engine.get_records_by_contents(
+                "user1", ["bulk-two", "missing", "bulk-one"]
+            )
+            assert [row.content for row in records] == ["bulk-two", "bulk-one"]
+        finally:
+            engine.close()
+
 
 class TestUSearchEngineContextManager:
     '''Tests for context manager protocol (__enter__/__exit__).'''

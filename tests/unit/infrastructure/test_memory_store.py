@@ -294,6 +294,38 @@ class TestMemoryStoreGetIdByMemory:
             store.close()
 
 
+class TestMemoryStoreGetRecordsByContents:
+    """Bulk content lookup is one workspace-scoped SELECT per chunk."""
+
+    def test_returns_requested_workspace_rows_in_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            _ = store.insert("ws-a", "one")
+            _ = store.insert("ws-a", "two")
+            _ = store.insert("ws-b", "one")
+            records = store.get_records_by_contents(
+                "ws-a", ["two", "missing", "one", "one"]
+            )
+            assert [row.content for row in records] == ["two", "one"]
+            assert all(row.workspace_id == "ws-a" for row in records)
+            store.close()
+
+    def test_five_contents_use_one_select(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            for index in range(5):
+                _ = store.insert("ws", f"row-{index}")
+            statements: list[str] = []
+            store.connection.set_trace_callback(statements.append)
+            _ = store.get_records_by_contents(
+                "ws", [f"row-{index}" for index in range(5)]
+            )
+            store.connection.set_trace_callback(None)
+            selects = [item for item in statements if item.lstrip().upper().startswith("SELECT")]
+            assert len(selects) == 1
+            store.close()
+
+
 class TestMemoryStoreThreadSafety:
     '''Tests for MemoryStore thread safety.'''
 

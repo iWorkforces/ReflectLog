@@ -776,6 +776,47 @@ class MemoryStore(BaseModel):
             finally:
                 cursor.close()
 
+    def get_records_by_contents(
+        self, workspace_id: str, contents: list[str]
+    ) -> list[MemoryRecord]:
+        """Return stored rows for the requested contents in one workspace.
+
+        Duplicate inputs are looked up once. Missing contents are omitted.
+        Results follow first-seen request order.
+        """
+        unique = list(dict.fromkeys(contents))
+        if not unique:
+            return []
+        found: dict[str, MemoryRecord] = {}
+        chunk_size = 400
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                for start in range(0, len(unique), chunk_size):
+                    chunk = unique[start : start + chunk_size]
+                    placeholders = ",".join("?" for _ in chunk)
+                    _ = cursor.execute(
+                        "SELECT id, workspace_id, content, created_at "
+                        "FROM memories "
+                        f"WHERE workspace_id = ? AND content IN ({placeholders})",
+                        (workspace_id, *chunk),
+                    )
+                    for row in cursor.fetchall():
+                        record = MemoryRecord(
+                            id=int(row[0]),
+                            workspace_id=str(row[1]),
+                            content=str(row[2]),
+                            created_at=str(row[3]) if row[3] else "",
+                        )
+                        found[record.content] = record
+            except sqlite3.Error as e:
+                raise StorageError(
+                    f"Failed to load memories by content: {e}"
+                ) from e
+            finally:
+                cursor.close()
+        return [found[content] for content in unique if content in found]
+
     def get_id_by_content(self, workspace_id: str, content: str) -> int | None:
         """Get the ID of a memory by its content.
 
