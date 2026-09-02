@@ -5,6 +5,8 @@ following the same patterns as qwen3_embedding.py for consistency.
 """
 
 from collections import OrderedDict
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 import threading
@@ -22,6 +24,7 @@ import tantivy
 from reflectlog.core.config import IAppConfig
 from reflectlog.core.exceptions import InitializationError, SearchError
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
@@ -116,10 +119,13 @@ class TantivyEngine(BaseModel):
 
     config: TantivyConfig
     logger: IStructuredLogger | None = None
+    coordinator: IStorageCoordinator | None = None
 
     _index: tantivy.Index | None = PrivateAttr(default=None)
     _writer: tantivy.IndexWriter | None = PrivateAttr(default=None)
     _searcher: tantivy.Searcher | None = PrivateAttr(default=None)
+    _lease_depth: int = PrivateAttr(default=0)
+    _seen_generation: int = PrivateAttr(default=0)
     # Instance-level locks for thread-safe operations
     # Note: Using RLock (re-entrant) because add() holds lock and
     # calls self.writer property
@@ -339,6 +345,66 @@ class TantivyEngine(BaseModel):
                 self._searcher = self._index.searcher()
         return self._searcher
 
+    @contextmanager
+    def _lease(self, mode: LeaseMode) -> Generator[None]:
+        """Acquire a coordinator lease, reusing a nest already held by this engine."""
+        coordinator = self.coordinator
+        if coordinator is None or self._lease_depth > 0:
+            self._lease_depth += 1
+            try:
+                yield
+            finally:
+                self._lease_depth -= 1
+            return
+        with coordinator.acquire(self.config.workspace_id, mode):
+            self._lease_depth += 1
+            try:
+                yield
+            finally:
+                self._lease_depth -= 1
+
+    def _refresh_reader(self) -> None:
+        """Reload committed segments so an external writer becomes visible."""
+        if self._index is None:
+            return
+        self._index.reload()
+        with self._searcher_lock:
+            self._searcher = self._index.searcher()
+        coordinator = self.coordinator
+        if coordinator is not None:
+            self._seen_generation = coordinator.read_generation(
+                self.config.workspace_id
+            )
+
+    def _finalize_writer(self, *, relinquish: bool) -> None:
+        """Commit the writer, optionally wait/drop it, then refresh the reader."""
+        if self._writer is None:
+            return
+        self._writer.commit()
+        if relinquish:
+            self._writer.wait_merging_threads()
+            self._writer = None
+        if self._index is not None:
+            self._index.reload()
+            with self._searcher_lock:
+                self._searcher = self._index.searcher()
+        self._invalidate_tombstone_cache()
+
+    def _rewrite_index_in_place(self, docs_to_keep: list[tuple[str, str]]) -> None:
+        """Replace live documents without swapping the index directory."""
+        with self._lease(LeaseMode.EXCLUSIVE):
+            with self._writer_lock:
+                writer = self.writer
+                writer.delete_all_documents()
+                for workspace_id, content in docs_to_keep:
+                    doc = tantivy.Document()
+                    doc.add_text("workspace_id", workspace_id)
+                    doc.add_text("content", content)
+                    doc.add_unsigned("is_deleted", 0)
+                    doc.add_integer("deleted_at", 0)
+                    _ = writer.add_document(doc)
+                self._finalize_writer(relinquish=True)
+
     def _get_all_docs(self, workspace_id: str) -> list[str]:
         """Get all active (non-tombstoned) documents for a workspace.
 
@@ -420,8 +486,14 @@ class TantivyEngine(BaseModel):
         Returns:
             List of matching memory strings (may contain duplicates if stored multiple times).
         """
-        all_docs = self._get_all_docs(workspace_id)
-        return [doc for doc in all_docs if doc == content]
+        with self._lease(LeaseMode.SHARED):
+            self._refresh_reader()
+            all_docs = self._get_all_docs(workspace_id)
+            matches = [doc for doc in all_docs if doc == content]
+            if self.coordinator is not None:
+                with self._searcher_lock:
+                    self._searcher = None
+            return matches
 
     def _get_all_docs_all_workspaces(self) -> list[tuple[str, str]]:
         """Get all documents from all workspaces.
@@ -498,30 +570,36 @@ class TantivyEngine(BaseModel):
             content: Memory content to index.
         """
         self._require_open()
-        with self._writer_lock:
-            doc = tantivy.Document()
-            doc.add_text("workspace_id", workspace_id)
-            doc.add_text("content", content)
+        with self._lease(LeaseMode.EXCLUSIVE):
+            with self._writer_lock:
+                doc = tantivy.Document()
+                doc.add_text("workspace_id", workspace_id)
+                doc.add_text("content", content)
 
-            # Add soft-delete fields with default values
-            doc.add_unsigned("is_deleted", 0)  # 0 = active
-            doc.add_integer("deleted_at", 0)  # 0 = not deleted
+                # Add soft-delete fields with default values
+                doc.add_unsigned("is_deleted", 0)  # 0 = active
+                doc.add_integer("deleted_at", 0)  # 0 = not deleted
 
-            _ = self.writer.add_document(doc)
+                _ = self.writer.add_document(doc)
+                if self.coordinator is not None:
+                    self._finalize_writer(relinquish=True)
 
     def add_batch(self, workspace_id: str, contents: list[str]) -> None:
         """Add multiple documents under a single writer lock."""
         if not contents:
             return
         self._require_open()
-        with self._writer_lock:
-            for content in contents:
-                doc = tantivy.Document()
-                doc.add_text("workspace_id", workspace_id)
-                doc.add_text("content", content)
-                doc.add_unsigned("is_deleted", 0)
-                doc.add_integer("deleted_at", 0)
-                _ = self.writer.add_document(doc)
+        with self._lease(LeaseMode.EXCLUSIVE):
+            with self._writer_lock:
+                for content in contents:
+                    doc = tantivy.Document()
+                    doc.add_text("workspace_id", workspace_id)
+                    doc.add_text("content", content)
+                    doc.add_unsigned("is_deleted", 0)
+                    doc.add_integer("deleted_at", 0)
+                    _ = self.writer.add_document(doc)
+                if self.coordinator is not None:
+                    self._finalize_writer(relinquish=True)
 
     def commit(self) -> None:
         """Commit pending changes and refresh searcher (thread-safe).
@@ -541,24 +619,18 @@ class TantivyEngine(BaseModel):
         the writer by taking ownership (self). This allows reusing the same
         writer across multiple add-commit cycles for better performance.
         """
-        with self._writer_lock:
-            if self._writer:
-                self._writer.commit()
-                # NOTE: Don't call wait_merging_threads() here - it consumes the writer!
-                # Writer remains valid for subsequent add() operations.
-                # Background merge threads continue running asynchronously.
-                if self._index:
-                    self._index.reload()
-                    with self._searcher_lock:
-                        self._searcher = self._index.searcher()
-                # Invalidate tombstone cache since searcher was refreshed
-                # New tombstones may now be visible
-                self._invalidate_tombstone_cache()
-                if self.logger:
-                    self.logger.debug(
-                        "Tantivy index committed (writer reusable)",
-                        extra={"workspace_id": self.config.workspace_id},
-                    )
+        with self._lease(LeaseMode.EXCLUSIVE):
+            with self._writer_lock:
+                if self._writer:
+                    relinquish = self.coordinator is not None
+                    self._finalize_writer(relinquish=relinquish)
+                    if self.logger:
+                        self.logger.debug(
+                            "Tantivy index committed (writer reusable)"
+                            if not relinquish
+                            else "Tantivy index committed (writer relinquished)",
+                            extra={"workspace_id": self.config.workspace_id},
+                        )
 
     def flush(self) -> None:
         """Commit and wait for all background merging to complete (thread-safe).
@@ -576,22 +648,15 @@ class TantivyEngine(BaseModel):
         For normal operations, prefer commit() which is non-blocking and
         allows writer reuse.
         """
-        with self._writer_lock:
-            if self._writer:
-                self._writer.commit()
-                self._writer.wait_merging_threads()
-                self._writer = None  # Writer consumed by wait_merging_threads
-                if self._index:
-                    self._index.reload()
-                    with self._searcher_lock:
-                        self._searcher = self._index.searcher()
-                # Invalidate tombstone cache since searcher was refreshed
-                self._invalidate_tombstone_cache()
-                if self.logger:
-                    self.logger.debug(
-                        "Tantivy index flushed (writer invalidated)",
-                        extra={"workspace_id": self.config.workspace_id},
-                    )
+        with self._lease(LeaseMode.EXCLUSIVE):
+            with self._writer_lock:
+                if self._writer:
+                    self._finalize_writer(relinquish=True)
+                    if self.logger:
+                        self.logger.debug(
+                            "Tantivy index flushed (writer invalidated)",
+                            extra={"workspace_id": self.config.workspace_id},
+                        )
 
     def _invalidate_tombstone_cache(self, workspace_id: str | None = None) -> None:
         """Invalidate tombstone cache for a workspace or all workspaces.
@@ -737,6 +802,48 @@ class TantivyEngine(BaseModel):
 
         return list(zip(memories, normalized.tolist(), strict=True))
 
+    def _search_unlocked(
+        self, query: str, workspace_id: str, limit: int
+    ) -> list[tuple[str, float]]:
+        """Search after the caller has acquired a shared lease."""
+        if self._index is None:
+            if self.logger:
+                self.logger.warning(
+                    "Tantivy search skipped: index not initialized",
+                    extra={"workspace_id": self.config.workspace_id},
+                )
+            return []
+
+        if not query.strip():
+            return []
+
+        if self.coordinator is not None:
+            self._refresh_reader()
+        pinned = self.searcher
+        tombstoned_memories = self._get_tombstoned_memories(
+            workspace_id, searcher=pinned
+        )
+        extra = 2 * len(tombstoned_memories)
+        search_limit = limit + extra
+
+        parsed_query = self._build_search_query(query, workspace_id)
+        results = self._collect_search_results(
+            parsed_query,
+            search_limit,
+            limit,
+            tombstoned_memories,
+            searcher=pinned,
+        )
+
+        if self.config.normalize_scores and results:
+            results = self._normalize_scores(results)
+
+        if self.coordinator is not None:
+            with self._searcher_lock:
+                self._searcher = None
+
+        return results
+
     def search(
         self, query: str, workspace_id: str, limit: int
     ) -> list[tuple[str, float]]:
@@ -756,40 +863,8 @@ class TantivyEngine(BaseModel):
         """
         try:
             self._require_open()
-            if self._index is None:
-                if self.logger:
-                    self.logger.warning(
-                        "Tantivy search skipped: index not initialized",
-                        extra={"workspace_id": self.config.workspace_id},
-                    )
-                return []
-
-            if not query.strip():
-                return []
-
-            pinned = self.searcher
-            tombstoned_memories = self._get_tombstoned_memories(
-                workspace_id, searcher=pinned
-            )
-            # Each unique tombstone still occupies two query hits (live
-            # original + tombstone doc). Fetch both plus the requested live
-            # page so leftover deletes cannot starve FTS.
-            extra = 2 * len(tombstoned_memories)
-            search_limit = limit + extra
-
-            parsed_query = self._build_search_query(query, workspace_id)
-            results = self._collect_search_results(
-                parsed_query,
-                search_limit,
-                limit,
-                tombstoned_memories,
-                searcher=pinned,
-            )
-
-            if self.config.normalize_scores and results:
-                results = self._normalize_scores(results)
-
-            return results
+            with self._lease(LeaseMode.SHARED):
+                return self._search_unlocked(query, workspace_id, limit)
 
         except ValueError as e:
             if self.logger:
@@ -911,6 +986,10 @@ class TantivyEngine(BaseModel):
         but file locks may persist until GC runs.
         """
         self._closed = True
+        with self._lease(LeaseMode.EXCLUSIVE):
+            self._close_unlocked()
+
+    def _close_unlocked(self) -> None:
         with self._writer_lock:
             if self._writer is not None:
                 try:
@@ -939,6 +1018,11 @@ class TantivyEngine(BaseModel):
             # Note: Index itself doesn't need explicit close in Tantivy Python bindings
             # but we clear the reference for consistency
             self._index = None
+        if self.logger:
+            self.logger.info(
+                "Tantivy engine closed",
+                extra={"workspace_id": self.config.workspace_id},
+            )
 
     def soft_delete(
         self, workspace_id: str, content: str, *, verify_exists: bool = True
@@ -960,6 +1044,14 @@ class TantivyEngine(BaseModel):
         Returns:
             True if tombstone was added, False if memory wasn't found.
         """
+        with self._lease(LeaseMode.EXCLUSIVE):
+            return self._soft_delete_unlocked(
+                workspace_id, content, verify_exists=verify_exists
+            )
+
+    def _soft_delete_unlocked(
+        self, workspace_id: str, content: str, *, verify_exists: bool
+    ) -> bool:
         if verify_exists:
             existing = self.find_by_exact_match(workspace_id, content)
             if not existing:
@@ -979,6 +1071,8 @@ class TantivyEngine(BaseModel):
             return False
 
         self._add_tombstone_docs(workspace_id, content, needed)
+        if self.coordinator is not None:
+            self._finalize_writer(relinquish=True)
 
         if self.logger:
             self.logger.debug(
@@ -1047,11 +1141,10 @@ class TantivyEngine(BaseModel):
         - Search automatically filters out tombstoned memories
         - Compaction removes tombstones and originals periodically
 
-        Rebuild approach (when soft-delete disabled):
+        Hard-delete approach (when soft-delete disabled):
         - Gets all documents from all workspaces
         - Filters out the target memory
-        - Destroys and recreates the index
-        - Re-adds all remaining documents
+        - Rewrites remaining documents in place (no directory replacement)
 
         Thread-safe: Uses writer lock since Tantivy IndexWriter is NOT thread-safe.
 
@@ -1062,32 +1155,37 @@ class TantivyEngine(BaseModel):
         Returns:
             True if document was found and deleted, False otherwise.
         """
-        # Use soft-delete if enabled (O(1) vs O(n))
-        if self.config.soft_delete_enabled:
-            result = self.soft_delete(workspace_id, content, verify_exists=verify_exists)
-            if result:
-                self.commit()
-            return result
+        with self._lease(LeaseMode.EXCLUSIVE):
+            if self.config.soft_delete_enabled:
+                result = self.soft_delete(
+                    workspace_id, content, verify_exists=verify_exists
+                )
+                if result:
+                    self.commit()
+                return result
 
-        # Fall back to rebuild approach when soft-delete disabled
-        try:
-            return self._delete_via_rebuild(workspace_id, content)
-        except ValueError as e:
-            self._log_delete_error(workspace_id, content, e, "warning", "QueryParseError")
-            return False
-        except OSError as e:
-            self._log_delete_error(
-                workspace_id,
-                content,
-                e,
-                "error",
-                "FileSystemError",
-                include_index_path=True,
-            )
-            return False
-        except Exception as e:
-            self._log_delete_error(workspace_id, content, e, "error", type(e).__name__)
-            return False
+            try:
+                return self._delete_via_rebuild(workspace_id, content)
+            except ValueError as e:
+                self._log_delete_error(
+                    workspace_id, content, e, "warning", "QueryParseError"
+                )
+                return False
+            except OSError as e:
+                self._log_delete_error(
+                    workspace_id,
+                    content,
+                    e,
+                    "error",
+                    "FileSystemError",
+                    include_index_path=True,
+                )
+                return False
+            except Exception as e:
+                self._log_delete_error(
+                    workspace_id, content, e, "error", type(e).__name__
+                )
+                return False
 
     def delete_batch(
         self,
@@ -1103,6 +1201,18 @@ class TantivyEngine(BaseModel):
         """
         if not contents:
             return 0
+        with self._lease(LeaseMode.EXCLUSIVE):
+            return self._delete_batch_unlocked(
+                workspace_id, contents, verify_exists=verify_exists
+            )
+
+    def _delete_batch_unlocked(
+        self,
+        workspace_id: str,
+        contents: list[str],
+        *,
+        verify_exists: bool,
+    ) -> int:
         if self.config.soft_delete_enabled:
             deleted = 0
             for content in contents:
@@ -1158,7 +1268,7 @@ class TantivyEngine(BaseModel):
                 },
             )
 
-        self._rebuild_index_with_docs(docs_to_keep)
+        self._rewrite_index_in_place(docs_to_keep)
 
         if self.logger:
             self.logger.debug(
@@ -1208,9 +1318,8 @@ class TantivyEngine(BaseModel):
     def _rebuild_index_with_docs(self, docs_to_keep: list[tuple[str, str]]) -> None:
         """Rebuild the index with the specified documents from all workspaces.
 
-        This destroys the existing index and creates a new one with all
-        the documents in docs_to_keep. This is necessary because Tantivy-py's
-        delete_documents() consumes the IndexWriter.
+        Legacy startup-only directory rebuild. Request-path delete/compact
+        must use ``_rewrite_index_in_place`` instead.
 
         Args:
             docs_to_keep: List of (workspace_id, content) tuples to preserve.
@@ -1300,7 +1409,7 @@ class TantivyEngine(BaseModel):
                     extra={"error": str(e)},
                 )
 
-        if num_docs is None or num_docs < 0:
+        if not isinstance(num_docs, int) or num_docs < 0:
             if self.logger:
                 self.logger.warning(
                     "Tantivy searcher num_docs unavailable; using fallback limit",
@@ -1327,6 +1436,18 @@ class TantivyEngine(BaseModel):
                 "unique_active_memories": 0,
             }
 
+        with self._lease(LeaseMode.SHARED):
+            return self._tombstone_stats_unlocked()
+
+    def _tombstone_stats_unlocked(self) -> dict[str, int]:
+        if self._index is None:
+            return {
+                "total_docs": 0,
+                "active_docs": 0,
+                "tombstones": 0,
+                "unique_active_memories": 0,
+            }
+        self._refresh_reader()
         try:
             doc_limit = self._get_doc_limit()
 
@@ -1451,6 +1572,10 @@ class TantivyEngine(BaseModel):
         """
         start_time = time.time()
 
+        with self._lease(LeaseMode.EXCLUSIVE):
+            return self._compact_unlocked(force=force, start_time=start_time)
+
+    def _compact_unlocked(self, *, force: bool, start_time: float) -> dict[str, int]:
         if not force and not self.needs_compaction():
             return self._compaction_result(compacted=False)
 
@@ -1465,7 +1590,7 @@ class TantivyEngine(BaseModel):
                 self._collect_active_docs(index)
             )
 
-            self._rebuild_index_with_docs(docs_to_keep)
+            self._rewrite_index_in_place(docs_to_keep)
             self._try_garbage_collect()
 
             elapsed_ms = int((time.time() - start_time) * 1000)

@@ -113,6 +113,10 @@ class IndexWriter:
         """Delete documents matching field value."""
         ...
 
+    def delete_all_documents(self) -> None:
+        """Delete every document in the index."""
+        ...
+
     def commit(self) -> None:
         """Commit pending changes."""
         ...
