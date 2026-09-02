@@ -43,8 +43,9 @@ def _complete_converged_intent(
     coordinator: IStorageCoordinator | None,
     workspace_id: str,
     hook: Callable[[str], None] | None,
+    leftover_add_content: str = "",
 ) -> None:
-    """Publish generation, then complete the durable intent."""
+    """Publish generation, then complete leftover ADDs and the durable intent."""
     if coordinator is not None and workspace_id:
         if hook is not None:
             hook("before_generation")
@@ -52,6 +53,12 @@ def _complete_converged_intent(
         coordinator.publish_generation(workspace_id, generation + 1)
         if hook is not None:
             hook("after_generation")
+    if leftover_add_content:
+        _complete_pending_adds_of(
+            store,
+            workspace_id=workspace_id,
+            content=leftover_add_content,
+        )
     if hook is not None:
         hook("before_intent")
     store.complete_replacement_transition(transition_id)
@@ -237,17 +244,13 @@ def apply_pending_transition(
         )
         return False
 
-    _complete_pending_adds_of(
-        store,
-        workspace_id=transition.workspace_id,
-        content=transition.old_content,
-    )
     _complete_converged_intent(
         store,
         transition.id,
         coordinator=coordinator,
         workspace_id=transition.workspace_id,
         hook=orchestration_hook,
+        leftover_add_content=transition.old_content,
     )
     logger.info(
         "Applied pending replacement transition",
