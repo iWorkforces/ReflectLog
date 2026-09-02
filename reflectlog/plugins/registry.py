@@ -113,7 +113,9 @@ class PluginRegistry[T]:
         if metadata is None:
             if isinstance(plugin, IPluggable):
                 name = plugin.plugin_name or type(plugin).__name__
-                version = plugin.plugin_version or type(plugin).__module__.split(".")[-1]
+                version = (
+                    plugin.plugin_version or type(plugin).__module__.split(".")[-1]
+                )
             else:
                 name = type(plugin).__name__
                 version = type(plugin).__module__.split(".")[-1]

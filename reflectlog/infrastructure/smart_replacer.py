@@ -16,7 +16,6 @@ from reflectlog.infrastructure.llm_provider_base import (
 )
 
 
-
 class ReplacementDecision(BaseModel):
     """Schema for LLM replacement detection response.
 

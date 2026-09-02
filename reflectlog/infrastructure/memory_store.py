@@ -810,9 +810,7 @@ class MemoryStore(BaseModel):
                         )
                         found[record.content] = record
             except sqlite3.Error as e:
-                raise StorageError(
-                    f"Failed to load memories by content: {e}"
-                ) from e
+                raise StorageError(f"Failed to load memories by content: {e}") from e
             finally:
                 cursor.close()
         return [found[content] for content in unique if content in found]

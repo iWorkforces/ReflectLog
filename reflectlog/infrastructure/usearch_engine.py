@@ -11,7 +11,7 @@ Clean Architecture Compliance:
 """
 
 from collections.abc import Callable, Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 import os
 import threading
@@ -506,10 +506,8 @@ class USearchEngine(BaseModel):
             self._seen_identity = _index_file_identity(live_path)
         except Exception:
             if os.path.exists(temp_path):
-                try:
+                with suppress(OSError):
                     os.remove(temp_path)
-                except OSError:
-                    pass
             raise
 
     def add(

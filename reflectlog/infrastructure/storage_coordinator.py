@@ -152,9 +152,7 @@ class PortalockerStorageCoordinator:
 
         return _on_release
 
-    def is_held(
-        self, workspace_id: str, mode: LeaseMode | None = None
-    ) -> bool:
+    def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
         """Return True when this process already holds a lease for the workspace."""
         safe_id = validate_workspace_id(workspace_id).lower()
         with self._local:
@@ -173,18 +171,14 @@ class PortalockerStorageCoordinator:
             with open(path, encoding="utf-8") as handle:
                 raw = handle.read()
         except OSError as exc:
-            raise GenerationError(
-                "Storage generation sidecar is unreadable"
-            ) from exc
+            raise GenerationError("Storage generation sidecar is unreadable") from exc
         text = raw.strip()
         if text == "":
             raise GenerationError("Storage generation sidecar is empty")
         try:
             generation = int(text)
         except ValueError as exc:
-            raise GenerationError(
-                "Storage generation sidecar is corrupt"
-            ) from exc
+            raise GenerationError("Storage generation sidecar is corrupt") from exc
         if generation < 0:
             raise GenerationError("Storage generation sidecar is corrupt")
         return generation

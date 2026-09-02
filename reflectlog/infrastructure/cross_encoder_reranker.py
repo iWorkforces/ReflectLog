@@ -38,7 +38,9 @@ def _valid_iso_timestamp(value: str | None) -> bool:
         return False
     try:
         _ = datetime.fromisoformat(value)
-    except (TypeError, ValueError):
+    except TypeError:
+        return False
+    except ValueError:
         return False
     return True
 
@@ -331,9 +333,7 @@ class CrossEncoderReranker(BaseModel):
             and self.config.recency_decay_rate > 0
             and bool(timestamp_map)
             and bool(scored)
-            and all(
-                _valid_iso_timestamp(timestamp_map.get(doc)) for doc, _ in scored
-            )
+            and all(_valid_iso_timestamp(timestamp_map.get(doc)) for doc, _ in scored)
         )
         return self._post_processor.apply_decay(
             scored,
@@ -423,6 +423,4 @@ class CrossEncoderReranker(BaseModel):
             List of (document, cross_encoder_score) tuples, sorted by score
             descending, filtered by score_threshold, and limited to top_k results.
         """
-        return await asyncify(self.rerank)(
-            query, candidates, timestamp_map, top_k
-        )
+        return await asyncify(self.rerank)(query, candidates, timestamp_map, top_k)

@@ -430,18 +430,17 @@ class TantivyEngine(BaseModel):
 
     def _rewrite_index_in_place(self, docs_to_keep: list[tuple[str, str]]) -> None:
         """Replace live documents without swapping the index directory."""
-        with self._lease(LeaseMode.EXCLUSIVE):
-            with self._writer_lock:
-                writer = self.writer
-                writer.delete_all_documents()
-                for workspace_id, content in docs_to_keep:
-                    doc = tantivy.Document()
-                    doc.add_text("workspace_id", workspace_id)
-                    doc.add_text("content", content)
-                    doc.add_unsigned("is_deleted", 0)
-                    doc.add_integer("deleted_at", 0)
-                    _ = writer.add_document(doc)
-                self._finalize_writer(relinquish=True, invalidate_all=True)
+        with self._lease(LeaseMode.EXCLUSIVE), self._writer_lock:
+            writer = self.writer
+            writer.delete_all_documents()
+            for workspace_id, content in docs_to_keep:
+                doc = tantivy.Document()
+                doc.add_text("workspace_id", workspace_id)
+                doc.add_text("content", content)
+                doc.add_unsigned("is_deleted", 0)
+                doc.add_integer("deleted_at", 0)
+                _ = writer.add_document(doc)
+            self._finalize_writer(relinquish=True, invalidate_all=True)
 
     def _get_all_docs(self, workspace_id: str) -> list[str]:
         """Get all active (non-tombstoned) documents for a workspace.
@@ -506,9 +505,7 @@ class TantivyEngine(BaseModel):
                         "error": str(e),
                     },
                 )
-            raise RuntimeError(
-                f"Failed to get all docs from Tantivy: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to get all docs from Tantivy: {e}") from e
 
     def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]:
         """Find all memories that exactly match the given memory text.
@@ -608,38 +605,36 @@ class TantivyEngine(BaseModel):
             content: Memory content to index.
         """
         self._require_open()
-        with self._lease(LeaseMode.EXCLUSIVE):
-            with self._writer_lock:
-                doc = tantivy.Document()
-                doc.add_text("workspace_id", workspace_id)
-                doc.add_text("content", content)
+        with self._lease(LeaseMode.EXCLUSIVE), self._writer_lock:
+            doc = tantivy.Document()
+            doc.add_text("workspace_id", workspace_id)
+            doc.add_text("content", content)
 
-                # Add soft-delete fields with default values
-                doc.add_unsigned("is_deleted", 0)  # 0 = active
-                doc.add_integer("deleted_at", 0)  # 0 = not deleted
+            # Add soft-delete fields with default values
+            doc.add_unsigned("is_deleted", 0)  # 0 = active
+            doc.add_integer("deleted_at", 0)  # 0 = not deleted
 
-                _ = self.writer.add_document(doc)
-                self._mark_workspace_dirty(workspace_id)
-                if self.coordinator is not None:
-                    self._finalize_writer(relinquish=True)
+            _ = self.writer.add_document(doc)
+            self._mark_workspace_dirty(workspace_id)
+            if self.coordinator is not None:
+                self._finalize_writer(relinquish=True)
 
     def add_batch(self, workspace_id: str, contents: list[str]) -> None:
         """Add multiple documents under a single writer lock."""
         if not contents:
             return
         self._require_open()
-        with self._lease(LeaseMode.EXCLUSIVE):
-            with self._writer_lock:
-                for content in contents:
-                    doc = tantivy.Document()
-                    doc.add_text("workspace_id", workspace_id)
-                    doc.add_text("content", content)
-                    doc.add_unsigned("is_deleted", 0)
-                    doc.add_integer("deleted_at", 0)
-                    _ = self.writer.add_document(doc)
-                self._mark_workspace_dirty(workspace_id)
-                if self.coordinator is not None:
-                    self._finalize_writer(relinquish=True)
+        with self._lease(LeaseMode.EXCLUSIVE), self._writer_lock:
+            for content in contents:
+                doc = tantivy.Document()
+                doc.add_text("workspace_id", workspace_id)
+                doc.add_text("content", content)
+                doc.add_unsigned("is_deleted", 0)
+                doc.add_integer("deleted_at", 0)
+                _ = self.writer.add_document(doc)
+            self._mark_workspace_dirty(workspace_id)
+            if self.coordinator is not None:
+                self._finalize_writer(relinquish=True)
 
     def commit(self) -> None:
         """Commit pending changes and refresh searcher (thread-safe).
@@ -659,18 +654,17 @@ class TantivyEngine(BaseModel):
         the writer by taking ownership (self). This allows reusing the same
         writer across multiple add-commit cycles for better performance.
         """
-        with self._lease(LeaseMode.EXCLUSIVE):
-            with self._writer_lock:
-                if self._writer:
-                    relinquish = self.coordinator is not None
-                    self._finalize_writer(relinquish=relinquish)
-                    if self.logger:
-                        self.logger.debug(
-                            "Tantivy index committed (writer reusable)"
-                            if not relinquish
-                            else "Tantivy index committed (writer relinquished)",
-                            extra={"workspace_id": self.config.workspace_id},
-                        )
+        with self._lease(LeaseMode.EXCLUSIVE), self._writer_lock:
+            if self._writer:
+                relinquish = self.coordinator is not None
+                self._finalize_writer(relinquish=relinquish)
+                if self.logger:
+                    self.logger.debug(
+                        "Tantivy index committed (writer reusable)"
+                        if not relinquish
+                        else "Tantivy index committed (writer relinquished)",
+                        extra={"workspace_id": self.config.workspace_id},
+                    )
 
     def flush(self) -> None:
         """Commit and wait for all background merging to complete (thread-safe).
@@ -688,15 +682,14 @@ class TantivyEngine(BaseModel):
         For normal operations, prefer commit() which is non-blocking and
         allows writer reuse.
         """
-        with self._lease(LeaseMode.EXCLUSIVE):
-            with self._writer_lock:
-                if self._writer:
-                    self._finalize_writer(relinquish=True)
-                    if self.logger:
-                        self.logger.debug(
-                            "Tantivy index flushed (writer invalidated)",
-                            extra={"workspace_id": self.config.workspace_id},
-                        )
+        with self._lease(LeaseMode.EXCLUSIVE), self._writer_lock:
+            if self._writer:
+                self._finalize_writer(relinquish=True)
+                if self.logger:
+                    self.logger.debug(
+                        "Tantivy index flushed (writer invalidated)",
+                        extra={"workspace_id": self.config.workspace_id},
+                    )
 
     def _mark_workspace_dirty(self, workspace_id: str) -> None:
         """Record a workspace whose tombstone cache must drop on the next commit."""
@@ -822,18 +815,14 @@ class TantivyEngine(BaseModel):
                     "Failed to get tombstoned memories (query parse error)",
                     extra={"workspace_id": workspace_id, "error": str(e)},
                 )
-            raise RuntimeError(
-                f"Failed to get tombstoned memories: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to get tombstoned memories: {e}") from e
         except Exception as e:
             if self.logger:
                 self.logger.warning(
                     "Failed to get tombstoned memories",
                     extra={"workspace_id": workspace_id, "error": str(e)},
                 )
-            raise RuntimeError(
-                f"Failed to get tombstoned memories: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to get tombstoned memories: {e}") from e
 
     def _normalize_scores(
         self, results: list[tuple[str, float]]
@@ -1164,9 +1153,7 @@ class TantivyEngine(BaseModel):
         live_count = 0
         tomb_count = 0
         pinned = self.searcher
-        for _, doc_addr in pinned.search(
-            query=query, limit=self._get_doc_limit()
-        ).hits:
+        for _, doc_addr in pinned.search(query=query, limit=self._get_doc_limit()).hits:
             doc = pinned.doc(doc_addr)
             memory = doc.get_first("content")
             if memory != content:
@@ -1179,9 +1166,7 @@ class TantivyEngine(BaseModel):
                 live_count += 1
         return live_count, tomb_count
 
-    def _add_tombstone_docs(
-        self, workspace_id: str, content: str, count: int
-    ) -> None:
+    def _add_tombstone_docs(self, workspace_id: str, content: str, count: int) -> None:
         """Plant ``count`` tombstone documents under the writer lock."""
         deleted_at = int(time.time() * 1000)
         with self._writer_lock:
@@ -1282,9 +1267,7 @@ class TantivyEngine(BaseModel):
         if self.config.soft_delete_enabled:
             deleted = 0
             for content in contents:
-                if self.soft_delete(
-                    workspace_id, content, verify_exists=verify_exists
-                ):
+                if self.soft_delete(workspace_id, content, verify_exists=verify_exists):
                     deleted += 1
             if deleted:
                 self.commit()
