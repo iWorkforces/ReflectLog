@@ -246,6 +246,7 @@ class TestCreateSemanticEngine:
             mock_usearch_config_cls.from_config.return_value,
             embedder=mock_cached_cls.return_value,
             logger=mock_logger,
+            coordinator=None,
         )
         assert result is mock_usearch_cls.return_value
 
@@ -270,6 +271,7 @@ class TestCreateSemanticEngine:
             mock_usearch_config_cls.from_config.return_value,
             embedder=mock_embedder_cls.return_value,
             logger=mock_logger,
+            coordinator=None,
         )
 
 
@@ -436,6 +438,7 @@ class TestCreateTantivyEngine:
         mock_tantivy_cls.assert_called_once_with(
             mock_tantivy_config_cls.return_value,
             logger=mock_logger,
+            coordinator=None,
         )
         assert result is mock_tantivy_cls.return_value
 

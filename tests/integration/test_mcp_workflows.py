@@ -1,7 +1,7 @@
 """Integration tests for MCP server workflows."""
 
 from collections.abc import Awaitable, Callable
-from typing import Protocol, TypedDict, cast
+from typing import Any, Protocol, TypedDict, cast
 
 import pytest
 
@@ -70,7 +70,9 @@ class WorkflowMemoryManager(Protocol):
         tantivy_search: TantivyEngineCallback,
     ) -> None:
         self._semantic_engine.search.side_effect = semantic_search
-        self._tantivy_engine.search.side_effect = tantivy_search
+        tantivy: Any = self._tantivy_engine
+        if tantivy is not None:
+            tantivy.search.side_effect = tantivy_search
 
 
 class WorkflowServer(Protocol):
@@ -454,6 +456,8 @@ class TestMCPWorkflows:
         )
         object.__setattr__(memory_manager.config, "reranker_engine", "none")
         object.__setattr__(memory_manager.config, "fusion_ranking_threshold", 0.0)
+        patched: Any = memory_manager
+        patched._semantic_engine = memory_manager.memory
         WorkflowMemoryManager.configure_search_engines(
             memory_manager,
             _semantic_search(stored_memories),
@@ -489,6 +493,8 @@ class TestMCPWorkflows:
         )
         object.__setattr__(memory_manager.config, "reranker_engine", "none")
         object.__setattr__(memory_manager.config, "fusion_ranking_threshold", 0.0)
+        patched: Any = memory_manager
+        patched._semantic_engine = memory_manager.memory
         WorkflowMemoryManager.configure_search_engines(
             memory_manager,
             _semantic_search(stored_memories),

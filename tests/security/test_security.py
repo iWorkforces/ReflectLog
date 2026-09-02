@@ -19,6 +19,7 @@ Usage:
 """
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -36,6 +37,7 @@ def manager(monkeypatch: MonkeyPatch):
 
     mock_semantic_engine = MagicMock()
     mock_semantic_engine.search.return_value = []
+    mock_semantic_engine.count.return_value = 0
 
     mock_tantivy_engine = MagicMock()
     mock_tantivy_engine.search.return_value = []
@@ -60,6 +62,10 @@ def manager(monkeypatch: MonkeyPatch):
     )
     mgr._fusion_engine = MagicMock()
     mgr.logger = MagicMock()
+    mgr._closed = False
+    mgr._closing = False
+    patched: Any = mgr
+    patched.reconcile_pending_replacements = lambda: 0
 
     yield mgr
 

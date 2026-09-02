@@ -58,6 +58,10 @@ def mock_semantic_engine() -> MagicMock:
     engine.is_ready = MagicMock(return_value=True)
     engine.contains_id = MagicMock(return_value=False)
     engine.count = MagicMock(return_value=0)
+    engine.memory_store.exists_many.side_effect = lambda _workspace, contents: set(
+        contents
+    )
+    engine.get_records_by_contents.return_value = []
     return engine
 
 

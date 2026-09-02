@@ -217,7 +217,8 @@ class TestInitCredentials:
 
         captured = capsys.readouterr()
         assert "ANTHROPIC_AUTH_TOKEN:" in captured.out
-        assert "sk-ant-oat01-existin" in captured.out
+        assert "<set>" in captured.out
+        assert "sk-ant-oat01-existin" not in captured.out
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.utility.utility.get_claude_code_api_key")
@@ -544,7 +545,7 @@ class TestGenerateContent:
             model="claude-sonnet-4-5-20250929",
             system_prompt="Be helpful",
             allowed_tools=["read", "write"],
-            permission_mode="bypassPermissions",
+            permission_mode="default",
         )
 
     @patch("reflectlog.utility.utility._claude.query")
@@ -567,7 +568,7 @@ class TestGenerateContent:
             model=None,
             system_prompt=None,
             allowed_tools=[],
-            permission_mode="bypassPermissions",
+            permission_mode="default",
         )
 
     @patch("reflectlog.utility.utility._claude.query")

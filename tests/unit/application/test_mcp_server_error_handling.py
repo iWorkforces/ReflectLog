@@ -103,6 +103,9 @@ class TestAddToolErrorHandling:
 
         # Configure mock to raise exception on add
         mock_usearch_engine.get_id_by_content.return_value = None
+        mock_usearch_engine.embedder.embed_documents.side_effect = lambda texts: [
+            [0.1] * 4 for _ in texts
+        ]
         mock_usearch_engine.add_batch.side_effect = Exception("Storage failure")
         mock_usearch_engine.add.side_effect = Exception("Storage failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine

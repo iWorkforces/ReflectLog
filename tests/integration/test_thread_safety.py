@@ -6,6 +6,7 @@ from multiple threads correctly without data races or corruption.
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -57,8 +58,10 @@ def create_test_config(workspace_id: str = "test-thread-safety") -> Config:
     )
 
 
-def create_memory_manager(config: Config) -> MemoryManager:
-    """Create a MemoryManager with mock embedder."""
+def create_memory_manager(
+    config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> MemoryManager:
+    """Create a MemoryManager with mock embedder and isolated index paths."""
     mock_embedder = MockEmbedder(dims=128)
     mock_logger: IStructuredLogger = cast(
         IStructuredLogger, MagicMock(spec=StructuredLogger)
@@ -66,6 +69,7 @@ def create_memory_manager(config: Config) -> MemoryManager:
 
     from unittest.mock import patch
 
+    monkeypatch.chdir(tmp_path)
     with patch(
         "reflectlog.application.memory.manager.LangchainQwenEmbeddings",
         return_value=mock_embedder,
@@ -78,10 +82,12 @@ def create_memory_manager(config: Config) -> MemoryManager:
 class TestMemoryManagerThreadSafety:
     """Tests for MemoryManager thread safety."""
 
-    def test_concurrent_sync_adds(self):
+    def test_concurrent_sync_adds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that concurrent sync add operations don't cause data corruption."""
         config = create_test_config("test-sync-adds")
-        memory_manager = create_memory_manager(config)
+        memory_manager = create_memory_manager(config, tmp_path, monkeypatch)
 
         num_threads = 10
         adds_per_thread = 100
@@ -111,10 +117,12 @@ class TestMemoryManagerThreadSafety:
 
         memory_manager.close()
 
-    def test_concurrent_sync_get_all(self):
+    def test_concurrent_sync_get_all(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that concurrent get_all calls are thread-safe."""
         config = create_test_config("test-sync-getall")
-        memory_manager = create_memory_manager(config)
+        memory_manager = create_memory_manager(config, tmp_path, monkeypatch)
 
         # Add initial memories
         memories = [f"Memory {i}" for i in range(100)]
@@ -143,10 +151,12 @@ class TestMemoryManagerThreadSafety:
 
         memory_manager.close()
 
-    def test_concurrent_mixed_operations(self):
+    def test_concurrent_mixed_operations(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that mixed concurrent operations work correctly."""
         config = create_test_config("test-mixed-ops")
-        memory_manager = create_memory_manager(config)
+        memory_manager = create_memory_manager(config, tmp_path, monkeypatch)
 
         # Add initial memories
         for i in range(50):
@@ -188,10 +198,10 @@ class TestMemoryManagerThreadSafety:
 
         memory_manager.close()
 
-    def test_concurrent_deletes(self):
+    def test_concurrent_deletes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Test that concurrent delete operations are thread-safe."""
         config = create_test_config("test-concurrent-deletes")
-        memory_manager = create_memory_manager(config)
+        memory_manager = create_memory_manager(config, tmp_path, monkeypatch)
 
         # Add memories
         for i in range(20):
@@ -230,10 +240,12 @@ class TestAsyncConcurrencySafety:
     """Tests for async operation safety."""
 
     @pytest.mark.asyncio
-    async def test_async_add_concurrency(self):
+    async def test_async_add_concurrency(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that async add operations handle concurrency correctly."""
         config = create_test_config("test-async-add")
-        memory_manager = create_memory_manager(config)
+        memory_manager = create_memory_manager(config, tmp_path, monkeypatch)
 
         num_tasks = 20
         memories_per_task = 10
@@ -259,10 +271,12 @@ class TestAsyncConcurrencySafety:
         memory_manager.close()
 
     @pytest.mark.asyncio
-    async def test_async_search_concurrency(self):
+    async def test_async_search_concurrency(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that async search operations handle concurrency correctly."""
         config = create_test_config("test-async-search")
-        memory_manager = create_memory_manager(config)
+        memory_manager = create_memory_manager(config, tmp_path, monkeypatch)
 
         # Add initial memories
         memories = [f"Memory {i} for testing" for i in range(100)]
@@ -283,10 +297,12 @@ class TestAsyncConcurrencySafety:
         memory_manager.close()
 
     @pytest.mark.asyncio
-    async def test_async_mixed_operations(self):
+    async def test_async_mixed_operations(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test mixed async operations (add, search, get_all) running concurrently."""
         config = create_test_config("test-async-mixed")
-        memory_manager = create_memory_manager(config)
+        memory_manager = create_memory_manager(config, tmp_path, monkeypatch)
 
         # Add initial memories
         initial_memories = [f"Initial memory {i}" for i in range(50)]
@@ -334,10 +350,12 @@ class TestAsyncConcurrencySafety:
         memory_manager.close()
 
     @pytest.mark.asyncio
-    async def test_concurrent_sync_and_async(self):
+    async def test_concurrent_sync_and_async(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that sync and async operations can run concurrently."""
         config = create_test_config("test-sync-async")
-        memory_manager = create_memory_manager(config)
+        memory_manager = create_memory_manager(config, tmp_path, monkeypatch)
 
         # Add initial memories
         initial_memories = [f"Memory {i}" for i in range(50)]

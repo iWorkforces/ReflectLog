@@ -21,6 +21,7 @@ def test_five_registered_tools() -> None:
 def test_malformed_memories_rejected_by_validator() -> None:
     ok, error = validate_memories(["ok"], 1, 100)
     assert ok is True
+    assert error is None
     ok_bad, error_bad = validate_memories([None], 1, 100)
     assert ok_bad is False
     assert error_bad is not None

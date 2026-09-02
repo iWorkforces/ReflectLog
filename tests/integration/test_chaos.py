@@ -17,6 +17,8 @@ Usage:
 """
 
 import asyncio
+from dataclasses import replace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -46,12 +48,23 @@ def manager(monkeypatch):
     mock_semantic_engine = MagicMock()
     mock_semantic_engine.search.return_value = []
     mock_semantic_engine.is_ready = MagicMock(return_value=False)
+    mock_semantic_engine.count.return_value = 0
+    mock_semantic_engine.memory_store.exists_many.side_effect = (
+        lambda _workspace, contents: set(contents)
+    )
+    mock_semantic_engine.get_records_by_contents.return_value = []
 
     mock_tantivy_engine = MagicMock()
     mock_tantivy_engine.search.return_value = []
     mock_tantivy_engine.is_ready = MagicMock(return_value=False)
 
     config = Config.from_environment()
+    config = replace(
+        config,
+        enable_recency_boost=False,
+        overfetch_adaptive=False,
+        fusion_ranking_threshold=0.0,
+    )
 
     mgr = MemoryManager.__new__(MemoryManager)
     mgr._semantic_engine = mock_semantic_engine
@@ -63,6 +76,10 @@ def manager(monkeypatch):
     mgr._write_lock = MagicMock()
     mgr._fusion_engine = RanxFusionEngine()
     mgr.logger = MagicMock()
+    mgr._closed = False
+    mgr._closing = False
+    patched: Any = mgr
+    patched.reconcile_pending_replacements = lambda: 0
     mgr._cross_encoder_reranker = None
     mgr._search_pipeline = SearchPipeline(
         semantic_engine=mock_semantic_engine,

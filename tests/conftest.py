@@ -78,6 +78,21 @@ def mock_usearch_engine() -> MagicMock:
     # Default constructed engines are not warmed; a bare MagicMock is truthy.
     engine.is_ready = MagicMock(return_value=False)
     engine.get_id_by_content = MagicMock(return_value=None)
+    engine.contains_id = MagicMock(return_value=None)
+    engine.count = MagicMock(return_value=0)
+    engine.embedder.embed_documents.side_effect = lambda texts: [
+        [0.1] * 4 for _ in texts
+    ]
+    engine.embedder.embed_query.side_effect = lambda _query: [0.1] * 4
+    engine.memory_store.begin_add_intents.return_value = []
+    engine.memory_store.begin_delete_intents.return_value = []
+    engine.memory_store.list_pending_transitions.return_value = []
+    engine.memory_store.has_later_intent.return_value = False
+    engine.memory_store.get.return_value = None
+    engine.memory_store.exists_many.side_effect = lambda _workspace, contents: set(
+        contents
+    )
+    engine.get_records_by_contents.return_value = []
     return engine
 
 
@@ -181,13 +196,24 @@ def mcp_server(
 
         # Configure embedder mock
         mock_embedder = MagicMock()
+        mock_embedder.embed_documents.side_effect = lambda texts: [
+            [0.1] * 4 for _ in texts
+        ]
+        mock_embedder.embed_query.side_effect = lambda _query: [0.1] * 4
         mock_embedder_cls.return_value = mock_embedder
 
         # Configure CachedEmbeddings mock to return the base embedder mock
         # This prevents Pydantic validation errors in tests
         mock_cached_embedder = MagicMock()
         mock_cached_embedder.embedder = mock_embedder
+        mock_cached_embedder.embed_documents.side_effect = mock_embedder.embed_documents
+        mock_cached_embedder.embed_query.side_effect = mock_embedder.embed_query
         mock_cached_embedder_cls.return_value = mock_cached_embedder
+        mock_tantivy.find_by_exact_match.return_value = []
+        mock_tantivy.delete.return_value = True
+        mock_tantivy.delete_batch.side_effect = (
+            lambda _workspace, contents, verify_exists=True: len(contents)
+        )
 
         server = FastMCPServer()
         # Add backwards-compatible 'memory_manager' attribute for tests (accessing private attribute)

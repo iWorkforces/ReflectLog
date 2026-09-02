@@ -16,6 +16,10 @@ from reflectlog.infrastructure.memory_store import (
 )
 
 
+def create_mock_logger() -> MagicMock:
+    return MagicMock(spec=IStructuredLogger)
+
+
 class TestMemoryStoreInitialization:
     """Tests for MemoryStore initialization."""
 
@@ -370,7 +374,7 @@ class TestMemoryStoreLogging:
         """Insert should log on debug level."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert("user1", "Hello world")
@@ -382,7 +386,7 @@ class TestMemoryStoreLogging:
         """Delete should log on debug level."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             memory_id = store.insert("user1", "Hello world")
@@ -397,7 +401,7 @@ class TestMemoryStoreLogging:
         """Logger should be called when store initializes connection."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -411,7 +415,7 @@ class TestMemoryStoreLogging:
         """Logger should log when memory not found for deletion."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.delete(999)
@@ -426,7 +430,7 @@ class TestMemoryStoreLogging:
         """Logger should be called when store is closed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             # Force initialization
@@ -443,7 +447,7 @@ class TestMemoryStoreLogging:
         """Logger should log duplicate memory detection."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert("user1", "Hello world")
@@ -460,7 +464,7 @@ class TestMemoryStoreLogging:
         """Logger should log batch insert completion."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert_many("user1", ["msg1", "msg2"])
@@ -474,7 +478,7 @@ class TestMemoryStoreLogging:
         """Logger should log batch delete."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             id1 = store.insert("user1", "msg1")
@@ -490,7 +494,7 @@ class TestMemoryStoreLogging:
         """Logger should log memory archival."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             # Insert directly into archive table to test logging
@@ -509,7 +513,7 @@ class TestMemoryStoreLogging:
         """Logger should log memory restoration."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             # Manually insert archive record
@@ -535,7 +539,7 @@ class TestMemoryStoreLogging:
         """Logger should log expired archive cleanup."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             # Insert a very old archive record
@@ -613,7 +617,7 @@ class TestMemoryStoreInsertMany:
         """insert_many should log when skipping duplicates."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert("proj1", "dup")
@@ -664,7 +668,7 @@ class TestMemoryStoreInsertMany:
         """insert_many should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -785,7 +789,7 @@ class TestMemoryStoreGetBatch:
         """get_batch should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -880,7 +884,7 @@ class TestMemoryStoreDeleteBatch:
         """delete_batch should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1136,7 +1140,7 @@ class TestMemoryStoreGetArchived:
         """get_archived should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1204,7 +1208,7 @@ class TestMemoryStoreRestoreFromArchive:
         """restore_from_archive should log warning when archive not found."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.restore_from_archive(999)
@@ -1235,7 +1239,7 @@ class TestMemoryStoreRestoreFromArchive:
         """restore_from_archive should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1354,7 +1358,7 @@ class TestMemoryStoreCleanupExpiredArchive:
         """cleanup_expired_archive should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1454,7 +1458,7 @@ class TestMemoryStoreErrorPaths:
         """get should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1491,7 +1495,7 @@ class TestMemoryStoreErrorPaths:
         """get_all should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1528,7 +1532,7 @@ class TestMemoryStoreErrorPaths:
         """delete should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1565,7 +1569,7 @@ class TestMemoryStoreErrorPaths:
         """exists should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1602,7 +1606,7 @@ class TestMemoryStoreErrorPaths:
         """get_id_by_content should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1639,7 +1643,7 @@ class TestMemoryStoreErrorPaths:
         """insert should log non-duplicate errors."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection

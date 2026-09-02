@@ -160,6 +160,22 @@ class ControllableBackend:
         _ = workspace_id
         return set(contents)
 
+    def get_records_by_contents(
+        self, workspace_id: str, contents: list[str]
+    ) -> list[object]:
+        _ = workspace_id
+        records: list[object] = []
+        for item in self.results:
+            if isinstance(item, tuple) and len(item) >= 3 and item[0] in contents:
+                records.append(
+                    type(
+                        "Stored",
+                        (),
+                        {"content": item[0], "created_at": item[2]},
+                    )()
+                )
+        return records
+
     def is_ready(self) -> bool:
         return False
 
@@ -1434,7 +1450,8 @@ class TestSearchResponsiveness:
                 raise TimeoutError("recovery was not released")
             return 0
 
-        manager.reconcile_pending_replacements = blocking_reconcile
+        patched: Any = manager
+        patched.reconcile_pending_replacements = blocking_reconcile
 
         async def ticker() -> None:
             nonlocal ticks_after_enter
@@ -1496,7 +1513,8 @@ class TestSearchResponsiveness:
         def boom() -> int:
             raise cause
 
-        manager.reconcile_pending_replacements = boom
+        patched: Any = manager
+        patched.reconcile_pending_replacements = boom
         with pytest.raises(InitializationError) as exc_info:
             _ = await manager.search("q")
         assert exc_info.value is cause

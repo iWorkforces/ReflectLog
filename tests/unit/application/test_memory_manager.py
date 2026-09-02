@@ -25,6 +25,19 @@ def _stub_coordinator(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(MemoryManager, "_create_coordinator", _factory)
 
 
+_ = _stub_coordinator
+
+
+def _wire_search_mocks(engine: MagicMock) -> None:
+    engine.memory_store.exists_many.side_effect = lambda _workspace, contents: set(
+        contents
+    )
+    engine.get_records_by_contents.side_effect = lambda _workspace, contents: [
+        type("R", (), {"content": content, "created_at": "2024-01-01T00:00:00"})()
+        for content in contents
+    ]
+
+
 @pytest.fixture
 def mock_config() -> Config:
     """Mock configuration with hybrid search enabled."""
@@ -163,6 +176,7 @@ class TestHybridMemoryManager:
                 ) as mock_tantivy_class:
                     # Setup USearch engine mock
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     inserted = {"done": False}
 
                     def _add_batch(
@@ -214,6 +228,7 @@ class TestHybridMemoryManager:
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch("reflectlog.application.memory.manager.TantivyEngine"):
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     # Mock get_id_by_content for direct lookup (O(log n))
                     mock_usearch.get_id_by_content.return_value = 42
                     mock_usearch_class.return_value = mock_usearch
@@ -239,6 +254,7 @@ class TestHybridMemoryManager:
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch("reflectlog.application.memory.manager.TantivyEngine"):
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     # Mock get_id_by_content returning None (not found)
                     mock_usearch.get_id_by_content.return_value = None
                     mock_usearch_class.return_value = mock_usearch
@@ -339,6 +355,7 @@ class TestHybridMemoryManager:
                 ) as mock_tantivy_class:
                     # Setup USearchEngine mock - now returns 3-tuples (message, score, created_at)
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     mock_usearch.search.return_value = [
                         ("usearch result", 0.9, "2024-01-01T00:00:00")
                     ]
@@ -529,6 +546,9 @@ class TestParallelMemoryAddition:
                         return None
 
                     mock_usearch.get_id_by_content.side_effect = get_id
+                    mock_usearch.memory_store.exists_many.side_effect = (
+                        lambda _workspace, contents: {"duplicate"} & set(contents)
+                    )
                     mock_tantivy_class.return_value = mock_tantivy
 
                     manager = MemoryManager(mock_config, mock_logger)
@@ -550,6 +570,7 @@ class TestParallelMemoryAddition:
                 ) as mock_tantivy_class:
                     # Setup USearchEngine mock to raise error
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     mock_usearch.add_batch.side_effect = Exception("Storage error")
                     mock_usearch.search.return_value = []  # For deduplication check
                     mock_usearch.get_id_by_content.return_value = None
@@ -714,6 +735,7 @@ class TestSingleResultRerankingSkip:
                         # Setup USearchEngine mock - return 1 result
                         # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch = MagicMock()
+                        _wire_search_mocks(mock_usearch)
                         mock_usearch.search.return_value = [
                             ("single result", 0.9, "2024-01-01T00:00:00")
                         ]
@@ -772,6 +794,7 @@ class TestSingleResultRerankingSkip:
                         # Setup USearchEngine mock - return 1 result
                         # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch = MagicMock()
+                        _wire_search_mocks(mock_usearch)
                         mock_usearch.search.return_value = [
                             ("single result", 0.9, "2024-01-01T00:00:00")
                         ]
@@ -821,6 +844,7 @@ class TestSingleResultRerankingSkip:
                     ) as mock_reranker_class:
                         # Setup USearchEngine mock - return empty results
                         mock_usearch = MagicMock()
+                        _wire_search_mocks(mock_usearch)
                         mock_usearch.search.return_value = []  # No semantic results
                         mock_usearch.count.return_value = 10
                         mock_usearch_class.return_value = mock_usearch
@@ -866,6 +890,7 @@ class TestSingleResultRerankingSkip:
                         # Setup USearchEngine mock - return multiple results
                         # Now returns 3-tuples: (message, score, created_at)
                         mock_usearch = MagicMock()
+                        _wire_search_mocks(mock_usearch)
                         mock_usearch.search.return_value = [
                             ("result 1", 0.9, "2024-01-01T00:00:00"),
                             ("result 2", 0.8, "2024-01-02T00:00:00"),
@@ -927,6 +952,7 @@ class TestTimestampPropagation:
                 ) as mock_tantivy_class:
                     # Setup USearchEngine mock with timestamps
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     mock_usearch.search.return_value = [
                         ("result 1", 0.9, "2024-01-15T10:30:00"),
                         ("result 2", 0.8, "2024-01-14T09:00:00"),
@@ -974,6 +1000,7 @@ class TestTimestampPropagation:
                     ]
 
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     mock_usearch.search.return_value = semantic_results
                     mock_usearch.count.return_value = 100
                     mock_usearch_class.return_value = mock_usearch
@@ -1010,6 +1037,7 @@ class TestTimestampPropagation:
                 ) as mock_tantivy_class:
                     # Test that older and newer memories have different timestamps
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     mock_usearch.search.return_value = [
                         ("Old memory", 0.9, "2024-01-01T00:00:00"),  # Older
                         ("New memory", 0.85, "2024-12-01T00:00:00"),  # Newer
@@ -1039,6 +1067,7 @@ class TestTimestampPropagation:
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
                 with patch("reflectlog.application.memory.manager.TantivyEngine"):
                     mock_usearch = MagicMock()
+                    _wire_search_mocks(mock_usearch)
                     # 3-tuples with timestamps
                     mock_usearch.search.return_value = [
                         ("Semantic result", 0.95, "2024-06-15T08:00:00"),
