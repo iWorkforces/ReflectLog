@@ -121,3 +121,104 @@ def test_disjoint_and_duplicate_multiprocess_writes(tmp_path: Path) -> None:
             if process.is_alive():
                 process.kill()
                 process.join(timeout=5.0)
+
+
+def _mutator(
+    root: str,
+    workspace_id: str,
+    action: str,
+    content: str,
+    ready: multiprocessing.synchronize.Event,
+    go: multiprocessing.synchronize.Event,
+    result: multiprocessing.Queue[str],
+) -> None:
+    coordinator = PortalockerStorageCoordinator(root, timeout=30.0)
+    config = USearchConfig(
+        workspace_id=workspace_id,
+        index_path=os.path.join(root, workspace_id, "usearch", "vectors.usearch"),
+        db_path=os.path.join(root, workspace_id, "usearch", "memories.db"),
+        embedding_dims=32,
+    )
+    engine = USearchEngine(
+        config=config, embedder=_HashEmbedder(), coordinator=coordinator
+    )
+    ready.set()
+    if not go.wait(timeout=30.0):
+        result.put("timeout")
+        engine.close()
+        return
+    if action == "add":
+        engine.add(workspace_id, content, infer=False)
+        engine.commit()
+        result.put("added")
+    elif action == "delete":
+        mem_id = engine.get_id_by_content(workspace_id, content)
+        if mem_id is not None:
+            engine.delete(str(mem_id))
+            engine.commit()
+            result.put("deleted")
+        else:
+            result.put("missing")
+    engine.close()
+
+
+@pytest.mark.integration
+def test_delete_and_readd_later_write_wins(tmp_path: Path) -> None:
+    root = str(tmp_path / "indexes")
+    workspace_id = "ws"
+    ctx = multiprocessing.get_context("spawn")
+    seed_ready = ctx.Event()
+    seed_go = ctx.Event()
+    queue: multiprocessing.Queue[str] = ctx.Queue()
+    seeder = ctx.Process(
+        target=_mutator,
+        args=(root, workspace_id, "add", "race-row", seed_ready, seed_go, queue),
+    )
+    seeder.start()
+    assert seed_ready.wait(timeout=20.0)
+    seed_go.set()
+    seeder.join(timeout=30.0)
+    assert seeder.exitcode == 0
+    assert queue.get(timeout=1.0) == "added"
+
+    delete_ready = ctx.Event()
+    add_ready = ctx.Event()
+    go = ctx.Event()
+    deleter = ctx.Process(
+        target=_mutator,
+        args=(root, workspace_id, "delete", "race-row", delete_ready, go, queue),
+    )
+    adder = ctx.Process(
+        target=_mutator,
+        args=(root, workspace_id, "add", "race-row", add_ready, go, queue),
+    )
+    deleter.start()
+    adder.start()
+    try:
+        assert delete_ready.wait(timeout=20.0)
+        assert add_ready.wait(timeout=20.0)
+        go.set()
+        deleter.join(timeout=30.0)
+        adder.join(timeout=30.0)
+        assert deleter.exitcode == 0
+        assert adder.exitcode == 0
+        coordinator = PortalockerStorageCoordinator(root, timeout=5.0)
+        config = USearchConfig(
+            workspace_id=workspace_id,
+            index_path=os.path.join(root, workspace_id, "usearch", "vectors.usearch"),
+            db_path=os.path.join(root, workspace_id, "usearch", "memories.db"),
+            embedding_dims=32,
+        )
+        inspector = USearchEngine(
+            config=config, embedder=_HashEmbedder(), coordinator=coordinator
+        )
+        try:
+            rows = inspector.get_all(workspace_id)
+            assert rows.count("race-row") <= 1
+        finally:
+            inspector.close()
+    finally:
+        for process in (deleter, adder):
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=5.0)
