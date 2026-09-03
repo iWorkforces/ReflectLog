@@ -68,6 +68,31 @@ def _fsync_directory(path: str) -> None:
         return
 
 
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _hnsw_temp_owner_pid(name: str, base: str) -> int | None:
+    prefix = f"{base}."
+    if not name.startswith(prefix) or not name.endswith(".tmp"):
+        return None
+    pid_text = name[len(prefix) : -4].split(".", 1)[0]
+    try:
+        return int(pid_text)
+    except ValueError:
+        return None
+
+
 def _cleanup_orphan_hnsw_temps(index_path: str, *, only_pid: int | None = None) -> None:
     directory = os.path.dirname(index_path) or "."
     base = os.path.basename(index_path)
@@ -79,8 +104,13 @@ def _cleanup_orphan_hnsw_temps(index_path: str, *, only_pid: int | None = None) 
     for name in names:
         if not name.startswith(f"{base}.") or not name.endswith(".tmp"):
             continue
-        if only_pid is not None and not name.startswith(own_prefix):
-            continue
+        if only_pid is not None:
+            if not name.startswith(own_prefix):
+                continue
+        else:
+            owner = _hnsw_temp_owner_pid(name, base)
+            if owner is not None and owner != os.getpid() and _pid_is_alive(owner):
+                continue
         try:
             os.remove(os.path.join(directory, name))
         except OSError:
@@ -330,9 +360,7 @@ class USearchEngine(BaseModel):
                     index_dir = os.path.dirname(self.config.index_path)
                     if index_dir:
                         os.makedirs(index_dir, exist_ok=True)
-                    _cleanup_orphan_hnsw_temps(
-                        self.config.index_path, only_pid=os.getpid()
-                    )
+                    _cleanup_orphan_hnsw_temps(self.config.index_path)
 
                     # Optimization: Try restore first, avoid extra os.path.exists() call
                     # This is faster for existing indices (one less syscall)
