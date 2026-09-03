@@ -1,17 +1,22 @@
 # Security Tests
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
-Dedicated injection / traversal / XSS tests. Included in default pytest `testpaths` (`tests/unit`, `tests/integration`, `tests/security`).
+
+Injection / traversal / XSS. In default pytest `testpaths`.
 
 ## STRUCTURE
+
 ```
 tests/security/
 └── test_security.py
 ```
 
 ## WHERE TO LOOK
+
 | Test | Purpose |
 |------|---------|
 | `test_sql_injection_basic` | Search payload must not execute SQL |
@@ -22,15 +27,16 @@ tests/security/
 | `test_rate_limit_respected` / `test_concurrent_burst` | Load-adjacent safety |
 
 ## CONVENTIONS
+
 - Manager is a partial `MemoryManager.__new__` with mocked engines — not a live store.
 - `WORKSPACE_ID` pattern: `^[A-Za-z0-9_.-]{1,64}$`.
 - Never log tokens or memory text.
 
 ## ANTI-PATTERNS
+
 - Never skip this file before release.
 - Never test only sanitized inputs.
-- Ban `getattr`, `optional_attr()`, and `type(obj).__dict__`.
-- No `type: ignore`.
 
 ## NOTES
-No CI. Local: `./start-unittest.sh` (includes this path). Hooks do **not** run pytest — only typecheck + lint `--all`.
+
+Focused CI (`platform-storage.yml`) does **not** run this path. Local: `./start-unittest.sh`. Hooks do **not** run pytest.

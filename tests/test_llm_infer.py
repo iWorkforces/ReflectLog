@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Test to demonstrate ENABLE_LLM_INFER functionality.'''
+"""Test to demonstrate ENABLE_LLM_INFER functionality."""
 
 import json
 import os
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_with_infer_enabled():
-    '''Test with ENABLE_LLM_INFER=true.'''
+    """Test with ENABLE_LLM_INFER=true."""
     print("\n" + "=" * 70)
     print("🔬 TEST 1: With LLM Inference ENABLED")
     print("=" * 70)
@@ -107,7 +107,7 @@ async def test_with_infer_enabled():
 
 
 async def test_with_infer_disabled():
-    '''Test with ENABLE_LLM_INFER=false (default).'''
+    """Test with ENABLE_LLM_INFER=false (default)."""
     print("\n" + "=" * 70)
     print("🔬 TEST 2: With LLM Inference DISABLED (default)")
     print("=" * 70)
@@ -200,7 +200,7 @@ async def test_with_infer_disabled():
 
 
 async def main():
-    '''Run both tests.'''
+    """Run both tests."""
     print("\n" + "=" * 70)
     print("🎯 ENABLE_LLM_INFER FUNCTIONALITY TEST")
     print("=" * 70)
@@ -226,7 +226,7 @@ async def main():
         print("\n" + "=" * 70)
         print("🎉 ENABLE_LLM_INFER TEST COMPLETE!")
         print("=" * 70)
-        print('''
+        print("""
 Summary:
   ✅ ENABLE_LLM_INFER=false (default): Memories stored exactly as provided
   ⚠️ ENABLE_LLM_INFER=true: Would transform memories using LLM (requires API key)
@@ -235,7 +235,7 @@ Key Points:
   • Default behavior (false) is faster and preserves exact memory content
   • Enabling LLM inference allows the AI to enhance memories with context
   • The choice depends on your use case and whether you want AI enhancement
-        ''')
+        """)
 
     except Exception as e:
         print(f"\n❌ Error during test: {e}")

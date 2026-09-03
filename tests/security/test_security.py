@@ -1,4 +1,4 @@
-'''Security testing for ReflectLog.
+"""Security testing for ReflectLog.
 
 Tests input sanitization, path traversal protection, and other
 security vulnerabilities to ensure system robustness.
@@ -16,9 +16,10 @@ Usage:
     pytest tests/security/test_security.py --injection
     pytest tests/security/test_security.py --path-traversal
     pytest tests/security/test_security.py --xss
-'''
+"""
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -30,12 +31,13 @@ from reflectlog.application.memory.manager import MemoryManager
 
 @pytest.fixture
 def manager(monkeypatch: MonkeyPatch):
-    '''Provide a MemoryManager instance for testing.'''
+    """Provide a MemoryManager instance for testing."""
     monkeypatch.setenv("WORKSPACE_ID", "test-security-project")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
 
     mock_semantic_engine = MagicMock()
     mock_semantic_engine.search.return_value = []
+    mock_semantic_engine.count.return_value = 0
 
     mock_tantivy_engine = MagicMock()
     mock_tantivy_engine.search.return_value = []
@@ -60,25 +62,29 @@ def manager(monkeypatch: MonkeyPatch):
     )
     mgr._fusion_engine = MagicMock()
     mgr.logger = MagicMock()
+    mgr._closed = False
+    mgr._closing = False
+    patched: Any = mgr
+    patched.reconcile_pending_replacements = lambda: 0
 
     yield mgr
 
 
 class TestInputSanitization:
-    '''Tests input sanitization prevents injection attacks.
+    """Tests input sanitization prevents injection attacks.
 
     Ensures search queries are properly escaped and length-limited.
     Note: These tests verify that the system handles potentially malicious
     input gracefully - either by sanitizing it or rejecting it.
-    '''
+    """
 
     @pytest.mark.asyncio
     async def test_sql_injection_basic(self, manager: MemoryManager):
-        '''Test basic SQL injection patterns are handled safely.
+        """Test basic SQL injection patterns are handled safely.
 
         The mock manager doesn't validate - this test verifies the search
         completes without crashing. Real validation is tested in test_validation.py.
-        '''
+        """
         injection_queries = [
             "' OR '1' = '1",
             "'; DROP TABLE messages",
@@ -94,11 +100,11 @@ class TestInputSanitization:
 
     @pytest.mark.asyncio
     async def test_command_injection(self, manager: MemoryManager):
-        '''Test command injection patterns are handled safely.
+        """Test command injection patterns are handled safely.
 
         The mock manager doesn't validate - this test verifies the search
         completes without crashing.
-        '''
+        """
         path_traversal_queries = [
             "../../../../etc/passwd",
             "..\\..\\windows\\\\system32\\\\drivers\\\\etc\\\\hosts",
@@ -112,11 +118,11 @@ class TestInputSanitization:
 
     @pytest.mark.asyncio
     async def test_xss_attempt(self, manager: MemoryManager):
-        '''Test XSS patterns are handled safely.
+        """Test XSS patterns are handled safely.
 
         The mock manager doesn't validate - this test verifies add completes
         without crashing. Real validation is tested in test_validation.py.
-        '''
+        """
         xss_attempts = [
             "<script>alert('XSS')",
             "<img src=x onerror='XSS'>",
@@ -131,10 +137,10 @@ class TestInputSanitization:
 
     @pytest.mark.asyncio
     async def test_path_traversal_workspace_id(self, manager: MemoryManager):
-        '''Test path traversal in workspace_id is handled safely.
+        """Test path traversal in workspace_id is handled safely.
 
         The system should either sanitize or handle gracefully.
-        '''
+        """
         traversal_ids = [
             "../../../etc/passwd",
             "..\\..\\windows\\\\system32",
@@ -150,31 +156,31 @@ class TestInputSanitization:
 
     @pytest.mark.asyncio
     async def test_auth_bypass_attempt(self, manager: MemoryManager):
-        '''Test authentication bypass patterns are handled safely.
+        """Test authentication bypass patterns are handled safely.
 
         The mock manager uses the configured workspace_id - this test verifies
         the system handles various inputs without crashing.
-        '''
+        """
         # These would need real validation to reject - mock just processes them
         result = await manager.search("test")
         assert isinstance(result, list)
 
 
 class TestRateLimiting:
-    '''Tests rate limiting protects against abuse.
+    """Tests rate limiting protects against abuse.
 
     Ensures rate limits are enforced and respected.
     Note: These tests verify the system handles load gracefully.
     With mocks, rate limiting isn't enforced - real rate limiting
     is handled at the infrastructure layer.
-    '''
+    """
 
     @pytest.mark.asyncio
     async def test_rate_limit_respected(self, manager: MemoryManager):
-        '''Test that system handles multiple requests gracefully.
+        """Test that system handles multiple requests gracefully.
 
         With mock, rate limiting isn't enforced - verifies no crashes.
-        '''
+        """
         _ = await manager.add_memories_async(["Test"] * 200)
 
         # Small delay
@@ -186,10 +192,10 @@ class TestRateLimiting:
 
     @pytest.mark.asyncio
     async def test_concurrent_burst(self, manager: MemoryManager):
-        '''Test burst capacity handling.
+        """Test burst capacity handling.
 
         With mock, verifies system handles concurrent requests without crashing.
-        '''
+        """
         _ = await manager.add_memories_async(["Burst 1"] * 50)
         _ = await manager.add_memories_async(["Burst 2"] * 30)
 

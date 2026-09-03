@@ -1,12 +1,12 @@
 # Unit Tests
 
-**Generated:** 2026-08-30
-**Commit:** 062b44f
+**Generated:** 2026-09-03
+**Commit:** e401dbc
 **Branch:** develop
 
 ## OVERVIEW
 
-Mocked unit tree. Layout mirrors `reflectlog/`. No real USearch/Tantivy/LLM. Default pytest `testpaths` includes this directory.
+Unit tree mirrors `reflectlog/`. Application/core/plugins/utility mock engines. **Infrastructure unit uses real USearch/Tantivy/SQLite on tmp dirs.** In default `testpaths`.
 
 ## STRUCTURE
 
@@ -15,8 +15,8 @@ tests/unit/
 ├── test_server.py       # CLI, signals, Numba warmup, FastMCP boot
 ├── application/         # MCP, manager, tools, config, utils
 ├── core/                # Adapters, prompts
-├── infrastructure/      # Engine + embedder + store unit tests
-├── plugins/             # Discovery/loading (plugins not wired at startup)
+├── infrastructure/      # Real engines on TemporaryDirectory
+├── plugins/             # Discovery/loading (not wired at startup)
 └── utility/             # HTTP factory, retry, scoring helpers
 ```
 
@@ -25,25 +25,24 @@ tests/unit/
 | Test | Purpose |
 |------|---------|
 | `test_server.py` | `reflectlog.server:main`, SIGINT/SIGTERM persist, warmup |
-| `application/` | Facade + tools + config; see child AGENTS.md |
-| `infrastructure/` | USearch/Tantivy/SQLite/CE with mocks |
-| `utility/` | `HttpClientFactory`, retry; scoring lives in `reflectlog/utility/scoring.py` |
+| `application/` | Facade + tools + config; mock MemoryManager |
+| `infrastructure/` | Real USearch/Tantivy/SQLite on tmp dirs |
+| `utility/` | `HttpClientFactory`, retry |
 
 ## CONVENTIONS
 
-- Patch constructors on the **import site**: `reflectlog.application.memory.manager.USearchEngine` (not the infrastructure module).
-- Stub engine methods: `is_ready=False`, `add_batch` `side_effect`. Do not rely on MagicMock auto-attrs.
-- `NUMBA_DISABLE_JIT` is set only in `application/memory/conftest.py` and `application/utils/conftest.py`. Importing JIT modules first flakes collection.
+- Patch constructors on the **import site**: `reflectlog.application.memory.manager.USearchEngine`.
+- MagicMock `spec=`; stub `is_ready=False`, `add_batch` `side_effect`.
+- `NUMBA_DISABLE_JIT` only in `application/memory/conftest.py` and `application/utils/conftest.py`.
 - Dual manager files: `application/test_memory_manager.py` vs `application/memory/test_manager.py`.
 
 ## ANTI-PATTERNS
 
-- Never construct a real `MemoryManager` here.
-- Never skip `reset_env_after_test` / env isolation.
+- Never construct a real `MemoryManager` in application/ unit tests.
+- Never skip `reset_env_after_test`.
 - Never mark these `@pytest.mark.integration`.
-- Never use `type(obj).__dict__.get(...)` (banned).
+- Never test `_rebuild_index_with_docs` (removed).
 
 ## NOTES
 
-- `asyncio_mode=auto`. Coverage fail-under is 90% at the suite level.
-- `start-unittest.sh` runs `pytest tests/`, which also collects root demo `test_*.py` outside this tree.
+Coverage fail-under 90% is suite-wide. Focused CI does not run this whole tree.

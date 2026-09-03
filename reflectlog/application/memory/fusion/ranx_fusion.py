@@ -3,13 +3,16 @@
 import logging
 import math
 from typing import TYPE_CHECKING, Any, final, override
+import warnings
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ranx import Run
+
     from reflectlog.core.logging import IStructuredLogger
 
 import numpy as np
-from ranx import Run
-from ranx import fuse as ranx_fuse
 
 from reflectlog.core.enums import FusionMethod, FusionNormalization
 from reflectlog.utility.scoring import (
@@ -37,6 +40,57 @@ DEFAULT_NORMALIZATIONS: dict[FusionMethod, FusionNormalization | None] = {
     FusionMethod.MAX: None,
     FusionMethod.BORDAFUSE: None,
 }
+
+_ranx_run: type[Run] | None = None
+_ranx_fuse: Callable[..., Run] | None = None
+
+
+def _load_ranx() -> tuple[type[Run], Callable[..., Run]]:
+    """Import ranx only for non-RRF fusion methods.
+
+    Isolates ranx's known invalid-escape SyntaxWarning at this boundary so
+    unrelated warnings still fail under warnings-as-errors.
+    """
+    global _ranx_run, _ranx_fuse
+    loaded_run = _ranx_run
+    loaded_fuse = _ranx_fuse
+    if loaded_run is not None and loaded_fuse is not None:
+        return loaded_run, loaded_fuse
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            category=SyntaxWarning,
+            module=r"ranx(\.|$)",
+        )
+        from ranx import Run
+        from ranx import fuse as ranx_fuse
+    _ranx_run = Run
+    _ranx_fuse = ranx_fuse
+    return Run, ranx_fuse
+
+
+def _one_list_results(
+    result_set: list[tuple[str, float]],
+) -> list[tuple[str, float]]:
+    """Return one backend list without importing ranx.
+
+    Duplicate memories keep the averaged score, matching the previous ranx
+    Run conversion used for a single non-empty list.
+    """
+    score_sums: dict[str, float] = {}
+    score_counts: dict[str, int] = {}
+    for memory, score in result_set:
+        if memory in score_sums:
+            score_sums[memory] += score
+            score_counts[memory] += 1
+        else:
+            score_sums[memory] = score
+            score_counts[memory] = 1
+    results = [
+        (memory, score_sums[memory] / score_counts[memory]) for memory in score_sums
+    ]
+    results.sort(key=lambda item: item[1], reverse=True)
+    return results
 
 
 @final
@@ -73,7 +127,7 @@ class RanxFusionEngine(FusionEngine):
         rrf_k: int = 60,
         weights: list[float] | None = None,
         logger: IStructuredLogger | None = None,
-    ):
+    ) -> None:
         """Initialize the ranx fusion engine.
 
         Args:
@@ -157,8 +211,9 @@ class RanxFusionEngine(FusionEngine):
             ranx Run object with memories as document IDs. Duplicate memories
             are represented once with their averaged score.
         """
+        run_cls, _fuse = _load_ranx()
         if not result_set:
-            return Run({self._QUERY_ID: {}}, name=name)
+            return run_cls({self._QUERY_ID: {}}, name=name)
 
         # Use memory content as doc_id, original score as value
         # Handle duplicates within a list by averaging their scores
@@ -178,7 +233,7 @@ class RanxFusionEngine(FusionEngine):
             msg: doc_score_sums[msg] / doc_score_counts[msg] for msg in doc_score_sums
         }
 
-        return Run({self._QUERY_ID: doc_scores}, name=name)
+        return run_cls({self._QUERY_ID: doc_scores}, name=name)
 
     def _convert_from_run(self, run: Run) -> list[tuple[str, float]]:
         """Convert a ranx Run object back to (memory, score) tuples.
@@ -229,9 +284,7 @@ class RanxFusionEngine(FusionEngine):
                     f"{len(result_sets)} result sets"
                 )
             weight_arr = np.asarray(self._weights, dtype=np.float64)
-            scores = compute_weighted_rrf_scores_batch(
-                ranks, weight_arr, k=self._rrf_k
-            )
+            scores = compute_weighted_rrf_scores_batch(ranks, weight_arr, k=self._rrf_k)
         else:
             scores = compute_rrf_scores_batch(ranks, k=self._rrf_k)
         paired = [(docs[idx], float(scores[idx])) for idx in range(len(docs))]
@@ -270,11 +323,8 @@ class RanxFusionEngine(FusionEngine):
             return []
 
         if len(non_empty) == 1:
-            # Keep original backend scores. Min-max on one list stretches the
-            # lowest hit to 0.0, and fusion_ranking_threshold=0.8 then drops it.
-            return self._convert_from_run(
-                self._convert_to_run(non_empty[0], name="run_0")
-            )
+            # Keep original backend scores without importing ranx.
+            return _one_list_results(non_empty[0])
 
         if self._method == FusionMethod.RRF:
             return self._fuse_rrf_numba(non_empty)
@@ -324,6 +374,7 @@ class RanxFusionEngine(FusionEngine):
             params = {"weights": self._weights}
 
         try:
+            _run_cls, ranx_fuse = _load_ranx()
             combined = ranx_fuse(
                 runs=runs,
                 norm=self._normalization,

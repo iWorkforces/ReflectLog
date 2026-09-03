@@ -237,7 +237,9 @@ class TestConcurrentDeletes:
                 candidates = memory_manager.search_for_removal(f"Memory {i}", limit=1)
                 if candidates:
                     # Use asyncify since delete is sync
-                    await asyncify(memory_manager.delete_by_memory)(candidates[0]["memory"])
+                    await asyncify(memory_manager.delete_by_memory)(
+                        candidates[0]["memory"]
+                    )
                     deleted_count[0] += 1
                 await asyncio.sleep(0.01)
 
@@ -459,7 +461,9 @@ class TestAsyncConcurrencySafety:
                 )
                 if candidates:
                     # Use asyncify since delete is sync
-                    await asyncify(memory_manager.delete_by_memory)(candidates[0]["memory"])
+                    await asyncify(memory_manager.delete_by_memory)(
+                        candidates[0]["memory"]
+                    )
                     deleted_count[0] += 1
                 await asyncio.sleep(0.001)
 

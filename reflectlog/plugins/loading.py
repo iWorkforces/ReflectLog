@@ -4,13 +4,15 @@ This module provides the PluginLoader class that handles plugin lifecycle:
 loading, initialization, activation, deactivation, and unloading.
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass
 import logging
-from typing import Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from .discovery import DiscoveredPlugin, PluginDiscoverer, PluginDiscoveryStrategy
 from .registry import PluginRegistry, PluginState
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,7 @@ class PluginLoader[T]:
         discovery_strategy: PluginDiscoveryStrategy[T],
         registry: PluginRegistry[T],
         hooks: LifecycleHooks | None = None,
-    ):
+    ) -> None:
         """Initialize plugin loader.
 
         Args:
@@ -119,7 +121,7 @@ class PluginLoader[T]:
             try:
                 from .discovery import load_plugin
 
-                instance = cast(T, await load_plugin(discovered))
+                instance = cast("T", await load_plugin(discovered))
             except Exception as e:
                 logger.error(f"Failed to load plugin '{name}': {e}")
                 _ = self._registry.set_error(name, str(e))

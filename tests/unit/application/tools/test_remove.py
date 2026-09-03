@@ -34,7 +34,9 @@ def recording_manager() -> RecordingManager:
 
 @pytest.fixture
 def remove_tool_instance(
-    mock_config: Config, recording_manager: RecordingManager, mock_tool_logger: MagicMock
+    mock_config: Config,
+    recording_manager: RecordingManager,
+    mock_tool_logger: MagicMock,
 ) -> RemoveTool:
     return RemoveTool(
         config=mock_config,
@@ -72,7 +74,10 @@ class TestRemoveToolHappyPath:
         assert recording_manager.calls == [["First", "Second"]]
 
     async def test_remove_logs_invocation(
-        self, remove_tool_instance: RemoveTool, recording_manager: RecordingManager, mock_tool_logger: MagicMock
+        self,
+        remove_tool_instance: RemoveTool,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
     ) -> None:
         """Remove handler logs invocation with tool name."""
         recording_manager.present = {"Hello"}
@@ -254,7 +259,10 @@ class TestRemoveToolPartialRemoval:
         assert recording_manager.calls == [["Exists", "Ghost"]]
 
     async def test_removal_summary_logging(
-        self, remove_tool_instance: RemoveTool, recording_manager: RecordingManager, mock_tool_logger: MagicMock
+        self,
+        remove_tool_instance: RemoveTool,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
     ) -> None:
         """Partial removal logs summary with found and not-found counts."""
         recording_manager.present = {"Found"}
@@ -373,7 +381,10 @@ class TestRemoveToolErrorHandling:
         assert exc_info.value is original
 
     async def test_error_logs_before_raising(
-        self, remove_tool_instance: RemoveTool, recording_manager: RecordingManager, mock_tool_logger: MagicMock
+        self,
+        remove_tool_instance: RemoveTool,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
     ) -> None:
         """Error triggers log_error before raising StorageError."""
         recording_manager.error = RuntimeError("boom")
@@ -398,7 +409,9 @@ class TestRemoveToolMetadata:
         snippet = remove_tool_instance.get_instruction_snippet()
         assert "remove(memories: list[str])" in snippet
 
-    def test_get_handler_returns_callable(self, remove_tool_instance: RemoveTool) -> None:
+    def test_get_handler_returns_callable(
+        self, remove_tool_instance: RemoveTool
+    ) -> None:
         """get_handler returns a callable."""
         handler = remove_tool_instance.get_handler()
         assert callable(handler)

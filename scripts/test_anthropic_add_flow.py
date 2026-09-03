@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Test AnthropicReplacementProvider through the add tool flow.
+"""Test AnthropicReplacementProvider through the add tool flow.
 
 This script tests the full smart replacement flow by:
 1. Creating a MemoryManager with Anthropic provider
@@ -9,7 +9,7 @@ This script tests the full smart replacement flow by:
 
 Usage:
     WORKSPACE_ID=test-anthropic-add uv run python scripts/test_anthropic_add_flow.py
-'''
+"""
 
 import asyncio
 import os
@@ -26,8 +26,8 @@ sys.path.insert(0, project_root)
 load_dotenv(os.path.join(project_root, ".env"))
 
 
-async def main():
-    '''Test the add flow with AnthropicReplacementProvider.'''
+async def main() -> int:
+    """Test the add flow with AnthropicReplacementProvider."""
     # Use a unique workspace ID to avoid conflicts
     workspace_id = "test-anthropic-add"
     index_path = f"indexes/{workspace_id}"

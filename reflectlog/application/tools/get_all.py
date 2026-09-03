@@ -1,6 +1,6 @@
 """Get all tool implementation for ReflectLog Server."""
 
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from asyncer import asyncify
 
@@ -8,6 +8,9 @@ from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import StorageError
 
 from .base import BaseTool
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 class GetAllTool(BaseTool):
@@ -28,7 +31,7 @@ class GetAllTool(BaseTool):
         )
 
     @override
-    def get_handler(self):
+    def get_handler(self) -> Callable[..., Awaitable[dict[str, object]]]:
         """Get the async tool handler function."""
 
         async def get_all(
@@ -46,7 +49,9 @@ class GetAllTool(BaseTool):
                 self.log_invocation(ToolName.GET_ALL)
 
                 start = max(0, offset)
-                page_size = self.config.get_all_limit if limit is None else max(0, limit)
+                page_size = (
+                    self.config.get_all_limit if limit is None else max(0, limit)
+                )
                 page_size = min(page_size, self.config.get_all_limit)
                 page = await asyncify(self.memory.get_all)(
                     limit=page_size, offset=start

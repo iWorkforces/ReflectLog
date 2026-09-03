@@ -1,12 +1,14 @@
 """Retry decorator with exponential backoff for async functions."""
 
 import asyncio
-from collections.abc import Callable, Coroutine
 from functools import wraps
 import logging
 import random
 from types import FunctionType, MethodType
-from typing import Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -20,6 +22,7 @@ def _callable_name(func: object) -> str:
     if isinstance(func, (FunctionType, MethodType)):
         return func.__name__
     return type(func).__name__
+
 
 # Transient exceptions that are safe to retry
 # Connection errors, timeouts, and temporary server issues

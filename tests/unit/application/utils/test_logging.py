@@ -1,4 +1,4 @@
-'''Unit tests for reflectlog.application.utils.logging module.'''
+"""Unit tests for reflectlog.application.utils.logging module."""
 
 import logging
 from unittest.mock import MagicMock, call, patch
@@ -13,49 +13,49 @@ from reflectlog.application.utils.logging import (
 
 
 class TestStructuredLogger:
-    '''Tests for StructuredLogger class.'''
+    """Tests for StructuredLogger class."""
 
     @pytest.fixture
     def mock_logger(self) -> MagicMock:
-        '''Create a mock Python logger.'''
+        """Create a mock Python logger."""
         return MagicMock(spec=logging.Logger)
 
     @pytest.fixture
     def structured_logger(self, mock_logger: MagicMock) -> StructuredLogger:
-        '''Create a StructuredLogger with mock underlying logger.'''
+        """Create a StructuredLogger with mock underlying logger."""
         return StructuredLogger(
             logger=mock_logger, default_extra={"workspace_id": "test-project"}
         )
 
     def test_init_with_default_extra(self, mock_logger: MagicMock) -> None:
-        '''Test initialization with default extra fields.'''
+        """Test initialization with default extra fields."""
         logger = StructuredLogger(logger=mock_logger, default_extra={"key": "value"})
         assert logger.default_extra == {"key": "value"}
 
     def test_init_without_default_extra(self, mock_logger: MagicMock) -> None:
-        '''Test initialization without default extra fields.'''
+        """Test initialization without default extra fields."""
         logger = StructuredLogger(logger=mock_logger)
         assert logger.default_extra == {}
 
     def test_merge_extra_with_none(self, structured_logger: StructuredLogger) -> None:
-        '''Test _merge_extra returns default_extra when extra is None.'''
+        """Test _merge_extra returns default_extra when extra is None."""
         result = structured_logger._merge_extra(None)
         assert result == {"workspace_id": "test-project"}
 
     def test_merge_extra_with_values(self, structured_logger: StructuredLogger) -> None:
-        '''Test _merge_extra merges default and provided extras.'''
+        """Test _merge_extra merges default and provided extras."""
         result = structured_logger._merge_extra({"custom": "value"})
         assert result == {"workspace_id": "test-project", "custom": "value"}
 
     def test_merge_extra_override_default(
         self, structured_logger: StructuredLogger
     ) -> None:
-        '''Test _merge_extra allows overriding default extra fields.'''
+        """Test _merge_extra allows overriding default extra fields."""
         result = structured_logger._merge_extra({"workspace_id": "override"})
         assert result == {"workspace_id": "override"}
 
     def test_is_enabled_for(self, mock_logger: MagicMock) -> None:
-        '''Test is_enabled_for delegates to underlying logger.'''
+        """Test is_enabled_for delegates to underlying logger."""
         mock_logger.isEnabledFor.return_value = True
         logger = StructuredLogger(logger=mock_logger)
         assert logger.is_enabled_for(logging.DEBUG) is True
@@ -64,7 +64,7 @@ class TestStructuredLogger:
     def test_info(
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
-        '''Test info method logs at INFO level.'''
+        """Test info method logs at INFO level."""
         # Use a non-sensitive key name to avoid redaction by redact_dict_secrets
         structured_logger.info("test message", extra={"custom_field": "value"})
         mock_logger.info.assert_called_once_with(
@@ -76,7 +76,7 @@ class TestStructuredLogger:
     def test_info_with_exc_info(
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
-        '''Test info method with exc_info=True.'''
+        """Test info method with exc_info=True."""
         structured_logger.info("test message", exc_info=True)
         mock_logger.info.assert_called_once_with(
             "test message",
@@ -87,7 +87,7 @@ class TestStructuredLogger:
     def test_error(
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
-        '''Test error method logs at ERROR level.'''
+        """Test error method logs at ERROR level."""
         structured_logger.error("error message", extra={"err": "details"})
         mock_logger.error.assert_called_once_with(
             "error message",
@@ -98,7 +98,7 @@ class TestStructuredLogger:
     def test_warning(
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
-        '''Test warning method logs at WARNING level.'''
+        """Test warning method logs at WARNING level."""
         structured_logger.warning("warning message")
         mock_logger.warning.assert_called_once_with(
             "warning message",
@@ -109,7 +109,7 @@ class TestStructuredLogger:
     def test_debug(
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
-        '''Test debug method logs at DEBUG level.'''
+        """Test debug method logs at DEBUG level."""
         structured_logger.debug("debug message", extra={"debug_key": "debug_value"})
         mock_logger.debug.assert_called_once_with(
             "debug message",
@@ -119,16 +119,16 @@ class TestStructuredLogger:
 
 
 class TestStructuredLoggerOperation:
-    '''Tests for StructuredLogger.operation() context manager.'''
+    """Tests for StructuredLogger.operation() context manager."""
 
     @pytest.fixture
     def mock_logger(self) -> MagicMock:
-        '''Create a mock Python logger.'''
+        """Create a mock Python logger."""
         return MagicMock(spec=logging.Logger)
 
     @pytest.fixture
     def structured_logger(self, mock_logger: MagicMock) -> StructuredLogger:
-        '''Create a StructuredLogger with mock underlying logger.'''
+        """Create a StructuredLogger with mock underlying logger."""
         return StructuredLogger(
             logger=mock_logger, default_extra={"workspace_id": "test"}
         )
@@ -136,7 +136,7 @@ class TestStructuredLoggerOperation:
     def test_operation_success(
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
-        '''Test operation context manager logs start and completion.'''
+        """Test operation context manager logs start and completion."""
         with structured_logger.operation("test_op", count=5) as ctx:
             ctx["result"] = "success"
 
@@ -167,7 +167,7 @@ class TestStructuredLoggerOperation:
     def test_operation_failure(
         self, structured_logger: StructuredLogger, mock_logger: MagicMock
     ) -> None:
-        '''Test operation context manager logs error on exception.'''
+        """Test operation context manager logs error on exception."""
         # The implementation wraps the original exception in RuntimeError
         with pytest.raises(
             RuntimeError, match="Operation 'failing_op' failed: Test error"
@@ -186,7 +186,7 @@ class TestStructuredLoggerOperation:
     def test_operation_yields_context(
         self, structured_logger: StructuredLogger
     ) -> None:
-        '''Test operation yields mutable context dict.'''
+        """Test operation yields mutable context dict."""
         with structured_logger.operation("test_op", initial="value") as ctx:
             assert ctx["operation"] == "test_op"
             assert ctx["initial"] == "value"
@@ -195,11 +195,11 @@ class TestStructuredLoggerOperation:
 
 
 class TestCreateLogger:
-    '''Tests for create_logger function.'''
+    """Tests for create_logger function."""
 
     @patch("fastmcp.utilities.logging.get_logger")
     def test_create_logger_basic(self, mock_get_logger: MagicMock) -> None:
-        '''Test create_logger creates StructuredLogger with correct config.'''
+        """Test create_logger creates StructuredLogger with correct config."""
         mock_underlying = MagicMock(spec=logging.Logger)
         mock_get_logger.return_value = mock_underlying
 
@@ -212,7 +212,7 @@ class TestCreateLogger:
 
     @patch("fastmcp.utilities.logging.get_logger")
     def test_create_logger_default_level(self, mock_get_logger: MagicMock) -> None:
-        '''Test create_logger uses INFO as default level.'''
+        """Test create_logger uses INFO as default level."""
         mock_underlying = MagicMock(spec=logging.Logger)
         mock_get_logger.return_value = mock_underlying
 
@@ -224,7 +224,7 @@ class TestCreateLogger:
     def test_create_logger_case_insensitive_level(
         self, mock_get_logger: MagicMock
     ) -> None:
-        '''Test create_logger handles case-insensitive log levels.'''
+        """Test create_logger handles case-insensitive log levels."""
         mock_underlying = MagicMock(spec=logging.Logger)
         mock_get_logger.return_value = mock_underlying
 
@@ -234,56 +234,56 @@ class TestCreateLogger:
 
 
 class TestFormatFusionScoreStatus:
-    '''Tests for format_fusion_score_status function.'''
+    """Tests for format_fusion_score_status function."""
 
     def test_high_score_above_threshold(self) -> None:
-        '''Test high score (>= 0.8) above threshold.'''
+        """Test high score (>= 0.8) above threshold."""
         status, interpretation = format_fusion_score_status(0.9, 0.5)
         assert status == "KEEP"
         assert interpretation == "High fusion confidence"
 
     def test_high_score_at_boundary(self) -> None:
-        '''Test score at 0.8 boundary.'''
+        """Test score at 0.8 boundary."""
         status, interpretation = format_fusion_score_status(0.8, 0.5)
         assert status == "KEEP"
         assert interpretation == "High fusion confidence"
 
     def test_moderate_score(self) -> None:
-        '''Test moderate score (0.6-0.8).'''
+        """Test moderate score (0.6-0.8)."""
         status, interpretation = format_fusion_score_status(0.7, 0.5)
         assert status == "KEEP"
         assert interpretation == "Moderate fusion confidence"
 
     def test_low_score_above_threshold(self) -> None:
-        '''Test low score (0.4-0.6) above threshold.'''
+        """Test low score (0.4-0.6) above threshold."""
         status, interpretation = format_fusion_score_status(0.5, 0.4)
         assert status == "KEEP"
         assert interpretation == "Low fusion confidence"
 
     def test_minimal_score_below_threshold(self) -> None:
-        '''Test minimal score (< 0.4) below threshold.'''
+        """Test minimal score (< 0.4) below threshold."""
         status, interpretation = format_fusion_score_status(0.3, 0.5)
         assert status == "FILTER"
         assert interpretation == "Minimal fusion overlap"
 
     def test_score_at_threshold_exact(self) -> None:
-        '''Test score exactly at threshold.'''
+        """Test score exactly at threshold."""
         status, _interpretation = format_fusion_score_status(0.5, 0.5)
         assert status == "KEEP"
 
     def test_score_just_below_threshold(self) -> None:
-        '''Test score just below threshold.'''
+        """Test score just below threshold."""
         status, _interpretation = format_fusion_score_status(0.499, 0.5)
         assert status == "FILTER"
 
     def test_zero_score(self) -> None:
-        '''Test zero score.'''
+        """Test zero score."""
         status, interpretation = format_fusion_score_status(0.0, 0.5)
         assert status == "FILTER"
         assert interpretation == "Minimal fusion overlap"
 
     def test_perfect_score(self) -> None:
-        '''Test perfect score of 1.0.'''
+        """Test perfect score of 1.0."""
         status, interpretation = format_fusion_score_status(1.0, 0.5)
         assert status == "KEEP"
         assert interpretation == "High fusion confidence"

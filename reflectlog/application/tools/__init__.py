@@ -3,4 +3,3 @@
 Import tools from their defining modules, for example
 ``reflectlog.application.tools.search.SearchTool``.
 """
-

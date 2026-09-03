@@ -275,9 +275,7 @@ class TestDynamicInstructionsIntegration:
         assert "(No tools available)" in instructions
         assert "add(memories: list[str])" not in instructions
 
-    def test_instructions_header_always_present(
-        self, monkeypatch: MonkeyPatch
-    ) -> None:
+    def test_instructions_header_always_present(self, monkeypatch: MonkeyPatch) -> None:
         """Server description header should always be included."""
         _server, instructions = self._build_server_and_capture_instructions(
             monkeypatch, "add"

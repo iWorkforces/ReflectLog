@@ -1,4 +1,4 @@
-'''Unit tests for MemoryStore SQLite storage.'''
+"""Unit tests for MemoryStore SQLite storage."""
 
 import os
 import tempfile
@@ -16,11 +16,15 @@ from reflectlog.infrastructure.memory_store import (
 )
 
 
+def create_mock_logger() -> MagicMock:
+    return MagicMock(spec=IStructuredLogger)
+
+
 class TestMemoryStoreInitialization:
-    '''Tests for MemoryStore initialization.'''
+    """Tests for MemoryStore initialization."""
 
     def test_creates_database_file(self) -> None:
-        '''Database file should be created on first access.'''
+        """Database file should be created on first access."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -32,7 +36,7 @@ class TestMemoryStoreInitialization:
             store.close()
 
     def test_creates_parent_directories(self) -> None:
-        '''Parent directories should be created if they don't exist.'''
+        """Parent directories should be created if they don't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "nested", "path", "test.db")
             store = MemoryStore(db_path=db_path)
@@ -43,7 +47,7 @@ class TestMemoryStoreInitialization:
             store.close()
 
     def test_lazy_initialization(self) -> None:
-        '''Connection should not be created until accessed.'''
+        """Connection should not be created until accessed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -60,10 +64,10 @@ class TestMemoryStoreInitialization:
 
 
 class TestMemoryStoreInsert:
-    '''Tests for MemoryStore.insert method.'''
+    """Tests for MemoryStore.insert method."""
 
     def test_insert_returns_id(self) -> None:
-        '''Insert should return auto-increment ID.'''
+        """Insert should return auto-increment ID."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -74,7 +78,7 @@ class TestMemoryStoreInsert:
             store.close()
 
     def test_insert_increments_id(self) -> None:
-        '''Subsequent inserts should return incrementing IDs.'''
+        """Subsequent inserts should return incrementing IDs."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -89,7 +93,7 @@ class TestMemoryStoreInsert:
             store.close()
 
     def test_insert_duplicate_raises_error(self) -> None:
-        '''Inserting duplicate memory for same user should raise error.'''
+        """Inserting duplicate memory for same user should raise error."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -102,7 +106,7 @@ class TestMemoryStoreInsert:
             store.close()
 
     def test_insert_same_memory_different_users(self) -> None:
-        '''Same memory for different users should be allowed.'''
+        """Same memory for different users should be allowed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -116,10 +120,10 @@ class TestMemoryStoreInsert:
 
 
 class TestMemoryStoreGet:
-    '''Tests for MemoryStore.get method.'''
+    """Tests for MemoryStore.get method."""
 
     def test_get_existing_memory(self) -> None:
-        '''Get should return MemoryRecord for existing ID.'''
+        """Get should return MemoryRecord for existing ID."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -134,7 +138,7 @@ class TestMemoryStoreGet:
             store.close()
 
     def test_get_nonexistent_memory(self) -> None:
-        '''Get should return None for non-existent ID.'''
+        """Get should return None for non-existent ID."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -146,10 +150,10 @@ class TestMemoryStoreGet:
 
 
 class TestMemoryStoreGetAll:
-    '''Tests for MemoryStore.get_all method.'''
+    """Tests for MemoryStore.get_all method."""
 
     def test_get_all_empty(self) -> None:
-        '''Get all should return empty list when no memories.'''
+        """Get all should return empty list when no memories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -160,7 +164,7 @@ class TestMemoryStoreGetAll:
             store.close()
 
     def test_get_all_single_user(self) -> None:
-        '''Get all should return memories for specific user.'''
+        """Get all should return memories for specific user."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -178,7 +182,7 @@ class TestMemoryStoreGetAll:
             store.close()
 
     def test_get_all_preserves_order(self) -> None:
-        '''Get all should return memories in insertion order.'''
+        """Get all should return memories in insertion order."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -204,10 +208,10 @@ class TestMemoryStoreGetAll:
 
 
 class TestMemoryStoreDelete:
-    '''Tests for MemoryStore.delete method.'''
+    """Tests for MemoryStore.delete method."""
 
     def test_delete_existing_memory(self) -> None:
-        '''Delete should return True for existing memory.'''
+        """Delete should return True for existing memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -220,7 +224,7 @@ class TestMemoryStoreDelete:
             store.close()
 
     def test_delete_nonexistent_memory(self) -> None:
-        '''Delete should return False for non-existent memory.'''
+        """Delete should return False for non-existent memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -232,10 +236,10 @@ class TestMemoryStoreDelete:
 
 
 class TestMemoryStoreExists:
-    '''Tests for MemoryStore.exists method.'''
+    """Tests for MemoryStore.exists method."""
 
     def test_exists_returns_true_for_existing(self) -> None:
-        '''Exists should return True for existing memory.'''
+        """Exists should return True for existing memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -246,7 +250,7 @@ class TestMemoryStoreExists:
             store.close()
 
     def test_exists_returns_false_for_nonexistent(self) -> None:
-        '''Exists should return False for non-existent memory.'''
+        """Exists should return False for non-existent memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -255,7 +259,7 @@ class TestMemoryStoreExists:
             store.close()
 
     def test_exists_checks_workspace_id(self) -> None:
-        '''Exists should check workspace_id, not just memory.'''
+        """Exists should check workspace_id, not just memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -268,10 +272,10 @@ class TestMemoryStoreExists:
 
 
 class TestMemoryStoreGetIdByMemory:
-    '''Tests for MemoryStore.get_id_by_content method.'''
+    """Tests for MemoryStore.get_id_by_content method."""
 
     def test_get_id_by_content_existing(self) -> None:
-        '''Get ID by memory should return ID for existing memory.'''
+        """Get ID by memory should return ID for existing memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -283,7 +287,7 @@ class TestMemoryStoreGetIdByMemory:
             store.close()
 
     def test_get_id_by_content_nonexistent(self) -> None:
-        '''Get ID by memory should return None for non-existent memory.'''
+        """Get ID by memory should return None for non-existent memory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -294,12 +298,48 @@ class TestMemoryStoreGetIdByMemory:
             store.close()
 
 
+class TestMemoryStoreGetRecordsByContents:
+    """Bulk content lookup is one workspace-scoped SELECT per chunk."""
+
+    def test_returns_requested_workspace_rows_in_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            _ = store.insert("ws-a", "one")
+            _ = store.insert("ws-a", "two")
+            _ = store.insert("ws-b", "one")
+            records = store.get_records_by_contents(
+                "ws-a", ["two", "missing", "one", "one"]
+            )
+            assert [row.content for row in records] == ["two", "one"]
+            assert all(row.workspace_id == "ws-a" for row in records)
+            store.close()
+
+    def test_five_contents_use_one_select(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "test.db"))
+            for index in range(5):
+                _ = store.insert("ws", f"row-{index}")
+            statements: list[str] = []
+            store.connection.set_trace_callback(statements.append)
+            _ = store.get_records_by_contents(
+                "ws", [f"row-{index}" for index in range(5)]
+            )
+            store.connection.set_trace_callback(None)
+            selects = [
+                item
+                for item in statements
+                if item.lstrip().upper().startswith("SELECT")
+            ]
+            assert len(selects) == 1
+            store.close()
+
+
 class TestMemoryStoreThreadSafety:
-    '''Tests for MemoryStore thread safety.'''
+    """Tests for MemoryStore thread safety."""
 
     @pytest.mark.skip(reason="Concurrent test causes system instability in CI")
     def test_concurrent_inserts(self) -> None:
-        '''Concurrent inserts should be thread-safe.'''
+        """Concurrent inserts should be thread-safe."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -328,13 +368,13 @@ class TestMemoryStoreThreadSafety:
 
 
 class TestMemoryStoreLogging:
-    '''Tests for MemoryStore logging.'''
+    """Tests for MemoryStore logging."""
 
     def test_logs_insert_on_debug(self) -> None:
-        '''Insert should log on debug level.'''
+        """Insert should log on debug level."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert("user1", "Hello world")
@@ -343,10 +383,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_delete_on_debug(self) -> None:
-        '''Delete should log on debug level.'''
+        """Delete should log on debug level."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             memory_id = store.insert("user1", "Hello world")
@@ -358,10 +398,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_initialization_on_debug(self) -> None:
-        '''Logger should be called when store initializes connection.'''
+        """Logger should be called when store initializes connection."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -372,10 +412,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_delete_not_found(self) -> None:
-        '''Logger should log when memory not found for deletion.'''
+        """Logger should log when memory not found for deletion."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.delete(999)
@@ -387,10 +427,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_close_on_debug(self) -> None:
-        '''Logger should be called when store is closed.'''
+        """Logger should be called when store is closed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             # Force initialization
@@ -404,10 +444,10 @@ class TestMemoryStoreLogging:
             assert "MemoryStore closed" in call_args[0][0]
 
     def test_logs_duplicate_insert_on_debug(self) -> None:
-        '''Logger should log duplicate memory detection.'''
+        """Logger should log duplicate memory detection."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert("user1", "Hello world")
@@ -421,10 +461,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_batch_insert_on_debug(self) -> None:
-        '''Logger should log batch insert completion.'''
+        """Logger should log batch insert completion."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert_many("user1", ["msg1", "msg2"])
@@ -435,10 +475,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_batch_delete_on_debug(self) -> None:
-        '''Logger should log batch delete.'''
+        """Logger should log batch delete."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             id1 = store.insert("user1", "msg1")
@@ -451,10 +491,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_archive_on_debug(self) -> None:
-        '''Logger should log memory archival.'''
+        """Logger should log memory archival."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             # Insert directly into archive table to test logging
@@ -470,10 +510,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_restore_on_info(self) -> None:
-        '''Logger should log memory restoration.'''
+        """Logger should log memory restoration."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             # Manually insert archive record
@@ -496,10 +536,10 @@ class TestMemoryStoreLogging:
             store.close()
 
     def test_logs_cleanup_on_info(self) -> None:
-        '''Logger should log expired archive cleanup.'''
+        """Logger should log expired archive cleanup."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             # Insert a very old archive record
@@ -523,10 +563,10 @@ class TestMemoryStoreLogging:
 
 
 class TestMemoryStoreInsertMany:
-    '''Tests for MemoryStore.insert_many method.'''
+    """Tests for MemoryStore.insert_many method."""
 
     def test_insert_many_returns_pairs(self) -> None:
-        '''insert_many should return list of (memory, id) tuples.'''
+        """insert_many should return list of (memory, id) tuples."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -544,7 +584,7 @@ class TestMemoryStoreInsertMany:
             store.close()
 
     def test_insert_many_empty_list(self) -> None:
-        '''insert_many with empty list should return empty list.'''
+        """insert_many with empty list should return empty list."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -555,7 +595,7 @@ class TestMemoryStoreInsertMany:
             store.close()
 
     def test_insert_many_skips_duplicates(self) -> None:
-        '''insert_many should skip duplicate memories.'''
+        """insert_many should skip duplicate memories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -574,10 +614,10 @@ class TestMemoryStoreInsertMany:
             store.close()
 
     def test_insert_many_skips_duplicates_with_logger(self) -> None:
-        '''insert_many should log when skipping duplicates.'''
+        """insert_many should log when skipping duplicates."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.insert("proj1", "dup")
@@ -592,7 +632,7 @@ class TestMemoryStoreInsertMany:
             store.close()
 
     def test_insert_many_all_duplicates(self) -> None:
-        '''insert_many should return empty when all are duplicates.'''
+        """insert_many should return empty when all are duplicates."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -606,7 +646,7 @@ class TestMemoryStoreInsertMany:
             store.close()
 
     def test_insert_many_db_error_raises_storage_error(self) -> None:
-        '''insert_many should raise StorageError on database failure.'''
+        """insert_many should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -625,10 +665,10 @@ class TestMemoryStoreInsertMany:
             store.close()
 
     def test_insert_many_db_error_with_logger(self) -> None:
-        '''insert_many should log on database failure.'''
+        """insert_many should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -645,7 +685,7 @@ class TestMemoryStoreInsertMany:
             store.close()
 
     def test_insert_many_non_integrity_error_reraises(self) -> None:
-        '''insert_many should re-raise non-integrity sqlite errors.'''
+        """insert_many should re-raise non-integrity sqlite errors."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -664,10 +704,10 @@ class TestMemoryStoreInsertMany:
 
 
 class TestMemoryStoreGetBatch:
-    '''Tests for MemoryStore.get_batch method.'''
+    """Tests for MemoryStore.get_batch method."""
 
     def test_get_batch_returns_records(self) -> None:
-        '''get_batch should return dict of memory ID to record.'''
+        """get_batch should return dict of memory ID to record."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -685,7 +725,7 @@ class TestMemoryStoreGetBatch:
             store.close()
 
     def test_get_batch_empty_list(self) -> None:
-        '''get_batch with empty list should return empty dict.'''
+        """get_batch with empty list should return empty dict."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -696,7 +736,7 @@ class TestMemoryStoreGetBatch:
             store.close()
 
     def test_get_batch_missing_ids(self) -> None:
-        '''get_batch should exclude missing IDs from result.'''
+        """get_batch should exclude missing IDs from result."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -711,7 +751,7 @@ class TestMemoryStoreGetBatch:
             store.close()
 
     def test_get_batch_record_fields(self) -> None:
-        '''get_batch should return MemoryRecord with all fields.'''
+        """get_batch should return MemoryRecord with all fields."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -729,7 +769,7 @@ class TestMemoryStoreGetBatch:
             store.close()
 
     def test_get_batch_db_error_raises_storage_error(self) -> None:
-        '''get_batch should raise StorageError on database failure.'''
+        """get_batch should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -746,10 +786,10 @@ class TestMemoryStoreGetBatch:
             store.close()
 
     def test_get_batch_db_error_with_logger(self) -> None:
-        '''get_batch should log on database failure.'''
+        """get_batch should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -767,10 +807,10 @@ class TestMemoryStoreGetBatch:
 
 
 class TestMemoryStoreDeleteBatch:
-    '''Tests for MemoryStore.delete_batch method.'''
+    """Tests for MemoryStore.delete_batch method."""
 
     def test_delete_batch_returns_count(self) -> None:
-        '''delete_batch should return number of deleted memories.'''
+        """delete_batch should return number of deleted memories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -789,7 +829,7 @@ class TestMemoryStoreDeleteBatch:
             store.close()
 
     def test_delete_batch_empty_list(self) -> None:
-        '''delete_batch with empty list should return 0.'''
+        """delete_batch with empty list should return 0."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -800,7 +840,7 @@ class TestMemoryStoreDeleteBatch:
             store.close()
 
     def test_delete_batch_partial_ids(self) -> None:
-        '''delete_batch with some missing IDs should delete existing ones.'''
+        """delete_batch with some missing IDs should delete existing ones."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -813,7 +853,7 @@ class TestMemoryStoreDeleteBatch:
             store.close()
 
     def test_delete_batch_all_missing(self) -> None:
-        '''delete_batch with all missing IDs should return 0.'''
+        """delete_batch with all missing IDs should return 0."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -824,7 +864,7 @@ class TestMemoryStoreDeleteBatch:
             store.close()
 
     def test_delete_batch_db_error_raises_storage_error(self) -> None:
-        '''delete_batch should raise StorageError on database failure.'''
+        """delete_batch should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -841,10 +881,10 @@ class TestMemoryStoreDeleteBatch:
             store.close()
 
     def test_delete_batch_db_error_with_logger(self) -> None:
-        '''delete_batch should log on database failure.'''
+        """delete_batch should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -862,10 +902,10 @@ class TestMemoryStoreDeleteBatch:
 
 
 class TestMemoryStoreArchive:
-    '''Tests for MemoryStore.archive method.'''
+    """Tests for MemoryStore.archive method."""
 
     def test_archive_persists_all_six_values(self) -> None:
-        '''archive should persist original_id, project, content, replacement, reason, confidence.'''
+        """archive should persist original_id, project, content, replacement, reason, confidence."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -893,7 +933,7 @@ class TestMemoryStoreArchive:
             store.close()
 
     def test_archive_is_idempotent(self) -> None:
-        '''Retrying archive for the same pair must not create a duplicate row.'''
+        """Retrying archive for the same pair must not create a duplicate row."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -906,7 +946,7 @@ class TestMemoryStoreArchive:
             store.close()
 
     def test_archive_raises_on_sql_error(self) -> None:
-        '''archive should raise StorageError when the archive table is missing.'''
+        """archive should raise StorageError when the archive table is missing."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -927,7 +967,7 @@ class TestMemoryStoreArchive:
             store.close()
 
     def test_archive_error_with_logger(self) -> None:
-        '''archive should log on database failure.'''
+        """archive should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             logger = MagicMock(spec=IStructuredLogger)
@@ -952,10 +992,10 @@ class TestMemoryStoreArchive:
 
 
 class TestMemoryStoreGetArchived:
-    '''Tests for MemoryStore.get_archived method.'''
+    """Tests for MemoryStore.get_archived method."""
 
     def test_get_archived_empty(self) -> None:
-        '''get_archived should return empty list when no archives exist.'''
+        """get_archived should return empty list when no archives exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -966,7 +1006,7 @@ class TestMemoryStoreGetArchived:
             store.close()
 
     def test_get_archived_returns_records(self) -> None:
-        '''get_archived should return ArchivedMemoryRecord objects.'''
+        """get_archived should return ArchivedMemoryRecord objects."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -997,7 +1037,7 @@ class TestMemoryStoreGetArchived:
             store.close()
 
     def test_get_archived_filters_by_workspace(self) -> None:
-        '''get_archived should only return records for specified project.'''
+        """get_archived should only return records for specified project."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1025,7 +1065,7 @@ class TestMemoryStoreGetArchived:
             store.close()
 
     def test_get_archived_respects_limit(self) -> None:
-        '''get_archived should respect the limit parameter.'''
+        """get_archived should respect the limit parameter."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1048,7 +1088,7 @@ class TestMemoryStoreGetArchived:
             store.close()
 
     def test_get_archived_ordered_by_time_desc(self) -> None:
-        '''get_archived should return newest archives first.'''
+        """get_archived should return newest archives first."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1080,7 +1120,7 @@ class TestMemoryStoreGetArchived:
             store.close()
 
     def test_get_archived_db_error_raises_storage_error(self) -> None:
-        '''get_archived should raise StorageError on database failure.'''
+        """get_archived should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1097,10 +1137,10 @@ class TestMemoryStoreGetArchived:
             store.close()
 
     def test_get_archived_db_error_with_logger(self) -> None:
-        '''get_archived should log on database failure.'''
+        """get_archived should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1118,10 +1158,10 @@ class TestMemoryStoreGetArchived:
 
 
 class TestMemoryStoreRestoreFromArchive:
-    '''Tests for MemoryStore.restore_from_archive method.'''
+    """Tests for MemoryStore.restore_from_archive method."""
 
     def test_restore_success(self) -> None:
-        '''restore_from_archive should insert memory and remove archive.'''
+        """restore_from_archive should insert memory and remove archive."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1154,7 +1194,7 @@ class TestMemoryStoreRestoreFromArchive:
             store.close()
 
     def test_restore_not_found(self) -> None:
-        '''restore_from_archive should return None for missing archive.'''
+        """restore_from_archive should return None for missing archive."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1165,10 +1205,10 @@ class TestMemoryStoreRestoreFromArchive:
             store.close()
 
     def test_restore_not_found_with_logger(self) -> None:
-        '''restore_from_archive should log warning when archive not found.'''
+        """restore_from_archive should log warning when archive not found."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.restore_from_archive(999)
@@ -1179,7 +1219,7 @@ class TestMemoryStoreRestoreFromArchive:
             store.close()
 
     def test_restore_db_error_raises_storage_error(self) -> None:
-        '''restore_from_archive should raise StorageError on failure.'''
+        """restore_from_archive should raise StorageError on failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1196,10 +1236,10 @@ class TestMemoryStoreRestoreFromArchive:
             store.close()
 
     def test_restore_db_error_with_logger(self) -> None:
-        '''restore_from_archive should log on database failure.'''
+        """restore_from_archive should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1217,10 +1257,10 @@ class TestMemoryStoreRestoreFromArchive:
 
 
 class TestMemoryStoreCleanupExpiredArchive:
-    '''Tests for MemoryStore.cleanup_expired_archive method.'''
+    """Tests for MemoryStore.cleanup_expired_archive method."""
 
     def test_cleanup_zero_ttl_returns_zero(self) -> None:
-        '''cleanup_expired_archive with 0 ttl should return 0 (no cleanup).'''
+        """cleanup_expired_archive with 0 ttl should return 0 (no cleanup)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1231,7 +1271,7 @@ class TestMemoryStoreCleanupExpiredArchive:
             store.close()
 
     def test_cleanup_negative_ttl_returns_zero(self) -> None:
-        '''cleanup_expired_archive with negative ttl should return 0.'''
+        """cleanup_expired_archive with negative ttl should return 0."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1242,7 +1282,7 @@ class TestMemoryStoreCleanupExpiredArchive:
             store.close()
 
     def test_cleanup_removes_old_records(self) -> None:
-        '''cleanup_expired_archive should remove records older than TTL.'''
+        """cleanup_expired_archive should remove records older than TTL."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1277,7 +1317,7 @@ class TestMemoryStoreCleanupExpiredArchive:
             store.close()
 
     def test_cleanup_no_expired_records(self) -> None:
-        '''cleanup_expired_archive should return 0 when no records expired.'''
+        """cleanup_expired_archive should return 0 when no records expired."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1298,7 +1338,7 @@ class TestMemoryStoreCleanupExpiredArchive:
             store.close()
 
     def test_cleanup_db_error_raises_storage_error(self) -> None:
-        '''cleanup_expired_archive should raise StorageError on failure.'''
+        """cleanup_expired_archive should raise StorageError on failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1315,10 +1355,10 @@ class TestMemoryStoreCleanupExpiredArchive:
             store.close()
 
     def test_cleanup_db_error_with_logger(self) -> None:
-        '''cleanup_expired_archive should log on database failure.'''
+        """cleanup_expired_archive should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1336,10 +1376,10 @@ class TestMemoryStoreCleanupExpiredArchive:
 
 
 class TestMemoryStoreClose:
-    '''Tests for MemoryStore.close and ensure_initialized methods.'''
+    """Tests for MemoryStore.close and ensure_initialized methods."""
 
     def test_close_without_connection(self) -> None:
-        '''close should be safe to call without prior initialization.'''
+        """close should be safe to call without prior initialization."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1348,7 +1388,7 @@ class TestMemoryStoreClose:
             store.close()
 
     def test_close_with_connection(self) -> None:
-        '''close is a write barrier; the connection cannot be reopened.'''
+        """close is a write barrier; the connection cannot be reopened."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1360,7 +1400,7 @@ class TestMemoryStoreClose:
                 _ = store.connection
 
     def test_close_double_call(self) -> None:
-        '''Calling close twice should be safe.'''
+        """Calling close twice should be safe."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1370,7 +1410,7 @@ class TestMemoryStoreClose:
             store.close()  # Should not raise
 
     def test_ensure_initialized(self) -> None:
-        '''ensure_initialized should force lazy initialization.'''
+        """ensure_initialized should force lazy initialization."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1383,7 +1423,7 @@ class TestMemoryStoreClose:
             store.close()
 
     def test_ensure_initialized_idempotent(self) -> None:
-        '''ensure_initialized should be safe to call multiple times.'''
+        """ensure_initialized should be safe to call multiple times."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1395,10 +1435,10 @@ class TestMemoryStoreClose:
 
 
 class TestMemoryStoreErrorPaths:
-    '''Tests for error handling paths in get, get_all, delete, exists, get_id_by_content.'''
+    """Tests for error handling paths in get, get_all, delete, exists, get_id_by_content."""
 
     def test_get_db_error_raises_storage_error(self) -> None:
-        '''get should raise StorageError on database failure.'''
+        """get should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1415,10 +1455,10 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_get_db_error_with_logger(self) -> None:
-        '''get should log on database failure.'''
+        """get should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1435,7 +1475,7 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_get_all_db_error_raises_storage_error(self) -> None:
-        '''get_all should raise StorageError on database failure.'''
+        """get_all should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1452,10 +1492,10 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_get_all_db_error_with_logger(self) -> None:
-        '''get_all should log on database failure.'''
+        """get_all should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1472,7 +1512,7 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_delete_db_error_raises_storage_error(self) -> None:
-        '''delete should raise StorageError on database failure.'''
+        """delete should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1489,10 +1529,10 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_delete_db_error_with_logger(self) -> None:
-        '''delete should log on database failure.'''
+        """delete should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1509,7 +1549,7 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_exists_db_error_raises_storage_error(self) -> None:
-        '''exists should raise StorageError on database failure.'''
+        """exists should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1526,10 +1566,10 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_exists_db_error_with_logger(self) -> None:
-        '''exists should log on database failure.'''
+        """exists should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1546,7 +1586,7 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_get_id_by_content_db_error_raises_storage_error(self) -> None:
-        '''get_id_by_content should raise StorageError on database failure.'''
+        """get_id_by_content should raise StorageError on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1563,10 +1603,10 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_get_id_by_content_db_error_with_logger(self) -> None:
-        '''get_id_by_content should log on database failure.'''
+        """get_id_by_content should log on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1583,7 +1623,7 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_insert_non_duplicate_error_raises_storage_error(self) -> None:
-        '''insert should raise StorageError for non-duplicate db errors.'''
+        """insert should raise StorageError for non-duplicate db errors."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1600,10 +1640,10 @@ class TestMemoryStoreErrorPaths:
             store.close()
 
     def test_insert_non_duplicate_error_with_logger(self) -> None:
-        '''insert should log non-duplicate errors.'''
+        """insert should log non-duplicate errors."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
-            logger = MagicMock()
+            logger = create_mock_logger()
             store = MemoryStore(db_path=db_path, logger=logger)
 
             _ = store.connection
@@ -1621,10 +1661,10 @@ class TestMemoryStoreErrorPaths:
 
 
 class TestMemoryRecordDataclass:
-    '''Tests for MemoryRecord dataclass.'''
+    """Tests for MemoryRecord dataclass."""
 
     def test_memory_record_fields(self) -> None:
-        '''MemoryRecord should store all fields correctly.'''
+        """MemoryRecord should store all fields correctly."""
         record = MemoryRecord(
             id=1, workspace_id="proj1", content="hello", created_at="2025-01-01"
         )
@@ -1634,22 +1674,22 @@ class TestMemoryRecordDataclass:
         assert record.created_at == "2025-01-01"
 
     def test_memory_record_default_created_at(self) -> None:
-        '''MemoryRecord should default created_at to empty string.'''
+        """MemoryRecord should default created_at to empty string."""
         record = MemoryRecord(id=1, workspace_id="proj1", content="hello")
         assert record.created_at == ""
 
     def test_memory_record_frozen(self) -> None:
-        '''MemoryRecord should be immutable (frozen dataclass).'''
+        """MemoryRecord should be immutable (frozen dataclass)."""
         record = MemoryRecord(id=1, workspace_id="proj1", content="hello")
         with pytest.raises(AttributeError):
             record.content = "changed"  # type: ignore
 
 
 class TestArchivedMemoryRecordDataclass:
-    '''Tests for ArchivedMemoryRecord dataclass.'''
+    """Tests for ArchivedMemoryRecord dataclass."""
 
     def test_archived_record_fields(self) -> None:
-        '''ArchivedMemoryRecord should store all fields correctly.'''
+        """ArchivedMemoryRecord should store all fields correctly."""
         record = ArchivedMemoryRecord(
             id=1,
             original_id=10,
@@ -1670,7 +1710,7 @@ class TestArchivedMemoryRecordDataclass:
         assert record.archived_at == "2025-01-01"
 
     def test_archived_record_frozen(self) -> None:
-        '''ArchivedMemoryRecord should be immutable (frozen dataclass).'''
+        """ArchivedMemoryRecord should be immutable (frozen dataclass)."""
         record = ArchivedMemoryRecord(
             id=1,
             original_id=10,
@@ -1686,10 +1726,10 @@ class TestArchivedMemoryRecordDataclass:
 
 
 class TestMemoryStoreCustomTimeout:
-    '''Tests for MemoryStore with custom timeout.'''
+    """Tests for MemoryStore with custom timeout."""
 
     def test_custom_timeout(self) -> None:
-        '''MemoryStore should accept custom timeout.'''
+        """MemoryStore should accept custom timeout."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path, timeout=60.0)
@@ -1699,7 +1739,7 @@ class TestMemoryStoreCustomTimeout:
             store.close()
 
     def test_default_timeout(self) -> None:
-        '''MemoryStore should have 30s default timeout.'''
+        """MemoryStore should have 30s default timeout."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1709,10 +1749,10 @@ class TestMemoryStoreCustomTimeout:
 
 
 class TestMemoryStoreConnectionProperty:
-    '''Tests for MemoryStore.connection property edge cases.'''
+    """Tests for MemoryStore.connection property edge cases."""
 
     def test_connection_without_directory(self) -> None:
-        '''Connection should work with db_path in current directory.'''
+        """Connection should work with db_path in current directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1723,7 +1763,7 @@ class TestMemoryStoreConnectionProperty:
             store.close()
 
     def test_connection_reuse(self) -> None:
-        '''Accessing connection multiple times should return same object.'''
+        """Accessing connection multiple times should return same object."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)
@@ -1735,7 +1775,7 @@ class TestMemoryStoreConnectionProperty:
             store.close()
 
     def test_connection_after_close_raises(self) -> None:
-        '''Accessing connection after close must not mint a new handle.'''
+        """Accessing connection after close must not mint a new handle."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = MemoryStore(db_path=db_path)

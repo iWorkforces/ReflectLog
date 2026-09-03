@@ -13,6 +13,7 @@ from reflectlog.application.memory.replacement_recovery import (
     replacement_converged,
 )
 from reflectlog.core.enums import TransitionKind, TransitionStatus
+from reflectlog.core.storage_coordination import LeaseMode, WorkspaceStoragePaths
 from reflectlog.core.types import ReplacementTransition
 from reflectlog.infrastructure.memory_store import MemoryStore
 
@@ -101,12 +102,14 @@ class TestApplyPendingTransition:
     def test_skips_insert_when_replacement_already_present(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_id(_workspace_id: str, content: str) -> int | None:
             return 99 if content == "new convention" else None
 
         semantic.get_id_by_content.side_effect = get_id
         semantic.index = {99}
         tantivy = MagicMock()
+
         def find_existing(_workspace_id: str, content: str) -> list[str]:
             return [content] if content == "new convention" else []
 
@@ -126,6 +129,7 @@ class TestApplyPendingTransition:
     def test_reindexes_missing_vector(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_new_id(_workspace_id: str, content: str) -> int | None:
             return 7 if content == "new convention" else None
 
@@ -156,12 +160,14 @@ class TestApplyPendingTransition:
     def test_skips_tantivy_delete_when_old_text_was_readded(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_current_id(_workspace_id: str, content: str) -> int:
             return 22 if content == "old convention" else 99
 
         semantic.get_id_by_content.side_effect = get_current_id
         semantic.index = {99}
         tantivy = MagicMock()
+
         def find_all(_workspace_id: str, content: str) -> list[str]:
             return [content]
 
@@ -181,12 +187,14 @@ class TestApplyPendingTransition:
     def test_leaves_pending_when_tantivy_still_has_old(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_replacement_id(_workspace_id: str, content: str) -> int | None:
             return 99 if content == "new convention" else None
 
         semantic.get_id_by_content.side_effect = get_replacement_id
         semantic.index = {99}
         tantivy = MagicMock()
+
         def find_all(_workspace_id: str, content: str) -> list[str]:
             return [content]
 
@@ -240,6 +248,7 @@ class TestApplyPendingTransition:
     def test_converged_requires_old_id_gone(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_live_id(_workspace_id: str, content: str) -> int:
             return 11 if content == "old convention" else 99
 
@@ -255,12 +264,14 @@ class TestApplyPendingTransition:
     def test_converged_when_old_text_live_under_new_id(self) -> None:
         semantic = MagicMock()
         _stub_journal(semantic)
+
         def get_live_id(_workspace_id: str, content: str) -> int:
             return 22 if content == "old convention" else 99
 
         semantic.get_id_by_content.side_effect = get_live_id
         semantic.index = {99}
         tantivy = MagicMock()
+
         def find_all(_workspace_id: str, content: str) -> list[str]:
             return [content]
 
@@ -316,6 +327,30 @@ class TestReconcilePendingReplacements:
             logger=logger,
         )
         assert count == 0
+
+    def test_failed_precompute_leaves_add_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            _ = store.begin_add_intents("proj", ["ghost-content"])
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.embedder.embed_query.side_effect = RuntimeError("provider down")
+            semantic.get_id_by_content.return_value = None
+            semantic.ensure_initialized = MagicMock()
+            count = reconcile_pending_replacements(
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                write_lock=threading.Lock(),
+                lock=threading.RLock(),
+                logger=MagicMock(),
+            )
+            assert count == 0
+            pending = store.list_pending_transitions()
+            assert len(pending) == 1
+            assert pending[0].new_content == "ghost-content"
+            semantic.add.assert_not_called()
+            semantic.add_batch.assert_not_called()
+            store.close()
 
     def test_noops_when_nothing_is_pending(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -414,15 +449,20 @@ class TestReconcilePendingReplacements:
             semantic.get_id_by_content.return_value = 99
             semantic.index = {99: object()}
 
-            kwargs = {
-                "semantic_engine": semantic,
-                "tantivy_engine": None,
-                "write_lock": threading.Lock(),
-                "lock": threading.RLock(),
-                "logger": MagicMock(),
-            }
-            first = reconcile_pending_replacements(**kwargs)
-            second = reconcile_pending_replacements(**kwargs)
+            first = reconcile_pending_replacements(
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                write_lock=threading.Lock(),
+                lock=threading.RLock(),
+                logger=MagicMock(),
+            )
+            second = reconcile_pending_replacements(
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                write_lock=threading.Lock(),
+                lock=threading.RLock(),
+                logger=MagicMock(),
+            )
 
             assert first == 1
             assert second == 0
@@ -444,12 +484,14 @@ class TestReconcilePendingReplacements:
             semantic = MagicMock()
             semantic.memory_store = store
             _stub_contains(semantic)
+
             def get_replacement_id(_workspace_id: str, content: str) -> int | None:
                 return 99 if content == "new convention" else None
 
             semantic.get_id_by_content.side_effect = get_replacement_id
             semantic.index = {99}
             tantivy = MagicMock()
+
             def find_all(_workspace_id: str, content: str) -> list[str]:
                 return [content]
 
@@ -544,7 +586,9 @@ class TestReconcilePendingReplacements:
             )
             assert completed is True
             semantic.add.assert_not_called()
-            assert all(row.id != replaced.id for row in store.list_pending_transitions())
+            assert all(
+                row.id != replaced.id for row in store.list_pending_transitions()
+            )
             store.close()
 
     def test_completed_later_delete_supersedes_pending_add(self) -> None:
@@ -621,10 +665,8 @@ class TestReconcilePendingReplacements:
             semantic = MagicMock()
             semantic.memory_store = store
             _stub_contains(semantic)
-            semantic.get_id_by_content.side_effect = (
-                lambda workspace_id, content: 22
-                if content == "I moved to Boston"
-                else None
+            semantic.get_id_by_content.side_effect = lambda workspace_id, content: (
+                22 if content == "I moved to Boston" else None
             )
             semantic.index = {22}
             semantic.contains_id.side_effect = lambda memory_id: memory_id == 22
@@ -691,8 +733,8 @@ class TestReconcilePendingReplacements:
             semantic.add.side_effect = add
             semantic.add_batch.side_effect = add_batch
             semantic.delete.side_effect = delete
-            semantic.contains_id.side_effect = (
-                lambda memory_id: memory_id in semantic.index
+            semantic.contains_id.side_effect = lambda memory_id: (
+                memory_id in semantic.index
             )
 
             count = reconcile_pending_replacements(
@@ -726,6 +768,96 @@ class TestReconcilePendingReplacements:
             assert completed is False
             semantic.add.assert_not_called()
             store.close()
+
+    def test_reconcile_uses_coordinator_lease(self) -> None:
+        acquired: list[str] = []
+
+        class _Lease:
+            workspace_id = "ws"
+            mode = LeaseMode.EXCLUSIVE
+
+            def release(self) -> None:
+                return None
+
+            def __enter__(self) -> _Lease:
+                acquired.append("lease")
+                return self
+
+            def __exit__(
+                self,
+                exc_type: type[BaseException] | None,
+                exc: BaseException | None,
+                traceback: object,
+            ) -> None:
+                _ = exc_type, exc, traceback
+                return None
+
+        class _Coordinator:
+            timeout = 1.0
+            published: list[int] = []
+
+            def acquire(
+                self,
+                workspace_id: str,
+                mode: LeaseMode = LeaseMode.EXCLUSIVE,
+                *,
+                timeout: float | None = None,
+            ) -> _Lease:
+                _ = timeout
+                lease = _Lease()
+                lease.workspace_id = workspace_id
+                lease.mode = mode
+                return lease
+
+            def read_generation(self, workspace_id: str) -> int:
+                _ = workspace_id
+                return 0
+
+            def publish_generation(self, workspace_id: str, generation: int) -> None:
+                _ = workspace_id
+                self.published.append(generation)
+
+            def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
+                _ = workspace_id, mode
+                return False
+
+            def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
+                return WorkspaceStoragePaths(
+                    workspace_id=workspace_id,
+                    root="/tmp",
+                    lock_path="/tmp/.lock",
+                    generation_path="/tmp/.gen",
+                )
+
+        semantic = MagicMock()
+        row = ReplacementTransition(
+            id=1,
+            workspace_id="ws",
+            old_memory_id=1,
+            old_content="old",
+            new_content="new",
+            archive_id=1,
+            reason="test",
+            confidence=1.0,
+            status=TransitionStatus.PENDING,
+            kind=TransitionKind.ADD,
+        )
+        semantic.memory_store.list_pending_transitions.return_value = [row]
+        semantic.memory_store.has_later_intent.return_value = False
+        semantic.get_id_by_content.return_value = 1
+        semantic.contains_id.return_value = True
+        count = reconcile_pending_replacements(
+            semantic_engine=semantic,
+            tantivy_engine=None,
+            write_lock=threading.Lock(),
+            lock=threading.RLock(),
+            logger=MagicMock(),
+            coordinator=_Coordinator(),
+            workspace_id="ws",
+        )
+        assert acquired == ["lease"]
+        assert count >= 1
+        assert _Coordinator.published == [1]
 
     def test_reconcile_replace_then_earlier_add_does_not_reinsert_old_text(
         self,
@@ -778,8 +910,8 @@ class TestReconcilePendingReplacements:
             semantic.add.side_effect = add
             semantic.add_batch.side_effect = add_batch
             semantic.delete.side_effect = delete
-            semantic.contains_id.side_effect = (
-                lambda memory_id: memory_id in semantic.index
+            semantic.contains_id.side_effect = lambda memory_id: (
+                memory_id in semantic.index
             )
 
             count = reconcile_pending_replacements(

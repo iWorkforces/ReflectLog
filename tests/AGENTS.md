@@ -1,22 +1,22 @@
 # Test Suite
 
-**Generated:** 2026-08-30
-**Commit:** 062b44f
+**Generated:** 2026-09-03
+**Commit:** e401dbc
 **Branch:** develop
 
 ## OVERVIEW
 
-Pytest suite for ReflectLog. Default collection is `tests/unit` + `tests/integration` + `tests/security`. Coverage **fails under 90%** (`[tool.coverage.report] fail_under` and `COVERAGE_MIN` in `start-unittest.sh`). `filterwarnings = ["error", ...]`.
+Pytest suite. Default `testpaths`: `tests/unit`, `tests/integration`, `tests/security`. Coverage `fail_under = 90` (`[tool.coverage.report]` + `COVERAGE_MIN` in `start-unittest.sh`). `filterwarnings = ["error", ...]`.
 
 ## STRUCTURE
 
 ```
 tests/
 ├── conftest.py          # Shared fixtures; reset_env_after_test autouse
-├── unit/                # Mirrors reflectlog/; engines mocked
+├── unit/                # Mirrors reflectlog/; app mocked, infra real tmp
 ├── integration/         # Real USearch + Tantivy
 ├── security/            # In default testpaths
-├── load/                # Locust; not in pytest testpaths
+├── load/                # Locust; not pytest
 └── test_*.py            # Root demos; not in default testpaths
 ```
 
@@ -24,8 +24,8 @@ tests/
 
 | Invoker | Collects |
 |---------|----------|
-| Bare `pytest` / `testpaths` | `unit/` + `integration/` + `security/` |
-| `./start-unittest.sh` (`pytest tests/`) | Also root `test_*.py` demos |
+| Bare `pytest` / default `./start-unittest.sh` | `testpaths` only |
+| `--parallel` / `--pattern` (`pytest tests/`) | Also root `test_*.py` demos |
 
 `tests/load/` is Locust, not pytest.
 
@@ -35,27 +35,28 @@ tests/
 2. `tests/unit/application/memory/conftest.py` — `NUMBA_DISABLE_JIT=1` + purge/reload numba.
 3. `tests/unit/application/utils/conftest.py` — same JIT disable.
 
-JIT disable lives in those two unit conftests only. Collection-order flake if a JIT-compiled module is imported before they run.
-
 ## CONVENTIONS
 
-- Async: `asyncio_mode=auto`; no extra `@pytest.mark.asyncio`.
-- MagicMock: stub real methods (`is_ready=False`, `add_batch` `side_effect`). Put APIs on protocols. Do **not** use `type(obj).__dict__.get(...)` (banned).
-- Patch constructors on the manager module: `reflectlog.application.memory.manager.USearchEngine`.
+- Async: `asyncio_mode=auto`.
+- MagicMock: `spec=` real types; stub `is_ready=False`, `add_batch` `side_effect`. No auto-attrs as APIs.
+- Patch constructors on the manager import site.
 - Tools mock `MemoryManager`, not engines.
-- Dual manager tests: `unit/application/test_memory_manager.py` and `unit/application/memory/test_manager.py` both exist.
+- Dual manager tests: `unit/application/test_memory_manager.py` and `unit/application/memory/test_manager.py`.
 
 ## ANTI-PATTERNS
 
-- Never treat `fail_under` as a warning. 90% is a hard fail.
-- Never invent MagicMock auto-attrs as production APIs.
-- Never log memory text or secrets in assertions/helpers.
+- Never treat `fail_under` 90 as a warning.
+- Never invent MagicMock auto-attrs.
+- Never log memory text or secrets.
+
+## CI
+
+Focused workflow `.github/workflows/platform-storage.yml` exists. It runs `scripts/run_platform_gates.py --focused` plus a **subset** of coordinator/engine tests. It does **not** run the full suite, lint, typecheck, or coverage.
 
 ## RUNNING
 
 ```bash
-./start-unittest.sh --coverage   # fail_under=90 via coverage.py
+./start-unittest.sh --coverage   # fail_under=90
 ./start-unittest.sh --parallel
 pytest                           # testpaths only
-pytest tests/                    # also collects root demos
 ```

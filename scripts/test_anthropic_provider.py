@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Test script for AnthropicReplacementProvider.
+"""Test script for AnthropicReplacementProvider.
 
 This script tests the Anthropic provider for SmartReplacer by:
 1. Initializing credentials from the keychain via init_credentials()
@@ -8,7 +8,7 @@ This script tests the Anthropic provider for SmartReplacer by:
 
 Usage:
     WORKSPACE_ID=test-project uv run python scripts/test_anthropic_provider.py
-'''
+"""
 
 import asyncio
 import os
@@ -18,8 +18,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-async def main():
-    '''Test the AnthropicReplacementProvider.'''
+async def main() -> int:
+    """Test the AnthropicReplacementProvider."""
     # Set environment variables for the test
     os.environ.setdefault("WORKSPACE_ID", "test-project")
     os.environ["LLM_PROVIDER"] = "anthropic"

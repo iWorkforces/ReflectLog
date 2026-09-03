@@ -6,9 +6,8 @@ ensuring that all settings are valid and consistent before the server starts.
 
 from dataclasses import dataclass
 import re
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
-from reflectlog.application.config.settings import Config
 from reflectlog.core.enums import (
     CrossEncoderDevice,
     FusionMethod,
@@ -16,6 +15,9 @@ from reflectlog.core.enums import (
     RerankerEngine,
     TransportMode,
 )
+
+if TYPE_CHECKING:
+    from reflectlog.application.config.settings import Config
 
 
 @dataclass
@@ -67,7 +69,7 @@ class ConfigurationValidator:
         """Clear all accumulated errors."""
         self.errors.clear()
 
-    def add_error(self, field: str, value: Any, message: str) -> None:
+    def add_error(self, field: str, value: object, message: str) -> None:
         """Add a validation error.
 
         Args:
@@ -75,7 +77,12 @@ class ConfigurationValidator:
             value: The invalid value
             message: Description of why the value is invalid
         """
-        self.errors.append(ValidationError(field=field, value=value, message=message))
+        stored: str | int | float | bool | None
+        if value is None or isinstance(value, str | int | float | bool):
+            stored = value
+        else:
+            stored = repr(value)
+        self.errors.append(ValidationError(field=field, value=stored, message=message))
 
     def validate_workspace_id(self, workspace_id: str) -> bool:
         """Validate WORKSPACE_ID format.

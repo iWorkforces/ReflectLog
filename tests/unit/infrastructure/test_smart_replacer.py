@@ -1,4 +1,4 @@
-'''Unit tests for SmartReplacer and replacement providers.'''
+"""Unit tests for SmartReplacer and replacement providers."""
 
 import json
 from typing import cast
@@ -19,15 +19,15 @@ from reflectlog.infrastructure.smart_replacer import (
 
 
 def create_mock_logger() -> IStructuredLogger:
-    '''Create a properly typed mock logger for testing.'''
+    """Create a properly typed mock logger for testing."""
     return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
 
 
 class TestReplacementDecision:
-    '''Test ReplacementDecision Pydantic schema.'''
+    """Test ReplacementDecision Pydantic schema."""
 
     def test_valid_decision_should_replace(self) -> None:
-        '''Test valid replacement decision.'''
+        """Test valid replacement decision."""
         decision = ReplacementDecision(
             should_replace=True,
             confidence=0.85,
@@ -38,7 +38,7 @@ class TestReplacementDecision:
         assert decision.reason == "Same topic with updated preference"
 
     def test_valid_decision_no_replace(self) -> None:
-        '''Test valid no-replacement decision.'''
+        """Test valid no-replacement decision."""
         decision = ReplacementDecision(
             should_replace=False,
             confidence=0.3,
@@ -48,7 +48,7 @@ class TestReplacementDecision:
         assert decision.confidence == 0.3
 
     def test_valid_confidence_zero(self) -> None:
-        '''Test minimum valid confidence.'''
+        """Test minimum valid confidence."""
         decision = ReplacementDecision(
             should_replace=False,
             confidence=0.0,
@@ -57,7 +57,7 @@ class TestReplacementDecision:
         assert decision.confidence == 0.0
 
     def test_valid_confidence_one(self) -> None:
-        '''Test maximum valid confidence.'''
+        """Test maximum valid confidence."""
         decision = ReplacementDecision(
             should_replace=True,
             confidence=1.0,
@@ -66,7 +66,7 @@ class TestReplacementDecision:
         assert decision.confidence == 1.0
 
     def test_invalid_confidence_below_zero(self) -> None:
-        '''Test that confidence below 0.0 is rejected.'''
+        """Test that confidence below 0.0 is rejected."""
         with pytest.raises(ValueError):
             ReplacementDecision(
                 should_replace=False,
@@ -75,7 +75,7 @@ class TestReplacementDecision:
             )
 
     def test_invalid_confidence_above_one(self) -> None:
-        '''Test that confidence above 1.0 is rejected.'''
+        """Test that confidence above 1.0 is rejected."""
         with pytest.raises(ValueError):
             ReplacementDecision(
                 should_replace=True,
@@ -84,14 +84,14 @@ class TestReplacementDecision:
             )
 
     def test_json_schema_generation(self) -> None:
-        '''Test that JSON schema is generated correctly.'''
+        """Test that JSON schema is generated correctly."""
         schema = ReplacementDecision.model_json_schema()
         assert "should_replace" in schema.get("properties", {})
         assert "confidence" in schema.get("properties", {})
         assert "reason" in schema.get("properties", {})
 
     def test_json_serialization(self) -> None:
-        '''Test JSON serialization round-trip.'''
+        """Test JSON serialization round-trip."""
         decision = ReplacementDecision(
             should_replace=True,
             confidence=0.75,
@@ -105,10 +105,10 @@ class TestReplacementDecision:
 
 
 class TestSmartReplacerConfig:
-    '''Test SmartReplacerConfig dataclass.'''
+    """Test SmartReplacerConfig dataclass."""
 
     def test_default_values(self) -> None:
-        '''Test default configuration values.'''
+        """Test default configuration values."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -121,7 +121,7 @@ class TestSmartReplacerConfig:
         assert config.provider == "openai"
 
     def test_custom_values(self) -> None:
-        '''Test configuration with custom values.'''
+        """Test configuration with custom values."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://custom.url/api/v1",
@@ -141,7 +141,7 @@ class TestSmartReplacerConfig:
         assert config.provider == "anthropic"
 
     def test_from_app_config(self) -> None:
-        '''Test factory method from application config.'''
+        """Test factory method from application config."""
         mock_app_config = MagicMock()
         mock_app_config.llm_api_key = "api-key"
         mock_app_config.llm_api_base_url = "https://openrouter.ai/api/v1"
@@ -162,7 +162,7 @@ class TestSmartReplacerConfig:
         assert config.provider == "openai"
 
     def test_from_app_config_anthropic_provider(self) -> None:
-        '''Test factory method with anthropic provider.'''
+        """Test factory method with anthropic provider."""
         mock_app_config = MagicMock()
         mock_app_config.llm_api_key = "api-key"
         mock_app_config.llm_api_base_url = "https://openrouter.ai/api/v1"
@@ -180,10 +180,10 @@ class TestSmartReplacerConfig:
 
 
 class TestCreateReplacementProvider:
-    '''Test create_replacement_provider factory function.'''
+    """Test create_replacement_provider factory function."""
 
     def test_create_openai_provider(self) -> None:
-        '''Test creating OpenAI provider.'''
+        """Test creating OpenAI provider."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -200,7 +200,7 @@ class TestCreateReplacementProvider:
             mock_async_client.assert_not_called()
 
     def test_create_anthropic_provider(self) -> None:
-        '''Test creating Anthropic provider.'''
+        """Test creating Anthropic provider."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -215,7 +215,7 @@ class TestCreateReplacementProvider:
             mock_init.assert_called_once_with(verbose=False)
 
     def test_create_invalid_provider_raises_error(self) -> None:
-        '''Test that invalid provider raises ValueError.'''
+        """Test that invalid provider raises ValueError."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -228,11 +228,11 @@ class TestCreateReplacementProvider:
 
 
 class TestOpenAIReplacementProvider:
-    '''Test OpenAIReplacementProvider.'''
+    """Test OpenAIReplacementProvider."""
 
     @pytest.fixture
     def mock_provider(self) -> OpenAIReplacementProvider:
-        '''Create a mocked OpenAI provider instance.'''
+        """Create a mocked OpenAI provider instance."""
         with patch("reflectlog.infrastructure.llm_provider_base.AsyncOpenAI"):
             provider = OpenAIReplacementProvider(
                 api_key="test-key",
@@ -245,7 +245,7 @@ class TestOpenAIReplacementProvider:
     async def test_detect_replacement_success(
         self, mock_provider: OpenAIReplacementProvider
     ) -> None:
-        '''Test successful replacement detection.'''
+        """Test successful replacement detection."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps(
@@ -275,7 +275,7 @@ class TestOpenAIReplacementProvider:
     async def test_detect_replacement_no_replace(
         self, mock_provider: OpenAIReplacementProvider
     ) -> None:
-        '''Test no replacement needed.'''
+        """Test no replacement needed."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps(
@@ -305,7 +305,7 @@ class TestOpenAIReplacementProvider:
     async def test_detect_replacement_clamps_confidence(
         self, mock_provider: OpenAIReplacementProvider
     ) -> None:
-        '''Test that out-of-range confidence is clamped to 0-1.'''
+        """Test that out-of-range confidence is clamped to 0-1."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps(
@@ -332,7 +332,7 @@ class TestOpenAIReplacementProvider:
     async def test_fallback_on_json_schema_not_supported(
         self, mock_provider: OpenAIReplacementProvider
     ) -> None:
-        '''Test fallback to json_object mode when structured outputs not supported.'''
+        """Test fallback to json_object mode when structured outputs not supported."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps(
@@ -375,7 +375,7 @@ class TestOpenAIReplacementProvider:
     async def test_all_retries_exhausted_returns_safe_defaults(
         self, mock_provider: OpenAIReplacementProvider
     ) -> None:
-        '''Test that exhausted retries return safe defaults.'''
+        """Test that exhausted retries return safe defaults."""
         mock_provider._client = AsyncMock()
         mock_provider._client.chat.completions.create = AsyncMock(
             side_effect=Exception("Network timeout error")
@@ -396,10 +396,10 @@ class TestOpenAIReplacementProvider:
 
 
 class TestAnthropicReplacementProvider:
-    '''Test AnthropicReplacementProvider.'''
+    """Test AnthropicReplacementProvider."""
 
     def test_extract_json_pure_json(self) -> None:
-        '''Test extracting pure JSON from response.'''
+        """Test extracting pure JSON from response."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
@@ -412,17 +412,17 @@ class TestAnthropicReplacementProvider:
         assert result["reason"] == "Test"
 
     def test_extract_json_markdown_code_block(self) -> None:
-        '''Test extracting JSON from markdown code block.'''
+        """Test extracting JSON from markdown code block."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        response = '''Here's the analysis:
+        response = """Here's the analysis:
 
 ```json
 {"should_replace": true, "confidence": 0.85, "reason": "Updated preference"}
 ```
 
-That's my assessment.'''
+That's my assessment."""
 
         result = provider._extract_json_from_response(response)
 
@@ -430,7 +430,7 @@ That's my assessment.'''
         assert result["confidence"] == 0.85
 
     def test_extract_json_embedded_json(self) -> None:
-        '''Test extracting embedded JSON from text.'''
+        """Test extracting embedded JSON from text."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
@@ -442,17 +442,17 @@ That's my assessment.'''
         assert result["confidence"] == 0.3
 
     def test_extract_json_markdown_block_invalid_json_falls_through(self) -> None:
-        '''Test markdown code block with invalid JSON falls through to embedded strategy.'''
+        """Test markdown code block with invalid JSON falls through to embedded strategy."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        response = '''Here's my analysis:
+        response = """Here's my analysis:
 
 ```json
 {not valid json at all!!!}
 ```
 
-But the result is {"should_replace": true, "confidence": 0.8, "reason": "Updated"}'''
+But the result is {"should_replace": true, "confidence": 0.8, "reason": "Updated"}"""
 
         result = provider._extract_json_from_response(response)
 
@@ -460,23 +460,23 @@ But the result is {"should_replace": true, "confidence": 0.8, "reason": "Updated
         assert result["confidence"] == 0.8
 
     def test_extract_json_markdown_block_invalid_json_no_fallback(self) -> None:
-        '''Test markdown code block with invalid JSON and no valid embedded JSON raises.'''
+        """Test markdown code block with invalid JSON and no valid embedded JSON raises."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
-        response = '''Here's my analysis:
+        response = """Here's my analysis:
 
 ```json
 {this is not valid json}
 ```
 
-No valid JSON anywhere else either.'''
+No valid JSON anywhere else either."""
 
         with pytest.raises(ValueError, match="Could not extract JSON"):
             provider._extract_json_from_response(response)
 
     def test_extract_json_embedded_invalid_json_continues(self) -> None:
-        '''Test embedded JSON patterns with invalid JSON continue to next match.'''
+        """Test embedded JSON patterns with invalid JSON continue to next match."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
@@ -488,7 +488,7 @@ No valid JSON anywhere else either.'''
         assert result["confidence"] == 0.4
 
     def test_extract_json_all_embedded_invalid_raises(self) -> None:
-        '''Test all embedded JSON patterns invalid raises ValueError.'''
+        """Test all embedded JSON patterns invalid raises ValueError."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
@@ -498,7 +498,7 @@ No valid JSON anywhere else either.'''
             provider._extract_json_from_response(response)
 
     def test_extract_json_fails_raises_error(self) -> None:
-        '''Test that extraction failure raises ValueError.'''
+        """Test that extraction failure raises ValueError."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
@@ -507,7 +507,7 @@ No valid JSON anywhere else either.'''
 
     @pytest.mark.asyncio
     async def test_detect_replacement_success(self) -> None:
-        '''Test successful replacement detection with Anthropic.'''
+        """Test successful replacement detection with Anthropic."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
@@ -537,16 +537,16 @@ No valid JSON anywhere else either.'''
 
     @pytest.mark.asyncio
     async def test_detect_replacement_with_markdown_response(self) -> None:
-        '''Test replacement detection with markdown-wrapped response.'''
+        """Test replacement detection with markdown-wrapped response."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
         with patch("reflectlog.utility.utility.generate_content") as mock_generate:
-            mock_generate.return_value = '''Analysis complete:
+            mock_generate.return_value = """Analysis complete:
 
 ```json
 {"should_replace": true, "confidence": 0.92, "reason": "Preference changed"}
-```'''
+```"""
 
             should_replace, confidence, _reason = await provider.detect_replacement(
                 prompt="test prompt",
@@ -559,7 +559,7 @@ No valid JSON anywhere else either.'''
 
     @pytest.mark.asyncio
     async def test_all_retries_exhausted_returns_safe_defaults(self) -> None:
-        '''Test that exhausted retries return safe defaults.'''
+        """Test that exhausted retries return safe defaults."""
         with patch("reflectlog.utility.utility.init_credentials"):
             provider = AnthropicReplacementProvider(model="claude-sonnet-4-20250514")
 
@@ -581,10 +581,10 @@ No valid JSON anywhere else either.'''
 
 
 class TestSmartReplacerInitialization:
-    '''Test SmartReplacer initialization.'''
+    """Test SmartReplacer initialization."""
 
     def test_initialization_creates_openai_provider_when_enabled(self) -> None:
-        '''Test that initialization creates OpenAI provider when enabled.'''
+        """Test that initialization creates OpenAI provider when enabled."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -603,7 +603,7 @@ class TestSmartReplacerInitialization:
             assert isinstance(replacer._provider, OpenAIReplacementProvider)
 
     def test_initialization_creates_anthropic_provider_when_enabled(self) -> None:
-        '''Test that initialization creates Anthropic provider when enabled.'''
+        """Test that initialization creates Anthropic provider when enabled."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -620,7 +620,7 @@ class TestSmartReplacerInitialization:
             assert isinstance(replacer._provider, AnthropicReplacementProvider)
 
     def test_initialization_no_provider_when_disabled(self) -> None:
-        '''Test that no provider is created when disabled.'''
+        """Test that no provider is created when disabled."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -638,11 +638,11 @@ class TestSmartReplacerInitialization:
 
 
 class TestCheckReplacement:
-    '''Test check_replacement method.'''
+    """Test check_replacement method."""
 
     @pytest.fixture
     def mock_replacer(self) -> SmartReplacer:
-        '''Create a mocked SmartReplacer instance.'''
+        """Create a mocked SmartReplacer instance."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -659,7 +659,7 @@ class TestCheckReplacement:
     async def test_check_replacement_should_replace(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test successful replacement detection.'''
+        """Test successful replacement detection."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps(
@@ -687,7 +687,7 @@ class TestCheckReplacement:
     async def test_check_replacement_no_replace(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test no replacement needed.'''
+        """Test no replacement needed."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps(
@@ -715,7 +715,7 @@ class TestCheckReplacement:
     async def test_check_replacement_below_threshold(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test that replacement is not triggered when confidence is below threshold.'''
+        """Test that replacement is not triggered when confidence is below threshold."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps(
@@ -741,7 +741,7 @@ class TestCheckReplacement:
 
     @pytest.mark.asyncio
     async def test_check_replacement_disabled(self) -> None:
-        '''Test that disabled replacer returns no replacement.'''
+        """Test that disabled replacer returns no replacement."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -765,7 +765,7 @@ class TestCheckReplacement:
     async def test_check_replacement_provider_not_initialized(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test handling when provider is not initialized.'''
+        """Test handling when provider is not initialized."""
         mock_replacer._provider = None
 
         should_replace, confidence, reason = await mock_replacer.check_replacement(
@@ -781,7 +781,7 @@ class TestCheckReplacement:
     async def test_check_replacement_api_error(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test handling of API error with retry behavior.'''
+        """Test handling of API error with retry behavior."""
         provider = cast(OpenAIReplacementProvider, mock_replacer._provider)
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(
@@ -803,7 +803,7 @@ class TestCheckReplacement:
     async def test_check_replacement_json_decode_error(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test handling of JSONDecodeError from provider.'''
+        """Test handling of JSONDecodeError from provider."""
         mock_provider = AsyncMock()
         mock_provider.detect_replacement = AsyncMock(
             side_effect=json.JSONDecodeError("Expecting value", "doc", 0)
@@ -826,7 +826,7 @@ class TestCheckReplacement:
     async def test_check_replacement_json_decode_error_no_logger(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test JSONDecodeError handling without logger.'''
+        """Test JSONDecodeError handling without logger."""
         mock_provider = AsyncMock()
         mock_provider.detect_replacement = AsyncMock(
             side_effect=json.JSONDecodeError("Expecting value", "doc", 0)
@@ -846,7 +846,7 @@ class TestCheckReplacement:
     async def test_check_replacement_generic_exception(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test handling of generic Exception from provider.'''
+        """Test handling of generic Exception from provider."""
         mock_provider = AsyncMock()
         mock_provider.detect_replacement = AsyncMock(
             side_effect=RuntimeError("Unexpected failure")
@@ -869,7 +869,7 @@ class TestCheckReplacement:
     async def test_check_replacement_generic_exception_no_logger(
         self, mock_replacer: SmartReplacer
     ) -> None:
-        '''Test generic Exception handling without logger.'''
+        """Test generic Exception handling without logger."""
         mock_provider = AsyncMock()
         mock_provider.detect_replacement = AsyncMock(
             side_effect=RuntimeError("Unexpected failure")
@@ -887,11 +887,11 @@ class TestCheckReplacement:
 
 
 class TestSmartReplacerIntegration:
-    '''Integration-style tests for full replacement flow.'''
+    """Integration-style tests for full replacement flow."""
 
     @pytest.mark.asyncio
     async def test_full_replacement_flow_openai_replace(self) -> None:
-        '''Test complete replacement flow with OpenAI provider.'''
+        """Test complete replacement flow with OpenAI provider."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -930,7 +930,7 @@ class TestSmartReplacerIntegration:
 
     @pytest.mark.asyncio
     async def test_full_replacement_flow_anthropic_replace(self) -> None:
-        '''Test complete replacement flow with Anthropic provider.'''
+        """Test complete replacement flow with Anthropic provider."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",
@@ -962,7 +962,7 @@ class TestSmartReplacerIntegration:
 
     @pytest.mark.asyncio
     async def test_full_replacement_flow_no_replace(self) -> None:
-        '''Test complete replacement flow with no replacement.'''
+        """Test complete replacement flow with no replacement."""
         config = SmartReplacerConfig(
             api_key="test-key",
             base_url="https://openrouter.ai/api/v1",

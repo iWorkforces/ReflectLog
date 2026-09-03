@@ -1,16 +1,15 @@
 """Type stubs for fastmcp library."""
 
 from collections.abc import Awaitable, Callable
-from typing import ParamSpec, TypeAlias, TypeVar, overload
+from typing import ParamSpec, TypeVar, overload
 
 from fastmcp.client.client import CallToolResult
 
-JSONScalar: TypeAlias = str | int | float | bool | None
-JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
+type JSONScalar = str | int | float | bool | None
+type JSONValue = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
-
 
 class Context:
     """FastMCP context for tool execution.

@@ -3,6 +3,8 @@
 Tests reflectlog.utility.http HttpClientFactory and convenience functions.
 """
 
+from unittest.mock import patch
+
 import aiohttp
 import httpx
 import pytest
@@ -194,6 +196,61 @@ class TestHttpxClientCreation:
             write_timeout=15.0,
         )
         assert isinstance(client, httpx.Client)
+        assert client.timeout.connect == 5.0
+        assert client.timeout.read == 10.0
+        assert client.timeout.write == 15.0
+        assert client.timeout.pool == 5.0
+
+
+class TestFirstCallOverrides:
+    """First non-None constructor values win; later calls do not rebuild."""
+
+    def test_http2_false_is_preserved(self) -> None:
+        with patch("reflectlog.utility.http.httpx.Client", wraps=httpx.Client) as ctor:
+            _ = HttpClientFactory.get_httpx_client(http2=False)
+        assert ctor.call_args is not None
+        assert ctor.call_args.kwargs["http2"] is False
+
+    def test_none_selects_environment_defaults(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HTTP_CONNECT_TIMEOUT", "7.0")
+        client = HttpClientFactory.get_httpx_client(connect_timeout=None)
+        assert client.timeout.connect == 7.0
+
+    def test_second_call_does_not_mutate_singleton(self) -> None:
+        first = HttpClientFactory.get_httpx_client(connect_timeout=1.5, http2=False)
+        with patch("reflectlog.utility.http.httpx.Client") as ctor:
+            second = HttpClientFactory.get_httpx_client(
+                connect_timeout=30.0, http2=True
+            )
+        ctor.assert_not_called()
+        assert first is second
+        assert first.timeout.connect == 1.5
+
+    def test_async_first_call_overrides(self) -> None:
+        with patch(
+            "reflectlog.utility.http.httpx.AsyncClient", wraps=httpx.AsyncClient
+        ) as ctor:
+            client = HttpClientFactory.get_async_httpx_client(
+                max_connections=11,
+                connect_timeout=2.5,
+                http2=False,
+            )
+        assert ctor.call_args is not None
+        assert ctor.call_args.kwargs["http2"] is False
+        assert client.timeout.connect == 2.5
+        limits = ctor.call_args.kwargs["limits"]
+        assert limits.max_connections == 11
+
+    async def test_aiohttp_zero_limits_are_honored(self) -> None:
+        session = HttpClientFactory.get_aiohttp_client(
+            max_connections=0,
+            connect_timeout=0.0,
+        )
+        assert session.connector is not None
+        assert session.connector.limit == 0
+        assert session.timeout.connect == 0.0
 
 
 class TestAiohttpClientCreation:

@@ -1,5 +1,6 @@
-'''Unit tests for reflectlog/utility/utility.py module.'''
+"""Unit tests for reflectlog/utility/utility.py module."""
 
+from collections.abc import AsyncIterator
 import os
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -9,14 +10,20 @@ import pytest
 from reflectlog.utility.types import OAUTH_TOKEN_PREFIX
 
 
+async def _empty_query(**kwargs: Any) -> AsyncIterator[object]:
+    _ = kwargs
+    if False:
+        yield None
+
+
 class TestGetClaudeCodeApiKey:
-    '''Tests for get_claude_code_api_key() function.'''
+    """Tests for get_claude_code_api_key() function."""
 
     @patch("reflectlog.utility.utility.get_platform_retriever")
     def test_returns_credential_from_retriever(
         self, mock_get_retriever: MagicMock
     ) -> None:
-        '''Should return credential when retriever finds one.'''
+        """Should return credential when retriever finds one."""
         mock_retriever = MagicMock()
         mock_retriever.get_credential.return_value = "sk-ant-test-key-123"
         mock_get_retriever.return_value = mock_retriever
@@ -32,7 +39,7 @@ class TestGetClaudeCodeApiKey:
     def test_returns_none_when_no_retriever(
         self, mock_get_retriever: MagicMock
     ) -> None:
-        '''Should return None when get_platform_retriever returns None.'''
+        """Should return None when get_platform_retriever returns None."""
         mock_get_retriever.return_value = None
 
         from reflectlog.utility.utility import get_claude_code_api_key
@@ -43,7 +50,7 @@ class TestGetClaudeCodeApiKey:
 
     @patch("reflectlog.utility.utility.get_platform_retriever")
     def test_returns_none_on_exception(self, mock_get_retriever: MagicMock) -> None:
-        '''Should return None silently on any exception.'''
+        """Should return None silently on any exception."""
         mock_get_retriever.side_effect = RuntimeError("Platform error")
 
         from reflectlog.utility.utility import get_claude_code_api_key
@@ -56,7 +63,7 @@ class TestGetClaudeCodeApiKey:
     def test_returns_none_when_retriever_raises(
         self, mock_get_retriever: MagicMock
     ) -> None:
-        '''Should return None when retriever.get_credential() raises.'''
+        """Should return None when retriever.get_credential() raises."""
         mock_retriever = MagicMock()
         mock_retriever.get_credential.side_effect = OSError("Keychain error")
         mock_get_retriever.return_value = mock_retriever
@@ -71,7 +78,7 @@ class TestGetClaudeCodeApiKey:
     def test_verbose_mode_prints_to_stderr(
         self, mock_get_retriever: MagicMock, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        '''Should print debug message to stderr when verbose=True.'''
+        """Should print debug message to stderr when verbose=True."""
         mock_retriever = MagicMock()
         mock_retriever.get_credential.return_value = "sk-ant-test"
         mock_get_retriever.return_value = mock_retriever
@@ -87,7 +94,7 @@ class TestGetClaudeCodeApiKey:
     def test_verbose_false_no_stderr_output(
         self, mock_get_retriever: MagicMock, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        '''Should not print to stderr when verbose=False.'''
+        """Should not print to stderr when verbose=False."""
         mock_retriever = MagicMock()
         mock_retriever.get_credential.return_value = "sk-ant-test"
         mock_get_retriever.return_value = mock_retriever
@@ -103,7 +110,7 @@ class TestGetClaudeCodeApiKey:
     def test_returns_none_when_credential_is_none(
         self, mock_get_retriever: MagicMock
     ) -> None:
-        '''Should return None when retriever returns None credential.'''
+        """Should return None when retriever returns None credential."""
         mock_retriever = MagicMock()
         mock_retriever.get_credential.return_value = None
         mock_get_retriever.return_value = mock_retriever
@@ -116,12 +123,12 @@ class TestGetClaudeCodeApiKey:
 
 
 class TestGetAnthropicApiKey:
-    '''Tests for get_anthropic_api_key() function.'''
+    """Tests for get_anthropic_api_key() function."""
 
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-env-key"}, clear=False)
     @patch("reflectlog.utility.utility.get_claude_code_api_key")
     def test_returns_from_env_var(self, mock_get_key: MagicMock) -> None:
-        '''Should return API key from ANTHROPIC_API_KEY env var with source=env.'''
+        """Should return API key from ANTHROPIC_API_KEY env var with source=env."""
         from reflectlog.utility.utility import get_anthropic_api_key
 
         result = get_anthropic_api_key()
@@ -135,7 +142,7 @@ class TestGetAnthropicApiKey:
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.utility.utility.get_claude_code_api_key")
     def test_falls_back_to_keychain(self, mock_get_key: MagicMock) -> None:
-        '''Should fall back to keychain when env var not set.'''
+        """Should fall back to keychain when env var not set."""
         mock_get_key.return_value = "sk-ant-keychain-key"
 
         from reflectlog.utility.utility import get_anthropic_api_key
@@ -150,7 +157,7 @@ class TestGetAnthropicApiKey:
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.utility.utility.get_claude_code_api_key")
     def test_returns_none_when_neither_available(self, mock_get_key: MagicMock) -> None:
-        '''Should return None when no env var and no keychain credential.'''
+        """Should return None when no env var and no keychain credential."""
         mock_get_key.return_value = None
 
         from reflectlog.utility.utility import get_anthropic_api_key
@@ -168,7 +175,7 @@ class TestGetAnthropicApiKey:
     def test_env_var_takes_priority_over_keychain(
         self, mock_get_key: MagicMock
     ) -> None:
-        '''Env var should take priority even if keychain has a key.'''
+        """Env var should take priority even if keychain has a key."""
         mock_get_key.return_value = "sk-ant-keychain-key"
 
         from reflectlog.utility.utility import get_anthropic_api_key
@@ -182,7 +189,7 @@ class TestGetAnthropicApiKey:
 
 
 class TestInitCredentials:
-    '''Tests for init_credentials() function.'''
+    """Tests for init_credentials() function."""
 
     @patch.dict(
         os.environ,
@@ -191,7 +198,7 @@ class TestInitCredentials:
     )
     @patch("reflectlog.utility.utility.get_claude_code_api_key")
     def test_returns_existing_env_token(self, mock_get_key: MagicMock) -> None:
-        '''Should return existing ANTHROPIC_AUTH_TOKEN from env.'''
+        """Should return existing ANTHROPIC_AUTH_TOKEN from env."""
         from reflectlog.utility.utility import init_credentials
 
         result = init_credentials(verbose=False)
@@ -210,19 +217,20 @@ class TestInitCredentials:
         mock_get_key: MagicMock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        '''Should print truncated token when verbose=True and token exists.'''
+        """Should print truncated token when verbose=True and token exists."""
         from reflectlog.utility.utility import init_credentials
 
         _ = init_credentials(verbose=True)
 
         captured = capsys.readouterr()
         assert "ANTHROPIC_AUTH_TOKEN:" in captured.out
-        assert "sk-ant-oat01-existin" in captured.out
+        assert "<set>" in captured.out
+        assert "sk-ant-oat01-existin" not in captured.out
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.utility.utility.get_claude_code_api_key")
     def test_retrieves_oauth_from_keychain(self, mock_get_key: MagicMock) -> None:
-        '''Should retrieve OAuth token from keychain and set env var.'''
+        """Should retrieve OAuth token from keychain and set env var."""
         oauth_token = f"{OAUTH_TOKEN_PREFIX}keychain-oauth-token-xyz"
         mock_get_key.return_value = oauth_token
 
@@ -238,7 +246,7 @@ class TestInitCredentials:
     def test_sets_env_var_when_oauth_found_in_keychain(
         self, mock_get_key: MagicMock
     ) -> None:
-        '''Should set ANTHROPIC_AUTH_TOKEN env var when OAuth token found.'''
+        """Should set ANTHROPIC_AUTH_TOKEN env var when OAuth token found."""
         oauth_token = f"{OAUTH_TOKEN_PREFIX}keychain-token-abc123"
         mock_get_key.return_value = oauth_token
 
@@ -255,7 +263,7 @@ class TestInitCredentials:
         mock_get_key: MagicMock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        '''Should print OAuth token info when verbose and found in keychain.'''
+        """Should print OAuth token info when verbose and found in keychain."""
         oauth_token = f"{OAUTH_TOKEN_PREFIX}keychain-oauth-token-xyz"
         mock_get_key.return_value = oauth_token
 
@@ -274,7 +282,7 @@ class TestInitCredentials:
         mock_get_key: MagicMock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        '''Should handle regular API key (not OAuth) from keychain.'''
+        """Should handle regular API key (not OAuth) from keychain."""
         mock_get_key.return_value = "sk-ant-api-regular-key-123"
 
         from reflectlog.utility.utility import init_credentials
@@ -292,7 +300,7 @@ class TestInitCredentials:
     def test_handles_non_oauth_token_verbose_false(
         self, mock_get_key: MagicMock, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        '''Should not print when verbose=False and non-OAuth token found.'''
+        """Should not print when verbose=False and non-OAuth token found."""
         mock_get_key.return_value = "sk-ant-api-regular-key-123"
 
         from reflectlog.utility.utility import init_credentials
@@ -310,7 +318,7 @@ class TestInitCredentials:
         mock_get_key: MagicMock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        '''Should return None and print status when no token found.'''
+        """Should return None and print status when no token found."""
         mock_get_key.return_value = None
 
         from reflectlog.utility.utility import init_credentials
@@ -327,7 +335,7 @@ class TestInitCredentials:
     def test_no_token_verbose_false(
         self, mock_get_key: MagicMock, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        '''Should not print when verbose=False and no token found.'''
+        """Should not print when verbose=False and no token found."""
         mock_get_key.return_value = None
 
         from reflectlog.utility.utility import init_credentials
@@ -340,14 +348,14 @@ class TestInitCredentials:
 
 
 class TestGenerateContent:
-    '''Tests for generate_content() async function.'''
+    """Tests for generate_content() async function."""
 
     @patch("reflectlog.utility.utility._claude.query")
     @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")
     async def test_returns_text_from_assistant_message(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should return concatenated text from TextBlock content.'''
+        """Should return concatenated text from TextBlock content."""
         from claude_agent_sdk import AssistantMessage, TextBlock
 
         from reflectlog.utility.utility import generate_content
@@ -375,7 +383,7 @@ class TestGenerateContent:
     async def test_concatenates_multiple_text_blocks(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should concatenate text from multiple TextBlocks.'''
+        """Should concatenate text from multiple TextBlocks."""
         from claude_agent_sdk import AssistantMessage, TextBlock
 
         from reflectlog.utility.utility import generate_content
@@ -402,7 +410,7 @@ class TestGenerateContent:
     async def test_raises_runtime_error_on_error_message(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should raise RuntimeError when ResultMessage is an error.'''
+        """Should raise RuntimeError when ResultMessage is an error."""
         from claude_agent_sdk import ResultMessage
 
         from reflectlog.utility.utility import generate_content
@@ -424,7 +432,7 @@ class TestGenerateContent:
     async def test_ignores_non_error_result_message(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should ignore ResultMessage that is not an error.'''
+        """Should ignore ResultMessage that is not an error."""
         from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
         from reflectlog.utility.utility import generate_content
@@ -453,7 +461,7 @@ class TestGenerateContent:
     async def test_ignores_non_text_blocks(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should skip content blocks that are not TextBlock instances.'''
+        """Should skip content blocks that are not TextBlock instances."""
         from claude_agent_sdk import AssistantMessage, TextBlock
 
         from reflectlog.utility.utility import generate_content
@@ -481,7 +489,7 @@ class TestGenerateContent:
     async def test_strips_result_text(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should strip leading/trailing whitespace from result.'''
+        """Should strip leading/trailing whitespace from result."""
         from claude_agent_sdk import AssistantMessage, TextBlock
 
         from reflectlog.utility.utility import generate_content
@@ -506,14 +514,10 @@ class TestGenerateContent:
     async def test_empty_response_returns_empty_string(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should return empty string when no messages received.'''
+        """Should return empty string when no messages received."""
         from reflectlog.utility.utility import generate_content
 
-        async def mock_query_iter(**kwargs: Any) -> Any:
-            return
-            yield  # noqa: RET504  # Make it an async generator
-
-        mock_query.side_effect = mock_query_iter
+        mock_query.side_effect = _empty_query
 
         result = await generate_content("Test")
 
@@ -524,14 +528,10 @@ class TestGenerateContent:
     async def test_passes_options_correctly(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should pass correct options to ClaudeAgentOptions.'''
+        """Should pass correct options to ClaudeAgentOptions."""
         from reflectlog.utility.utility import generate_content
 
-        async def mock_query_iter(**kwargs: Any) -> Any:
-            return
-            yield  # noqa: RET504
-
-        mock_query.side_effect = mock_query_iter
+        mock_query.side_effect = _empty_query
 
         _ = await generate_content(
             "Test prompt",
@@ -544,7 +544,7 @@ class TestGenerateContent:
             model="claude-sonnet-4-5-20250929",
             system_prompt="Be helpful",
             allowed_tools=["read", "write"],
-            permission_mode="bypassPermissions",
+            permission_mode="default",
         )
 
     @patch("reflectlog.utility.utility._claude.query")
@@ -552,14 +552,10 @@ class TestGenerateContent:
     async def test_default_options_empty_tools(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should default to empty allowed_tools list.'''
+        """Should default to empty allowed_tools list."""
         from reflectlog.utility.utility import generate_content
 
-        async def mock_query_iter(**kwargs: Any) -> Any:
-            return
-            yield  # noqa: RET504
-
-        mock_query.side_effect = mock_query_iter
+        mock_query.side_effect = _empty_query
 
         _ = await generate_content("Test")
 
@@ -567,7 +563,7 @@ class TestGenerateContent:
             model=None,
             system_prompt=None,
             allowed_tools=[],
-            permission_mode="bypassPermissions",
+            permission_mode="default",
         )
 
     @patch("reflectlog.utility.utility._claude.query")
@@ -575,7 +571,7 @@ class TestGenerateContent:
     async def test_multiple_assistant_messages(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should concatenate text across multiple AssistantMessages.'''
+        """Should concatenate text across multiple AssistantMessages."""
         from claude_agent_sdk import AssistantMessage, TextBlock
 
         from reflectlog.utility.utility import generate_content
@@ -607,17 +603,13 @@ class TestGenerateContent:
     async def test_passes_prompt_to_query(
         self, mock_options_cls: MagicMock, mock_query: MagicMock
     ) -> None:
-        '''Should pass prompt to query function.'''
+        """Should pass prompt to query function."""
         from reflectlog.utility.utility import generate_content
 
         mock_options_instance = MagicMock()
         mock_options_cls.return_value = mock_options_instance
 
-        async def mock_query_iter(**kwargs: Any) -> Any:
-            return
-            yield  # noqa: RET504
-
-        mock_query.side_effect = mock_query_iter
+        mock_query.side_effect = _empty_query
 
         _ = await generate_content("My test prompt")
 

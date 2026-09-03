@@ -43,11 +43,11 @@ class CredentialRetriever(ABC):
             try:
                 raw_json: Any = json.loads(raw)
                 if isinstance(raw_json, dict):
-                    parsed: dict[str, Any] = cast(dict[str, Any], raw_json)
+                    parsed: dict[str, Any] = cast("dict[str, Any]", raw_json)
 
                     oauth_data = parsed.get("claudeAiOauth")
                     if isinstance(oauth_data, dict):
-                        typed_oauth: dict[str, Any] = cast(dict[str, Any], oauth_data)
+                        typed_oauth: dict[str, Any] = cast("dict[str, Any]", oauth_data)
                         access_token = typed_oauth.get("accessToken")
                         if (
                             access_token

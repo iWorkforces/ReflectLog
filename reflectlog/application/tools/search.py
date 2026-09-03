@@ -1,6 +1,6 @@
 """Search tool implementation for ReflectLog Server."""
 
-from typing import Annotated, override
+from typing import TYPE_CHECKING, Annotated, override
 
 from pydantic import Field
 
@@ -8,6 +8,9 @@ from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import SearchError
 
 from .base import BaseTool
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 class SearchTool(BaseTool):
@@ -28,7 +31,7 @@ class SearchTool(BaseTool):
         )
 
     @override
-    def get_handler(self):
+    def get_handler(self) -> Callable[..., Awaitable[list[str]]]:
         """Get the async tool handler function."""
 
         async def search(

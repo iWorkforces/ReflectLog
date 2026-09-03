@@ -18,8 +18,8 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
 ]
 dependencies = [
-    "fastmcp>=3.4.7",
-    "pydantic>=2.13.5",
+    "fastmcp==4.0.0b5",
+    "pydantic==2.14.0b1",
     "fastapi[standard]>=0.141.1",
     "uvicorn[standard]>=0.52.4",
     "asyncer>=0.0.18",
@@ -27,7 +27,7 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "dynaconf>=3.3.5",
     "mcp>=2.1.1",
-    "uvloop>=0.22.1",
+    "uvloop>=0.22.1; sys_platform != 'win32'",
     "httptools>=0.8.0",
     "starlette>=1.6.0",
     "openai>=3.6.0",
@@ -38,7 +38,8 @@ dependencies = [
     "tantivy>=0.26.0",
     "usearch>=2.26.1",
     "numba>=0.67.0",
-    "ranx>=0.3.21",
+    "ranx==0.3.21",
+    "portalocker==4.3.0",
     "httpx[http2]>=0.28.1",
     "jinja2>=3.1.6",
     "python-multipart>=0.0.32",
@@ -51,7 +52,7 @@ dependencies = [
     "flagembedding>=1.4.2",
     "transformers<=5.16.1",
     "claude-agent-sdk>=0.2.148",
-    "pydantic-core>=2.48.0",
+    "pydantic-core==2.48.0",
 ]
 
 [project.urls]
@@ -171,6 +172,10 @@ redundant-cast = "error"
 # pyright reportUnusedFunction owns unused helpers (including _-prefixed).
 unused-awaitable = "error"
 unused-ignore-comment = "error"
+unused-type-ignore-comment = "error"
+blanket-ignore-comment = "error"
+ignore-comment-unknown-rule = "error"
+invalid-ignore-comment = "error"
 
 # Attribute access — getattr / optional_attr are banned; missing members fail closed
 unresolved-attribute = "error"
@@ -182,6 +187,13 @@ call-top-callable = "error"
 # Module-specific rules for third-party libraries without stubs
 possibly-missing-import = "error"
 
+# Extra hygiene. unsound-* stays at default ignore: tests use mocks
+# whose types are assignable but not subtypes (MagicMock, Queue[Any]).
+possibly-unresolved-reference = "error"
+ambiguous-protocol-member = "error"
+unresolved-global = "error"
+useless-overload-body = "error"
+
 [tool.ty.terminal]
 output-format = "full"
 error-on-warning = true
@@ -192,6 +204,7 @@ error-on-warning = true
 reportArgumentType = "error"
 reportAttributeAccessIssue = "error"
 reportGeneralTypeIssues = "error"
+reportMissingParameterType = "error"
 reportPrivateUsage = "error"
 reportUnknownMemberType = "error"
 reportUnusedFunction = "error"
@@ -215,9 +228,12 @@ select = [
     "SIM",   # flake8-simplify
     "RUF",   # Ruff-specific rules
     "Q",     # flake8-quotes - enforce double quotes
+    "ANN",   # flake8-annotations - require parameter and return annotations
+    "TC",    # flake8-type-checking - keep typing-only imports out of runtime
+    "PYI",   # flake8-pyi - typing/stub annotation quality
 ]
 # Fixable rules (can be auto-fixed with --fix)
-fixable = ["UP", "I", "N", "F", "E", "W", "Q", "SIM"]
+fixable = ["UP", "I", "N", "F", "E", "W", "Q", "SIM", "TC"]
 
 [tool.ruff.lint.per-file-ignores]
 # I001 and SIM102 stay enforced in tests. Other SIM nits stay ignored there.
@@ -234,9 +250,31 @@ fixable = ["UP", "I", "N", "F", "E", "W", "Q", "SIM"]
     "SIM105",
     "SIM117",
     "SIM300",
+    "ANN",
+    "TC",
+    "PYI",
 ]
 "reflectlog/**/*" = ["E501"]
 "stubs/**/*" = ["E501"]
+
+[tool.ruff.lint.flake8-annotations]
+# Logger extras, HTTP client options, and tool kwargs stay **kwargs: Any.
+# Bare Any on named parameters and returns is still ANN401.
+allow-star-arg-any = true
+mypy-init-return = false
+suppress-dummy-args = true
+suppress-none-returning = false
+
+[tool.ruff.lint.flake8-type-checking]
+# Pydantic evaluates annotations at runtime for models and validate_call.
+# Numba reads JIT signatures at import, so NDArray must stay a runtime name.
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+runtime-evaluated-decorators = [
+    "pydantic.dataclasses.dataclass",
+    "pydantic.validate_call",
+    "numba.jit",
+    "jit",
+]
 
 [tool.ruff.lint.isort]
 single-line-exclusions = ["typing", "collections.abc"]
@@ -244,8 +282,8 @@ known-first-party = ["reflectlog"]
 force-sort-within-sections = true
 
 [tool.ruff.lint.pep8-naming]
-# Ignore tests for naming conventions
-ignore-names = ["test_*", "*_test"]
+# Ignore tests for naming conventions. mimeType/isError match MCP payloads.
+ignore-names = ["test_*", "*_test", "mimeType", "isError"]
 
 [tool.ruff.lint.pyupgrade]
 # Python 3.14+ modernizations

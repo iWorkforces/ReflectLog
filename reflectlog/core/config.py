@@ -18,15 +18,16 @@ Example:
         ...
 """
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from reflectlog.core.enums import (
-    CrossEncoderDevice,
-    DistanceMetric,
-    LlmProvider,
-    RerankerEngine,
-    TransportMode,
-)
+if TYPE_CHECKING:
+    from reflectlog.core.enums import (
+        CrossEncoderDevice,
+        DistanceMetric,
+        LlmProvider,
+        RerankerEngine,
+        TransportMode,
+    )
 
 
 @runtime_checkable

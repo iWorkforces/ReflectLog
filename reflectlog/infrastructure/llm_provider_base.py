@@ -18,15 +18,17 @@ Example:
 """
 
 import json
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import (
     ResponseFormatJSONSchema,
 )
 
-from reflectlog.core.logging import IStructuredLogger
 from reflectlog.utility.http import HttpClientFactory
+
+if TYPE_CHECKING:
+    from reflectlog.core.logging import IStructuredLogger
 
 
 class IStructuredOutputSchema(Protocol):
@@ -57,7 +59,7 @@ class BaseOpenAIProvider:
         model: str,
         timeout: float = 30.0,
         logger: IStructuredLogger | None = None,
-    ):
+    ) -> None:
         """Initialize OpenAI-compatible provider.
 
         Args:

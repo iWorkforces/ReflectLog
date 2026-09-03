@@ -2,9 +2,12 @@
 
 from contextlib import contextmanager
 import logging
-from typing import Any, final, override
+from typing import TYPE_CHECKING, Any, final, override
 
 from reflectlog.core.logging import IStructuredLogger
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 @final
@@ -13,7 +16,7 @@ class StructuredLogger(IStructuredLogger):
 
     def __init__(
         self, logger: logging.Logger, default_extra: dict[str, Any] | None = None
-    ):
+    ) -> None:
         """Initialize structured logger.
 
         Args:
@@ -137,7 +140,9 @@ class StructuredLogger(IStructuredLogger):
         )
 
     @contextmanager
-    def operation(self, operation_name: str, **kwargs: Any):
+    def operation(
+        self, operation_name: str, **kwargs: Any
+    ) -> Generator[dict[str, Any]]:
         """Context manager for logging operation start and completion.
 
         Args:

@@ -1,14 +1,17 @@
 """Memory validation utilities for ReflectLog Server."""
 
-from typing import Any
+from typing import TYPE_CHECKING
 import unicodedata
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # Allowed control characters (tab, newline, carriage return)
 _ALLOWED_CONTROL_CHARS = {"\t", "\n", "\r"}
 
 
 def validate_memories(
-    memories: list[Any], min_length: int, max_length: int
+    memories: Sequence[object], min_length: int, max_length: int
 ) -> tuple[bool, str | None]:
     """Validate memory list for add/remove operations.
 
@@ -91,7 +94,7 @@ def validate_remove_batch(
     return True, None
 
 
-def validate_remove_memories(memories: list[Any]) -> tuple[bool, str | None]:
+def validate_remove_memories(memories: Sequence[object]) -> tuple[bool, str | None]:
     """Reject empty or non-string remove targets without add length/control rules.
 
     Stored rows may predate a later min/max or control-character policy.
@@ -107,38 +110,3 @@ def validate_remove_memories(memories: list[Any]) -> tuple[bool, str | None]:
         if not memory.strip():
             return False, f"Memory at index {i} contains only whitespace"
     return True, None
-
-
-def truncate_memory(content: str, max_length: int = 100) -> str:
-    """Truncate a memory for display purposes (Unicode-aware).
-
-    This function avoids splitting Unicode grapheme clusters (combining characters,
-    emoji sequences, etc.) by checking if the truncation point would split a
-    combining character from its base character.
-
-    Args:
-        content: The memory content to truncate.
-        max_length: Maximum length for display (in code points).
-
-    Returns:
-        Truncated memory with ellipsis if needed.
-    """
-    import unicodedata
-
-    if len(content) <= max_length:
-        return content
-
-    # Find a safe truncation point that won't split a grapheme cluster
-    # Check if the character at max_length is a combining character
-    if max_length < len(content):
-        # If the next character is a combining mark, backtrack to avoid splitting
-        next_char = content[max_length]
-        if unicodedata.combining(next_char) != 0:
-            # Backtrack to find a non-combining character
-            i = max_length - 1
-            while i > 0 and unicodedata.combining(content[i]) != 0:
-                i -= 1
-            if i > 0:  # Only truncate if we found a safe point
-                return f"{content[:i]}..."
-
-    return f"{content[:max_length]}..."

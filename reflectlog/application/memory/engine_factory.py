@@ -7,13 +7,11 @@ modifying the factory interface.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.fusion import create_fusion_engine
-from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.core.config_adapters import ConfigAdapter
 from reflectlog.core.enums import EmbedderProvider, RerankerEngine
-from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
@@ -23,6 +21,12 @@ from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEm
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
+
+if TYPE_CHECKING:
+    from reflectlog.application.config.settings import Config
+    from reflectlog.application.memory.fusion.base import FusionEngine
+    from reflectlog.core.logging import IStructuredLogger
+    from reflectlog.core.storage_coordination import IStorageCoordinator
 
 
 @dataclass
@@ -49,7 +53,7 @@ class EngineFactory:
         tantivy = result.tantivy_engine
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the engine factory."""
         pass
 
@@ -57,21 +61,27 @@ class EngineFactory:
         self,
         config: Config,
         logger: IStructuredLogger | None,
+        coordinator: IStorageCoordinator | None = None,
     ) -> EngineFactoryResult:
         """Create and configure all search engines based on configuration.
 
         Args:
             config: Application configuration.
             logger: Structured logger instance.
+            coordinator: Optional workspace storage coordinator.
 
         Returns:
             EngineFactoryResult with all initialized engines.
         """
         # Create USearch semantic engine
-        semantic_engine = self._create_semantic_engine(config, logger)
+        semantic_engine = self._create_semantic_engine(
+            config, logger, coordinator=coordinator
+        )
 
         # Create Tantivy full-text engine (if hybrid search enabled)
-        tantivy_engine = self._create_tantivy_engine(config, logger)
+        tantivy_engine = self._create_tantivy_engine(
+            config, logger, coordinator=coordinator
+        )
 
         # Create fusion engine for hybrid ranking
         fusion_engine = self._create_fusion_engine(config, logger)
@@ -88,6 +98,7 @@ class EngineFactory:
         self,
         config: Config,
         logger: IStructuredLogger | None,
+        coordinator: IStorageCoordinator | None = None,
     ) -> USearchEngine:
         """Create and configure USearch semantic engine.
 
@@ -100,7 +111,12 @@ class EngineFactory:
         """
         usearch_config = USearchConfig.from_config(ConfigAdapter(config))
         embedder = self._create_embedder(config, logger)
-        return USearchEngine(usearch_config, embedder=embedder, logger=logger)
+        return USearchEngine(
+            usearch_config,
+            embedder=embedder,
+            logger=logger,
+            coordinator=coordinator,
+        )
 
     def _create_embedder(
         self,
@@ -142,6 +158,7 @@ class EngineFactory:
         self,
         config: Config,
         logger: IStructuredLogger | None,
+        coordinator: IStorageCoordinator | None = None,
     ) -> TantivyEngine | None:
         """Create Tantivy full-text engine if hybrid search is enabled.
 
@@ -166,7 +183,7 @@ class EngineFactory:
             compaction_max_tombstones=config.tantivy_compaction_max_tombstones,
             tombstone_ttl_days=config.tantivy_tombstone_ttl_days,
         )
-        return TantivyEngine(tantivy_config, logger=logger)
+        return TantivyEngine(tantivy_config, logger=logger, coordinator=coordinator)
 
     def _create_fusion_engine(
         self,

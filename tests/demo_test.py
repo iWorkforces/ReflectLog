@@ -1,4 +1,4 @@
-'''Demonstration test: Add 10 memories, get_all, and search.'''
+"""Demonstration test: Add 10 memories, get_all, and search."""
 
 import pytest
 
@@ -8,7 +8,7 @@ import pytest
 async def test_demo_workflow(
     add_tool, get_all_tool, search_tool, mcp_server, create_search_results
 ):
-    '''Demonstration: Add 10 memories, retrieve all, and search.'''
+    """Demonstration: Add 10 memories, retrieve all, and search."""
 
     # Prepare 10 memories
     memories = [
@@ -117,10 +117,10 @@ async def test_demo_workflow(
     print("\n" + "=" * 70)
     print("🎉 DEMO COMPLETE - All operations successful!")
     print("=" * 70)
-    print(f'''
+    print(f"""
 Summary:
   • Added: {len(memories)} memories
   • Retrieved: {len(all_memories)} memories via get_all()
   • Found: {len(python_results)} Python-related memories
   • Found: {len(js_results)} JavaScript-related memories
-    ''')
+    """)

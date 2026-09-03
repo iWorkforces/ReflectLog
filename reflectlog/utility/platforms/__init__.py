@@ -1,8 +1,10 @@
 """Platform-specific credential retrieval."""
 
 import platform
+from typing import TYPE_CHECKING
 
-from .base import CredentialRetriever
+if TYPE_CHECKING:
+    from .base import CredentialRetriever
 
 
 def get_platform_retriever() -> CredentialRetriever | None:

@@ -54,13 +54,13 @@ class LinuxCredentialRetriever(CredentialRetriever):
                     try:
                         raw_parsed: Any = json.loads(content)
                         if isinstance(raw_parsed, dict):
-                            parsed: dict[str, Any] = cast(dict[str, Any], raw_parsed)
+                            parsed: dict[str, Any] = cast("dict[str, Any]", raw_parsed)
 
                             # OAuth JSON format
                             oauth_data = parsed.get("claudeAiOauth")
                             if isinstance(oauth_data, dict):
                                 typed_oauth: dict[str, Any] = cast(
-                                    dict[str, Any], oauth_data
+                                    "dict[str, Any]", oauth_data
                                 )
                                 oauth_token = typed_oauth.get("accessToken")
                                 if (

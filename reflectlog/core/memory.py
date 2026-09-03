@@ -6,10 +6,11 @@ databases, document stores, or hybrid approaches-while presenting a
 consistent interface to the application layer.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from reflectlog.core.enums import EngineReadiness
-from reflectlog.core.types import MemoryRecord
+if TYPE_CHECKING:
+    from reflectlog.core.enums import EngineReadiness
+    from reflectlog.core.types import MemoryRecord
 
 
 @runtime_checkable
@@ -270,9 +271,7 @@ class IMemoryManager(Protocol):
         """Return public readiness of search engines for health checks."""
         ...
 
-    def get_all(
-        self, limit: int | None = None, offset: int = 0
-    ) -> list[str]:
+    def get_all(self, limit: int | None = None, offset: int = 0) -> list[str]:
         """Retrieve stored memories from the semantic backend."""
         ...
 

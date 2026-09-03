@@ -1,6 +1,8 @@
 # reflectlog/plugins/
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 Discovery/registry/loader exist. **Not imported by `server.py` or `FastMCPServer`.** Startup tools come from `AVAILABLE_TOOL_CLASSES` only.

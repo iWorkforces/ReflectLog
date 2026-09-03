@@ -12,13 +12,14 @@ Example:
     # and log the reload action
 """
 
-from collections.abc import Callable
 import logging
 import signal
 import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from reflectlog.application.config.settings import Config
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Test to demonstrate score filtering with 5 relevant documents where only 2 pass threshold.'''
+"""Test to demonstrate score filtering with 5 relevant documents where only 2 pass threshold."""
 
 import json
 import os
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_score_filtering_demo():
-    '''Test that demonstrates score filtering behavior.'''
+    """Test that demonstrates score filtering behavior."""
 
     print("\n" + "=" * 70)
     print("🎯 SCORE FILTERING DEMONSTRATION TEST")
@@ -34,7 +34,7 @@ async def test_score_filtering_demo():
 
             # Create memories with varying levels of relevance to "Python machine learning"
             # These are designed to have different semantic similarity scores
-            memories = [
+            memories: list[str] = [
                 "Python tutorial for beginners covers the essential syntax and core concepts. Learn about variables, data types, loops, and functions through practical examples. This comprehensive guide helps newcomers build a solid foundation in Python programming.",
                 "Advanced Python programming explores decorators, metaclasses, and context managers for professional development. Master asynchronous programming with asyncio and concurrent.futures for high-performance applications. Deep dive into design patterns and best practices used in production systems.",
                 "JavaScript fundamentals teach you the core concepts of web development and DOM manipulation. Understand event handling, callbacks, promises, and async/await for modern web applications. Learn ES6+ features including arrow functions, destructuring, and modules.",
@@ -128,7 +128,7 @@ async def test_score_filtering_demo():
             print("\n" + "=" * 70)
             print("🎉 SCORE FILTERING DEMONSTRATION COMPLETE!")
             print("=" * 70)
-            print(f'''
+            print(f"""
 Summary:
   ✅ Added {len(memories)} test messages with varying relevance
   ✅ Search for 'Python machine learning': {len(search_results)} results passed threshold
@@ -139,7 +139,7 @@ Key Insights:
   • Only high-scoring documents (> 0.8) are returned
   • This prevents false positives and ensures high precision
   • Check server logs to see the actual scores and filtering decisions
-            ''')
+            """)
 
             # Clean up - remove test memories
             print("\n🧹 Cleaning up test data...")

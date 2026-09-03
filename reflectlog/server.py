@@ -6,10 +6,17 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
-# Add parent directory to path for direct script execution
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from reflectlog.core.enums import TransportMode
+from reflectlog.version import __version__
 
-# Configure numba environment before imports
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from _typeshed import SupportsWrite
+
+    from reflectlog.application.mcp_server import FastMCPServer as FastMCPServerCls
+
+# Configure numba environment before the lazy scoring import in warmup.
 for key, value in [
     ("NUMBA_CACHE_DIR", os.path.join(os.getcwd(), ".numba_cache")),
     ("NUMBA_THREADING_LAYER", "workqueue"),
@@ -18,15 +25,34 @@ for key, value in [
 ]:
     _ = os.environ.setdefault(key, value)
 
-if TYPE_CHECKING:
-    from _typeshed import SupportsWrite
+# Populated on first real startup so --help/--version stay import-light.
+# Tests continue to patch these module attributes.
+FastMCPServer: type[FastMCPServerCls] | None = None
+warmup_numba_functions: Callable[[], object] | None = None
 
-from reflectlog.application.mcp_server import FastMCPServer  # noqa: E402
-from reflectlog.core.enums import TransportMode  # noqa: E402
-from reflectlog.utility.scoring import (  # noqa: E402
-    warmup_numba_functions,
-)
-from reflectlog.version import __version__  # noqa: E402
+
+def _server_cls() -> type[FastMCPServerCls]:
+    global FastMCPServer
+    loaded = FastMCPServer
+    if loaded is None:
+        from reflectlog.application.mcp_server import FastMCPServer as LoadedServer
+
+        FastMCPServer = LoadedServer
+        loaded = LoadedServer
+    return loaded
+
+
+def _call_warmup_numba_functions() -> object:
+    global warmup_numba_functions
+    loaded = warmup_numba_functions
+    if loaded is None:
+        from reflectlog.utility.scoring import (
+            warmup_numba_functions as warmup,
+        )
+
+        warmup_numba_functions = warmup
+        loaded = warmup
+    return loaded()
 
 
 def warmup_numba_with_config(
@@ -63,7 +89,7 @@ def warmup_numba_with_config(
     if mode == "sync":
         if output_stream:
             print("Warming up numba JIT functions (synchronous)...", file=output_stream)
-        _ = warmup_numba_functions()
+        _ = _call_warmup_numba_functions()
         if output_stream:
             print("Numba functions compiled and cached", file=output_stream)
         return None
@@ -76,9 +102,9 @@ def warmup_numba_with_config(
                 f"Warming up numba JIT functions ({mode_desc})...", file=output_stream
             )
 
-        def warmup_worker():
+        def warmup_worker() -> None:
             try:
-                _ = warmup_numba_functions()
+                _ = _call_warmup_numba_functions()
                 if output_stream:
                     print(
                         "Numba functions compiled and cached (background complete)",
@@ -179,21 +205,20 @@ def main() -> None:
     print(f"Transport: {transport_mode}", file=output_stream)
 
     startup_start_time = time.time()
-    server: FastMCPServer | None = None
+    server: FastMCPServerCls | None = None
     startup_phases: dict[str, float] = {}
     try:
-        server = _start_server(output_stream, startup_start_time, startup_phases)
-        # Warmup after signal handlers so Ctrl-C during JIT still closes cleanly.
+        started = _start_server(output_stream, startup_start_time, startup_phases)
+        server = started
         extra_phases = _run_numba_warmup(output_stream)
-        existing = server.startup_metrics
+        existing = started.startup_metrics
         merged: dict[str, float] = dict(startup_phases)
-        if isinstance(existing, dict):
-            for key, value in existing.items():
-                merged[str(key)] = float(value)
+        if existing is not None:
+            merged.update(existing)
         merged.update(extra_phases)
-        server.set_startup_metrics(merged)
+        started.set_startup_metrics(merged)
         _print_startup_timing(output_stream, merged)
-        server.run()
+        started.run()
     except KeyboardInterrupt:
         if server is not None:
             server.close()
@@ -255,12 +280,12 @@ def _start_server(
     output_stream: SupportsWrite[str],
     startup_start_time: float,
     startup_phases: dict[str, float],
-) -> FastMCPServer:
+) -> FastMCPServerCls:
     """Initialize server with signal handlers and startup metrics.
 
     Registers SIGINT/SIGTERM handlers for graceful shutdown.
     """
-    server: FastMCPServer | None = None
+    server: FastMCPServerCls | None = None
 
     shutting_down = {"value": False}
 
@@ -269,6 +294,8 @@ def _start_server(
         if shutting_down["value"]:
             _ = signal.signal(signal.SIGINT, signal.SIG_DFL)
             _ = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            if sys.platform == "win32":
+                _ = signal.signal(signal.SIGBREAK, signal.SIG_DFL)
             signal.raise_signal(signum)
             return
         shutting_down["value"] = True
@@ -292,10 +319,13 @@ def _start_server(
 
     _ = signal.signal(signal.SIGINT, graceful_shutdown)
     _ = signal.signal(signal.SIGTERM, graceful_shutdown)
+    if sys.platform == "win32":
+        _ = signal.signal(signal.SIGBREAK, graceful_shutdown)
 
     try:
         phase_start = time.time()
-        server = FastMCPServer()
+        started = _server_cls()()
+        server = started
         startup_phases["server_initialization"] = time.time() - phase_start
 
         total_startup_time = time.time() - startup_start_time
@@ -306,8 +336,8 @@ def _start_server(
             file=output_stream,
         )
 
-        server.set_startup_metrics(startup_phases)
-        return server
+        started.set_startup_metrics(startup_phases)
+        return started
     except KeyboardInterrupt:
         print("\nServer shutdown requested...", file=output_stream)
         if server is not None:

@@ -416,6 +416,12 @@ class ISemanticSearchEngine(Protocol):
         """
         ...
 
+    def get_records_by_contents(
+        self, workspace_id: str, contents: list[str]
+    ) -> list[IStoredMemory]:
+        """Return stored rows for the requested contents in one workspace."""
+        ...
+
     def close(self) -> None:
         """Close resources and cleanup.
 

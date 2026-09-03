@@ -4,17 +4,18 @@ import asyncio
 from dataclasses import dataclass
 import json
 import re
-from typing import Any, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict, cast
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from reflectlog.core.config import IAppConfig
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.prompts import format_replacement_detection_prompt
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
 )
-from reflectlog.utility.retry import async_retry_with_backoff
+
+if TYPE_CHECKING:
+    from reflectlog.core.config import IAppConfig
 
 
 class ReplacementDecision(BaseModel):
@@ -49,6 +50,12 @@ class AnthropicReplacementResponse(TypedDict, total=False):
     should_replace: bool
     confidence: float
     reason: str
+
+
+def _as_replacement_response(raw: object) -> AnthropicReplacementResponse:
+    if not isinstance(raw, dict):
+        raise ValueError("Replacement response is not a JSON object")
+    return cast("AnthropicReplacementResponse", raw)
 
 
 @dataclass(frozen=True)
@@ -188,24 +195,27 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
         Returns:
             Tuple of (should_replace, confidence, reason).
         """
-        try:
-            retry = async_retry_with_backoff(
-                max_retries=max_retries, base_delay=retry_delay
-            )
-            return await retry(self._detect_replacement_once)(prompt)
+        last_exception: Exception | None = None
+        attempts = max(1, max_retries)
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self._detect_replacement_once(prompt)
+            except Exception as exc:
+                last_exception = exc
+                if self._logger:
+                    self._logger.warning(
+                        "OpenAI replacement detection failed",
+                        extra={
+                            "attempt": attempt,
+                            "max_retries": attempts,
+                            "error": str(exc),
+                        },
+                    )
+                if attempt < attempts:
+                    await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))
 
-        except Exception as e:
-            if self._logger:
-                self._logger.warning(
-                    f"OpenAI replacement detection failed after {max_retries} retries",
-                    extra={
-                        "max_retries": max_retries,
-                        "error": str(e),
-                    },
-                )
-
-            error_msg = str(e) if e else "Unknown error"
-            return (False, 0.0, f"Error: {error_msg}")
+        error_msg = str(last_exception) if last_exception else "Unknown error"
+        return (False, 0.0, f"Error: {error_msg}")
 
 
 class AnthropicReplacementProvider:
@@ -219,7 +229,7 @@ class AnthropicReplacementProvider:
         self,
         model: str | None = None,
         logger: IStructuredLogger | None = None,
-    ):
+    ) -> None:
         """Initialize Anthropic replacement provider.
 
         Calls init_credentials() to set up OAuth credentials.
@@ -260,7 +270,7 @@ class AnthropicReplacementProvider:
 
         # Strategy 1: Direct JSON parse
         try:
-            return json.loads(text)
+            return _as_replacement_response(json.loads(text))
         except json.JSONDecodeError:
             pass
 
@@ -269,7 +279,7 @@ class AnthropicReplacementProvider:
         match = re.search(code_block_pattern, text)
         if match:
             try:
-                return json.loads(match.group(1).strip())
+                return _as_replacement_response(json.loads(match.group(1).strip()))
             except json.JSONDecodeError:
                 pass
 
@@ -278,7 +288,7 @@ class AnthropicReplacementProvider:
         matches = list(re.finditer(json_pattern, text))
         for match in matches:
             try:
-                return json.loads(match.group(0))
+                return _as_replacement_response(json.loads(match.group(0)))
             except json.JSONDecodeError:
                 continue
 
@@ -420,7 +430,7 @@ class SmartReplacer(BaseModel):
 
     _provider: IReplacementProvider | None = PrivateAttr(default=None)
 
-    def __init__(self, **data: Any):
+    def __init__(self, **data: Any) -> None:
         """Initialize SmartReplacer with appropriate provider."""
         super().__init__(**data)
 

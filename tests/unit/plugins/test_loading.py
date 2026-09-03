@@ -81,7 +81,9 @@ def _make_loader(
     """Create a PluginLoader with static discovery and a fresh registry."""
     if plugins is None:
         plugins = []
-    strategy: StaticRegistration[TestPlugin] = StaticRegistration(registered_plugins=plugins)
+    strategy: StaticRegistration[TestPlugin] = StaticRegistration(
+        registered_plugins=plugins
+    )
     registry: PluginRegistry[TestPlugin] = PluginRegistry()
     return PluginLoader[TestPlugin](
         discovery_strategy=strategy,

@@ -1,8 +1,8 @@
-'''Conftest for memory subsystem tests.
+"""Conftest for memory subsystem tests.
 
 Disables numba JIT so that ranx (which depends on numba) can import
 cleanly alongside coverage instrumentation.
-'''
+"""
 
 import importlib
 import os
@@ -16,8 +16,7 @@ _numba_modules = [
 for mod_name in _numba_modules:
     del sys.modules[mod_name]
 
-import numba  # noqa: E402
-
+numba = importlib.import_module("numba")
 importlib.reload(numba)
 
 _reflectlog_numba = "reflectlog.application.utils.numba_utils"

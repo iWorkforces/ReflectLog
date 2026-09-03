@@ -17,6 +17,11 @@ if TYPE_CHECKING:
     from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
+    from ...core.logging import IStructuredLogger
+    from ...core.types import ISemanticSearchEngine
+    from ..config.settings import Config
+    from .fusion.base import FusionEngine
+
 from asyncer import (
     asyncify,
     create_task_group,
@@ -25,18 +30,12 @@ from asyncer import (
 from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.exceptions import SearchError
 
-from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine, IStoredMemory
-from ..config.settings import Config
 from ..utils.logging import format_fusion_score_status
-from .fusion.base import FusionEngine
 
 # Constants for magic numbers (documented for maintainability)
 MIN_OVERFETCH_LIMIT = 8  # Floor so tiny limits still have fusion diversity
 TANTIVY_SCORE_DIVISOR = 10.0  # Tantivy BM25 scores typically 0-10+, normalize to 0-1
 LOG_QUERY_TRUNCATE_LENGTH = 100
-
-
 
 
 @dataclass
@@ -106,7 +105,7 @@ class SearchPipeline:
         config: Config,
         logger: IStructuredLogger | None,
         memory_manager: RerankerProvider | None,
-    ):
+    ) -> None:
         """Initialize search pipeline.
 
         Args:
@@ -212,11 +211,24 @@ class SearchPipeline:
     async def _execute_hybrid_search(self, context: SearchContext) -> SearchResult:
         """Execute 4-step hybrid search pipeline."""
         # Step 1: Parallel Search
-        semantic_results, tantivy_results = await self._step1_parallel_search(context)
+        (
+            semantic_results,
+            tantivy_results,
+            semantic_error,
+            tantivy_error,
+        ) = await self._step1_parallel_search(context)
         semantic_results = self._filter_semantic_threshold(semantic_results)
         tantivy_results = await asyncify(self._filter_live_hits)(
             tantivy_results, context.workspace_id
         )
+        if semantic_error is not None and not tantivy_results:
+            raise SearchError(
+                f"Failed to execute search: {semantic_error}"
+            ) from semantic_error
+        if tantivy_error is not None and not semantic_results:
+            raise SearchError(
+                f"Failed to execute search: {tantivy_error}"
+            ) from tantivy_error
 
         timestamp_map: dict[str, str] = {
             msg: created_at for msg, _, created_at in semantic_results
@@ -287,7 +299,12 @@ class SearchPipeline:
 
     async def _step1_parallel_search(
         self, context: SearchContext
-    ) -> tuple[list[tuple[str, float, str]], list[tuple[str, float]]]:
+    ) -> tuple[
+        list[tuple[str, float, str]],
+        list[tuple[str, float]],
+        Exception | None,
+        Exception | None,
+    ]:
         """Step 1: Execute parallel search on both engines."""
         self.logger.info(
             "STEP 1: Executing parallel search engines...",
@@ -311,16 +328,6 @@ class SearchPipeline:
 
         semantic_results, semantic_error = soon_semantic.value
         tantivy_results, tantivy_error = soon_tantivy.value
-        if semantic_error is not None and (
-            tantivy_error is not None or self._tantivy_engine is None
-        ):
-            raise SearchError(
-                f"Failed to execute search: {semantic_error}"
-            ) from semantic_error
-        if tantivy_error is not None and not semantic_results:
-            raise SearchError(
-                f"Failed to execute search: {tantivy_error}"
-            ) from tantivy_error
 
         self.logger.info(
             f"Both engines completed (semantic: {len(semantic_results)}, tantivy: {len(tantivy_results)})",
@@ -332,7 +339,7 @@ class SearchPipeline:
             },
         )
 
-        return semantic_results, tantivy_results
+        return semantic_results, tantivy_results, semantic_error, tantivy_error
 
     async def _search_semantic(
         self, query: str, limit: int, workspace_id: str
@@ -536,9 +543,7 @@ class SearchPipeline:
             },
         )
 
-        return self._filter_by_fusion_threshold(
-            results, threshold, context.query
-        )
+        return self._filter_by_fusion_threshold(results, threshold, context.query)
 
     def _effective_fusion_threshold(
         self, results: list[tuple[str, float]], n_backends: int = 2
@@ -547,7 +552,7 @@ class SearchPipeline:
         try:
             threshold = float(self.config.fusion_ranking_threshold)
             k = max(1, int(self.config.fusion_rrf_k))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0.0
         if not results:
             return threshold
@@ -556,11 +561,11 @@ class SearchPipeline:
         weight_sum = 0.0
         if isinstance(weights, list) and weights:
             try:
-                for weight in cast(list[object], weights):
+                for weight in cast("list[object]", weights):
                     if not isinstance(weight, (int, float)):
                         raise TypeError("fusion weight is not numeric")
                     weight_sum += float(weight)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 weight_sum = 0.0
         if weight_sum <= 0.0:
             weight_sum = float(max(2, n_backends))
@@ -778,29 +783,23 @@ class SearchPipeline:
     ) -> dict[str, str]:
         """Resolve created_at for every candidate. Empty map disables recency."""
         completed = {
-            content: stamp
-            for content, stamp in timestamp_map.items()
-            if stamp
+            content: stamp for content, stamp in timestamp_map.items() if stamp
         }
         missing = [content for content in contents if content not in completed]
         if not missing:
             return completed
 
         try:
-            store = self._semantic_engine.memory_store
-            for content in missing:
-                mem_id = self._semantic_engine.get_id_by_content(workspace_id, content)
-                if mem_id is None:
-                    continue
-                stored = store.get(mem_id)
-                if not isinstance(stored, IStoredMemory):
-                    continue
-                created_at = stored.created_at
-                if not created_at:
-                    continue
-                completed[content] = created_at
-        except Exception:
-            return completed
+            records = self._semantic_engine.get_records_by_contents(
+                workspace_id, missing
+            )
+        except Exception as exc:
+            raise SearchError("Failed to load candidate timestamps") from exc
+        for stored in records:
+            created_at = stored.created_at
+            if not created_at:
+                continue
+            completed[stored.content] = created_at
         return completed
 
     def _filter_live_hits(
@@ -814,17 +813,13 @@ class SearchPipeline:
         try:
             store = self._semantic_engine.memory_store
             present = _string_set(
-                store.exists_many(
-                    workspace_id, [memory for memory, _score in results]
-                )
+                store.exists_many(workspace_id, [memory for memory, _score in results])
             )
-        except (AttributeError, TypeError):
+        except AttributeError, TypeError:
             return []
         if present is None:
             return []
-        return [
-            (memory, score) for memory, score in results if memory in present
-        ]
+        return [(memory, score) for memory, score in results if memory in present]
 
     def _filter_semantic_threshold(
         self, results: list[tuple[str, float, str]]
@@ -832,7 +827,7 @@ class SearchPipeline:
         """Drop USearch hits below SEARCH_SCORE_THRESHOLD before fusion."""
         try:
             threshold = float(self.config.search_score_threshold)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return results
         if threshold <= 0:
             return results
@@ -846,7 +841,7 @@ class SearchPipeline:
         """CE window is at least the user limit and the configured top_k."""
         try:
             configured = int(self.config.cross_encoder_top_k)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             configured = context.limit
         return max(1, configured, context.limit)
 
@@ -855,7 +850,7 @@ def _string_set(raw: object) -> set[str] | None:
     """Return a string set, or None when the value is not a real content set."""
     if not isinstance(raw, set):
         return None
-    members: list[object] = list(cast(set[object], raw))
+    members: list[object] = list(cast("set[object]", raw))
     contents: set[str] = set()
     for item in members:
         if not isinstance(item, str):

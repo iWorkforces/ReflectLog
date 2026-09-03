@@ -360,22 +360,24 @@ class TestFromEnvironmentOverrides:
     def test_embedding_batch_size_clamped_to_min_1(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        cfg = self._with_env(monkeypatch, EMBEDDING_BATCH_SIZE="0")
-        assert cfg.embedding_batch_size == 1
+        with pytest.raises(ConfigurationError, match="EMBEDDING_BATCH_SIZE"):
+            _ = self._with_env(monkeypatch, EMBEDDING_BATCH_SIZE="0")
 
     def test_embedding_max_concurrent_batches_clamped(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        cfg = self._with_env(monkeypatch, EMBEDDING_MAX_CONCURRENT_BATCHES="0")
-        assert cfg.embedding_max_concurrent_batches == 1
+        with pytest.raises(
+            ConfigurationError, match="EMBEDDING_MAX_CONCURRENT_BATCHES"
+        ):
+            _ = self._with_env(monkeypatch, EMBEDDING_MAX_CONCURRENT_BATCHES="0")
 
     def test_embedding_cache_disabled(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(monkeypatch, EMBEDDING_CACHE_ENABLED="false")
         assert cfg.embedding_cache_enabled is False
 
     def test_embedding_cache_size_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, EMBEDDING_CACHE_SIZE="0")
-        assert cfg.embedding_cache_size == 1
+        with pytest.raises(ConfigurationError, match="EMBEDDING_CACHE_SIZE"):
+            _ = self._with_env(monkeypatch, EMBEDDING_CACHE_SIZE="0")
 
     # --- Search overrides ---
 
@@ -392,20 +394,20 @@ class TestFromEnvironmentOverrides:
         assert cfg.enable_hybrid_search is False
 
     def test_overfetch_multiplier_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, OVERFETCH_MULTIPLIER="0")
-        assert cfg.overfetch_multiplier == 1
+        with pytest.raises(ConfigurationError, match="OVERFETCH_MULTIPLIER"):
+            _ = self._with_env(monkeypatch, OVERFETCH_MULTIPLIER="0")
 
     def test_overfetch_adaptive_false(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(monkeypatch, OVERFETCH_ADAPTIVE="false")
         assert cfg.overfetch_adaptive is False
 
     def test_overfetch_min_multiplier_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, OVERFETCH_MIN_MULTIPLIER="0.5")
-        assert cfg.overfetch_min_multiplier == 1.0
+        with pytest.raises(ConfigurationError, match="OVERFETCH_MIN_MULTIPLIER"):
+            _ = self._with_env(monkeypatch, OVERFETCH_MIN_MULTIPLIER="0.5")
 
     def test_overfetch_max_multiplier_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, OVERFETCH_MAX_MULTIPLIER="0.3")
-        assert cfg.overfetch_max_multiplier == 1.0
+        with pytest.raises(ConfigurationError, match="OVERFETCH_MAX_MULTIPLIER"):
+            _ = self._with_env(monkeypatch, OVERFETCH_MAX_MULTIPLIER="0.3")
 
     def test_usearch_exact_search_false(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(monkeypatch, USEARCH_EXACT_SEARCH="false")
@@ -414,8 +416,8 @@ class TestFromEnvironmentOverrides:
     def test_usearch_exact_search_threshold_clamped(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        cfg = self._with_env(monkeypatch, USEARCH_EXACT_SEARCH_THRESHOLD="-1")
-        assert cfg.usearch_exact_search_threshold == 0
+        with pytest.raises(ConfigurationError, match="USEARCH_EXACT_SEARCH_THRESHOLD"):
+            _ = self._with_env(monkeypatch, USEARCH_EXACT_SEARCH_THRESHOLD="-1")
 
     # --- Fusion overrides ---
 
@@ -460,24 +462,30 @@ class TestFromEnvironmentOverrides:
     def test_tantivy_compaction_threshold_ratio_clamped_low(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        cfg = self._with_env(monkeypatch, TANTIVY_COMPACTION_THRESHOLD_RATIO="0.001")
-        assert cfg.tantivy_compaction_threshold_ratio == 0.01
+        with pytest.raises(
+            ConfigurationError, match="TANTIVY_COMPACTION_THRESHOLD_RATIO"
+        ):
+            _ = self._with_env(monkeypatch, TANTIVY_COMPACTION_THRESHOLD_RATIO="0.001")
 
     def test_tantivy_compaction_threshold_ratio_clamped_high(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        cfg = self._with_env(monkeypatch, TANTIVY_COMPACTION_THRESHOLD_RATIO="2.0")
-        assert cfg.tantivy_compaction_threshold_ratio == 1.0
+        with pytest.raises(
+            ConfigurationError, match="TANTIVY_COMPACTION_THRESHOLD_RATIO"
+        ):
+            _ = self._with_env(monkeypatch, TANTIVY_COMPACTION_THRESHOLD_RATIO="2.0")
 
     def test_tantivy_compaction_max_tombstones_clamped(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        cfg = self._with_env(monkeypatch, TANTIVY_COMPACTION_MAX_TOMBSTONES="50")
-        assert cfg.tantivy_compaction_max_tombstones == 100
+        with pytest.raises(
+            ConfigurationError, match="TANTIVY_COMPACTION_MAX_TOMBSTONES"
+        ):
+            _ = self._with_env(monkeypatch, TANTIVY_COMPACTION_MAX_TOMBSTONES="50")
 
     def test_tantivy_tombstone_ttl_days_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, TANTIVY_TOMBSTONE_TTL_DAYS="-1")
-        assert cfg.tantivy_tombstone_ttl_days == 0
+        with pytest.raises(ConfigurationError, match="TANTIVY_TOMBSTONE_TTL_DAYS"):
+            _ = self._with_env(monkeypatch, TANTIVY_TOMBSTONE_TTL_DAYS="-1")
 
     def test_tantivy_normalize_scores_false(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(monkeypatch, TANTIVY_NORMALIZE_SCORES="false")
@@ -527,8 +535,8 @@ class TestFromEnvironmentOverrides:
         assert cfg.search_score_threshold == 0.8
 
     def test_rerank_max_concurrency_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, RERANK_MAX_CONCURRENCY="0")
-        assert cfg.rerank_max_concurrency == 1
+        with pytest.raises(ConfigurationError, match="RERANK_MAX_CONCURRENCY"):
+            _ = self._with_env(monkeypatch, RERANK_MAX_CONCURRENCY="0")
 
     def test_cross_encoder_settings(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(
@@ -552,8 +560,8 @@ class TestFromEnvironmentOverrides:
         assert cfg.cross_encoder_max_length == 256
 
     def test_reranker_min_results_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, RERANKER_MIN_RESULTS="-1")
-        assert cfg.reranker_min_results == 0
+        with pytest.raises(ConfigurationError, match="RERANKER_MIN_RESULTS"):
+            _ = self._with_env(monkeypatch, RERANKER_MIN_RESULTS="-1")
 
     def test_reranker_batch_normalize_false(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(monkeypatch, RERANKER_BATCH_NORMALIZE="false")
@@ -564,8 +572,8 @@ class TestFromEnvironmentOverrides:
         assert cfg.enable_recency_boost is False
 
     def test_recency_decay_rate_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, RECENCY_DECAY_RATE="-0.5")
-        assert cfg.recency_decay_rate == 0.0
+        with pytest.raises(ConfigurationError, match="RECENCY_DECAY_RATE"):
+            _ = self._with_env(monkeypatch, RECENCY_DECAY_RATE="-0.5")
 
     # --- Memory overrides ---
 
@@ -600,28 +608,28 @@ class TestFromEnvironmentOverrides:
     def test_smart_replace_candidate_limit_clamped(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        cfg = self._with_env(monkeypatch, SMART_REPLACE_CANDIDATE_LIMIT="0")
-        assert cfg.smart_replace_candidate_limit == 1
+        with pytest.raises(ConfigurationError, match="SMART_REPLACE_CANDIDATE_LIMIT"):
+            _ = self._with_env(monkeypatch, SMART_REPLACE_CANDIDATE_LIMIT="0")
 
     def test_smart_replace_archive_ttl_days_clamped(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        cfg = self._with_env(monkeypatch, SMART_REPLACE_ARCHIVE_TTL_DAYS="-5")
-        assert cfg.smart_replace_archive_ttl_days == 0
+        with pytest.raises(ConfigurationError, match="SMART_REPLACE_ARCHIVE_TTL_DAYS"):
+            _ = self._with_env(monkeypatch, SMART_REPLACE_ARCHIVE_TTL_DAYS="-5")
 
     def test_smart_replace_max_retries_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, SMART_REPLACE_MAX_RETRIES="0")
-        assert cfg.smart_replace_max_retries == 1
+        with pytest.raises(ConfigurationError, match="SMART_REPLACE_MAX_RETRIES"):
+            _ = self._with_env(monkeypatch, SMART_REPLACE_MAX_RETRIES="0")
 
     def test_smart_replace_retry_delay_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, SMART_REPLACE_RETRY_DELAY="0.01")
-        assert cfg.smart_replace_retry_delay == 0.1
+        with pytest.raises(ConfigurationError, match="SMART_REPLACE_RETRY_DELAY"):
+            _ = self._with_env(monkeypatch, SMART_REPLACE_RETRY_DELAY="0.01")
 
     # --- Init overrides ---
 
     def test_add_max_concurrency_clamped(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = self._with_env(monkeypatch, ADD_MAX_CONCURRENCY="0")
-        assert cfg.add_max_concurrency == 1
+        with pytest.raises(ConfigurationError, match="ADD_MAX_CONCURRENCY"):
+            _ = self._with_env(monkeypatch, ADD_MAX_CONCURRENCY="0")
 
     def test_eager_initialization_false(self, monkeypatch: pytest.MonkeyPatch):
         cfg = self._with_env(monkeypatch, EAGER_INITIALIZATION="false")
@@ -828,10 +836,16 @@ class TestPresetIntegration:
             monkeypatch.setenv(k, v)
         monkeypatch.delenv("REFLECTLOG_PROFILE", raising=False)
         # Ensure no leftover preset-applied env vars from prior test
-        for var in ("ENABLE_HYBRID_SEARCH", "SEARCH_LIMIT", "RERANKER_ENGINE",
-                    "ENABLE_RECENCY_BOOST", "ENABLE_SMART_REPLACE",
-                    "EMBEDDING_BATCH_SIZE", "EMBEDDING_MAX_CONCURRENT_BATCHES",
-                    "USEARCH_EXACT_SEARCH"):
+        for var in (
+            "ENABLE_HYBRID_SEARCH",
+            "SEARCH_LIMIT",
+            "RERANKER_ENGINE",
+            "ENABLE_RECENCY_BOOST",
+            "ENABLE_SMART_REPLACE",
+            "EMBEDDING_BATCH_SIZE",
+            "EMBEDDING_MAX_CONCURRENT_BATCHES",
+            "USEARCH_EXACT_SEARCH",
+        ):
             monkeypatch.delenv(var, raising=False)
         cfg = Config.from_environment()
         assert cfg.enable_hybrid_search is True
@@ -1037,3 +1051,56 @@ class TestTypedDictReturns:
             "tantivy_normalize_scores",
         }
         assert set(result.keys()) == expected_keys
+
+
+@pytest.mark.unit
+class TestMalformedNumericSettings:
+    """Malformed numeric env values raise field-specific ConfigurationError."""
+
+    def _load(self, monkeypatch: pytest.MonkeyPatch, **extras: str) -> Config:
+        for key, value in REQUIRED_ENV.items():
+            monkeypatch.setenv(key, value)
+        for key, value in extras.items():
+            monkeypatch.setenv(key, value)
+        return Config.from_environment()
+
+    @pytest.mark.parametrize(
+        ("env_name", "raw"),
+        [
+            ("MCP_PORT", "nan"),
+            ("MCP_PORT", ""),
+            ("MCP_PORT", "not-a-port"),
+            ("EMBEDDING_BATCH_SIZE", ""),
+            ("EMBEDDING_BATCH_SIZE", "abc"),
+            ("ADD_MAX_CONCURRENCY", "-1"),
+            ("SEARCH_LIMIT", "0"),
+            ("OVERFETCH_MIN_MULTIPLIER", "inf"),
+            ("RECENCY_DECAY_RATE", "nan"),
+            ("SMART_REPLACE_RETRY_DELAY", "-0.5"),
+        ],
+    )
+    def test_malformed_values_raise_named_error(
+        self, monkeypatch: pytest.MonkeyPatch, env_name: str, raw: str
+    ) -> None:
+        with pytest.raises(ConfigurationError, match=env_name) as exc_info:
+            _ = self._load(monkeypatch, **{env_name: raw})
+        message = str(exc_info.value)
+        assert raw not in message or raw == ""
+        assert "sk-test-key-12345" not in message
+
+    def test_valid_boundary_values_parse(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = self._load(
+            monkeypatch,
+            MCP_PORT="1",
+            SEARCH_LIMIT="1",
+            RECENCY_DECAY_RATE="0.0",
+            TANTIVY_TOMBSTONE_TTL_DAYS="0",
+        )
+        assert cfg.port == 1
+        assert cfg.search_limit == 1
+        assert cfg.recency_decay_rate == 0.0
+        assert cfg.tantivy_tombstone_ttl_days == 0
+
+    def test_port_still_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = self._load(monkeypatch, PORT="8080", MCP_PORT="7777")
+        assert cfg.port == 8080

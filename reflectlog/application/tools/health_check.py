@@ -1,10 +1,13 @@
 """Health check tool implementation for ReflectLog Server."""
 
-from typing import Any, override
+from typing import TYPE_CHECKING, Any, override
 
 from reflectlog.core.enums import EngineReadiness, HealthStatus, ToolName
 
 from .base import BaseTool
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 class HealthCheckTool(BaseTool):
@@ -24,7 +27,7 @@ class HealthCheckTool(BaseTool):
         )
 
     @override
-    def get_handler(self):
+    def get_handler(self) -> Callable[..., Awaitable[dict[str, Any]]]:
         """Get the async tool handler function."""
 
         async def health_check() -> dict[str, Any]:

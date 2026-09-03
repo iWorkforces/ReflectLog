@@ -1,6 +1,8 @@
 # Utility Unit Tests
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 Unit tests for platform credential retrieval, HTTP pool, retry, and workspace-id equivalence. Subprocess and network mocked.
@@ -35,4 +37,4 @@ tests/unit/utility/
 - No `type: ignore`.
 
 ## NOTES
-HTTP factory is `reflectlog.utility.http` (no leftover `http_client.py`). Scoring lives in `utility/scoring.py` and is covered under application/utils numba tests.
+HTTP factory is `reflectlog.utility.http` (no leftover `http_client.py`). Scoring lives in `utility/scoring.py` and is covered under application/utils numba tests. Local: mock keychain/subprocess; no live credentials.

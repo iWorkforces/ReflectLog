@@ -113,6 +113,10 @@ class IndexWriter:
         """Delete documents matching field value."""
         ...
 
+    def delete_all_documents(self) -> None:
+        """Delete every document in the index."""
+        ...
+
     def commit(self) -> None:
         """Commit pending changes."""
         ...
@@ -130,17 +134,15 @@ class Query:
 
     ...
 
-
 class Occur:
     """Query occurrence modifier for BooleanQuery."""
 
-    Must: "Occur"
+    Must: Occur
     """The clause must be present."""
-    Should: "Occur"
+    Should: Occur
     """The clause should be present (optional)."""
-    MustNot: "Occur"
+    MustNot: Occur
     """The clause must not be present."""
-
 
 class Term:
     """A search term for a specific field."""
@@ -149,7 +151,6 @@ class Term:
         """Create a term for the given field and text."""
         ...
 
-
 class TermQuery(Query):
     """A query that matches a specific term."""
 
@@ -157,14 +158,12 @@ class TermQuery(Query):
         """Create a term query."""
         ...
 
-
 class BooleanQuery(Query):
     """A boolean combination of queries."""
 
     def __init__(self, clauses: list[tuple[Occur, Query]]) -> None:
         """Create a boolean query."""
         ...
-
 
 class Index:
     """A Tantivy index for full-text search."""

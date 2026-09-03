@@ -379,7 +379,9 @@ class TestProtocolConformance:
         )
 
         for attr in ("rerank", "rerank_async"):
-            assert hasattr(CrossEncoderReranker, attr), f"CrossEncoderReranker missing {attr}"
+            assert hasattr(CrossEncoderReranker, attr), (
+                f"CrossEncoderReranker missing {attr}"
+            )
 
     def test_cached_embeddings_has_embeddings_interface(self) -> None:
         """CachedEmbeddings must have the Embeddings protocol methods."""

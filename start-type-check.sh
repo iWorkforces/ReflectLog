@@ -21,82 +21,43 @@ echo -e "${BLUE}🔍 ReflectLog - Type Checking (ty + pyright)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-# Function to check if uv is installed
+uv_run() {
+    command uv run --frozen --no-sync "$@"
+}
+
+# Function to require uv without installing it
 check_uv() {
     if ! command -v uv &> /dev/null; then
-        echo -e "${YELLOW}📦 uv not found, installing...${NC}"
-
-        # Install uv using the official installer
-        if command -v curl &> /dev/null; then
-            echo -e "${CYAN}Installing uv via curl...${NC}"
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-        elif command -v wget &> /dev/null; then
-            echo -e "${CYAN}Installing uv via wget...${NC}"
-            wget -qO- https://astral.sh/uv/install.sh | sh
-        else
-            echo -e "${RED}❌ Neither curl nor wget found. Please install uv manually${NC}"
-            echo -e "${YELLOW}Visit: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
-
-        # Source the shell profile to make uv available
-        if [ -f "$HOME/.bashrc" ]; then
-            source "$HOME/.bashrc"
-        elif [ -f "$HOME/.zshrc" ]; then
-            source "$HOME/.zshrc"
-        fi
-
-        # Add uv to PATH for this session if not already available
-        if ! command -v uv &> /dev/null && [ -f "$HOME/.cargo/bin/uv" ]; then
-            export PATH="$HOME/.cargo/bin:$PATH"
-        fi
-
-        # Verify installation
-        if ! command -v uv &> /dev/null; then
-            echo -e "${RED}❌ Failed to install uv${NC}"
-            echo -e "${YELLOW}Please install uv manually: https://docs.astral.sh/uv/getting-started/installation/${NC}"
-            exit 1
-        fi
+        echo -e "${RED}❌ uv is required but was not found${NC}"
+        echo -e "${YELLOW}Install uv separately: https://docs.astral.sh/uv/getting-started/installation/${NC}"
+        exit 1
     fi
 
     echo -e "${GREEN}✅ uv is available${NC}"
     echo -e "${CYAN}Version: $(uv --version)${NC}"
 }
 
-# Function to check if ty is installed
+# Function to check if ty is available in the locked environment
 check_ty() {
-    if ! uv run ty --version &> /dev/null; then
-        echo -e "${YELLOW}📦 ty not found, installing...${NC}"
-        echo -e "${CYAN}Installing ty via uv...${NC}"
-        uv pip install ty
-
-        # Verify installation
-        if ! uv run ty --version &> /dev/null; then
-            echo -e "${RED}❌ Failed to install ty${NC}"
-            echo -e "${YELLOW}Please install ty manually: uv pip install ty${NC}"
-            exit 1
-        fi
+    if ! uv_run ty --version &> /dev/null; then
+        echo -e "${RED}❌ ty is not available in the frozen environment${NC}"
+        echo -e "${YELLOW}Prepare the environment separately: uv sync --frozen${NC}"
+        exit 1
     fi
 
     echo -e "${GREEN}✅ ty is available${NC}"
-    echo -e "${CYAN}Version: $(uv run ty --version)${NC}"
+    echo -e "${CYAN}Version: $(uv_run ty --version)${NC}"
 }
 
 check_pyright() {
-    if ! uv run pyright --version &> /dev/null; then
-        echo -e "${YELLOW}📦 pyright not found, installing...${NC}"
-        echo -e "${CYAN}Installing pyright via uv...${NC}"
-        uv pip install pyright
-
-        if ! uv run pyright --version &> /dev/null; then
-            echo -e "${RED}❌ Failed to install pyright${NC}"
-            echo -e "${YELLOW}Please install pyright manually: uv pip install pyright${NC}"
-            exit 1
-        fi
+    if ! uv_run pyright --version &> /dev/null; then
+        echo -e "${RED}❌ pyright is not available in the frozen environment${NC}"
+        echo -e "${YELLOW}Prepare the environment separately: uv sync --frozen${NC}"
+        exit 1
     fi
 
     echo -e "${GREEN}✅ pyright is available${NC}"
-    echo -e "${CYAN}Version: $(uv run pyright --version)${NC}"
+    echo -e "${CYAN}Version: $(uv_run pyright --version)${NC}"
 }
 
 # Function to upgrade ty to latest version
@@ -131,7 +92,7 @@ show_config() {
 # Fail closed if getattr() or class-dict probes remain in project sources.
 check_no_dynamic_attr_probes() {
     echo -e "${BLUE}🔍 Checking for banned dynamic attribute probes...${NC}"
-    if uv run python - <<'PY'
+    if uv_run python - <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -171,7 +132,7 @@ run_type_check() {
     echo ""
 
     # Run ty with detailed output
-    if uv run ty check; then
+    if uv_run ty check; then
         echo ""
         echo -e "${GREEN}✅ No type errors found!${NC}"
         return 0
@@ -186,7 +147,7 @@ run_pyright_check() {
     echo -e "${BLUE}🔍 Running pyright type check...${NC}"
     echo ""
 
-    if uv run pyright; then
+    if uv_run pyright; then
         echo ""
         echo -e "${GREEN}✅ No pyright type errors found!${NC}"
         return 0
@@ -203,7 +164,7 @@ run_type_check_concise() {
     echo ""
 
     # Run ty with concise output
-    if uv run ty check --output-format concise; then
+    if uv_run ty check --output-format concise; then
         echo ""
         echo -e "${GREEN}✅ No type errors found!${NC}"
         return 0
@@ -221,12 +182,12 @@ show_stats() {
 
     # Get statistics by error type
     echo -e "${CYAN}Errors by type:${NC}"
-    uv run ty check 2>&1 | grep -E "error\[" | sed 's/.*error\[\([^]]*\)\].*/\1/' | sort | uniq -c | sort -nr || true
+    uv_run ty check 2>&1 | grep -E "error\[" | sed 's/.*error\[\([^]]*\)\].*/\1/' | sort | uniq -c | sort -nr || true
     echo ""
 
     # Get statistics by file
     echo -e "${CYAN}Files with errors:${NC}"
-    uv run ty check 2>&1 | grep -E "^[^ ].*\.py:" | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
+    uv_run ty check 2>&1 | grep -E "^[^ ].*\.py:" | cut -d: -f1 | sort | uniq -c | sort -nr | head -10 || true
     echo ""
 }
 
@@ -311,7 +272,6 @@ main() {
     check_uv
     check_ty
     check_pyright
-    upgrade_ty
     show_config
 
     case $ACTION in

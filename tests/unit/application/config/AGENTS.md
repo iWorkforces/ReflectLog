@@ -1,6 +1,8 @@
 # Config Unit Tests
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 Unit tests for presets, frozen `Config`, and `ConfigurationValidator`. Env is monkeypatched.
@@ -32,4 +34,4 @@ tests/unit/application/config/
 - No `type: ignore`.
 
 ## NOTES
-NUMBA may be disabled in sibling utils tests for coverage; config tests should not depend on JIT.
+NUMBA may be disabled in sibling utils tests for coverage; config tests should not depend on JIT. Local: env-isolated frozen Config; no process singleton.

@@ -1,0 +1,56 @@
+name: platform-storage
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  storage:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14.4"
+      - name: Frozen install
+        run: uv sync --frozen
+      - name: Focused gates
+        env:
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-cache
+        run: uv run --frozen --no-sync scripts/run_platform_gates.py --focused --output platform-gates.json
+      - name: Coordinator and USearch tests
+        env:
+          RUN_USEARCH_CONCURRENCY_TESTS: "1"
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-cache
+        run: uv run --frozen --no-sync pytest --tb=short --maxfail=3 --junitxml=coordinator-usearch.xml tests/unit/infrastructure/test_storage_coordinator.py tests/unit/infrastructure/test_usearch_engine.py
+      - name: Tantivy engine tests
+        env:
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-cache
+        run: uv run --frozen --no-sync pytest --tb=short --maxfail=3 --junitxml=tantivy.xml tests/unit/infrastructure/test_tantivy_engine.py
+      - name: Server tests
+        env:
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-cache
+        run: uv run --frozen --no-sync pytest --tb=short --maxfail=3 --junitxml=server.xml tests/unit/test_server.py
+      - name: Process coordination tests
+        env:
+          RUN_USEARCH_CONCURRENCY_TESTS: "1"
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-cache
+        run: uv run --frozen --no-sync pytest --tb=short --maxfail=3 --junitxml=process.xml tests/integration/test_storage_coordinator_processes.py tests/integration/test_multiprocess_writers.py tests/integration/test_usearch_atomic_recovery.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-gates-${{ matrix.os }}
+          path: |
+            platform-gates.json
+            coordinator-usearch.xml
+            tantivy.xml
+            server.xml
+            process.xml
+          if-no-files-found: ignore

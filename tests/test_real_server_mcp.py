@@ -1,4 +1,4 @@
-'''Real server integration test using fastmcp.Client (refactored from MCP SDK).'''
+"""Real server integration test using fastmcp.Client (refactored from MCP SDK)."""
 
 import json
 import os
@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_real_server_with_mcp_client():
-    '''Test real MCP server using fastmcp.Client.'''
+    """Test real MCP server using fastmcp.Client."""
 
     print("\n" + "=" * 70)
     print("🌐 REAL SERVER TEST - Using fastmcp.Client")
@@ -161,7 +161,7 @@ async def test_real_server_with_mcp_client():
             print("\n" + "=" * 70)
             print("🎉 REAL SERVER TEST COMPLETE!")
             print("=" * 70)
-            print(f'''
+            print(f"""
 Summary:
   ✅ Connected to MCP server at {server_url}
   ✅ Added 10 memories using REAL OpenAI embeddings
@@ -176,7 +176,7 @@ This was a complete END-TO-END test with:
   • Real USearch vector database
   • Real OpenAI API calls
   • Real semantic search with reranking
-            ''')
+            """)
 
     except Exception as e:
         import traceback

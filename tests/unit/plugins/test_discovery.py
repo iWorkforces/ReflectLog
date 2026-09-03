@@ -48,6 +48,7 @@ def _make_entry_point(
     ep.name = name
     ep.value = value
     ep.group = group
+
     def _format(_self: object = None) -> str:
         return f"{name} = {value}"
 
@@ -268,7 +269,11 @@ class TestDirectoryScanDiscovery:
         plugin_mod.ConcretePlugin = _ConcretePlugin
         plugin_mod.AnotherPlugin = _AnotherPlugin
         plugin_mod._BasePlugin = _BasePlugin
-        setattr(plugin_mod, "__dir__", lambda self: ["ConcretePlugin", "AnotherPlugin", "_BasePlugin"])
+        setattr(
+            plugin_mod,
+            "__dir__",
+            lambda self: ["ConcretePlugin", "AnotherPlugin", "_BasePlugin"],
+        )
 
         _orig = importlib.import_module
 
@@ -279,8 +284,14 @@ class TestDirectoryScanDiscovery:
                 return plugin_mod
             return _orig(name)
 
-        with patch("reflectlog.plugins.discovery.importlib.import_module", side_effect=import_side_effect):
-            with patch("pkgutil.iter_modules", return_value=[(None, "test_pkg.plugin_foo", False)]):
+        with patch(
+            "reflectlog.plugins.discovery.importlib.import_module",
+            side_effect=import_side_effect,
+        ):
+            with patch(
+                "pkgutil.iter_modules",
+                return_value=[(None, "test_pkg.plugin_foo", False)],
+            ):
                 strategy = DirectoryScanDiscovery(
                     package_names=["test_pkg"],
                     plugin_base_class=_BasePlugin,
@@ -379,7 +390,10 @@ class TestDirectoryScanDiscovery:
                 return [(None, "pkg1.plugin_a", False)]
             return [(None, "pkg2.plugin_b", False)]
 
-        with patch("reflectlog.plugins.discovery.importlib.import_module", side_effect=import_side_effect):
+        with patch(
+            "reflectlog.plugins.discovery.importlib.import_module",
+            side_effect=import_side_effect,
+        ):
             with patch("pkgutil.iter_modules", side_effect=iter_side_effect):
                 strategy = DirectoryScanDiscovery(
                     package_names=["pkg1", "pkg2"],
@@ -390,6 +404,7 @@ class TestDirectoryScanDiscovery:
         class_names = {p.class_name for p in result}
         assert "Sub1" in class_names
         assert "Sub2" in class_names
+
     async def test_discover_naming_convention(self) -> None:
         """Verifies naming convention for discovered plugins."""
         pkg_mod = types.ModuleType("mypkg")
@@ -409,8 +424,13 @@ class TestDirectoryScanDiscovery:
                 return plugin_mod
             return _orig(name)
 
-        with patch("reflectlog.plugins.discovery.importlib.import_module", side_effect=import_side_effect):
-            with patch("pkgutil.iter_modules", return_value=[(None, "mypkg.plugin_x", False)]):
+        with patch(
+            "reflectlog.plugins.discovery.importlib.import_module",
+            side_effect=import_side_effect,
+        ):
+            with patch(
+                "pkgutil.iter_modules", return_value=[(None, "mypkg.plugin_x", False)]
+            ):
                 strategy = DirectoryScanDiscovery(
                     package_names=["mypkg"],
                     plugin_base_class=_BasePlugin,
@@ -421,6 +441,7 @@ class TestDirectoryScanDiscovery:
         assert result[0].name == "mypkg_MyImpl"
         assert result[0].module_path == "mypkg.plugin_x"
         assert result[0].class_name == "MyImpl"
+
 
 # ---------------------------------------------------------------------------
 # StaticRegistration

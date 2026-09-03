@@ -22,7 +22,7 @@ from reflectlog.application.memory.search_strategies import (
     calculate_adaptive_overfetch,
 )
 from reflectlog.application.utils.logging import StructuredLogger
-from reflectlog.core.exceptions import SearchError
+from reflectlog.core.exceptions import InitializationError, SearchError
 from reflectlog.core.logging import IStructuredLogger
 
 # ---------------------------------------------------------------------------
@@ -106,9 +106,7 @@ def _make_pipeline(
             and exists_many.side_effect is None
             and isinstance(exists_many.return_value, MagicMock)
         ):
-            exists_many.side_effect = (
-                lambda _workspace_id, contents: set(contents)
-            )
+            exists_many.side_effect = lambda _workspace_id, contents: set(contents)
     if isinstance(tantivy, MagicMock):
         tantivy.is_ready.return_value = False
     return SearchPipeline(
@@ -162,6 +160,22 @@ class ControllableBackend:
         _ = workspace_id
         return set(contents)
 
+    def get_records_by_contents(
+        self, workspace_id: str, contents: list[str]
+    ) -> list[object]:
+        _ = workspace_id
+        records: list[object] = []
+        for item in self.results:
+            if isinstance(item, tuple) and len(item) >= 3 and item[0] in contents:
+                records.append(
+                    type(
+                        "Stored",
+                        (),
+                        {"content": item[0], "created_at": item[2]},
+                    )()
+                )
+        return records
+
     def is_ready(self) -> bool:
         return False
 
@@ -172,8 +186,10 @@ class ControllableBackend:
             self.init_entered.set()
         if self.init_barrier is not None:
             _ = self.init_barrier.wait(timeout=_BACKEND_WAIT_TIMEOUT)
-        release = self.init_release if self.init_release is not None else (
-            self.loop_progressed if self.block_on_init else None
+        release = (
+            self.init_release
+            if self.init_release is not None
+            else (self.loop_progressed if self.block_on_init else None)
         )
         if release is not None and not release.wait(timeout=_BACKEND_WAIT_TIMEOUT):
             raise TimeoutError("event loop did not progress while init blocked")
@@ -210,19 +226,13 @@ class TestCanonicalPipelineIdentity:
         import importlib
 
         with pytest.raises(ModuleNotFoundError):
-            _ = importlib.import_module(
-                "reflectlog.application.memory.search_pipeline"
-            )
+            _ = importlib.import_module("reflectlog.application.memory.search_pipeline")
         with pytest.raises(ModuleNotFoundError):
             _ = importlib.import_module("reflectlog.core.search")
         with pytest.raises(ModuleNotFoundError):
-            _ = importlib.import_module(
-                "reflectlog.infrastructure.search.base"
-            )
+            _ = importlib.import_module("reflectlog.infrastructure.search.base")
         with pytest.raises(ModuleNotFoundError):
-            _ = importlib.import_module(
-                "reflectlog.application.memory.protocols"
-            )
+            _ = importlib.import_module("reflectlog.application.memory.protocols")
         with pytest.raises(ModuleNotFoundError):
             _ = importlib.import_module("reflectlog.application.types")
 
@@ -586,9 +596,7 @@ class TestHybridFusionAndFilter:
     def test_filter_stage_empty_and_zero_threshold(self) -> None:
         pipeline = _make_pipeline(semantic=MagicMock())
         assert pipeline._filter_by_fusion_threshold([], 0.5, "q") == []
-        kept = pipeline._filter_by_fusion_threshold(
-            [("a", 0.0), ("b", 0.01)], 0.0, "q"
-        )
+        kept = pipeline._filter_by_fusion_threshold([("a", 0.0), ("b", 0.01)], 0.0, "q")
         assert kept == [("a", 0.0), ("b", 0.01)]
 
 
@@ -625,9 +633,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("from-tantivy", 0.8)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
 
@@ -643,9 +649,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("ok", 0.9)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
 
@@ -672,9 +676,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("ok", 0.9)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
 
@@ -682,18 +684,36 @@ class TestBackendFailureContracts:
         assert result.tantivy_results == []
 
     @pytest.mark.asyncio
-    async def test_semantic_error_and_empty_tantivy_success_returns_empty(
+    async def test_semantic_error_and_empty_tantivy_success_raises_search_error(
         self,
     ) -> None:
+        cause = RuntimeError("embed fail")
         semantic = MagicMock()
-        semantic.search.side_effect = RuntimeError("embed fail")
+        semantic.search.side_effect = cause
         semantic.memory_store.exists_many.side_effect = lambda *_args: set()
         tantivy = MagicMock()
         tantivy.search.return_value = []
         pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
 
-        result = await pipeline.execute(_make_context(enable_hybrid_search=True))
-        assert result.memories == []
+        with pytest.raises(SearchError, match="Failed to execute search") as exc_info:
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert exc_info.value.__cause__ is cause
+
+    @pytest.mark.asyncio
+    async def test_semantic_error_and_stale_only_fts_raises_search_error(
+        self,
+    ) -> None:
+        cause = RuntimeError("embed fail")
+        semantic = MagicMock()
+        semantic.search.side_effect = cause
+        semantic.memory_store.exists_many.side_effect = lambda *_args: set()
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("deleted text", 4.0)]
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+
+        with pytest.raises(SearchError, match="Failed to execute search") as exc_info:
+            await pipeline.execute(_make_context(enable_hybrid_search=True))
+        assert exc_info.value.__cause__ is cause
 
     async def test_semantic_error_and_tantivy_none_raises_search_error(self) -> None:
         semantic = MagicMock()
@@ -712,9 +732,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("deleted text", 0.01)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
         assert result.tantivy_results == []
@@ -724,9 +742,9 @@ class TestBackendFailureContracts:
     async def test_fts_keeps_live_sqlite_hits_and_drops_deleted(self) -> None:
         semantic = MagicMock()
         semantic.search.return_value = [("keep me", 0.9, _TS)]
-        semantic.memory_store.exists_many.side_effect = (
-            lambda _workspace_id, contents: {item for item in contents if item == "keep me"}
-        )
+        semantic.memory_store.exists_many.side_effect = lambda _workspace_id, contents: {
+            item for item in contents if item == "keep me"
+        }
         tantivy = MagicMock()
         tantivy.search.return_value = [("keep me", 4.0), ("deleted text", 3.0)]
         fusion = MagicMock()
@@ -756,9 +774,7 @@ class TestBackendFailureContracts:
         fusion = MagicMock()
         fusion.method = "rrf"
         fusion.fuse.return_value = [("maybe live", 0.01)]
-        pipeline = _make_pipeline(
-            semantic=semantic, tantivy=tantivy, fusion=fusion
-        )
+        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy, fusion=fusion)
 
         result = await pipeline.execute(_make_context(enable_hybrid_search=True))
         assert result.tantivy_results == []
@@ -1369,6 +1385,140 @@ class TestSearchResponsiveness:
             query="q", workspace_id="test_project", limit=expected_overfetch
         )
         tantivy.search.assert_called_once_with("q", "test_project", expected_overfetch)
+
+    @pytest.mark.asyncio
+    async def test_manager_search_recovery_offload(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        loop_progressed = threading.Event()
+        loop_thread = threading.get_ident()
+        recover_threads: list[int] = []
+        ticks_after_enter = 0
+
+        config = MagicMock()
+        config.workspace_id = "test_project"
+        config.enable_hybrid_search = False
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.enable_rrf_fusion = True
+        config.fusion_ranking_threshold = 0.0
+        config.search_limit = 10
+        config.overfetch_adaptive = False
+        config.overfetch_max_multiplier = 3.0
+        config.overfetch_min_multiplier = 1.5
+        config.overfetch_multiplier = 3
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        semantic = MagicMock()
+        semantic.search.return_value = [("mem", 0.9, _TS)]
+        semantic.count.return_value = 1
+        semantic.ensure_initialized = MagicMock()
+        semantic.is_ready.return_value = True
+        semantic.memory_store.exists_many.return_value = {"mem"}
+        fusion = MagicMock()
+        fusion.method = "rrf"
+        fusion.fuse.return_value = [("mem", 0.4)]
+        manager._semantic_engine = semantic
+        manager._tantivy_engine = None
+        manager.is_hybrid_search = False
+        manager._search_pipeline = SearchPipeline(
+            semantic_engine=cast(Any, semantic),
+            tantivy_engine=None,
+            fusion_engine=fusion,
+            config=config,
+            logger=manager.logger,
+            memory_manager=manager,
+        )
+
+        def blocking_reconcile() -> int:
+            recover_threads.append(threading.get_ident())
+            entered.set()
+            if not release.wait(timeout=_BACKEND_WAIT_TIMEOUT):
+                raise TimeoutError("recovery was not released")
+            return 0
+
+        patched: Any = manager
+        patched.reconcile_pending_replacements = blocking_reconcile
+
+        async def ticker() -> None:
+            nonlocal ticks_after_enter
+            while True:
+                if entered.is_set():
+                    ticks_after_enter += 1
+                    loop_progressed.set()
+                    if ticks_after_enter >= 3:
+                        release.set()
+                await asyncio.sleep(0)
+                if release.is_set() and ticks_after_enter >= 3:
+                    break
+
+        ticker_task = asyncio.create_task(ticker())
+        _ = await asyncio.wait_for(manager.search("q", limit=5), timeout=5)
+        ticker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker_task
+
+        assert ticks_after_enter >= 3
+        assert recover_threads
+        assert recover_threads[0] != loop_thread
+        semantic.search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_manager_search_recovery_initialization_error_aborts(self) -> None:
+        config = MagicMock()
+        config.workspace_id = "test_project"
+        config.enable_hybrid_search = False
+        config.tantivy_index_path_template = "{workspace_id}_tantivy_test"
+        config.enable_smart_replace = False
+        config.reranker_engine = "none"
+        config.embedding_cache_enabled = False
+        config.eager_initialization = False
+        config.fusion_method = "rrf"
+        config.fusion_normalization = None
+        config.fusion_rrf_k = 60
+        config.enable_rrf_fusion = True
+        config.fusion_ranking_threshold = 0.0
+        config.search_limit = 10
+        config.overfetch_adaptive = False
+        config.overfetch_max_multiplier = 3.0
+        config.overfetch_min_multiplier = 1.5
+        config.overfetch_multiplier = 3
+        config.openrouter_api_key.get_secret_value.return_value = "test-key"
+
+        with (
+            patch("reflectlog.application.memory.manager.USearchEngine"),
+            patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"),
+            patch("reflectlog.application.memory.manager.TantivyEngine"),
+        ):
+            manager = MemoryManager(config, _make_logger())
+
+        semantic = MagicMock()
+        manager._semantic_engine = semantic
+        manager._tantivy_engine = None
+        cause = InitializationError("index missing")
+
+        def boom() -> int:
+            raise cause
+
+        patched: Any = manager
+        patched.reconcile_pending_replacements = boom
+        with pytest.raises(InitializationError) as exc_info:
+            _ = await manager.search("q")
+        assert exc_info.value is cause
+        semantic.search.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

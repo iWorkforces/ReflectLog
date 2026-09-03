@@ -1,6 +1,7 @@
 """Configuration management for ReflectLog Server."""
 
 from dataclasses import dataclass
+import math
 import os
 import re
 import threading
@@ -23,6 +24,80 @@ from .presets import apply_preset_to_env, get_active_preset
 
 # Note: LangchainQwenEmbeddings is imported lazily in MemoryManager
 # to avoid unnecessary initialization when not using langchain provider
+
+
+def _env_field_value(name: str, default: str) -> str:
+    raw = os.environ.get(name, default)
+    if raw.strip() == "":
+        raise ConfigurationError(f"Invalid {name}: value is empty")
+    return raw
+
+
+def _parse_env_int(
+    name: str,
+    default: str,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    raw = _env_field_value(name, default)
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ConfigurationError(f"Invalid {name}: expected an integer") from exc
+    if minimum is not None and value < minimum:
+        raise ConfigurationError(f"Invalid {name}: below the allowed range")
+    if maximum is not None and value > maximum:
+        raise ConfigurationError(f"Invalid {name}: above the allowed range")
+    return value
+
+
+def _parse_env_float(
+    name: str,
+    default: str,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    raw = _env_field_value(name, default)
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ConfigurationError(f"Invalid {name}: expected a number") from exc
+    if not math.isfinite(value):
+        raise ConfigurationError(f"Invalid {name}: expected a finite number")
+    if minimum is not None and value < minimum:
+        raise ConfigurationError(f"Invalid {name}: below the allowed range")
+    if maximum is not None and value > maximum:
+        raise ConfigurationError(f"Invalid {name}: above the allowed range")
+    return value
+
+
+def _parse_port() -> int:
+    if "PORT" in os.environ:
+        return _parse_env_int("PORT", "9103", minimum=1, maximum=65535)
+    return _parse_env_int("MCP_PORT", "9103", minimum=1, maximum=65535)
+
+
+def _parse_fusion_weights() -> list[float] | None:
+    raw = os.environ.get("FUSION_WEIGHTS", "")
+    if raw.strip() == "":
+        return None
+    weights: list[float] = []
+    for token in raw.split(","):
+        piece = token.strip()
+        if not piece:
+            continue
+        try:
+            value = float(piece)
+        except ValueError as exc:
+            raise ConfigurationError(
+                "Invalid FUSION_WEIGHTS: expected a number"
+            ) from exc
+        if not math.isfinite(value):
+            raise ConfigurationError("Invalid FUSION_WEIGHTS: expected a finite number")
+        weights.append(value)
+    return weights or None
 
 
 class TransportConfigDict(TypedDict):
@@ -314,7 +389,7 @@ class Config:
 
         return {
             "transport": transport,
-            "port": int(os.environ.get("PORT", os.environ.get("MCP_PORT", "9103"))),
+            "port": _parse_port(),
             "host": os.environ.get("MCP_HOST", "127.0.0.1"),
             "path": os.environ.get("MCP_PATH", "/mcp"),
             "openrouter_base_url": os.environ.get(
@@ -332,20 +407,22 @@ class Config:
             "embedding_model": os.environ.get(
                 "EMBEDDING_MODEL", "openai/text-embedding-3-large"
             ),
-            "embedding_dims": int(os.environ.get("EMBEDDING_DIMS", "3072")),
-            "qwen_embedding_dims": int(os.environ.get("QWEN_EMBEDDING_DIMS", "4096")),
-            "embedding_batch_size": max(
-                1, int(os.environ.get("EMBEDDING_BATCH_SIZE", "512"))
+            "embedding_dims": _parse_env_int("EMBEDDING_DIMS", "3072", minimum=1),
+            "qwen_embedding_dims": _parse_env_int(
+                "QWEN_EMBEDDING_DIMS", "4096", minimum=1
             ),
-            "embedding_max_concurrent_batches": max(
-                1, int(os.environ.get("EMBEDDING_MAX_CONCURRENT_BATCHES", "4"))
+            "embedding_batch_size": _parse_env_int(
+                "EMBEDDING_BATCH_SIZE", "512", minimum=1
+            ),
+            "embedding_max_concurrent_batches": _parse_env_int(
+                "EMBEDDING_MAX_CONCURRENT_BATCHES", "4", minimum=1
             ),
             "embedding_cache_enabled": os.environ.get(
                 "EMBEDDING_CACHE_ENABLED", "true"
             ).lower()
             == "true",
-            "embedding_cache_size": max(
-                1, int(os.environ.get("EMBEDDING_CACHE_SIZE", "100"))
+            "embedding_cache_size": _parse_env_int(
+                "EMBEDDING_CACHE_SIZE", "100", minimum=1
             ),
         }
 
@@ -353,32 +430,32 @@ class Config:
     def _parse_search_config() -> SearchConfigDict:
         """Parse search-related configuration from environment variables."""
         return {
-            "search_limit": max(1, int(os.environ.get("SEARCH_LIMIT", "5"))),
-            "remove_search_limit": max(
-                1, int(os.environ.get("REMOVE_SEARCH_LIMIT", "5"))
+            "search_limit": _parse_env_int("SEARCH_LIMIT", "5", minimum=1),
+            "remove_search_limit": _parse_env_int(
+                "REMOVE_SEARCH_LIMIT", "5", minimum=1
             ),
             "enable_hybrid_search": os.environ.get(
                 "ENABLE_HYBRID_SEARCH", "true"
             ).lower()
             == "true",
             "tantivy_index_path_template": "indexes/{workspace_id}/tantivy",
-            "overfetch_multiplier": max(
-                1, int(os.environ.get("OVERFETCH_MULTIPLIER", "3"))
+            "overfetch_multiplier": _parse_env_int(
+                "OVERFETCH_MULTIPLIER", "3", minimum=1
             ),
             "overfetch_adaptive": os.environ.get("OVERFETCH_ADAPTIVE", "true").lower()
             == "true",
-            "overfetch_min_multiplier": max(
-                1.0, float(os.environ.get("OVERFETCH_MIN_MULTIPLIER", "1.5"))
+            "overfetch_min_multiplier": _parse_env_float(
+                "OVERFETCH_MIN_MULTIPLIER", "1.5", minimum=1.0
             ),
-            "overfetch_max_multiplier": max(
-                1.0, float(os.environ.get("OVERFETCH_MAX_MULTIPLIER", "3.0"))
+            "overfetch_max_multiplier": _parse_env_float(
+                "OVERFETCH_MAX_MULTIPLIER", "3.0", minimum=1.0
             ),
             "usearch_exact_search": os.environ.get(
                 "USEARCH_EXACT_SEARCH", "false"
             ).lower()
             == "true",
-            "usearch_exact_search_threshold": max(
-                0, int(os.environ.get("USEARCH_EXACT_SEARCH_THRESHOLD", "256"))
+            "usearch_exact_search_threshold": _parse_env_int(
+                "USEARCH_EXACT_SEARCH_THRESHOLD", "256", minimum=0
             ),
             "fusion_method": parse_str_enum(
                 FusionMethod,
@@ -394,20 +471,13 @@ class Config:
                 if (fusion_normalization_raw := os.environ.get("FUSION_NORMALIZATION"))
                 else None
             ),
-            "fusion_rrf_k": int(os.environ.get("FUSION_RRF_K", "60")),
-            "fusion_ranking_threshold": float(
-                os.environ.get("FUSION_RANKING_THRESHOLD", "0.0")
+            "fusion_rrf_k": _parse_env_int("FUSION_RRF_K", "60", minimum=1),
+            "fusion_ranking_threshold": _parse_env_float(
+                "FUSION_RANKING_THRESHOLD", "0.0"
             ),
             "enable_rrf_fusion": os.environ.get("ENABLE_RRF_FUSION", "true").lower()
             == "true",
-            "fusion_weights": (
-                [
-                    float(w.strip())
-                    for w in os.environ.get("FUSION_WEIGHTS", "").split(",")
-                    if w.strip()
-                ]
-                or None
-            ),
+            "fusion_weights": _parse_fusion_weights(),
         }
 
     @staticmethod
@@ -418,18 +488,17 @@ class Config:
                 "TANTIVY_SOFT_DELETE_ENABLED", "true"
             ).lower()
             == "true",
-            "tantivy_compaction_threshold_ratio": max(
-                0.01,
-                min(
-                    1.0,
-                    float(os.environ.get("TANTIVY_COMPACTION_THRESHOLD_RATIO", "0.2")),
-                ),
+            "tantivy_compaction_threshold_ratio": _parse_env_float(
+                "TANTIVY_COMPACTION_THRESHOLD_RATIO",
+                "0.2",
+                minimum=0.01,
+                maximum=1.0,
             ),
-            "tantivy_compaction_max_tombstones": max(
-                100, int(os.environ.get("TANTIVY_COMPACTION_MAX_TOMBSTONES", "10000"))
+            "tantivy_compaction_max_tombstones": _parse_env_int(
+                "TANTIVY_COMPACTION_MAX_TOMBSTONES", "10000", minimum=100
             ),
-            "tantivy_tombstone_ttl_days": max(
-                0, int(os.environ.get("TANTIVY_TOMBSTONE_TTL_DAYS", "7"))
+            "tantivy_tombstone_ttl_days": _parse_env_int(
+                "TANTIVY_TOMBSTONE_TTL_DAYS", "7", minimum=0
             ),
             "tantivy_normalize_scores": os.environ.get(
                 "TANTIVY_NORMALIZE_SCORES", "true"
@@ -455,28 +524,26 @@ class Config:
             "reranker_engine": reranker_engine,
             "llm_provider": llm_provider,
             "llm_model": os.environ.get("LLM_MODEL", "x-ai/grok-4.1-fast"),
-            "search_score_threshold": float(
-                os.environ.get("SEARCH_SCORE_THRESHOLD", "0.5")
-            ),
-            "rerank_max_concurrency": max(
-                1, int(os.environ.get("RERANK_MAX_CONCURRENCY", "10"))
+            "search_score_threshold": _parse_env_float("SEARCH_SCORE_THRESHOLD", "0.5"),
+            "rerank_max_concurrency": _parse_env_int(
+                "RERANK_MAX_CONCURRENCY", "10", minimum=1
             ),
             "cross_encoder_model": os.environ.get(
                 "CROSS_ENCODER_MODEL", "BAAI/bge-reranker-v2-m3"
             ),
-            "cross_encoder_top_k": max(
-                1, int(os.environ.get("CROSS_ENCODER_TOP_K", "20"))
+            "cross_encoder_top_k": _parse_env_int(
+                "CROSS_ENCODER_TOP_K", "20", minimum=1
             ),
             "cross_encoder_device": parse_str_enum(
                 CrossEncoderDevice,
                 os.environ.get("CROSS_ENCODER_DEVICE", CrossEncoderDevice.CPU),
                 field="CROSS_ENCODER_DEVICE",
             ),
-            "cross_encoder_batch_size": max(
-                1, int(os.environ.get("CROSS_ENCODER_BATCH_SIZE", "32"))
+            "cross_encoder_batch_size": _parse_env_int(
+                "CROSS_ENCODER_BATCH_SIZE", "32", minimum=1
             ),
-            "cross_encoder_score_threshold": float(
-                os.environ.get("CROSS_ENCODER_SCORE_THRESHOLD", "0.5")
+            "cross_encoder_score_threshold": _parse_env_float(
+                "CROSS_ENCODER_SCORE_THRESHOLD", "0.5"
             ),
             "cross_encoder_use_fp16": os.environ.get(
                 "CROSS_ENCODER_USE_FP16", "true"
@@ -486,11 +553,11 @@ class Config:
                 "CROSS_ENCODER_NORMALIZE", "true"
             ).lower()
             == "true",
-            "cross_encoder_max_length": int(
-                os.environ.get("CROSS_ENCODER_MAX_LENGTH", "512")
+            "cross_encoder_max_length": _parse_env_int(
+                "CROSS_ENCODER_MAX_LENGTH", "512", minimum=1
             ),
-            "reranker_min_results": max(
-                0, int(os.environ.get("RERANKER_MIN_RESULTS", "1"))
+            "reranker_min_results": _parse_env_int(
+                "RERANKER_MIN_RESULTS", "1", minimum=0
             ),
             "reranker_batch_normalize": os.environ.get(
                 "RERANKER_BATCH_NORMALIZE", "true"
@@ -500,8 +567,8 @@ class Config:
                 "ENABLE_RECENCY_BOOST", "true"
             ).lower()
             == "true",
-            "recency_decay_rate": max(
-                0.0, float(os.environ.get("RECENCY_DECAY_RATE", "0.001"))
+            "recency_decay_rate": _parse_env_float(
+                "RECENCY_DECAY_RATE", "0.001", minimum=0.0
             ),
         }
 
@@ -509,15 +576,17 @@ class Config:
     def _parse_memory_config() -> SecurityConfigDict:
         """Parse memory-related configuration from environment variables."""
         return {
-            "max_memory_length": int(os.environ.get("MAX_MEMORY_LENGTH", "30720")),
-            "min_memory_length": int(os.environ.get("MIN_MEMORY_LENGTH", "1")),
+            "max_memory_length": _parse_env_int(
+                "MAX_MEMORY_LENGTH", "30720", minimum=1
+            ),
+            "min_memory_length": _parse_env_int("MIN_MEMORY_LENGTH", "1", minimum=1),
             "deduplicate_memories": os.environ.get(
                 "DEDUPLICATE_MEMORIES", "true"
             ).lower()
             == "true",
-            "max_add_batch": max(1, int(os.environ.get("MAX_ADD_BATCH", "100"))),
-            "max_add_chars": max(1, int(os.environ.get("MAX_ADD_CHARS", "500000"))),
-            "get_all_limit": max(1, int(os.environ.get("GET_ALL_LIMIT", "1000"))),
+            "max_add_batch": _parse_env_int("MAX_ADD_BATCH", "100", minimum=1),
+            "max_add_chars": _parse_env_int("MAX_ADD_CHARS", "500000", minimum=1),
+            "get_all_limit": _parse_env_int("GET_ALL_LIMIT", "1000", minimum=1),
         }
 
     @staticmethod
@@ -528,23 +597,23 @@ class Config:
                 "ENABLE_SMART_REPLACE", "true"
             ).lower()
             == "true",
-            "smart_replace_threshold": float(
-                os.environ.get("SMART_REPLACE_THRESHOLD", "0.7")
+            "smart_replace_threshold": _parse_env_float(
+                "SMART_REPLACE_THRESHOLD", "0.7"
             ),
-            "smart_replace_min_similarity": float(
-                os.environ.get("SMART_REPLACE_MIN_SIMILARITY", "0.9")
+            "smart_replace_min_similarity": _parse_env_float(
+                "SMART_REPLACE_MIN_SIMILARITY", "0.9"
             ),
-            "smart_replace_candidate_limit": max(
-                1, int(os.environ.get("SMART_REPLACE_CANDIDATE_LIMIT", "3"))
+            "smart_replace_candidate_limit": _parse_env_int(
+                "SMART_REPLACE_CANDIDATE_LIMIT", "3", minimum=1
             ),
-            "smart_replace_archive_ttl_days": max(
-                0, int(os.environ.get("SMART_REPLACE_ARCHIVE_TTL_DAYS", "30"))
+            "smart_replace_archive_ttl_days": _parse_env_int(
+                "SMART_REPLACE_ARCHIVE_TTL_DAYS", "30", minimum=0
             ),
-            "smart_replace_max_retries": max(
-                1, int(os.environ.get("SMART_REPLACE_MAX_RETRIES", "3"))
+            "smart_replace_max_retries": _parse_env_int(
+                "SMART_REPLACE_MAX_RETRIES", "3", minimum=1
             ),
-            "smart_replace_retry_delay": max(
-                0.1, float(os.environ.get("SMART_REPLACE_RETRY_DELAY", "1.0"))
+            "smart_replace_retry_delay": _parse_env_float(
+                "SMART_REPLACE_RETRY_DELAY", "1.0", minimum=0.1
             ),
         }
 
@@ -552,8 +621,8 @@ class Config:
     def _parse_init_config() -> ServerConfigDict:
         """Parse initialization-related configuration from environment variables."""
         return {
-            "add_max_concurrency": max(
-                1, int(os.environ.get("ADD_MAX_CONCURRENCY", "4"))
+            "add_max_concurrency": _parse_env_int(
+                "ADD_MAX_CONCURRENCY", "4", minimum=1
             ),
             "eager_initialization": os.environ.get(
                 "EAGER_INITIALIZATION", "true"
@@ -579,8 +648,8 @@ class Config:
                 "LOG_SEARCH_RESULTS_VERBOSE", "false"
             ).lower()
             == "true",
-            "log_search_result_limit": int(
-                os.environ.get("LOG_SEARCH_RESULT_LIMIT", "3")
+            "log_search_result_limit": _parse_env_int(
+                "LOG_SEARCH_RESULT_LIMIT", "3", minimum=0
             ),
         }
 

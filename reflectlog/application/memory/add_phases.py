@@ -10,29 +10,32 @@ Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
 """
 
-from collections.abc import Callable
-from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 import time
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
+
     from reflectlog.infrastructure.smart_replacer import SmartReplacer
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
+
+    from ...core.logging import IStructuredLogger
+    from ..config.settings import Config
 
 import anyio
 from asyncer import asyncify, create_task_group
 
 from reflectlog.core.enums import TransitionKind
 from reflectlog.core.exceptions import InconsistentStateError, StorageError
+from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 
-from ...core.logging import IStructuredLogger
 from ...core.types import (
     ISemanticSearchEngine,
     ReplacementTransition,
     ReplacementTransitionRequest,
 )
-from ..config.settings import Config
 from .match_utils import has_exact_match
 from .replacement_recovery import (
     reconcile_pending_replacements,
@@ -148,7 +151,7 @@ class DuplicateDetectionPhase:
         tantivy_engine: TantivyEngine | None,
         config: Config,
         logger: IStructuredLogger | None,
-    ):
+    ) -> None:
         """Initialize duplicate detection phase.
 
         Args:
@@ -202,9 +205,7 @@ class DuplicateDetectionPhase:
         # Step 2: Batch duplicate detection against existing storage
         duplicate_flags: dict[str, bool] = {}
         store = self._semantic_engine.memory_store
-        present = await asyncify(store.exists_many)(
-            self._workspace_id, unique_memories
-        )
+        present = await asyncify(store.exists_many)(self._workspace_id, unique_memories)
         for memory in unique_memories:
             duplicate_flags[memory] = memory in present
 
@@ -269,7 +270,7 @@ class SmartReplacementPhase:
         config: Config,
         logger: IStructuredLogger | None,
         memory_manager: SmartReplacerProvider | None,
-    ):
+    ) -> None:
         """Initialize smart replacement phase.
 
         Args:
@@ -603,7 +604,9 @@ class StoragePhase:
         write_lock: AbstractContextManager[object] | None = None,
         lock: AbstractContextManager[object] | None = None,
         ensure_open: Callable[[], None] | None = None,
-    ):
+        coordinator: IStorageCoordinator | None = None,
+        orchestration_hook: Callable[[str], None] | None = None,
+    ) -> None:
         """Initialize storage phase.
 
         Args:
@@ -626,6 +629,8 @@ class StoragePhase:
         self._write_lock = write_lock
         self._lock = lock
         self._ensure_open = ensure_open
+        self._coordinator = coordinator
+        self._orchestration_hook = orchestration_hook
 
     async def execute(
         self,
@@ -693,6 +698,17 @@ class StoragePhase:
     ) -> tuple[int, list[ReplacementInfo]]:
         """Embed outside the write lock, then record, delete, add, and commit."""
         vectors = self._embed_for_persist(memories)
+        if self._coordinator is not None:
+            with self._coordinator.acquire(self._workspace_id, LeaseMode.EXCLUSIVE):
+                return self._persist_under_locks(memories, replacement_map, vectors)
+        return self._persist_under_locks(memories, replacement_map, vectors)
+
+    def _persist_under_locks(
+        self,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+        vectors: list[list[float]] | None,
+    ) -> tuple[int, list[ReplacementInfo]]:
         if self._write_lock is None:
             self._require_open()
             return self._persist_replacements_unlocked(
@@ -715,6 +731,54 @@ class StoragePhase:
         if self._ensure_open is not None:
             self._ensure_open()
 
+    def _revalidate_persist_inputs(
+        self,
+        memories: list[str],
+        vectors: list[list[float]] | None,
+        replacement_map: dict[str, list[ReplacementInfo]],
+    ) -> tuple[list[str], list[list[float]] | None]:
+        """Drop identities that appeared after phase-2 decisions."""
+        kept: list[str] = []
+        kept_vectors: list[list[float]] = []
+        for index, memory in enumerate(memories):
+            if (
+                memory not in replacement_map
+                and self.config.deduplicate_memories
+                and self._has_exact_match(memory)
+            ):
+                continue
+            kept.append(memory)
+            if vectors is not None:
+                kept_vectors.append(vectors[index])
+        if vectors is None:
+            return kept, None
+        return kept, kept_vectors
+
+    def _emit_orchestration_hook(self, step: str) -> None:
+        hook = self._orchestration_hook
+        if hook is not None:
+            hook(step)
+
+    def _publish_then_complete(
+        self,
+        transitions: list[ReplacementTransition],
+        add_intents: list[ReplacementTransition],
+        *,
+        replacement_olds: list[str],
+        should_publish: bool,
+    ) -> None:
+        coordinator = self._coordinator
+        if coordinator is not None and should_publish:
+            current = coordinator.read_generation(self._workspace_id)
+            self._emit_orchestration_hook("before_generation")
+            coordinator.publish_generation(self._workspace_id, current + 1)
+            self._emit_orchestration_hook("after_generation")
+        self._emit_orchestration_hook("before_intent")
+        self._complete_if_converged(transitions)
+        self._complete_add_intents_for_contents(replacement_olds)
+        self._complete_add_intents(add_intents)
+        self._emit_orchestration_hook("after_intent")
+
     def _embed_for_persist(self, memories: list[str]) -> list[list[float]] | None:
         """Compute document embeddings before taking the write lock."""
         if not memories:
@@ -736,6 +800,10 @@ class StoragePhase:
         vectors: list[list[float]] | None = None,
     ) -> tuple[int, list[ReplacementInfo]]:
         """Mutate indexes while the caller already holds ``_write_lock``."""
+        if self._coordinator is not None:
+            memories, vectors = self._revalidate_persist_inputs(
+                memories, vectors, replacement_map
+            )
         planned, replacements = self._plan_replacements(memories, replacement_map)
         replacement_olds = {info.old_memory for info, _memory, _old_id in planned}
         persist_memories, persist_vectors = self._exclude_replacement_olds(
@@ -747,13 +815,17 @@ class StoragePhase:
             persist_memories, dry_run=False, locked=True, vectors=persist_vectors
         )
         self._delete_recorded_olds(transitions)
-        self._complete_add_intents_for_contents(list(replacement_olds))
         if transitions:
             if self._tantivy_engine is not None:
                 self._tantivy_engine.commit()
             self._semantic_engine.commit()
-        self._complete_if_converged(transitions)
-        self._complete_add_intents(add_intents)
+        should_publish = bool(transitions) or stored_count > 0
+        self._publish_then_complete(
+            transitions,
+            add_intents,
+            replacement_olds=list(replacement_olds),
+            should_publish=should_publish,
+        )
         return stored_count, replacements
 
     def _plan_replacements(
@@ -871,9 +943,7 @@ class StoragePhase:
         try:
             return store.begin_replacement_transitions(requests)
         except Exception as e:
-            raise StorageError(
-                f"Failed to record replacement transition: {e}"
-            ) from e
+            raise StorageError(f"Failed to record replacement transition: {e}") from e
 
     def _delete_recorded_olds(self, transitions: list[ReplacementTransition]) -> None:
         """Delete each recorded old memory after transitions are durable."""
@@ -995,22 +1065,6 @@ class StoragePhase:
         )
         return inserted_memories
 
-    def _delete_memory(
-        self, memory_id: str, content: str, *, locked: bool = False
-    ) -> None:
-        """Delete a memory from semantic and full-text engines with write locking."""
-        if self._write_lock is not None and not locked:
-            with self._write_lock:
-                self._delete_memory_unlocked(memory_id, content)
-            return
-        self._delete_memory_unlocked(memory_id, content)
-
-    def _delete_memory_unlocked(self, memory_id: str, content: str) -> None:
-        """Delete from both engines without acquiring ``_write_lock``."""
-        self._semantic_engine.delete(memory_id=memory_id)
-        if self._tantivy_engine is not None:
-            _ = self._tantivy_engine.delete(self._workspace_id, content)
-
     def _has_exact_match(self, content: str) -> bool:
         """Check whether the exact memory already exists in storage.
 
@@ -1085,18 +1139,6 @@ class StoragePhase:
                 persist_vectors.append(vectors[idx])
         return persist_memories, persist_vectors
 
-    def _record_replacement_transition(
-        self, replacement_info: ReplacementInfo, new_memory: str
-    ) -> ReplacementTransition | None:
-        """Persist archive + pending transition before any index change."""
-        planned, _replacements = self._plan_replacements(
-            [new_memory], {new_memory: [replacement_info]}
-        )
-        if not planned:
-            return None
-        recorded = self._record_planned_transitions(planned)
-        return recorded[0] if recorded else None
-
     def _complete_if_converged(self, transitions: list[ReplacementTransition]) -> None:
         """Mark a transition complete only when both indexes agree."""
         store = self._semantic_engine.memory_store
@@ -1123,6 +1165,9 @@ class StoragePhase:
             write_lock=self._write_lock,
             lock=self._lock,
             logger=self.logger,
+            coordinator=self._coordinator,
+            workspace_id=self._workspace_id,
+            orchestration_hook=self._orchestration_hook,
         )
 
 
@@ -1139,9 +1184,7 @@ def _persist_list_for_add(
     also omits every storage duplicate so the preview matches live unique-skip.
     """
     replacement_olds = {
-        info.old_memory
-        for infos in replacement_map.values()
-        for info in infos
+        info.old_memory for infos in replacement_map.values() for info in infos
     }
     if dry_run:
         return list(unique_memories), len(storage_duplicates)
@@ -1185,7 +1228,7 @@ class AddPipeline:
         storage_phase: StoragePhase,
         config: Config,
         logger: IStructuredLogger | None,
-    ):
+    ) -> None:
         """Initialize add pipeline.
 
         Args:
