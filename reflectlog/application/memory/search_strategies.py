@@ -17,6 +17,11 @@ if TYPE_CHECKING:
     from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
+    from ...core.logging import IStructuredLogger
+    from ...core.types import ISemanticSearchEngine
+    from ..config.settings import Config
+    from .fusion.base import FusionEngine
+
 from asyncer import (
     asyncify,
     create_task_group,
@@ -25,11 +30,7 @@ from asyncer import (
 from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.exceptions import SearchError
 
-from ...core.logging import IStructuredLogger
-from ...core.types import ISemanticSearchEngine
-from ..config.settings import Config
 from ..utils.logging import format_fusion_score_status
-from .fusion.base import FusionEngine
 
 # Constants for magic numbers (documented for maintainability)
 MIN_OVERFETCH_LIMIT = 8  # Floor so tiny limits still have fusion diversity
@@ -104,7 +105,7 @@ class SearchPipeline:
         config: Config,
         logger: IStructuredLogger | None,
         memory_manager: RerankerProvider | None,
-    ):
+    ) -> None:
         """Initialize search pipeline.
 
         Args:
@@ -560,7 +561,7 @@ class SearchPipeline:
         weight_sum = 0.0
         if isinstance(weights, list) and weights:
             try:
-                for weight in cast(list[object], weights):
+                for weight in cast("list[object]", weights):
                     if not isinstance(weight, (int, float)):
                         raise TypeError("fusion weight is not numeric")
                     weight_sum += float(weight)
@@ -849,7 +850,7 @@ def _string_set(raw: object) -> set[str] | None:
     """Return a string set, or None when the value is not a real content set."""
     if not isinstance(raw, set):
         return None
-    members: list[object] = list(cast(set[object], raw))
+    members: list[object] = list(cast("set[object]", raw))
     contents: set[str] = set()
     for item in members:
         if not isinstance(item, str):

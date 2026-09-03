@@ -1,14 +1,17 @@
 """Memory validation utilities for ReflectLog Server."""
 
-from typing import Any
+from typing import TYPE_CHECKING
 import unicodedata
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # Allowed control characters (tab, newline, carriage return)
 _ALLOWED_CONTROL_CHARS = {"\t", "\n", "\r"}
 
 
 def validate_memories(
-    memories: list[Any], min_length: int, max_length: int
+    memories: Sequence[object], min_length: int, max_length: int
 ) -> tuple[bool, str | None]:
     """Validate memory list for add/remove operations.
 
@@ -91,7 +94,7 @@ def validate_remove_batch(
     return True, None
 
 
-def validate_remove_memories(memories: list[Any]) -> tuple[bool, str | None]:
+def validate_remove_memories(memories: Sequence[object]) -> tuple[bool, str | None]:
     """Reject empty or non-string remove targets without add length/control rules.
 
     Stored rows may predate a later min/max or control-character policy.

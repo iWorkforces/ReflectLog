@@ -28,12 +28,11 @@ Example:
     )
 """
 
-from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 import os
 import threading
 import time
-from typing import Any, Protocol, final, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, final, runtime_checkable
 
 from asyncer import asyncify
 
@@ -62,11 +61,8 @@ from ...core.enums import (
     RerankerEngine,
     TransitionKind,
 )
-from ...core.logging import IStructuredLogger
 from ...core.storage_coordination import IStorageCoordinator, LeaseMode
-from ...core.types import ISemanticSearchEngine, ReplacementTransition
 from ...infrastructure.storage_coordinator import PortalockerStorageCoordinator
-from ..config.settings import Config
 from .add_phases import (
     AddPipeline,
     AddResult,
@@ -75,7 +71,6 @@ from .add_phases import (
     StoragePhase,
 )
 from .fusion import create_fusion_engine
-from .fusion.base import FusionEngine
 from .match_utils import has_exact_match
 from .replacement_recovery import (
     reconcile_pending_replacements as apply_pending_replacements,
@@ -85,6 +80,14 @@ from .search_strategies import (
     SearchPipeline,
     calculate_adaptive_overfetch,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
+
+    from ...core.logging import IStructuredLogger
+    from ...core.types import ISemanticSearchEngine, ReplacementTransition
+    from ..config.settings import Config
+    from .fusion.base import FusionEngine
 
 
 class _ReadyEngine(Protocol):
@@ -109,7 +112,7 @@ class MemoryManager:
         *,
         coordinator: IStorageCoordinator | None = None,
         orchestration_hook: Callable[[str], None] | None = None,
-    ):
+    ) -> None:
         """Initialize Hybrid MemoryManager with USearch semantic
         & Tantivy full-text engines.
 

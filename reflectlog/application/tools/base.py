@@ -1,15 +1,19 @@
 """Base class for MCP tools."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
-from typing import Any, Never
+from typing import TYPE_CHECKING, Any, Never
 
 from reflectlog.core.exceptions import InconsistentStateError, ReflectLogError
-from reflectlog.core.logging import IStructuredLogger
 
-from ..config.settings import Config
 from ..constants import LOG_SEPARATOR_LENGTH
-from ..memory.manager import MemoryManager
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from reflectlog.core.logging import IStructuredLogger
+
+    from ..config.settings import Config
+    from ..memory.manager import MemoryManager
 
 
 class BaseTool(ABC):
@@ -20,7 +24,7 @@ class BaseTool(ABC):
         config: Config,
         memory_manager: MemoryManager,
         logger: IStructuredLogger | None,
-    ):
+    ) -> None:
         """Initialize tool with dependencies.
 
         Args:

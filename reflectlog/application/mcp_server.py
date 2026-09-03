@@ -1,9 +1,9 @@
 """ReflectLog Server - Refactored modular implementation."""
 
-from collections.abc import Callable
 import hmac
 from ipaddress import ip_address
 import os
+from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -11,11 +11,9 @@ from fastmcp.server.dependencies import get_http_request
 from fastmcp.server.middleware import Middleware
 from fastmcp.utilities.logging import get_logger
 
-from reflectlog.application import config
 from reflectlog.application.config.settings import Config, get_config
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.tools.add import AddTool
-from reflectlog.application.tools.base import BaseTool
 from reflectlog.application.tools.get_all import GetAllTool
 from reflectlog.application.tools.health_check import HealthCheckTool
 from reflectlog.application.tools.remove import RemoveTool
@@ -25,6 +23,11 @@ from reflectlog.core.exceptions import ConfigurationError
 from reflectlog.core.prompts import build_instructions
 
 from .utils.logging import create_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from reflectlog.application.tools.base import BaseTool
 
 
 class _BearerTokenMiddleware(Middleware):
@@ -73,16 +76,14 @@ class FastMCPServer:
     - Server transport
     """
 
-    def __init__(self, server_config: Config | object = config):
+    def __init__(self, server_config: Config | None = None) -> None:
         """Initialize the MCP server with all components.
 
         Args:
             server_config: Configuration instance (defaults to singleton).
         """
         super().__init__()
-        self.config = (
-            server_config if isinstance(server_config, Config) else get_config()
-        )
+        self.config = server_config if server_config is not None else get_config()
 
         # Initialize structured logger
         self.logger = create_logger(
@@ -187,7 +188,7 @@ class FastMCPServer:
             for tool in self.tools
         }
 
-    def tool_fn(self, name: str):
+    def tool_fn(self, name: str) -> Callable[..., object]:
         """Return the registered handler for an MCP tool name."""
         for tool in self.tools:
             if tool.get_name() == name:

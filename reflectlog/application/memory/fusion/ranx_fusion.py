@@ -6,6 +6,10 @@ from typing import TYPE_CHECKING, Any, final, override
 import warnings
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ranx import Run
+
     from reflectlog.core.logging import IStructuredLogger
 
 import numpy as np
@@ -37,11 +41,11 @@ DEFAULT_NORMALIZATIONS: dict[FusionMethod, FusionNormalization | None] = {
     FusionMethod.BORDAFUSE: None,
 }
 
-_ranx_run: type[Any] | None = None
-_ranx_fuse: Any | None = None
+_ranx_run: type[Run] | None = None
+_ranx_fuse: Callable[..., Run] | None = None
 
 
-def _load_ranx() -> tuple[type[Any], Any]:
+def _load_ranx() -> tuple[type[Run], Callable[..., Run]]:
     """Import ranx only for non-RRF fusion methods.
 
     Isolates ranx's known invalid-escape SyntaxWarning at this boundary so
@@ -123,7 +127,7 @@ class RanxFusionEngine(FusionEngine):
         rrf_k: int = 60,
         weights: list[float] | None = None,
         logger: IStructuredLogger | None = None,
-    ):
+    ) -> None:
         """Initialize the ranx fusion engine.
 
         Args:
@@ -185,7 +189,7 @@ class RanxFusionEngine(FusionEngine):
         """Return the fusion weights for weighted RRF."""
         return self._weights
 
-    def _convert_to_run(self, result_set: list[tuple[str, float]], name: str) -> Any:
+    def _convert_to_run(self, result_set: list[tuple[str, float]], name: str) -> Run:
         """Convert (memory, score) tuples to a ranx Run object.
 
         Handles duplicate documents within the same result set by averaging their
@@ -231,7 +235,7 @@ class RanxFusionEngine(FusionEngine):
 
         return run_cls({self._QUERY_ID: doc_scores}, name=name)
 
-    def _convert_from_run(self, run: Any) -> list[tuple[str, float]]:
+    def _convert_from_run(self, run: Run) -> list[tuple[str, float]]:
         """Convert a ranx Run object back to (memory, score) tuples.
 
         Args:

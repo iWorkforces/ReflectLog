@@ -10,15 +10,19 @@ Each phase is implemented as a separate class that takes inputs and
 produces outputs for the next phase.
 """
 
-from collections.abc import Callable
-from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 import time
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
+
     from reflectlog.infrastructure.smart_replacer import SmartReplacer
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
+
+    from ...core.logging import IStructuredLogger
+    from ..config.settings import Config
 
 import anyio
 from asyncer import asyncify, create_task_group
@@ -27,13 +31,11 @@ from reflectlog.core.enums import TransitionKind
 from reflectlog.core.exceptions import InconsistentStateError, StorageError
 from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 
-from ...core.logging import IStructuredLogger
 from ...core.types import (
     ISemanticSearchEngine,
     ReplacementTransition,
     ReplacementTransitionRequest,
 )
-from ..config.settings import Config
 from .match_utils import has_exact_match
 from .replacement_recovery import (
     reconcile_pending_replacements,
@@ -149,7 +151,7 @@ class DuplicateDetectionPhase:
         tantivy_engine: TantivyEngine | None,
         config: Config,
         logger: IStructuredLogger | None,
-    ):
+    ) -> None:
         """Initialize duplicate detection phase.
 
         Args:
@@ -268,7 +270,7 @@ class SmartReplacementPhase:
         config: Config,
         logger: IStructuredLogger | None,
         memory_manager: SmartReplacerProvider | None,
-    ):
+    ) -> None:
         """Initialize smart replacement phase.
 
         Args:
@@ -604,7 +606,7 @@ class StoragePhase:
         ensure_open: Callable[[], None] | None = None,
         coordinator: IStorageCoordinator | None = None,
         orchestration_hook: Callable[[str], None] | None = None,
-    ):
+    ) -> None:
         """Initialize storage phase.
 
         Args:
@@ -1254,7 +1256,7 @@ class AddPipeline:
         storage_phase: StoragePhase,
         config: Config,
         logger: IStructuredLogger | None,
-    ):
+    ) -> None:
         """Initialize add pipeline.
 
         Args:

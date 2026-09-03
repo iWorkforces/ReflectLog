@@ -1,6 +1,6 @@
 """Remove tool implementation for ReflectLog Server."""
 
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from asyncer import asyncify
 
@@ -9,6 +9,9 @@ from reflectlog.core.exceptions import StorageError
 
 from ..utils.validation import validate_remove_batch, validate_remove_memories
 from .base import BaseTool
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 class RemoveTool(BaseTool):
@@ -30,7 +33,7 @@ class RemoveTool(BaseTool):
         )
 
     @override
-    def get_handler(self):
+    def get_handler(self) -> Callable[..., Awaitable[None]]:
         """Get the async tool handler function."""
 
         async def remove(memories: list[str]) -> None:

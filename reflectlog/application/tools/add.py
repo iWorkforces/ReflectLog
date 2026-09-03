@@ -1,12 +1,15 @@
 """Add tool implementation for ReflectLog Server."""
 
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import StorageError
 
 from ..utils.validation import validate_add_batch, validate_memories
 from .base import BaseTool
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 class AddTool(BaseTool):
@@ -27,7 +30,7 @@ class AddTool(BaseTool):
         )
 
     @override
-    def get_handler(self):
+    def get_handler(self) -> Callable[..., Awaitable[dict[str, object]]]:
         """Get the async tool handler function."""
 
         async def add(memories: list[str], dry_run: bool = False) -> dict[str, object]:

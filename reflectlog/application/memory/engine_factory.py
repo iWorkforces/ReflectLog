@@ -7,14 +7,11 @@ modifying the factory interface.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.fusion import create_fusion_engine
-from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.core.config_adapters import ConfigAdapter
 from reflectlog.core.enums import EmbedderProvider, RerankerEngine
-from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.storage_coordination import IStorageCoordinator
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
@@ -24,6 +21,12 @@ from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEm
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
+
+if TYPE_CHECKING:
+    from reflectlog.application.config.settings import Config
+    from reflectlog.application.memory.fusion.base import FusionEngine
+    from reflectlog.core.logging import IStructuredLogger
+    from reflectlog.core.storage_coordination import IStorageCoordinator
 
 
 @dataclass
@@ -50,7 +53,7 @@ class EngineFactory:
         tantivy = result.tantivy_engine
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the engine factory."""
         pass
 
