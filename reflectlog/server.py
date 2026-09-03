@@ -4,7 +4,7 @@ import signal
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 # Add parent directory to path for direct script execution
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,18 +19,22 @@ for key, value in [
     _ = os.environ.setdefault(key, value)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from _typeshed import SupportsWrite
+
+    from reflectlog.application.mcp_server import FastMCPServer as FastMCPServerCls
 
 from reflectlog.core.enums import TransportMode  # noqa: E402
 from reflectlog.version import __version__  # noqa: E402
 
 # Populated on first real startup so --help/--version stay import-light.
 # Tests continue to patch these module attributes.
-FastMCPServer: Any = None
-warmup_numba_functions: Any = None
+FastMCPServer: type[FastMCPServerCls] | None = None
+warmup_numba_functions: Callable[[], object] | None = None
 
 
-def _server_cls() -> Any:
+def _server_cls() -> type[FastMCPServerCls]:
     global FastMCPServer
     loaded = FastMCPServer
     if loaded is None:
@@ -101,7 +105,7 @@ def warmup_numba_with_config(
                 f"Warming up numba JIT functions ({mode_desc})...", file=output_stream
             )
 
-        def warmup_worker():
+        def warmup_worker() -> None:
             try:
                 _ = _call_warmup_numba_functions()
                 if output_stream:
@@ -204,7 +208,7 @@ def main() -> None:
     print(f"Transport: {transport_mode}", file=output_stream)
 
     startup_start_time = time.time()
-    server: Any | None = None
+    server: FastMCPServerCls | None = None
     startup_phases: dict[str, float] = {}
     try:
         started = _start_server(output_stream, startup_start_time, startup_phases)
@@ -212,8 +216,8 @@ def main() -> None:
         extra_phases = _run_numba_warmup(output_stream)
         existing = started.startup_metrics
         merged: dict[str, float] = dict(startup_phases)
-        if isinstance(existing, dict):
-            merged.update(cast(dict[str, float], existing))
+        if existing is not None:
+            merged.update(existing)
         merged.update(extra_phases)
         started.set_startup_metrics(merged)
         _print_startup_timing(output_stream, merged)
@@ -279,12 +283,12 @@ def _start_server(
     output_stream: SupportsWrite[str],
     startup_start_time: float,
     startup_phases: dict[str, float],
-) -> Any:
+) -> FastMCPServerCls:
     """Initialize server with signal handlers and startup metrics.
 
     Registers SIGINT/SIGTERM handlers for graceful shutdown.
     """
-    server: Any | None = None
+    server: FastMCPServerCls | None = None
 
     shutting_down = {"value": False}
 
