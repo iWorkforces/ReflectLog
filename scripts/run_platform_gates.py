@@ -136,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     env["REFLECTLOG_GATE_TEMP"] = str(temp_root)
     env["PYTHONUNBUFFERED"] = "1"
     env["RUN_USEARCH_CONCURRENCY_TESTS"] = "1"
+    env["NUMBA_CACHE_DIR"] = str(temp_root / "numba-cache")
     results: list[dict[str, Any]] = []
     status = "ok"
     failed_scenario: str | None = None

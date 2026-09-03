@@ -39,7 +39,11 @@ def _hold_exclusive_lock(
 ) -> None:
     import portalocker
 
-    lock = portalocker.Lock(lock_path, timeout=5.0)
+    lock = portalocker.Lock(
+        lock_path,
+        timeout=5.0,
+        flags=portalocker.LOCK_EX | portalocker.LOCK_NB,
+    )
     lock.acquire()
     try:
         ready.set()
@@ -117,7 +121,11 @@ def test_portalocker_timeout_then_acquire_after_owner_exit(
     child.start()
     try:
         assert ready.wait(timeout=10.0)
-        contended = portalocker.Lock(str(lock_path), timeout=0.2)
+        contended = portalocker.Lock(
+            str(lock_path),
+            timeout=0.2,
+            flags=portalocker.LOCK_EX | portalocker.LOCK_NB,
+        )
         with pytest.raises(AlreadyLocked):
             contended.acquire()
         assert lock_path.exists()
@@ -129,7 +137,11 @@ def test_portalocker_timeout_then_acquire_after_owner_exit(
             child.join(timeout=5.0)
         assert child.exitcode == 0
 
-    winner = portalocker.Lock(str(lock_path), timeout=5.0)
+    winner = portalocker.Lock(
+        str(lock_path),
+        timeout=5.0,
+        flags=portalocker.LOCK_EX | portalocker.LOCK_NB,
+    )
     winner.acquire()
     try:
         assert lock_path.exists()

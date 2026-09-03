@@ -17,15 +17,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.14"
+          python-version: "3.14.4"
       - name: Frozen install
         run: uv sync --frozen
       - name: Focused gates
+        env:
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-cache
         run: uv run --frozen --no-sync scripts/run_platform_gates.py --focused --output platform-gates.json
       - name: Coordinator and engine tests
         env:
           RUN_USEARCH_CONCURRENCY_TESTS: "1"
-        run: uv run --frozen --no-sync pytest -q tests/unit/infrastructure/test_storage_coordinator.py tests/unit/infrastructure/test_usearch_engine.py tests/unit/infrastructure/test_tantivy_engine.py tests/unit/test_server.py tests/integration/test_storage_coordinator_processes.py tests/integration/test_multiprocess_writers.py tests/integration/test_usearch_atomic_recovery.py
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-cache
+        run: uv run --frozen --no-sync pytest --tb=short --maxfail=5 tests/unit/infrastructure/test_storage_coordinator.py tests/unit/infrastructure/test_usearch_engine.py tests/unit/infrastructure/test_tantivy_engine.py tests/unit/test_server.py tests/integration/test_storage_coordinator_processes.py tests/integration/test_multiprocess_writers.py tests/integration/test_usearch_atomic_recovery.py
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
