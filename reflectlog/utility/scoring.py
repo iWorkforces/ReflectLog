@@ -28,13 +28,12 @@ Usage:
 
 from datetime import UTC, datetime
 import math
-from typing import TYPE_CHECKING
 
 from numba import jit, prange
 import numpy as np
 
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
+# Numba evaluates JIT signatures at import; NDArray cannot stay TYPE_CHECKING-only.
+from numpy.typing import NDArray  # noqa: TC002
 
 # ---------------------------------------------------------------------------
 # Numba JIT-compiled helpers (from application/utils/numba_utils.py)

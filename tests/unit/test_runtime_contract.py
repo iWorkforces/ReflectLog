@@ -69,6 +69,13 @@ def test_fastmcp_construction() -> None:
     assert server is not None
 
 
+def test_numba_scoring_annotations_import() -> None:
+    """Numba inspects JIT signatures at import; NDArray must be a runtime name."""
+    from reflectlog.utility.scoring import warmup_numba_functions
+
+    warmup_numba_functions()
+
+
 @runtime_checkable
 class NamedProtocol(Protocol):
     name: str
