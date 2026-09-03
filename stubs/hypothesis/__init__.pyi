@@ -1,4 +1,3 @@
-# ruff: noqa: N801
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -15,7 +14,7 @@ def settings(
     **kwargs: Any,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]: ...
 
-class strategies:
+class Strategies:
     @staticmethod
     def text(
         min_size: int = 0,
@@ -48,3 +47,6 @@ class strategies:
     def one_of(*args: Any) -> Any: ...
     @staticmethod
     def sampled_from(elements: list[Any]) -> Any: ...
+
+
+strategies = Strategies

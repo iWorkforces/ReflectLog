@@ -6,14 +6,13 @@ from dataclasses import dataclass, field
 import os
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import portalocker
 from portalocker.exceptions import AlreadyLocked, LockException
 
 from reflectlog.core.exceptions import GenerationError, LeaseTimeoutError
 from reflectlog.core.storage_coordination import (
-    IStorageLease,
     LeaseMode,
     WorkspaceStoragePaths,
 )
@@ -70,7 +69,7 @@ class _PortalockerLease:
         if callback is not None:
             callback()
 
-    def __enter__(self) -> IStorageLease:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(

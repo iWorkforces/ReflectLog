@@ -267,8 +267,14 @@ suppress-none-returning = false
 
 [tool.ruff.lint.flake8-type-checking]
 # Pydantic evaluates annotations at runtime for models and validate_call.
+# Numba reads JIT signatures at import, so NDArray must stay a runtime name.
 runtime-evaluated-base-classes = ["pydantic.BaseModel"]
-runtime-evaluated-decorators = ["pydantic.dataclasses.dataclass", "pydantic.validate_call"]
+runtime-evaluated-decorators = [
+    "pydantic.dataclasses.dataclass",
+    "pydantic.validate_call",
+    "numba.jit",
+    "jit",
+]
 
 [tool.ruff.lint.isort]
 single-line-exclusions = ["typing", "collections.abc"]
@@ -276,8 +282,8 @@ known-first-party = ["reflectlog"]
 force-sort-within-sections = true
 
 [tool.ruff.lint.pep8-naming]
-# Ignore tests for naming conventions
-ignore-names = ["test_*", "*_test"]
+# Ignore tests for naming conventions. mimeType/isError match MCP payloads.
+ignore-names = ["test_*", "*_test", "mimeType", "isError"]
 
 [tool.ruff.lint.pyupgrade]
 # Python 3.14+ modernizations

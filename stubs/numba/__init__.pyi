@@ -1,4 +1,3 @@
-# ruff: noqa: N801
 """Type stubs for numba library.
 
 This provides type hints for the numba JIT compiler decorators and functions
@@ -11,12 +10,15 @@ from typing import Any, TypeVar, overload
 # Type variable for generic function signatures
 F = TypeVar("F", bound=Callable[..., Any])
 
-class config:
+class Config:
     """Numba configuration namespace."""
 
     THREADING_LAYER: str
     NUMBA_DEFAULT_NUM_THREADS: int
     CACHE_DIR: str
+
+
+config = Config
 
 @overload
 def jit[F: Callable[..., Any]](

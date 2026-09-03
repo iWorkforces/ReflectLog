@@ -1,7 +1,5 @@
 """Type stubs for fastmcp.client.client module."""
 
-# ruff: noqa: N803, N815
-
 from typing import Literal
 
 class TextContent:

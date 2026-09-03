@@ -1,5 +1,6 @@
 """Unit tests for reflectlog/utility/utility.py module."""
 
+from collections.abc import AsyncIterator
 import os
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -7,6 +8,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from reflectlog.utility.types import OAUTH_TOKEN_PREFIX
+
+
+async def _empty_query(**kwargs: Any) -> AsyncIterator[object]:
+    _ = kwargs
+    if False:
+        yield None
 
 
 class TestGetClaudeCodeApiKey:
@@ -510,11 +517,7 @@ class TestGenerateContent:
         """Should return empty string when no messages received."""
         from reflectlog.utility.utility import generate_content
 
-        async def mock_query_iter(**kwargs: Any) -> Any:
-            return
-            yield  # noqa: RET504  # Make it an async generator
-
-        mock_query.side_effect = mock_query_iter
+        mock_query.side_effect = _empty_query
 
         result = await generate_content("Test")
 
@@ -528,11 +531,7 @@ class TestGenerateContent:
         """Should pass correct options to ClaudeAgentOptions."""
         from reflectlog.utility.utility import generate_content
 
-        async def mock_query_iter(**kwargs: Any) -> Any:
-            return
-            yield  # noqa: RET504
-
-        mock_query.side_effect = mock_query_iter
+        mock_query.side_effect = _empty_query
 
         _ = await generate_content(
             "Test prompt",
@@ -556,11 +555,7 @@ class TestGenerateContent:
         """Should default to empty allowed_tools list."""
         from reflectlog.utility.utility import generate_content
 
-        async def mock_query_iter(**kwargs: Any) -> Any:
-            return
-            yield  # noqa: RET504
-
-        mock_query.side_effect = mock_query_iter
+        mock_query.side_effect = _empty_query
 
         _ = await generate_content("Test")
 
@@ -614,11 +609,7 @@ class TestGenerateContent:
         mock_options_instance = MagicMock()
         mock_options_cls.return_value = mock_options_instance
 
-        async def mock_query_iter(**kwargs: Any) -> Any:
-            return
-            yield  # noqa: RET504
-
-        mock_query.side_effect = mock_query_iter
+        mock_query.side_effect = _empty_query
 
         _ = await generate_content("My test prompt")
 

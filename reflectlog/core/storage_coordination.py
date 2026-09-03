@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -40,7 +40,7 @@ class IStorageLease(Protocol):
 
     def release(self) -> None: ...
 
-    def __enter__(self) -> IStorageLease: ...  # noqa: PYI034
+    def __enter__(self) -> Self: ...
 
     def __exit__(
         self,

@@ -9,7 +9,7 @@ Uncovered lines targeted:
 
 from dataclasses import replace
 import logging
-from typing import cast
+from typing import Self, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -88,7 +88,7 @@ def _fake_coordinator() -> IStorageCoordinator:
         def release(self) -> None:
             return None
 
-        def __enter__(self) -> IStorageLease:
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(

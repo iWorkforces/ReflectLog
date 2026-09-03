@@ -31,9 +31,7 @@ import math
 
 from numba import jit, prange
 import numpy as np
-
-# Numba evaluates JIT signatures at import; NDArray cannot stay TYPE_CHECKING-only.
-from numpy.typing import NDArray  # noqa: TC002
+from numpy.typing import NDArray
 
 # ---------------------------------------------------------------------------
 # Numba JIT-compiled helpers (from application/utils/numba_utils.py)

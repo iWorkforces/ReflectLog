@@ -6,17 +6,8 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
-# Add parent directory to path for direct script execution
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Configure numba environment before imports
-for key, value in [
-    ("NUMBA_CACHE_DIR", os.path.join(os.getcwd(), ".numba_cache")),
-    ("NUMBA_THREADING_LAYER", "workqueue"),
-    ("NUMBA_DEBUG", "0"),
-    ("NUMBA_FASTMATH", "1"),
-]:
-    _ = os.environ.setdefault(key, value)
+from reflectlog.core.enums import TransportMode
+from reflectlog.version import __version__
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -25,8 +16,14 @@ if TYPE_CHECKING:
 
     from reflectlog.application.mcp_server import FastMCPServer as FastMCPServerCls
 
-from reflectlog.core.enums import TransportMode  # noqa: E402
-from reflectlog.version import __version__  # noqa: E402
+# Configure numba environment before the lazy scoring import in warmup.
+for key, value in [
+    ("NUMBA_CACHE_DIR", os.path.join(os.getcwd(), ".numba_cache")),
+    ("NUMBA_THREADING_LAYER", "workqueue"),
+    ("NUMBA_DEBUG", "0"),
+    ("NUMBA_FASTMATH", "1"),
+]:
+    _ = os.environ.setdefault(key, value)
 
 # Populated on first real startup so --help/--version stay import-light.
 # Tests continue to patch these module attributes.

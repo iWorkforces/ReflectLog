@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import os
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Protocol, Self, cast, final
+from typing import TYPE_CHECKING, Any, Self, final
 
 if TYPE_CHECKING:
     from typing import TypeGuard
@@ -70,14 +70,6 @@ def _fsync_directory(path: str) -> None:
         return
 
 
-class _Kernel32(Protocol):
-    def OpenProcess(  # noqa: N802
-        self, desired_access: int, inherit_handle: int, process_id: int
-    ) -> int: ...
-    def GetExitCodeProcess(self, handle: int, exit_code: object) -> int: ...  # noqa: N802
-    def CloseHandle(self, handle: int) -> int: ...  # noqa: N802
-
-
 def _windows_pid_is_alive(pid: int) -> bool:
     """Return True only while the Windows process is still running.
 
@@ -89,19 +81,20 @@ def _windows_pid_is_alive(pid: int) -> bool:
     from ctypes import CDLL, c_ulong
 
     # 64-bit Windows uses one calling convention; CDLL is typed on all platforms.
-    kernel32 = cast("_Kernel32", CDLL("kernel32", use_last_error=True))
+    kernel32 = CDLL("kernel32", use_last_error=True)
     process_query_limited_information = 0x1000
     still_active = 259
-    handle = int(kernel32.OpenProcess(process_query_limited_information, 0, pid))
+    handle = int(kernel32["OpenProcess"](process_query_limited_information, 0, pid))
     if handle == 0:
         return False
     try:
         exit_code = c_ulong()
-        if int(kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))) == 0:
+        queried = kernel32["GetExitCodeProcess"](handle, ctypes.byref(exit_code))
+        if int(queried) == 0:
             return False
         return int(exit_code.value) == still_active
     finally:
-        _ = kernel32.CloseHandle(handle)
+        _ = kernel32["CloseHandle"](handle)
 
 
 def _pid_is_alive(pid: int) -> bool:
