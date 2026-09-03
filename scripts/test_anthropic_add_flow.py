@@ -26,7 +26,7 @@ sys.path.insert(0, project_root)
 load_dotenv(os.path.join(project_root, ".env"))
 
 
-async def main():
+async def main() -> int:
     """Test the add flow with AnthropicReplacementProvider."""
     # Use a unique workspace ID to avoid conflicts
     workspace_id = "test-anthropic-add"

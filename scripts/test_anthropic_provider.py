@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-async def main():
+async def main() -> int:
     """Test the AnthropicReplacementProvider."""
     # Set environment variables for the test
     os.environ.setdefault("WORKSPACE_ID", "test-project")

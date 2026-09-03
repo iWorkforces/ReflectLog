@@ -16,7 +16,7 @@ sys.path.insert(0, project_root)
 load_dotenv(os.path.join(project_root, ".env"))
 
 
-async def main():
+async def main() -> int:
     """Test the cats -> dogs replacement case."""
     workspace_id = "test-cats-dogs"
     index_path = f"indexes/{workspace_id}"
