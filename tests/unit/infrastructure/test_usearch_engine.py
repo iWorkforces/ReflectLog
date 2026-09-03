@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 import gc
+import multiprocessing
 import os
 import tempfile
 from typing import Generator, cast
@@ -73,6 +74,10 @@ class ToggleableFailingQueryEmbedder(MockEmbedder):
         if self.should_fail:
             raise RuntimeError("API failure")
         return super().embed_query(text)
+
+
+def _spawn_exit_immediately() -> None:
+    return
 
 
 @pytest.fixture
@@ -1710,7 +1715,7 @@ class TestAtomicUSearchPublication:
     ) -> None:
         config, embedder, _tmpdir = temp_engine
         orphan = f"{config.index_path}.{os.getpid()}.9999.tmp"
-        foreign = f"{config.index_path}.1.9999.tmp"
+        foreign = f"{config.index_path}.{os.getppid()}.9999.tmp"
         with open(orphan, "wb") as handle:
             handle.write(b"orphan")
         with open(foreign, "wb") as handle:
@@ -1722,6 +1727,48 @@ class TestAtomicUSearchPublication:
             assert os.path.exists(foreign)
         finally:
             engine.close()
+
+    def test_startup_removes_dead_pid_temp_files(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.infrastructure.usearch_engine import _pid_is_alive
+
+        config, embedder, _tmpdir = temp_engine
+        ctx = multiprocessing.get_context("spawn")
+        child = ctx.Process(target=_spawn_exit_immediately)
+        child.start()
+        child.join(timeout=10.0)
+        assert child.exitcode == 0
+        dead_pid = child.pid
+        assert dead_pid is not None
+        assert _pid_is_alive(dead_pid) is False
+        leftover = f"{config.index_path}.{dead_pid}.9999.tmp"
+        with open(leftover, "wb") as handle:
+            handle.write(b"dead")
+        engine = USearchEngine(config=config, embedder=embedder)
+        try:
+            _ = engine.index
+            assert not os.path.exists(leftover)
+        finally:
+            engine.close()
+
+    def test_fsync_path_accepts_regular_file(
+        self, temp_engine: tuple[USearchConfig, MockEmbedder, str]
+    ) -> None:
+        from reflectlog.infrastructure.usearch_engine import _fsync_path
+
+        _config, _embedder, tmpdir = temp_engine
+        path = os.path.join(tmpdir, "fsync.bin")
+        with open(path, "wb") as handle:
+            handle.write(b"durable")
+        _fsync_path(path)
+
+    def test_pid_is_alive_rejects_invalid_and_accepts_self(self) -> None:
+        from reflectlog.infrastructure.usearch_engine import _pid_is_alive
+
+        assert _pid_is_alive(os.getpid()) is True
+        assert _pid_is_alive(0) is False
+        assert _pid_is_alive(-1) is False
 
     def test_empty_hnsw_over_populated_sqlite_fails_closed(
         self, temp_engine: tuple[USearchConfig, MockEmbedder, str]

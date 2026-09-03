@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import os
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Self, final
+from typing import TYPE_CHECKING, Any, Protocol, Self, cast, final
 
 if TYPE_CHECKING:
     from typing import TypeGuard
@@ -53,7 +53,9 @@ def _index_file_identity(path: str) -> tuple[int, int] | None:
 
 
 def _fsync_path(path: str) -> None:
-    handle = os.open(path, os.O_RDONLY)
+    # Windows FlushFileBuffers requires GENERIC_WRITE. O_RDONLY yields EBADF.
+    flags = os.O_RDWR if os.name == "nt" else os.O_RDONLY
+    handle = os.open(path, flags)
     try:
         os.fsync(handle)
     finally:
@@ -68,9 +70,45 @@ def _fsync_directory(path: str) -> None:
         return
 
 
+class _Kernel32(Protocol):
+    def OpenProcess(  # noqa: N802
+        self, desired_access: int, inherit_handle: int, process_id: int
+    ) -> int: ...
+    def GetExitCodeProcess(self, handle: int, exit_code: object) -> int: ...  # noqa: N802
+    def CloseHandle(self, handle: int) -> int: ...  # noqa: N802
+
+
+def _windows_pid_is_alive(pid: int) -> bool:
+    """Return True only while the Windows process is still running.
+
+    ``os.kill(pid, 0)`` uses OpenProcess and succeeds for an exited child
+    while the parent still holds a handle. GetExitCodeProcess distinguishes
+    STILL_ACTIVE from that leftover object.
+    """
+    import ctypes
+    from ctypes import CDLL, c_ulong
+
+    # 64-bit Windows uses one calling convention; CDLL is typed on all platforms.
+    kernel32 = cast("_Kernel32", CDLL("kernel32", use_last_error=True))
+    process_query_limited_information = 0x1000
+    still_active = 259
+    handle = int(kernel32.OpenProcess(process_query_limited_information, 0, pid))
+    if handle == 0:
+        return False
+    try:
+        exit_code = c_ulong()
+        if int(kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))) == 0:
+            return False
+        return int(exit_code.value) == still_active
+    finally:
+        _ = kernel32.CloseHandle(handle)
+
+
 def _pid_is_alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        return _windows_pid_is_alive(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
