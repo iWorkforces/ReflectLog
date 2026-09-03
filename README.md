@@ -170,7 +170,7 @@ uv run pytest tests/unit/ -v
   a supported SLO
 - **LRU Query Cache**: Reduces embedding API calls
 
-Pinned runtime: `fastmcp==4.0.0b5`, `pydantic==2.14.0b1`, `ranx==0.3.21`,
+Pinned runtime: `fastmcp==4.0.2`, `pydantic==2.14.0b1`, `ranx==0.3.21`,
 `portalocker==4.3.0`. Mandatory ranx is loaded lazily. See
 [docs/storage-coordination.md](docs/storage-coordination.md) for lock
 sidecars, crash recovery, and platform signal behavior.
