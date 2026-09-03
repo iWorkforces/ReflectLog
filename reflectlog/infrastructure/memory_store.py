@@ -183,14 +183,6 @@ class MemoryStore(BaseModel):
         assert self._conn is not None
         return self._conn
 
-    def _create_schema(self) -> None:
-        """Create database schema if it doesn't exist."""
-        cursor = self.connection.cursor()
-        self._create_memories_schema(cursor)
-        self._create_archive_schema(cursor)
-        self._create_transition_schema(cursor)
-        cursor.close()
-
     def _create_memories_schema(self, cursor: sqlite3.Cursor) -> None:
         """Create the active memories table and lookup indexes."""
         _ = cursor.execute(

@@ -1065,22 +1065,6 @@ class StoragePhase:
         )
         return inserted_memories
 
-    def _delete_memory(
-        self, memory_id: str, content: str, *, locked: bool = False
-    ) -> None:
-        """Delete a memory from semantic and full-text engines with write locking."""
-        if self._write_lock is not None and not locked:
-            with self._write_lock:
-                self._delete_memory_unlocked(memory_id, content)
-            return
-        self._delete_memory_unlocked(memory_id, content)
-
-    def _delete_memory_unlocked(self, memory_id: str, content: str) -> None:
-        """Delete from both engines without acquiring ``_write_lock``."""
-        self._semantic_engine.delete(memory_id=memory_id)
-        if self._tantivy_engine is not None:
-            _ = self._tantivy_engine.delete(self._workspace_id, content)
-
     def _has_exact_match(self, content: str) -> bool:
         """Check whether the exact memory already exists in storage.
 
@@ -1154,18 +1138,6 @@ class StoragePhase:
             if persist_vectors is not None and vectors is not None:
                 persist_vectors.append(vectors[idx])
         return persist_memories, persist_vectors
-
-    def _record_replacement_transition(
-        self, replacement_info: ReplacementInfo, new_memory: str
-    ) -> ReplacementTransition | None:
-        """Persist archive + pending transition before any index change."""
-        planned, _replacements = self._plan_replacements(
-            [new_memory], {new_memory: [replacement_info]}
-        )
-        if not planned:
-            return None
-        recorded = self._record_planned_transitions(planned)
-        return recorded[0] if recorded else None
 
     def _complete_if_converged(self, transitions: list[ReplacementTransition]) -> None:
         """Mark a transition complete only when both indexes agree."""

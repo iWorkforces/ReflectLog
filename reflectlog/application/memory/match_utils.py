@@ -1,4 +1,4 @@
-"""Shared utilities for exact-match checks and Tantivy query escaping."""
+"""Shared utilities for exact-match checks."""
 
 from typing import TYPE_CHECKING
 
@@ -6,22 +6,6 @@ if TYPE_CHECKING:
     from reflectlog.core.logging import IStructuredLogger
     from reflectlog.core.types import ISemanticSearchEngine
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
-
-
-def escape_tantivy_query(query: str) -> str:
-    """Escape special characters for Tantivy query syntax.
-
-    Tantivy uses Lucene-style query syntax where certain characters have
-    special meaning. This function escapes them to prevent query injection.
-    """
-    special_chars = r'+-&|!(){}[]^"~*?:\/'
-    escaped: list[str] = []
-    for char in query:
-        if char in special_chars:
-            escaped.append(f"\\{char}")
-        else:
-            escaped.append(char)
-    return "".join(escaped)
 
 
 def has_exact_match(
