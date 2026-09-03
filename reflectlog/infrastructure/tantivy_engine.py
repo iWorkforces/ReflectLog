@@ -228,10 +228,6 @@ class TantivyEngine(BaseModel):
         """Return the sibling rebuild-backup directory for ``index_path``."""
         return f"{index_path}.rebuild-bak"
 
-    def _index_is_openable(self, index_path: str) -> bool:
-        """Return True when Tantivy can open the directory as an index."""
-        return self._index_num_docs(index_path) is not None
-
     def _index_num_docs(self, index_path: str) -> int | None:
         """Return committed document count, or None when the path is unopenable."""
         try:
@@ -1393,60 +1389,6 @@ class TantivyEngine(BaseModel):
         )
         log_fn = self.logger.warning if level == "warning" else self.logger.error
         log_fn(msg, extra=extra)
-
-    def _rebuild_index_with_docs(self, docs_to_keep: list[tuple[str, str]]) -> None:
-        """Rebuild the index with the specified documents from all workspaces.
-
-        Legacy startup-only directory rebuild. Request-path delete/compact
-        must use ``_rewrite_index_in_place`` instead.
-
-        Args:
-            docs_to_keep: List of (workspace_id, content) tuples to preserve.
-        """
-        import shutil
-
-        index_path = self.config.index_path
-        backup_path = self._rebuild_backup_path(index_path)
-
-        # Step 1: Properly finalize existing writer before destroying index
-        with self._writer_lock:
-            if self._writer is not None:
-                try:
-                    self._writer.commit()
-                    self._writer.wait_merging_threads()  # Wait before destroying
-                except Exception:
-                    pass  # Best effort - index will be destroyed anyway
-                self._writer = None
-
-        with self._searcher_lock:
-            self._searcher = None
-        self._index = None
-
-        # Clear tombstone cache since index is being destroyed
-        self._invalidate_tombstone_cache()
-
-        self._restore_rebuild_backup_if_needed(index_path)
-        if os.path.exists(index_path) and self._index_is_openable(index_path):
-            if os.path.exists(backup_path):
-                shutil.rmtree(backup_path)
-            _ = shutil.copytree(index_path, backup_path)
-
-        try:
-            if os.path.exists(index_path):
-                shutil.rmtree(index_path)
-            self._initialize_index(restore_backup=False)
-            for workspace_id, content in docs_to_keep:
-                self.add(workspace_id, content)
-            self.commit()
-        except Exception:
-            if os.path.exists(backup_path):
-                if os.path.exists(index_path):
-                    shutil.rmtree(index_path)
-                _ = shutil.move(backup_path, index_path)
-                self._initialize_index(restore_backup=False)
-            raise
-        if os.path.exists(backup_path):
-            shutil.rmtree(backup_path)
 
     @staticmethod
     def _escape_tantivy_query(query: str) -> str:

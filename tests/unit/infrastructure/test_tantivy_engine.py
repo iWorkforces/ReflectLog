@@ -2438,28 +2438,7 @@ class TestDeleteWithSoftDeleteDisabled:
 
 @pytest.mark.unit
 class TestRebuildIndexWithDocs:
-    """Tests for _rebuild_index_with_docs edge cases."""
-
-    def test_rebuild_with_existing_writer_error(self) -> None:
-        """Test rebuild handles writer commit error gracefully."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config)
-
-            engine.add("test", "original")
-            engine.commit()
-
-            # Force writer to raise on commit during rebuild
-            _original_writer = engine._writer
-            mock_writer = MagicMock()
-            mock_writer.commit.side_effect = RuntimeError("boom")
-            engine._writer = mock_writer
-
-            # Rebuild should still work (best effort cleanup)
-            engine._rebuild_index_with_docs([("test", "rebuilt")])
-
-            docs = engine._get_all_docs("test")
-            assert "rebuilt" in docs
+    """Tests for leftover rebuild-bak restore and closed-engine guards."""
 
     def test_rebuild_restores_leftover_backup_when_live_unreadable(self) -> None:
         """A leftover rebuild bak is restored instead of discarded."""
