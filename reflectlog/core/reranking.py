@@ -5,9 +5,10 @@ Rerankers improve search result quality by re-scoring results using
 additional signals like LLM relevance or cross-encoder similarity.
 """
 
-from typing import Protocol, TypedDict, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypedDict, runtime_checkable
 
-from reflectlog.core.enums import CrossEncoderDevice, RerankerEngine
+if TYPE_CHECKING:
+    from reflectlog.core.enums import CrossEncoderDevice, RerankerEngine
 
 
 class RerankerMetadata(TypedDict, total=False):

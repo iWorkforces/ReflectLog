@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from contextlib import AbstractContextManager
 
 
 class LeaseMode(StrEnum):
@@ -38,7 +40,7 @@ class IStorageLease(Protocol):
 
     def release(self) -> None: ...
 
-    def __enter__(self) -> IStorageLease: ...
+    def __enter__(self) -> IStorageLease: ...  # noqa: PYI034
 
     def __exit__(
         self,

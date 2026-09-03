@@ -8,13 +8,11 @@ SQLite or hybrid Tantivy still disagree.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 import os
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from reflectlog.core.enums import TransitionKind
-from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 from reflectlog.core.types import (
     IArchiveMemoryStore,
@@ -23,6 +21,9 @@ from reflectlog.core.types import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from reflectlog.core.logging import IStructuredLogger
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
 
@@ -736,7 +737,7 @@ def _as_objects(raw: object) -> list[object]:
     """Treat a dynamic list result as ``list[object]``."""
     if not isinstance(raw, list):
         return []
-    return cast(list[object], raw)
+    return cast("list[object]", raw)
 
 
 def _as_floats(raw: object) -> list[float] | None:

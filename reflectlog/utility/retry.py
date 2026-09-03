@@ -1,12 +1,14 @@
 """Retry decorator with exponential backoff for async functions."""
 
 import asyncio
-from collections.abc import Callable, Coroutine
 from functools import wraps
 import logging
 import random
 from types import FunctionType, MethodType
-from typing import Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
 
 P = ParamSpec("P")
 T = TypeVar("T")

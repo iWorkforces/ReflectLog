@@ -5,9 +5,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from reflectlog.core.logging import IStructuredLogger
 
+    from .base import FusionEngine
+
 from reflectlog.core.enums import FusionMethod, FusionNormalization
 
-from .base import FusionEngine
 from .ranx_fusion import RanxFusionEngine
 
 

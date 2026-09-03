@@ -28,7 +28,7 @@ def _ordered_embeddings(data: object) -> list[list[float]]:
     """Return embedding vectors in input order, using ``index`` when present."""
     if not isinstance(data, list):
         return []
-    items = cast(list[object], data)
+    items = cast("list[object]", data)
     ordered: list[tuple[int, list[float]]] = []
     for position, item in enumerate(items):
         if not isinstance(item, _HasEmbedding):

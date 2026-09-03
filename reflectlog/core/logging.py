@@ -5,9 +5,11 @@ abstractions enable different logging implementations while providing
 a consistent interface for structured logging.
 """
 
-from datetime import datetime
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 class LogLevel(Enum):

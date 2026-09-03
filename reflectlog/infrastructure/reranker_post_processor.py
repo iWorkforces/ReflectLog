@@ -8,12 +8,16 @@ Callers apply the steps themselves. CrossEncoderReranker gates on
 pre-decay CE scores, then reorders survivors by recency, then slices top_k.
 """
 
-from reflectlog.core.logging import IStructuredLogger
+from typing import TYPE_CHECKING
+
 from reflectlog.utility.scoring import (
     apply_recency_decay,
     apply_threshold_with_safety_net,
     normalize_reranker_scores,
 )
+
+if TYPE_CHECKING:
+    from reflectlog.core.logging import IStructuredLogger
 
 
 class RerankerPostProcessor:

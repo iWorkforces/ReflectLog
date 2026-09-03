@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 import os
 import threading
 import time
+from typing import TYPE_CHECKING
 
 import portalocker
 from portalocker.exceptions import AlreadyLocked, LockException
@@ -18,6 +18,9 @@ from reflectlog.core.storage_coordination import (
     WorkspaceStoragePaths,
 )
 from reflectlog.utility.security import validate_workspace_id
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 PRODUCTION_LEASE_TIMEOUT = 30.0
 LOCK_NAME = ".reflectlog.writer.lock"
