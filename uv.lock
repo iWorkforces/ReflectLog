@@ -3092,7 +3092,7 @@ dependencies = [
     { name = "transformers" },
     { name = "usearch" },
     { name = "uvicorn", extra = ["standard"] },
-    { name = "uvloop" },
+    { name = "uvloop", marker = "sys_platform != 'win32'" },
 ]
 
 [package.dev-dependencies]
@@ -3142,7 +3142,7 @@ requires-dist = [
     { name = "transformers", specifier = "<=5.16.1" },
     { name = "usearch", specifier = ">=2.26.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
-    { name = "uvloop", specifier = ">=0.22.1" },
+    { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.22.1" },
 ]
 
 [package.metadata.requires-dev]
