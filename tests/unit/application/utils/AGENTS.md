@@ -1,6 +1,8 @@
 # Application Utils Unit Tests
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 Unit tests for logging, security helpers, config reload, and Numba scoring wrappers. HTTP / circuit-breaker / metrics test modules are gone from this folder.
@@ -35,4 +37,4 @@ tests/unit/application/utils/
 - No `type: ignore`.
 
 ## NOTES
-Production HTTP is `reflectlog.utility.http`. Do not resurrect `test_http_client.py` here.
+Production HTTP is `reflectlog.utility.http`. Do not resurrect `test_http_client.py` here. Local: this conftest disables JIT for scoring coverage.

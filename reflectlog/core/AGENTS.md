@@ -1,6 +1,8 @@
 # ReflectLog Core Protocols
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 Protocols, StrEnums, adapters, exceptions, replacement prompts. No engines.
@@ -9,10 +11,11 @@ Protocols, StrEnums, adapters, exceptions, replacement prompts. No engines.
 
 ```
 core/
-├── types.py             # MemoryRecord, Embeddings, IStoredMemory, ISemanticSearchEngine, IArchiveMemoryStore
+├── types.py             # MemoryRecord, Embeddings, IStoredMemory, ISemanticSearchEngine
 ├── enums.py             # StrEnums: RerankerEngine, FusionMethod, TransportMode, TransitionKind
 ├── config.py            # IServerConfig … IAppConfig (6 sub-protocols)
 ├── config_adapters.py   # ConfigAdapter + fine-grained + create_*_adapter()
+├── storage_coordination.py  # IStorageCoordinator, LeaseMode, IStorageLease
 ├── memory.py            # IMemoryStore, IMemoryBackend, IMemoryManager
 ├── reranking.py         # IReranker, IRerankerProvider, IRankingResult
 ├── tools.py             # ITool, IToolRegistry, ToolParameter, ToolDefinition
@@ -27,6 +30,7 @@ core/
 |------|------|-------|
 | Semantic contract | types.py | `ISemanticSearchEngine.embedder: Embeddings`; `search` → `(memory, score, created_at)` |
 | Stored row | types.py | `IStoredMemory`: id, workspace_id, content, created_at |
+| Workspace lease | storage_coordination.py | `IStorageCoordinator`, `LeaseMode` SHARED\|EXCLUSIVE |
 | Closed sets | enums.py | `RerankerEngine.CROSS_ENCODER` / `NONE`; `parse_str_enum` |
 | Config wrap | config_adapters.py | wraps frozen `Config`; `_coerce_reranker_engine` |
 | Journal kinds | enums.py | `TransitionKind` add\|delete\|replace |
@@ -36,6 +40,7 @@ core/
 - `RerankerEngine` is `StrEnum`, not `Literal["cross_encoder", "none"]`. Unknown → `ConfigurationError` via `parse_str_enum`.
 - `IAppConfig` = `IServerConfig` + `ISearchConfig` + `IStorageConfig` + `IRerankerConfig` + `IEmbedderConfig` + `IReplacementConfig`.
 - Adapters: `ConfigAdapter(config)` or `create_*_adapter()`.
+- Lease protocol lives here; Portalocker implementation is `infrastructure/storage_coordinator.py`.
 - `access.py` gone. No `getattr` / `optional_attr` / `invoke_if_callable` / `type(obj).__dict__`.
 - `prompts.py` is replacement + MCP instructions only.
 
@@ -44,3 +49,4 @@ core/
 - Do not depend on concrete `Config` below the composition root — use `IAppConfig`.
 - Do not add scoring/rerank prompts here.
 - Do not treat `ISemanticSearchEngine` as embedder-less.
+- Do not put Portalocker or sidecar I/O in this package.

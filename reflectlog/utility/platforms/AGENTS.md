@@ -1,6 +1,8 @@
 # Agent Guidelines for reflectlog/utility/platforms/
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 OS credential retrievers for Claude Code tokens. Factory returns a platform subclass or `None`. Failures return `None`; never raise or log tokens.

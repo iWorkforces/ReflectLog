@@ -1,6 +1,8 @@
 # MCP Tool Unit Tests
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 Unit tests for MCP tools. Tools go through `MemoryManager` only — engines stay mocked.
@@ -37,4 +39,4 @@ tests/unit/application/tools/
 - No `type: ignore`.
 
 ## NOTES
-Production also has `get_all.py`; this folder does not yet have `test_get_all.py`. Registration is `application/mcp_server.py`.
+Production also has `get_all.py`; this folder does not yet have `test_get_all.py`. Registration is `application/mcp_server.py`. Local: MagicMock(spec=MemoryManager) only.

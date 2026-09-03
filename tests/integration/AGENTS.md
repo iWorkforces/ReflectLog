@@ -1,51 +1,48 @@
 # Integration Tests
 
-**Generated:** 2026-08-30
-**Commit:** 062b44f
+**Generated:** 2026-09-03
+**Commit:** e401dbc
 **Branch:** develop
 
 ## OVERVIEW
 
-Real USearch + Tantivy + SQLite identity. In default pytest `testpaths`. NUMBA JIT is enabled here (JIT disable is only in two unit conftests). Marked `@pytest.mark.integration`; some are `@pytest.mark.slow`.
+Real USearch + Tantivy + SQLite. In default `testpaths`. NUMBA JIT enabled. Marked `@pytest.mark.integration`; some `@pytest.mark.slow`.
 
 ## STRUCTURE
 
 ```
 tests/integration/
-├── test_memory_manager_usearch.py   # Shared create/cleanup helpers
-├── test_mcp_workflows.py            # Add → search → remove via tools
-├── test_concurrent_operations.py    # Parallel add/search/delete
-├── test_thread_safety.py            # Lock hierarchy under threads
-├── test_chaos.py                    # Randomized op sequences
-├── test_replacement_recovery.py     # Crash inject + restart converge
-├── test_layer_boundaries.py         # AST import-direction checks
-└── test_qwen_embeddings_integration.py
+├── test_memory_manager_usearch.py
+├── test_mcp_workflows.py
+├── test_concurrent_operations.py      # needs RUN_USEARCH_CONCURRENCY_TESTS=1
+├── test_thread_safety.py
+├── test_chaos.py
+├── test_replacement_recovery.py
+├── test_layer_boundaries.py
+├── test_qwen_embeddings_integration.py
+├── test_storage_coordinator_processes.py
+├── test_multiprocess_writers.py       # needs RUN_USEARCH_CONCURRENCY_TESTS=1
+├── test_multiprocess_tantivy.py
+├── test_usearch_atomic_recovery.py    # needs RUN_USEARCH_CONCURRENCY_TESTS=1
+├── test_server_shutdown_recovery.py
+├── test_legacy_storage_compatibility.py
+└── test_installed_mcp_surface.py
 ```
-
-## WHERE TO LOOK
-
-| Test | Purpose |
-|------|---------|
-| `test_memory_manager_usearch.py` | SoT USearch/SQLite; `get_all()` / `count()` |
-| `test_replacement_recovery.py` | Journal later-write-wins after crash |
-| `test_layer_boundaries.py` | Infra/core must not import application (except documented adapter) |
-| `test_mcp_workflows.py` | Tools go through `MemoryManager` only |
 
 ## CONVENTIONS
 
-- One manager per test; always `cleanup_manager` / close indexes.
-- `delete_memories` returns `list[str]` of deleted contents.
+- Real engines. One manager per test; always `cleanup_manager` / close indexes.
+- `delete_memories` returns `list[str]`.
 - Dual-engine split after USearch success is `InconsistentStateError`, not `StorageError`.
-- Identity is unique `(workspace_id, content)` in SQLite. Tantivy is not exact match.
-- Embed-API tests need a live endpoint or must skip; do not mock the engines instead.
+- Set `RUN_USEARCH_CONCURRENCY_TESTS=1` for multiprocess/concurrency files (focused CI sets this).
 
 ## ANTI-PATTERNS
 
 - Never mock USearch/Tantivy here.
 - Never share a `MemoryManager` across tests.
-- Never compact-on-delete assertions (no compact in `delete`/`delete_batch`).
-- Never skip cleanup (leaks HNSW/SQLite files).
+- Never compact-on-delete assertions.
+- Never skip cleanup.
 
 ## NOTES
 
-Slow (seconds to a minute). `./start-unittest.sh` runs `pytest tests/`, which also picks up root demo `test_*.py` outside this folder. Coverage fail-under 90% is suite-wide.
+Focused CI (`.github/workflows/platform-storage.yml`) runs a subset, not this whole folder. Coverage fail-under 90% is suite-wide.

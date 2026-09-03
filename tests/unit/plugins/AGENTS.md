@@ -1,6 +1,8 @@
 # Plugin Unit Tests
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 Unit tests for discovery, registry, and loader lifecycle. Production plugins are **not** wired at startup; tests still cover the package. External imports mocked.
@@ -32,4 +34,4 @@ tests/unit/plugins/
 - No `type: ignore`.
 
 ## NOTES
-Plugins exist under `reflectlog/plugins/` but are not started by `server.py`. Keep tests aligned with that unused-at-runtime package.
+Plugins exist under `reflectlog/plugins/` but are not started by `server.py`. Local: unused-at-startup package; keep tests isolated.

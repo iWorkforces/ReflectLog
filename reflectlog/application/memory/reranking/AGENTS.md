@@ -1,16 +1,16 @@
 # Reranking (pointer)
 
-**Generated:** 2026-08-30
-**Commit:** 062b44f
+**Generated:** 2026-09-03
+**Commit:** e401dbc
 **Branch:** develop
 
 ## OVERVIEW
-This directory is a pointer, not an implementation. Score math lives in `reflectlog/utility/scoring.py`. Search Step 4 calls `CrossEncoderReranker`; post-CE normalize / threshold / recency run in `infrastructure/reranker_post_processor.py`.
+Pointer only. Score math lives in `reflectlog/utility/scoring.py`. Search Step 4 calls `CrossEncoderReranker`; post-CE normalize / threshold / recency run in `infrastructure/reranker_post_processor.py`.
 
 ## STRUCTURE
 ```
 reranking/
-└── __init__.py          # Package marker only — no scoring exports
+└── __init__.py      # Marker — no scoring exports
 ```
 
 ## WHERE TO LOOK
@@ -21,17 +21,15 @@ reranking/
 | CE / fusion gate | `utility/scoring.py` | `apply_threshold_with_safety_net` |
 | Recency factor | `utility/scoring.py` | `calculate_recency_factor` = `exp(-rate * hours)` |
 | Recency apply | `utility/scoring.py` | `apply_recency_decay` re-sorts |
-| Step 4 skip | `search_strategies.py` | Skip CE when ≤1 hit |
 | Apply order | `reranker_post_processor.py` | normalize → threshold → recency |
 
 ## CONVENTIONS
 
 - Do not add scoring functions here. Import from `utility/scoring.py`.
-- Recency runs only after CE normalize + threshold. Never decay first; never gate on decayed scores.
-- Threshold semantics assume a [0, 1] batch. Normalize the whole list, not each score.
+- Recency only after CE normalize + threshold. Never decay first; never gate on decayed scores.
+- Threshold assumes a [0, 1] batch. Normalize the whole list, not each score.
 - `reranker_min_results` keeps at least the best hit when the gate would empty the list.
-- Pipeline order: raw RRF (threshold 0.0) → CE if >1 hit → recency → `top_k`.
-- An empty `timestamp_map` disables recency; do not invent stamps.
+- Empty `timestamp_map` disables recency; do not invent stamps.
 
 ## ANTI-PATTERNS
 
@@ -43,7 +41,7 @@ reranking/
 
 ## NOTES
 
-Use the parent memory guide for `SearchPipeline` construction and CE skip rules. This folder stays empty on purpose so `utility/` remains importable from infrastructure without a cycle.
+Folder stays empty so `utility/` remains importable from infrastructure without a cycle.
 
 ## LIMITS
 

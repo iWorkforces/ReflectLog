@@ -1,7 +1,7 @@
 # Agent Guidelines for reflectlog/infrastructure/embeddings/
 
-**Generated:** 2026-08-30
-**Commit:** 062b44f
+**Generated:** 2026-09-03
+**Commit:** e401dbc
 **Branch:** develop
 
 ## OVERVIEW
@@ -22,7 +22,6 @@ embeddings/
 | LRU wrap | `cached_embeddings.py` | `embed_query` + per-text `embed_documents` |
 | Qwen HTTP | `qwen3_embedding.py` | `LangchainQwenEmbeddings` name leftover |
 | HTTP pool | `utility/http.py` | `HttpClientFactory` |
-| Engine consume | `../usearch_engine.py` | Embed outside write lock |
 
 ## CODE MAP
 
@@ -33,20 +32,19 @@ embeddings/
 
 ## CONVENTIONS
 
-- Not at package root. Imports: `reflectlog.infrastructure.embeddings.*`.
+- Imports: `reflectlog.infrastructure.embeddings.*`. Not at package root.
 - Qwen is OpenAI-compatible OpenRouter. Langchain name is leftover.
-- `CachedEmbeddings` fail-closed on short/empty batches. No pad with `[]`.
-- Factories: `from_config()`, not `from_app_config()`.
-- No `getattr` / `optional_attr`.
+- Fail-closed on short/empty batches. Cache raises `RuntimeError` on size mismatch or empty vector. Qwen raises if `len(results) != len(texts)` or any empty item.
+- `aembed_documents` may init slots as `[]`; leftover empty slots raise. Never treat that as a successful pad.
+- No pad with `[]` to fake a complete batch.
 
 ## ANTI-PATTERNS
 
-- Never put `cached_embeddings.py` / `qwen3_embedding.py` back on `infrastructure/` root.
+- Never put these modules back on `infrastructure/` root.
 - Never treat empty/short embed batches as success.
+- Never pad missing vectors with `[]`.
 - Never log query text or API keys.
-- Never use `from_app_config()`.
 
 ## NOTES
 
-Parent engines stay FLAT. This is the only extra guide besides `search/`.
-Empty sibling markers `llm/`, `memory/`, `reranking/` get no guides.
+Parent engines stay FLAT. Empty sibling markers `llm/`, `memory/`, `reranking/` get no guides.

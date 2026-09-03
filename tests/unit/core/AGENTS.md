@@ -1,6 +1,8 @@
 # Core Unit Tests
 
-**Generated:** 2026-08-30  **Commit:** 062b44f  **Branch:** develop
+**Generated:** 2026-09-03
+**Commit:** e401dbc
+**Branch:** develop
 
 ## OVERVIEW
 Unit tests for `ConfigAdapter` protocol mapping and replacement prompt interpolation.
@@ -30,4 +32,4 @@ tests/unit/core/
 - No `type: ignore`. No MagicMock auto-attrs as APIs.
 
 ## NOTES
-`create_*_config_adapter` factories live in `reflectlog/core/config_adapters.py`. `_coerce_reranker_engine` is covered here.
+`create_*_config_adapter` factories live in `reflectlog/core/config_adapters.py`. `_coerce_reranker_engine` is covered here. Local: protocol adapters + prompt interpolation only.
