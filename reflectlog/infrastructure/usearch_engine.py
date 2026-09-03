@@ -21,18 +21,19 @@ from typing import TYPE_CHECKING, Any, Self, final
 if TYPE_CHECKING:
     from typing import TypeGuard
 
-    from reflectlog.infrastructure.memory_store import MemoryRecord, MemoryStore
+    from reflectlog.core.config import IAppConfig
+    from reflectlog.infrastructure.memory_store import MemoryRecord
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
-from usearch.index import BatchMatches, Index
+from usearch.index import BatchMatches, Index, Match
 
-from reflectlog.core.config import IAppConfig
 from reflectlog.core.enums import EmbedderProvider
 from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 from reflectlog.core.types import Embeddings, IStoredMemory
+from reflectlog.infrastructure.memory_store import MemoryStore
 from reflectlog.utility.scoring import distance_to_similarity_cosine
 from reflectlog.utility.security import validate_workspace_id
 
@@ -1000,12 +1001,12 @@ class USearchEngine(BaseModel):
         matches: BatchMatches,
         workspace_id: str,
         limit: int,
-    ) -> list[tuple[MemoryRecord, Any]]:
+    ) -> list[tuple[MemoryRecord, Match]]:
         """Filter matches by workspace_id using batch record fetch."""
         keys = [int(match.key) for match in matches]
         records = self.memory_store.get_batch(keys)
 
-        filtered: list[tuple[MemoryRecord, Any]] = []
+        filtered: list[tuple[MemoryRecord, Match]] = []
         for match in matches:
             key = int(match.key)
             record = records.get(key)
@@ -1016,7 +1017,7 @@ class USearchEngine(BaseModel):
         return filtered
 
     def _build_search_results(
-        self, filtered_matches: list[tuple[MemoryRecord, Any]]
+        self, filtered_matches: list[tuple[MemoryRecord, Match]]
     ) -> list[tuple[str, float, str]]:
         """Convert filtered matches to scored results using numba distance conversion."""
         if not filtered_matches:
@@ -1246,7 +1247,7 @@ class USearchEngine(BaseModel):
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: Any,
+        exc_tb: object,
     ) -> bool:
         """Exit context manager.
 

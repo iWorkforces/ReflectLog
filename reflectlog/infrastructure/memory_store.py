@@ -837,7 +837,12 @@ class MemoryStore(BaseModel):
                     (workspace_id, content),
                 )
                 row = cursor.fetchone()
-                return row[0] if row else None
+                if row is None:
+                    return None
+                memory_id = row[0]
+                if not isinstance(memory_id, int):
+                    raise StorageError("Memory ID lookup returned a non-integer key")
+                return memory_id
 
             except sqlite3.Error as e:
                 if self.logger:

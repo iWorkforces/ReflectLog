@@ -5,7 +5,6 @@ following the same patterns as qwen3_embedding.py for consistency.
 """
 
 from collections import OrderedDict
-from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
@@ -14,14 +13,16 @@ import time
 from typing import TYPE_CHECKING, Any, final
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from typing import TypeGuard
+
+    from reflectlog.core.config import IAppConfig
 
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 import tantivy
 
-from reflectlog.core.config import IAppConfig
 from reflectlog.core.exceptions import (
     ConfigurationError,
     InitializationError,
@@ -169,7 +170,7 @@ class TantivyEngine(BaseModel):
         config: TantivyConfig | dict[str, Any],
         logger: IStructuredLogger | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         """Initialize TantivyEngine.
 
         Args:

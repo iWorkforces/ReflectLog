@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import dataclass, field
 import hashlib
 import threading
+from typing import cast
 
 from cachetools import LRUCache
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -278,7 +279,10 @@ class CachedEmbeddings(BaseModel):
                     self._coalesced += 1
                     shared = existing_future
                 else:
-                    shared = asyncio.get_running_loop().create_future()
+                    shared = cast(
+                        "asyncio.Future[list[float]]",
+                        asyncio.get_running_loop().create_future(),
+                    )
                     self._async_inflight[cache_key] = shared
                     leader = True
                     self._misses += 1

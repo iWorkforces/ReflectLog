@@ -18,18 +18,20 @@ from dataclasses import dataclass
 from datetime import datetime
 import importlib
 import threading
-from typing import Protocol, final
+from typing import TYPE_CHECKING, Protocol, cast, final
 import warnings
 
 from asyncer import asyncify
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from reflectlog.core.config import IAppConfig
 from reflectlog.core.enums import RerankerEngine
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.reranker_post_processor import (
     RerankerPostProcessor,
 )
+
+if TYPE_CHECKING:
+    from reflectlog.core.config import IAppConfig
 
 
 def _valid_iso_timestamp(value: str | None) -> bool:
@@ -200,10 +202,13 @@ class CrossEncoderReranker(BaseModel):
                 hf_logging.set_verbosity_error()
 
                 try:
-                    self._model = flag_reranker_class(
-                        self.config.model_name,
-                        use_fp16=self.config.use_fp16,
-                        devices=[self.config.device],
+                    self._model = cast(
+                        "FlagRerankerProtocol",
+                        flag_reranker_class(
+                            self.config.model_name,
+                            use_fp16=self.config.use_fp16,
+                            devices=[self.config.device],
+                        ),
                     )
 
                     # Suppress "using with `__call__` method is faster" warning

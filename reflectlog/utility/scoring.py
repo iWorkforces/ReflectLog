@@ -28,10 +28,13 @@ Usage:
 
 from datetime import UTC, datetime
 import math
+from typing import TYPE_CHECKING
 
 from numba import jit, prange
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 # ---------------------------------------------------------------------------
 # Numba JIT-compiled helpers (from application/utils/numba_utils.py)
@@ -60,7 +63,7 @@ def _find_minmax(scores: NDArray[np.float64]) -> tuple[float, float]:
         elif scores[i] > max_val:
             max_val = scores[i]
 
-    return min_val, max_val
+    return float(min_val), float(max_val)
 
 
 @jit(nopython=True, cache=True, fastmath=True)

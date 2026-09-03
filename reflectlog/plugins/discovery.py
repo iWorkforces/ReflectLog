@@ -50,7 +50,7 @@ class EntryPointDiscovery(PluginDiscoveryStrategy[T]):
         self,
         group: str,
         plugin_type: type[T],
-    ):
+    ) -> None:
         """Initialize entry point discovery.
 
         Args:
@@ -115,7 +115,7 @@ class DirectoryScanDiscovery(PluginDiscoveryStrategy[T]):
         package_names: list[str],
         plugin_base_class: type[T],
         module_pattern: str = "plugin_*.py",
-    ):
+    ) -> None:
         """Initialize directory scan discovery.
 
         Args:
@@ -187,7 +187,7 @@ class StaticRegistration(PluginDiscoveryStrategy[T]):
     def __init__(
         self,
         registered_plugins: list[DiscoveredPlugin],
-    ):
+    ) -> None:
         """Initialize static registration.
 
         Args:
@@ -214,7 +214,7 @@ class CompositeDiscovery(PluginDiscoveryStrategy[T]):
     def __init__(
         self,
         strategies: list[PluginDiscoveryStrategy[T]],
-    ):
+    ) -> None:
         """Initialize composite discovery.
 
         Args:
@@ -275,7 +275,7 @@ class PluginDiscoverer[T]:
     def __init__(
         self,
         discovery_strategy: PluginDiscoveryStrategy[T],
-    ):
+    ) -> None:
         """Initialize plugin discoverer.
 
         Args:
@@ -318,7 +318,7 @@ class PluginDiscoverer[T]:
             return None
 
         # Load plugin
-        instance: T = cast(T, await load_plugin(plugin))
+        instance: T = cast("T", await load_plugin(plugin))
         self._loaded[name] = instance
         return instance
 
