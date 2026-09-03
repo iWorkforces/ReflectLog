@@ -1,7 +1,10 @@
 """Unit tests for TantivyEngine."""
 
+from collections.abc import Generator
+from contextlib import contextmanager
 import os
 import tempfile
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,6 +22,41 @@ from reflectlog.infrastructure.tantivy_engine import (
 
 def create_mock_logger() -> MagicMock:
     return MagicMock(spec=IStructuredLogger)
+
+
+@contextmanager
+def _managed_engine(
+    index_path: str,
+    workspace_id: str = "test",
+    **kwargs: Any,
+) -> Generator[TantivyEngine]:
+    """Construct a TantivyEngine and always release native file handles."""
+    config_kwargs = {
+        key: value
+        for key, value in kwargs.items()
+        if key not in {"logger", "coordinator"}
+    }
+    config = TantivyConfig(
+        workspace_id=workspace_id, index_path=index_path, **config_kwargs
+    )
+    extra: dict[str, Any] = {}
+    if "logger" in kwargs:
+        extra["logger"] = kwargs["logger"]
+    if "coordinator" in kwargs:
+        extra["coordinator"] = kwargs["coordinator"]
+    engine = TantivyEngine(config, **extra)
+    try:
+        yield engine
+    finally:
+        engine.close()
+
+
+@pytest.fixture
+def engine() -> Generator[TantivyEngine]:
+    """Module-wide engine fixture that closes before the temp dir is removed."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with _managed_engine(tmpdir, workspace_id="test-project") as inst:
+            yield inst
 
 
 @pytest.mark.unit
@@ -112,13 +150,6 @@ class TestTantivyEngineInitialization:
 class TestTantivyEngineOperations:
     """Test TantivyEngine CRUD operations."""
 
-    @pytest.fixture
-    def engine(self) -> TantivyEngine:
-        """Create a TantivyEngine with temporary directory."""
-        tmpdir = tempfile.mkdtemp()
-        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
-        return TantivyEngine(config)
-
     def test_add_document(self, engine: TantivyEngine) -> None:
         """Test adding a document to the index."""
         # Should not raise
@@ -176,28 +207,32 @@ class TestTantivyEngineLazyInitialization:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                # Writer should not be initialized yet
+                assert engine._writer is None
 
-            # Writer should not be initialized yet
-            assert engine._writer is None
-
-            # Access writer property
-            writer = engine.writer
-            assert writer is not None
-            assert engine._writer is not None
+                # Access writer property
+                writer = engine.writer
+                assert writer is not None
+                assert engine._writer is not None
+            finally:
+                engine.close()
 
     def test_searcher_lazy_init(self) -> None:
         """Test that searcher is lazily initialized."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                # Searcher should not be initialized yet
+                assert engine._searcher is None
 
-            # Searcher should not be initialized yet
-            assert engine._searcher is None
-
-            # Access searcher property
-            searcher = engine.searcher
-            assert searcher is not None
-            assert engine._searcher is not None
+                # Access searcher property
+                searcher = engine.searcher
+                assert searcher is not None
+                assert engine._searcher is not None
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -210,12 +245,14 @@ class TestTantivyEngineErrorHandling:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                # Force an error by making index None
+                engine._index = None
 
-            # Force an error by making index None
-            engine._index = None
-
-            results = engine.search("test", "user-1", limit=5)
-            assert results == []
+                results = engine.search("test", "user-1", limit=5)
+                assert results == []
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -234,22 +271,19 @@ class TestTantivyEnginePersistence:
 
             # Second instance: should see the data
             engine2 = TantivyEngine(config)
-            results = engine2.search("Persistent", "user-1", limit=5)
+            try:
+                results = engine2.search("Persistent", "user-1", limit=5)
 
-            assert len(results) >= 1
-            assert "Persistent" in results[0][0]
+                assert len(results) >= 1
+                assert "Persistent" in results[0][0]
+            finally:
+                engine1.close()
+                engine2.close()
 
 
 @pytest.mark.unit
 class TestTantivyEngineDelete:
     """Test TantivyEngine delete operations."""
-
-    @pytest.fixture
-    def engine(self) -> TantivyEngine:
-        """Create a TantivyEngine with temporary directory."""
-        tmpdir = tempfile.mkdtemp()
-        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
-        return TantivyEngine(config)
 
     def test_delete_existing_document(self, engine: TantivyEngine) -> None:
         """Test deleting an existing document."""
@@ -419,13 +453,6 @@ class TestTantivyEngineDelete:
 @pytest.mark.unit
 class TestTantivyEngineHelperMethods:
     """Test TantivyEngine helper methods."""
-
-    @pytest.fixture
-    def engine(self) -> TantivyEngine:
-        """Create a TantivyEngine with temporary directory."""
-        tmpdir = tempfile.mkdtemp()
-        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
-        return TantivyEngine(config)
 
     def test_get_all_docs_empty_index(self, engine: TantivyEngine) -> None:
         """Test _get_all_docs on empty index."""
@@ -1473,22 +1500,28 @@ class TestTantivyEngineWriterSearcherErrors:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine._index = None
-            engine._writer = None
+            try:
+                engine._index = None
+                engine._writer = None
 
-            with pytest.raises(RuntimeError, match="Tantivy index not initialized"):
-                _ = engine.writer
+                with pytest.raises(RuntimeError, match="Tantivy index not initialized"):
+                    _ = engine.writer
+            finally:
+                engine.close()
 
     def test_searcher_raises_runtime_error_when_index_none(self) -> None:
         """Test that accessing searcher raises RuntimeError when _index is None."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine._index = None
-            engine._searcher = None
+            try:
+                engine._index = None
+                engine._searcher = None
 
-            with pytest.raises(RuntimeError, match="Tantivy index not initialized"):
-                _ = engine.searcher
+                with pytest.raises(RuntimeError, match="Tantivy index not initialized"):
+                    _ = engine.searcher
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -1533,42 +1566,49 @@ class TestGetAllDocsErrorHandling:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine._index = None
-            result = engine._get_all_docs("test")
-            assert result == []
+            try:
+                engine._index = None
+                result = engine._get_all_docs("test")
+                assert result == []
+            finally:
+                engine.close()
 
     def test_get_all_docs_exception_with_logger(self) -> None:
         """Test _get_all_docs fails closed on exception."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-
-            # Force exception by making searcher raise
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(
-                    lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
-                ),
-            ):
-                with pytest.raises(RuntimeError, match="Failed to get all docs"):
-                    engine._get_all_docs("test")
+            try:
+                # Force exception by making searcher raise
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(
+                        lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+                    ),
+                ):
+                    with pytest.raises(RuntimeError, match="Failed to get all docs"):
+                        engine._get_all_docs("test")
+            finally:
+                engine.close()
 
     def test_get_all_docs_exception_without_logger(self) -> None:
         """Test _get_all_docs returns [] on exception even without logger."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(
-                    lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
-                ),
-            ):
-                with pytest.raises(RuntimeError, match="Failed to get all docs"):
-                    engine._get_all_docs("test")
+            try:
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(
+                        lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+                    ),
+                ):
+                    with pytest.raises(RuntimeError, match="Failed to get all docs"):
+                        engine._get_all_docs("test")
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -1580,16 +1620,18 @@ class TestGetAllDocsAllWorkspaces:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                engine.add("proj-a", "Message A")
+                engine.add("proj-b", "Message B")
+                engine.commit()
 
-            engine.add("proj-a", "Message A")
-            engine.add("proj-b", "Message B")
-            engine.commit()
-
-            results = engine._get_all_docs_all_workspaces()
-            assert len(results) == 2
-            workspace_ids = {pid for pid, _ in results}
-            assert "proj-a" in workspace_ids
-            assert "proj-b" in workspace_ids
+                results = engine._get_all_docs_all_workspaces()
+                assert len(results) == 2
+                workspace_ids = {pid for pid, _ in results}
+                assert "proj-a" in workspace_ids
+                assert "proj-b" in workspace_ids
+            finally:
+                engine.close()
 
     def test_all_workspaces_omits_tombstoned_content(self) -> None:
         """Rebuild scans must not treat tombstoned texts as live."""
@@ -1639,9 +1681,12 @@ class TestGetAllDocsAllWorkspaces:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine._index = None
-            result = engine._get_all_docs_all_workspaces()
-            assert result == []
+            try:
+                engine._index = None
+                result = engine._get_all_docs_all_workspaces()
+                assert result == []
+            finally:
+                engine.close()
 
     def test_all_workspaces_exception_with_logger(self) -> None:
         """Test _get_all_docs_all_workspaces logs warning on exception."""
@@ -1649,36 +1694,40 @@ class TestGetAllDocsAllWorkspaces:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(
+                        lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+                    ),
+                ):
+                    result = engine._get_all_docs_all_workspaces()
 
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(
-                    lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
-                ),
-            ):
-                result = engine._get_all_docs_all_workspaces()
-
-            assert result == []
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("all workspaces" in c for c in calls)
+                assert result == []
+                calls = [str(c) for c in mock_logger.warning.call_args_list]
+                assert any("all workspaces" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_all_workspaces_exception_without_logger(self) -> None:
         """Test _get_all_docs_all_workspaces returns [] on exception without logger."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(
+                        lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+                    ),
+                ):
+                    result = engine._get_all_docs_all_workspaces()
 
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(
-                    lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
-                ),
-            ):
-                result = engine._get_all_docs_all_workspaces()
-
-            assert result == []
+                assert result == []
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -1690,43 +1739,49 @@ class TestInvalidateTombstoneCache:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                # Populate cache by querying tombstones for two projects
+                engine.add("proj-a", "msg a")
+                engine.add("proj-b", "msg b")
+                engine.commit()
+                engine._get_tombstoned_memories("proj-a")
+                engine._get_tombstoned_memories("proj-b")
+                assert "proj-a" in engine._tombstone_cache
+                assert "proj-b" in engine._tombstone_cache
 
-            # Populate cache by querying tombstones for two projects
-            engine.add("proj-a", "msg a")
-            engine.add("proj-b", "msg b")
-            engine.commit()
-            engine._get_tombstoned_memories("proj-a")
-            engine._get_tombstoned_memories("proj-b")
-            assert "proj-a" in engine._tombstone_cache
-            assert "proj-b" in engine._tombstone_cache
-
-            # Invalidate only proj-a
-            engine._invalidate_tombstone_cache("proj-a")
-            assert "proj-a" not in engine._tombstone_cache
-            assert "proj-b" in engine._tombstone_cache
+                # Invalidate only proj-a
+                engine._invalidate_tombstone_cache("proj-a")
+                assert "proj-a" not in engine._tombstone_cache
+                assert "proj-b" in engine._tombstone_cache
+            finally:
+                engine.close()
 
     def test_invalidate_nonexistent_workspace_is_noop(self) -> None:
         """Test invalidating cache for a non-existent project does nothing."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-
-            # Should not raise
-            engine._invalidate_tombstone_cache("nonexistent")
+            try:
+                # Should not raise
+                engine._invalidate_tombstone_cache("nonexistent")
+            finally:
+                engine.close()
 
     def test_invalidate_all_clears_entire_cache(self) -> None:
         """Test invalidating with None clears entire cache."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                engine.add("proj-a", "msg")
+                engine.commit()
+                engine._get_tombstoned_memories("proj-a")
+                assert len(engine._tombstone_cache) > 0
 
-            engine.add("proj-a", "msg")
-            engine.commit()
-            engine._get_tombstoned_memories("proj-a")
-            assert len(engine._tombstone_cache) > 0
-
-            engine._invalidate_tombstone_cache(None)
-            assert len(engine._tombstone_cache) == 0
+                engine._invalidate_tombstone_cache(None)
+                assert len(engine._tombstone_cache) == 0
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -1877,15 +1932,17 @@ class TestGetTombstonedMessagesCacheAndErrors:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                engine.add("test", "msg1")
+                engine.commit()
 
-            engine.add("test", "msg1")
-            engine.commit()
-
-            # First call populates cache
-            result1 = engine._get_tombstoned_memories("test")
-            # Second call should hit cache
-            result2 = engine._get_tombstoned_memories("test")
-            assert result1 == result2
+                # First call populates cache
+                result1 = engine._get_tombstoned_memories("test")
+                # Second call should hit cache
+                result2 = engine._get_tombstoned_memories("test")
+                assert result1 == result2
+            finally:
+                engine.close()
 
     def test_lru_eviction_when_cache_full(self) -> None:
         """Test that oldest entry is evicted when cache exceeds max size."""
@@ -1896,31 +1953,36 @@ class TestGetTombstonedMessagesCacheAndErrors:
                 tombstone_cache_max_size=2,
             )
             engine = TantivyEngine(config)
+            try:
+                # Add docs for 3 projects to trigger eviction
+                for p in ["proj-0", "proj-1", "proj-2"]:
+                    engine.add(p, f"msg for {p}")
+                engine.commit()
 
-            # Add docs for 3 projects to trigger eviction
-            for p in ["proj-0", "proj-1", "proj-2"]:
-                engine.add(p, f"msg for {p}")
-            engine.commit()
+                # Query all three to fill cache beyond max_size=2
+                engine._get_tombstoned_memories("proj-0")
+                engine._get_tombstoned_memories("proj-1")
+                engine._get_tombstoned_memories("proj-2")
 
-            # Query all three to fill cache beyond max_size=2
-            engine._get_tombstoned_memories("proj-0")
-            engine._get_tombstoned_memories("proj-1")
-            engine._get_tombstoned_memories("proj-2")
-
-            # proj-0 should have been evicted (oldest)
-            assert "proj-0" not in engine._tombstone_cache
-            assert "proj-1" in engine._tombstone_cache
-            assert "proj-2" in engine._tombstone_cache
+                # proj-0 should have been evicted (oldest)
+                assert "proj-0" not in engine._tombstone_cache
+                assert "proj-1" in engine._tombstone_cache
+                assert "proj-2" in engine._tombstone_cache
+            finally:
+                engine.close()
 
     def test_index_none_returns_empty_set(self) -> None:
         """Test that _get_tombstoned_memories returns empty set when _index is None."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine._index = None
+            try:
+                engine._index = None
 
-            result = engine._get_tombstoned_memories("test")
-            assert result == set()
+                result = engine._get_tombstoned_memories("test")
+                assert result == set()
+            finally:
+                engine.close()
 
     def test_value_error_with_logger(self) -> None:
         """Test ValueError handling in _get_tombstoned_memories with logger."""
@@ -1928,16 +1990,18 @@ class TestGetTombstonedMessagesCacheAndErrors:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = ValueError("bad query")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = ValueError("bad query")
-            engine._index = mock_index
+                with pytest.raises(RuntimeError, match="Failed to get tombstoned"):
+                    engine._get_tombstoned_memories("test")
 
-            with pytest.raises(RuntimeError, match="Failed to get tombstoned"):
-                engine._get_tombstoned_memories("test")
-
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("query parse error" in c for c in calls)
+                calls = [str(c) for c in mock_logger.warning.call_args_list]
+                assert any("query parse error" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_generic_exception_with_logger(self) -> None:
         """Test generic exception handling in _get_tombstoned_memories with logger."""
@@ -1945,29 +2009,33 @@ class TestGetTombstonedMessagesCacheAndErrors:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = RuntimeError("fail")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = RuntimeError("fail")
-            engine._index = mock_index
+                with pytest.raises(RuntimeError, match="Failed to get tombstoned"):
+                    engine._get_tombstoned_memories("test")
 
-            with pytest.raises(RuntimeError, match="Failed to get tombstoned"):
-                engine._get_tombstoned_memories("test")
-
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("Failed to get tombstoned memories" in c for c in calls)
+                calls = [str(c) for c in mock_logger.warning.call_args_list]
+                assert any("Failed to get tombstoned memories" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_generic_exception_without_logger(self) -> None:
         """Test generic exception without logger is fail-closed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = RuntimeError("fail")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = RuntimeError("fail")
-            engine._index = mock_index
-
-            with pytest.raises(RuntimeError, match="Failed to get tombstoned"):
-                engine._get_tombstoned_memories("test")
+                with pytest.raises(RuntimeError, match="Failed to get tombstoned"):
+                    engine._get_tombstoned_memories("test")
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -1979,12 +2047,14 @@ class TestSearchErrorHandling:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                engine.add("test", "test document content")
+                engine.commit()
 
-            engine.add("test", "test document content")
-            engine.commit()
-
-            results = engine.search("  ", "test", limit=10)
-            assert results == []
+                results = engine.search("  ", "test", limit=10)
+                assert results == []
+            finally:
+                engine.close()
 
     def test_search_value_error_returns_empty(self) -> None:
         """Tombstone scan parse errors fail closed even when a logger is set."""
@@ -1992,28 +2062,32 @@ class TestSearchErrorHandling:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = ValueError("bad")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = ValueError("bad")
-            engine._index = mock_index
-
-            with pytest.raises(SearchError, match="Failed to get tombstoned"):
-                engine.search("query", "test", limit=5)
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("query parse error" in c for c in calls)
+                with pytest.raises(SearchError, match="Failed to get tombstoned"):
+                    engine.search("query", "test", limit=5)
+                calls = [str(c) for c in mock_logger.warning.call_args_list]
+                assert any("query parse error" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_search_value_error_without_logger(self) -> None:
         """Tombstone scan parse errors fail closed instead of returning []."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = ValueError("bad")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = ValueError("bad")
-            engine._index = mock_index
-
-            with pytest.raises(SearchError, match="Failed to get tombstoned"):
-                engine.search("query", "test", limit=5)
+                with pytest.raises(SearchError, match="Failed to get tombstoned"):
+                    engine.search("query", "test", limit=5)
+            finally:
+                engine.close()
 
     def test_search_os_error_raises_search_error(self) -> None:
         """Test search raises SearchError on OSError and logs with logger."""
@@ -2021,70 +2095,79 @@ class TestSearchErrorHandling:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = OSError("disk full")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = OSError("disk full")
-            engine._index = mock_index
+                with pytest.raises(SearchError, match="file system error"):
+                    engine.search("query", "test", limit=5)
 
-            with pytest.raises(SearchError, match="file system error"):
-                engine.search("query", "test", limit=5)
-
-            calls = [str(c) for c in mock_logger.error.call_args_list]
-            assert any("file system error" in c.lower() for c in calls)
+                calls = [str(c) for c in mock_logger.error.call_args_list]
+                assert any("file system error" in c.lower() for c in calls)
+            finally:
+                engine.close()
 
     def test_search_os_error_without_logger(self) -> None:
         """Test search raises SearchError on OSError without logger."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = OSError("disk full")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = OSError("disk full")
-            engine._index = mock_index
-
-            with pytest.raises(SearchError, match="file system error"):
-                engine.search("query", "test", limit=5)
+                with pytest.raises(SearchError, match="file system error"):
+                    engine.search("query", "test", limit=5)
+            finally:
+                engine.close()
 
     def test_search_unexpected_error_raises_search_error(self) -> None:
         """Test search raises SearchError on unexpected exceptions."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = TypeError("unexpected")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = TypeError("unexpected")
-            engine._index = mock_index
-
-            with pytest.raises(SearchError, match="Tantivy search failed"):
-                engine.search("query", "test", limit=5)
+                with pytest.raises(SearchError, match="Tantivy search failed"):
+                    engine.search("query", "test", limit=5)
+            finally:
+                engine.close()
 
     def test_search_always_escapes_before_parse(self) -> None:
         """Special characters are escaped before the first parse_query call."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine.add("test", "hello")
-            engine.commit()
+            try:
+                engine.add("test", "hello")
+                engine.commit()
 
-            original_index = engine._index
-            parsed: list[str] = []
+                original_index = engine._index
+                parsed: list[str] = []
 
-            def capture_parse(
-                query: str, *, default_field_names: list[str] | None = None
-            ) -> tantivy.Query:
-                parsed.append(query)
-                assert original_index is not None
-                return original_index.parse_query(
-                    query, default_field_names=default_field_names
-                )
+                def capture_parse(
+                    query: str, *, default_field_names: list[str] | None = None
+                ) -> tantivy.Query:
+                    parsed.append(query)
+                    assert original_index is not None
+                    return original_index.parse_query(
+                        query, default_field_names=default_field_names
+                    )
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = capture_parse
-            engine._index = mock_index
-            engine._searcher = engine.searcher
-            _ = engine.search("foo:bar", "test", limit=5)
-            assert parsed
-            assert any("foo\\:bar" in query for query in parsed)
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = capture_parse
+                engine._index = mock_index
+                engine._searcher = engine.searcher
+                _ = engine.search("foo:bar", "test", limit=5)
+                assert parsed
+                assert any("foo\\:bar" in query for query in parsed)
+            finally:
+                engine.close()
 
     def test_search_empty_query_value_error_re_raises(self) -> None:
         """Test that empty query + ValueError is re-raised (not escaped)."""
@@ -2092,14 +2175,16 @@ class TestSearchErrorHandling:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = ValueError("bad")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = ValueError("bad")
-            engine._index = mock_index
+                results = engine.search("", "test", limit=5)
 
-            results = engine.search("", "test", limit=5)
-
-            assert results == []
+                assert results == []
+            finally:
+                engine.close()
 
     def test_search_with_logger_logs_matches(self) -> None:
         """Test that search logs debug messages for each match."""
@@ -2107,14 +2192,16 @@ class TestSearchErrorHandling:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "findable content here")
+                engine.commit()
 
-            engine.add("test", "findable content here")
-            engine.commit()
-
-            results = engine.search("findable", "test", limit=5)
-            assert len(results) >= 1
-            calls = [str(c) for c in mock_logger.debug.call_args_list]
-            assert any("Tantivy match" in c for c in calls)
+                results = engine.search("findable", "test", limit=5)
+                assert len(results) >= 1
+                calls = [str(c) for c in mock_logger.debug.call_args_list]
+                assert any("Tantivy match" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_search_index_none_with_logger(self) -> None:
         """Test search with _index=None logs warning with logger."""
@@ -2122,12 +2209,15 @@ class TestSearchErrorHandling:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
-            engine._index = None
+            try:
+                engine._index = None
 
-            results = engine.search("query", "test", limit=5)
-            assert results == []
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("index not initialized" in c for c in calls)
+                results = engine.search("query", "test", limit=5)
+                assert results == []
+                calls = [str(c) for c in mock_logger.warning.call_args_list]
+                assert any("index not initialized" in c for c in calls)
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -2139,12 +2229,14 @@ class TestEnsureInitialized:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-
-            assert engine._searcher is None
-            assert engine.is_ready() is False
-            engine.ensure_initialized()
-            assert engine._searcher is not None
-            assert engine.is_ready() is True
+            try:
+                assert engine._searcher is None
+                assert engine.is_ready() is False
+                engine.ensure_initialized()
+                assert engine._searcher is not None
+                assert engine.is_ready() is True
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -2211,11 +2303,13 @@ class TestSoftDeleteWithLogger:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
-
-            result = engine.soft_delete("test", "nonexistent")
-            assert result is False
-            calls = [str(c) for c in mock_logger.debug.call_args_list]
-            assert any("memory not found" in c for c in calls)
+            try:
+                result = engine.soft_delete("test", "nonexistent")
+                assert result is False
+                calls = [str(c) for c in mock_logger.debug.call_args_list]
+                assert any("memory not found" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_soft_delete_success_with_logger(self) -> None:
         """Test soft_delete logs debug when tombstone added."""
@@ -2296,16 +2390,18 @@ class TestDeleteWithSoftDeleteDisabled:
                 soft_delete_enabled=False,
             )
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "Target message")
+                engine.commit()
 
-            engine.add("test", "Target message")
-            engine.commit()
+                result = engine.delete("test", "Target message")
+                assert result is True
 
-            result = engine.delete("test", "Target message")
-            assert result is True
-
-            calls = [str(c) for c in mock_logger.debug.call_args_list]
-            assert any("found document" in c for c in calls)
-            assert any("completed successfully" in c for c in calls)
+                calls = [str(c) for c in mock_logger.debug.call_args_list]
+                assert any("found document" in c for c in calls)
+                assert any("completed successfully" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_delete_rebuild_not_found_with_logger(self) -> None:
         """Test delete rebuild logs not-found message."""
@@ -2317,13 +2413,15 @@ class TestDeleteWithSoftDeleteDisabled:
                 soft_delete_enabled=False,
             )
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "Some message")
+                engine.commit()
 
-            engine.add("test", "Some message")
-            engine.commit()
-
-            engine.delete("test", "Not found")
-            calls = [str(c) for c in mock_logger.debug.call_args_list]
-            assert any("document not found" in c for c in calls)
+                engine.delete("test", "Not found")
+                calls = [str(c) for c in mock_logger.debug.call_args_list]
+                assert any("document not found" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_delete_rebuild_value_error(self) -> None:
         """Test delete rebuild handles ValueError."""
@@ -2335,18 +2433,22 @@ class TestDeleteWithSoftDeleteDisabled:
                 soft_delete_enabled=False,
             )
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "msg")
+                engine.commit()
 
-            engine.add("test", "msg")
-            engine.commit()
+                with patch.object(
+                    engine,
+                    "_get_all_docs_all_workspaces",
+                    side_effect=ValueError("bad"),
+                ):
+                    result = engine.delete("test", "msg")
 
-            with patch.object(
-                engine, "_get_all_docs_all_workspaces", side_effect=ValueError("bad")
-            ):
-                result = engine.delete("test", "msg")
-
-            assert result is False
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("query parsing failed" in c.lower() for c in calls)
+                assert result is False
+                calls = [str(c) for c in mock_logger.warning.call_args_list]
+                assert any("query parsing failed" in c.lower() for c in calls)
+            finally:
+                engine.close()
 
     def test_delete_rebuild_os_error(self) -> None:
         """Test delete rebuild handles OSError."""
@@ -2358,18 +2460,20 @@ class TestDeleteWithSoftDeleteDisabled:
                 soft_delete_enabled=False,
             )
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "msg")
+                engine.commit()
 
-            engine.add("test", "msg")
-            engine.commit()
+                with patch.object(
+                    engine, "_get_all_docs_all_workspaces", side_effect=OSError("disk")
+                ):
+                    result = engine.delete("test", "msg")
 
-            with patch.object(
-                engine, "_get_all_docs_all_workspaces", side_effect=OSError("disk")
-            ):
-                result = engine.delete("test", "msg")
-
-            assert result is False
-            calls = [str(c) for c in mock_logger.error.call_args_list]
-            assert any("file system error" in c.lower() for c in calls)
+                assert result is False
+                calls = [str(c) for c in mock_logger.error.call_args_list]
+                assert any("file system error" in c.lower() for c in calls)
+            finally:
+                engine.close()
 
     def test_delete_rebuild_unexpected_error(self) -> None:
         """Test delete rebuild handles unexpected errors."""
@@ -2381,18 +2485,22 @@ class TestDeleteWithSoftDeleteDisabled:
                 soft_delete_enabled=False,
             )
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "msg")
+                engine.commit()
 
-            engine.add("test", "msg")
-            engine.commit()
+                with patch.object(
+                    engine,
+                    "_get_all_docs_all_workspaces",
+                    side_effect=TypeError("oops"),
+                ):
+                    result = engine.delete("test", "msg")
 
-            with patch.object(
-                engine, "_get_all_docs_all_workspaces", side_effect=TypeError("oops")
-            ):
-                result = engine.delete("test", "msg")
-
-            assert result is False
-            calls = [str(c) for c in mock_logger.error.call_args_list]
-            assert any("failed unexpectedly" in c.lower() for c in calls)
+                assert result is False
+                calls = [str(c) for c in mock_logger.error.call_args_list]
+                assert any("failed unexpectedly" in c.lower() for c in calls)
+            finally:
+                engine.close()
 
     def test_delete_rebuild_unexpected_error_without_logger(self) -> None:
         """Test delete rebuild handles unexpected errors without logger."""
@@ -2403,16 +2511,20 @@ class TestDeleteWithSoftDeleteDisabled:
                 soft_delete_enabled=False,
             )
             engine = TantivyEngine(config)
+            try:
+                engine.add("test", "msg")
+                engine.commit()
 
-            engine.add("test", "msg")
-            engine.commit()
+                with patch.object(
+                    engine,
+                    "_get_all_docs_all_workspaces",
+                    side_effect=TypeError("oops"),
+                ):
+                    result = engine.delete("test", "msg")
 
-            with patch.object(
-                engine, "_get_all_docs_all_workspaces", side_effect=TypeError("oops")
-            ):
-                result = engine.delete("test", "msg")
-
-            assert result is False
+                assert result is False
+            finally:
+                engine.close()
 
     def test_delete_rebuild_preserves_other_workspaces(self) -> None:
         """Test delete rebuild preserves documents from other projects."""
@@ -2423,17 +2535,19 @@ class TestDeleteWithSoftDeleteDisabled:
                 soft_delete_enabled=False,
             )
             engine = TantivyEngine(config)
+            try:
+                engine.add("proj-a", "Message A")
+                engine.add("proj-b", "Message B")
+                engine.commit()
 
-            engine.add("proj-a", "Message A")
-            engine.add("proj-b", "Message B")
-            engine.commit()
+                result = engine.delete("proj-a", "Message A")
+                assert result is True
 
-            result = engine.delete("proj-a", "Message A")
-            assert result is True
-
-            # proj-b's message should remain
-            results = engine.search("Message", "proj-b", limit=10)
-            assert len(results) == 1
+                # proj-b's message should remain
+                results = engine.search("Message", "proj-b", limit=10)
+                assert len(results) == 1
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -2561,105 +2675,121 @@ class TestGetDocLimitEdgeCases:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine._index = None
-            assert engine._get_doc_limit() == 0
+            try:
+                engine._index = None
+                assert engine._get_doc_limit() == 0
+            finally:
+                engine.close()
 
     def test_doc_limit_callable_num_docs(self) -> None:
         """Test _get_doc_limit uses callable num_docs."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                engine.add("test", "msg")
+                engine.commit()
 
-            engine.add("test", "msg")
-            engine.commit()
-
-            # Normal path should return doc count
-            result = engine._get_doc_limit()
-            assert result >= 1
+                # Normal path should return doc count
+                result = engine._get_doc_limit()
+                assert result >= 1
+            finally:
+                engine.close()
 
     def test_doc_limit_numeric_num_docs(self) -> None:
         """Test _get_doc_limit uses searcher.num_docs()."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine.add("test", "msg")
-            engine.commit()
+            try:
+                engine.add("test", "msg")
+                engine.commit()
 
-            mock_searcher = MagicMock()
-            mock_searcher.num_docs.return_value = 42
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(lambda self: mock_searcher),
-            ):
-                result = engine._get_doc_limit()
-            assert result == 42
+                mock_searcher = MagicMock()
+                mock_searcher.num_docs.return_value = 42
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(lambda self: mock_searcher),
+                ):
+                    result = engine._get_doc_limit()
+                assert result == 42
+            finally:
+                engine.close()
 
     def test_doc_limit_negative_num_docs_uses_fallback(self) -> None:
         """Test _get_doc_limit uses fallback when num_docs is negative."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-
-            mock_searcher = MagicMock()
-            mock_searcher.num_docs.return_value = -1
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(lambda self: mock_searcher),
-            ):
-                result = engine._get_doc_limit()
-            assert result == DEFAULT_TANTIVY_DOC_LIMIT
+            try:
+                mock_searcher = MagicMock()
+                mock_searcher.num_docs.return_value = -1
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(lambda self: mock_searcher),
+                ):
+                    result = engine._get_doc_limit()
+                assert result == DEFAULT_TANTIVY_DOC_LIMIT
+            finally:
+                engine.close()
 
     def test_doc_limit_none_num_docs_uses_fallback(self) -> None:
         """Test _get_doc_limit uses fallback when num_docs returns None."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-
-            mock_searcher = MagicMock()
-            mock_searcher.num_docs.return_value = None
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(lambda self: mock_searcher),
-            ):
-                result = engine._get_doc_limit()
-            assert result == DEFAULT_TANTIVY_DOC_LIMIT
+            try:
+                mock_searcher = MagicMock()
+                mock_searcher.num_docs.return_value = None
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(lambda self: mock_searcher),
+                ):
+                    result = engine._get_doc_limit()
+                assert result == DEFAULT_TANTIVY_DOC_LIMIT
+            finally:
+                engine.close()
 
     def test_doc_limit_exception_uses_fallback(self) -> None:
         """Test _get_doc_limit uses fallback when num_docs raises."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-
-            mock_searcher = MagicMock()
-            mock_searcher.num_docs.side_effect = RuntimeError("fail")
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(lambda self: mock_searcher),
-            ):
-                result = engine._get_doc_limit()
-            assert result == DEFAULT_TANTIVY_DOC_LIMIT
+            try:
+                mock_searcher = MagicMock()
+                mock_searcher.num_docs.side_effect = RuntimeError("fail")
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(lambda self: mock_searcher),
+                ):
+                    result = engine._get_doc_limit()
+                assert result == DEFAULT_TANTIVY_DOC_LIMIT
+            finally:
+                engine.close()
 
     def test_doc_limit_zero_returns_max_1(self) -> None:
         """Test _get_doc_limit returns max(1, 0) = 1 for empty index."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-
-            mock_searcher = MagicMock()
-            mock_searcher.num_docs.return_value = 0
-            with patch.object(
-                type(engine),
-                "searcher",
-                new_callable=lambda: property(lambda self: mock_searcher),
-            ):
-                result = engine._get_doc_limit()
-            # max(1, 0) = 1 (line 1078)
-            # Actually num_docs=0 is not < 0, so it returns max(1, 0) = 1
-            assert result == 1
+            try:
+                mock_searcher = MagicMock()
+                mock_searcher.num_docs.return_value = 0
+                with patch.object(
+                    type(engine),
+                    "searcher",
+                    new_callable=lambda: property(lambda self: mock_searcher),
+                ):
+                    result = engine._get_doc_limit()
+                # max(1, 0) = 1 (line 1078)
+                # Actually num_docs=0 is not < 0, so it returns max(1, 0) = 1
+                assert result == 1
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -2671,13 +2801,16 @@ class TestGetTombstoneStatsEdgeCases:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
-            engine._index = None
+            try:
+                engine._index = None
 
-            stats = engine.get_tombstone_stats()
-            assert stats["total_docs"] == 0
-            assert stats["active_docs"] == 0
-            assert stats["tombstones"] == 0
-            assert stats["unique_active_memories"] == 0
+                stats = engine.get_tombstone_stats()
+                assert stats["total_docs"] == 0
+                assert stats["active_docs"] == 0
+                assert stats["tombstones"] == 0
+                assert stats["unique_active_memories"] == 0
+            finally:
+                engine.close()
 
     def test_stats_exception_with_logger(self) -> None:
         """Test get_tombstone_stats returns zeros on exception with logger."""
@@ -2685,30 +2818,34 @@ class TestGetTombstoneStatsEdgeCases:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = RuntimeError("fail")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = RuntimeError("fail")
-            engine._index = mock_index
+                stats = engine.get_tombstone_stats()
 
-            stats = engine.get_tombstone_stats()
-
-            assert stats["total_docs"] == 0
-            calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("Failed to get tombstone stats" in c for c in calls)
+                assert stats["total_docs"] == 0
+                calls = [str(c) for c in mock_logger.warning.call_args_list]
+                assert any("Failed to get tombstone stats" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_stats_exception_without_logger(self) -> None:
         """Test get_tombstone_stats returns zeros on exception without logger."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = RuntimeError("fail")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = RuntimeError("fail")
-            engine._index = mock_index
+                stats = engine.get_tombstone_stats()
 
-            stats = engine.get_tombstone_stats()
-
-            assert stats["total_docs"] == 0
+                assert stats["total_docs"] == 0
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -2725,19 +2862,21 @@ class TestNeedsCompactionWithLogger:
                 compaction_max_tombstones=1,
             )
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "msg1")
+                engine.add("test", "msg2")
+                engine.commit()
 
-            engine.add("test", "msg1")
-            engine.add("test", "msg2")
-            engine.commit()
+                engine.soft_delete("test", "msg1")
+                engine.soft_delete("test", "msg2")
+                engine.commit()
 
-            engine.soft_delete("test", "msg1")
-            engine.soft_delete("test", "msg2")
-            engine.commit()
-
-            result = engine.needs_compaction()
-            assert result is True
-            calls = [str(c) for c in mock_logger.info.call_args_list]
-            assert any("tombstone count exceeded" in c for c in calls)
+                result = engine.needs_compaction()
+                assert result is True
+                calls = [str(c) for c in mock_logger.info.call_args_list]
+                assert any("tombstone count exceeded" in c for c in calls)
+            finally:
+                engine.close()
 
     def test_needs_compaction_ratio_with_logger(self) -> None:
         """Test needs_compaction logs when ratio exceeded."""
@@ -2750,18 +2889,20 @@ class TestNeedsCompactionWithLogger:
                 compaction_max_tombstones=10000,
             )
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "msg1")
+                engine.add("test", "msg2")
+                engine.commit()
 
-            engine.add("test", "msg1")
-            engine.add("test", "msg2")
-            engine.commit()
+                engine.soft_delete("test", "msg1")
+                engine.commit()
 
-            engine.soft_delete("test", "msg1")
-            engine.commit()
-
-            result = engine.needs_compaction()
-            assert result is True
-            calls = [str(c) for c in mock_logger.info.call_args_list]
-            assert any("tombstone ratio exceeded" in c for c in calls)
+                result = engine.needs_compaction()
+                assert result is True
+                calls = [str(c) for c in mock_logger.info.call_args_list]
+                assert any("tombstone ratio exceeded" in c for c in calls)
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -2774,32 +2915,36 @@ class TestCompactEdgeCases:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = RuntimeError("compaction boom")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = RuntimeError("compaction boom")
-            engine._index = mock_index
+                result = engine.compact(force=True)
 
-            result = engine.compact(force=True)
-
-            assert result["compacted"] is False
-            assert result["removed_tombstones"] == 0
-            assert result["elapsed_ms"] >= 0
-            calls = [str(c) for c in mock_logger.error.call_args_list]
-            assert any("compaction failed" in c.lower() for c in calls)
+                assert result["compacted"] is False
+                assert result["removed_tombstones"] == 0
+                assert result["elapsed_ms"] >= 0
+                calls = [str(c) for c in mock_logger.error.call_args_list]
+                assert any("compaction failed" in c.lower() for c in calls)
+            finally:
+                engine.close()
 
     def test_compact_exception_without_logger(self) -> None:
         """Test compact returns failure dict on exception without logger."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
+            try:
+                mock_index = MagicMock()
+                mock_index.parse_query.side_effect = RuntimeError("boom")
+                engine._index = mock_index
 
-            mock_index = MagicMock()
-            mock_index.parse_query.side_effect = RuntimeError("boom")
-            engine._index = mock_index
+                result = engine.compact(force=True)
 
-            result = engine.compact(force=True)
-
-            assert result["compacted"] is False
+                assert result["compacted"] is False
+            finally:
+                engine.close()
 
     def test_compact_with_logger_logs_completion(self) -> None:
         """Test compact logs completion message with stats."""
@@ -2807,17 +2952,19 @@ class TestCompactEdgeCases:
             mock_logger = create_mock_logger()
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config, logger=mock_logger)
+            try:
+                engine.add("test", "keep")
+                engine.add("test", "remove")
+                engine.commit()
+                engine.soft_delete("test", "remove")
+                engine.commit()
 
-            engine.add("test", "keep")
-            engine.add("test", "remove")
-            engine.commit()
-            engine.soft_delete("test", "remove")
-            engine.commit()
-
-            result = engine.compact(force=True)
-            assert result["compacted"] is True
-            calls = [str(c) for c in mock_logger.info.call_args_list]
-            assert any("compaction completed" in c.lower() for c in calls)
+                result = engine.compact(force=True)
+                assert result["compacted"] is True
+                calls = [str(c) for c in mock_logger.info.call_args_list]
+                assert any("compaction completed" in c.lower() for c in calls)
+            finally:
+                engine.close()
 
 
 @pytest.mark.unit
@@ -2857,12 +3004,6 @@ class TestEscapeTantivyQuery:
 
 
 class TestSoftDeleteDoesNotPlantSurplusTombs:
-    @pytest.fixture
-    def engine(self) -> TantivyEngine:
-        tmpdir = tempfile.mkdtemp()
-        config = TantivyConfig(workspace_id="test-project", index_path=tmpdir)
-        return TantivyEngine(config)
-
     def test_verify_exists_false_does_not_hide_later_readd(
         self, engine: TantivyEngine
     ) -> None:
