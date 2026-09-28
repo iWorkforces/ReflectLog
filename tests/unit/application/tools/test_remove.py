@@ -19,11 +19,14 @@ class RecordingManager:
         self.calls: list[list[str]] = []
         self.present: set[str] = set()
         self.error: Exception | None = None
+        self.fail_on_call: int | None = None
 
     def delete_memories(self, memories: list[str]) -> list[str]:
         if self.error is not None:
             raise self.error
         self.calls.append(list(memories))
+        if self.fail_on_call == len(self.calls):
+            raise RuntimeError("later delete failed")
         return [memory for memory in memories if memory in self.present]
 
 
@@ -122,13 +125,12 @@ class TestRemoveToolHappyPath:
         await handler([memory, memory])
         assert recording_manager.calls == [[memory]]
 
-    async def test_oversize_unique_remove_does_not_delete(
+    async def test_unique_remove_splits_at_batch_cap(
         self,
         mock_config: Config,
         recording_manager: RecordingManager,
         mock_tool_logger: MagicMock,
     ) -> None:
-        """A unique list over the batch cap never reaches delete_memories."""
         config = replace(mock_config, max_add_batch=1)
         tool = RemoveTool(
             config=config,
@@ -136,8 +138,62 @@ class TestRemoveToolHappyPath:
             logger=mock_tool_logger,
         )
         handler = tool.get_handler()
-        with pytest.raises(ValueError, match="Too many memories in one remove"):
-            await handler(["First", "Second"])
+        assert await handler(["First", "Second"]) is None
+        assert recording_manager.calls == [["First"], ["Second"]]
+
+    async def test_101_unique_with_boundary_duplicates_and_missing_targets(
+        self,
+        remove_tool_instance: RemoveTool,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        targets = [f"target-{index}" for index in range(101)]
+        recording_manager.present = set(targets) - {targets[99], targets[100]}
+
+        result = await remove_tool_instance.get_handler()(
+            [*targets[:100], targets[99], targets[100], targets[0]]
+        )
+
+        assert result is None
+        assert recording_manager.calls == [targets[:100], targets[100:]]
+        completions = [
+            call.kwargs["extra"]
+            for call in mock_tool_logger.info.call_args_list
+            if "completed successfully" in str(call.args[0])
+        ]
+        assert len(completions) == 1
+        assert completions[0]["requested"] == 103
+        assert completions[0]["removed"] == 99
+        assert completions[0]["not_found"] == 2
+
+    async def test_invalid_late_target_prevents_earlier_deletions(
+        self,
+        remove_tool_instance: RemoveTool,
+        recording_manager: RecordingManager,
+    ) -> None:
+        targets = [f"target-{index}" for index in range(101)]
+
+        with pytest.raises(ValueError, match="whitespace"):
+            await remove_tool_instance.get_handler()([*targets, "  "])
+
+        assert recording_manager.calls == []
+
+    async def test_request_wide_char_cap_rejects_before_deleting(
+        self,
+        mock_config: Config,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        config = replace(mock_config, max_add_batch=1, max_add_chars=5)
+        tool = RemoveTool(
+            config=config,
+            memory_manager=cast(MemoryManager, recording_manager),
+            logger=mock_tool_logger,
+        )
+
+        with pytest.raises(ValueError, match="Remove payload too large"):
+            await tool.get_handler()(["abc", "def"])
+
         assert recording_manager.calls == []
 
     async def test_remove_allows_short_memories_when_min_add_length_is_high(
@@ -394,6 +450,31 @@ class TestRemoveToolErrorHandling:
             await handler(["Memory"])
 
         mock_tool_logger.error.assert_called()
+
+    async def test_later_batch_failure_reports_partial_count_without_completion(
+        self,
+        mock_config: Config,
+        recording_manager: RecordingManager,
+        mock_tool_logger: MagicMock,
+    ) -> None:
+        config = replace(mock_config, max_add_batch=1)
+        tool = RemoveTool(
+            config=config,
+            memory_manager=cast(MemoryManager, recording_manager),
+            logger=mock_tool_logger,
+        )
+        recording_manager.present = {"First", "Second"}
+        recording_manager.fail_on_call = 2
+
+        with pytest.raises(StorageError, match="later delete failed"):
+            await tool.get_handler()(["First", "Second"])
+
+        assert recording_manager.calls == [["First"], ["Second"]]
+        assert mock_tool_logger.error.call_args.kwargs["extra"]["actual_removed"] == 1
+        assert not any(
+            "completed successfully" in str(call.args[0])
+            for call in mock_tool_logger.info.call_args_list
+        )
 
 
 @pytest.mark.unit
