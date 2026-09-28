@@ -31,6 +31,7 @@ from reflectlog.core.storage_coordination import IStorageCoordinator
 from reflectlog.core.types import ISemanticSearchEngine
 from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
 from reflectlog.infrastructure.embedding_identity import IDENTITY_NAME
+from reflectlog.infrastructure.embeddings.wemm_embedding import WeMMEmbeddings
 from reflectlog.infrastructure.storage_coordinator import (
     GENERATION_NAME,
     LOCK_NAME,
@@ -313,6 +314,138 @@ class TestEmbeddingIdentityStartup:
             MemoryManager(mock_config, mock_logger.structured, coordinator=coordinator)
 
         embedder.assert_called_once()
+
+
+@pytest.mark.unit
+class TestConstructorCleanup:
+    @pytest.mark.parametrize("cache_enabled", [False, True])
+    def test_semantic_construction_failure_closes_embedder_and_allows_reopen(
+        self, mock_config: Config, mock_logger: LogCapture, cache_enabled: bool
+    ) -> None:
+        config = replace(mock_config, embedding_cache_enabled=cache_enabled)
+        coordinator = _fake_coordinator()
+        primary = RuntimeError("semantic construction failed")
+        with (
+            patch.object(WeMMEmbeddings, "close", autospec=True) as close_embedder,
+            patch(f"{MODULE}.USearchEngine", side_effect=primary),
+            patch(f"{MODULE}.TantivyEngine") as tantivy_class,
+        ):
+            with pytest.raises(RuntimeError) as raised:
+                MemoryManager(config, mock_logger.structured, coordinator=coordinator)
+
+            assert raised.value is primary
+            close_embedder.assert_called_once()
+            assert isinstance(close_embedder.call_args.args[0], WeMMEmbeddings)
+            tantivy_class.assert_not_called()
+
+        reopened, _, _ = _make_manager(config, mock_logger, coordinator)
+        assert reopened.workspace_id == config.workspace_id
+
+    def test_cache_construction_failure_closes_base_embedder(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        primary = RuntimeError("cache construction failed")
+        with (
+            patch.object(WeMMEmbeddings, "close", autospec=True) as close_embedder,
+            patch(f"{MODULE}.CachedEmbeddings", side_effect=primary),
+            patch(f"{MODULE}.USearchEngine") as semantic_class,
+            pytest.raises(RuntimeError) as raised,
+        ):
+            MemoryManager(
+                replace(mock_config, embedding_cache_enabled=True),
+                mock_logger.structured,
+                coordinator=_fake_coordinator(),
+            )
+
+        assert raised.value is primary
+        close_embedder.assert_called_once()
+        assert isinstance(close_embedder.call_args.args[0], WeMMEmbeddings)
+        semantic_class.assert_not_called()
+
+    def test_eager_failure_closes_both_engines_and_can_retry(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        config = replace(mock_config, eager_initialization=True)
+        coordinator = _fake_coordinator()
+        primary = RuntimeError("eager semantic warmup failed")
+        first_semantic = MagicMock()
+        first_semantic.ensure_initialized.side_effect = primary
+        second_semantic = MagicMock()
+        first_tantivy = MagicMock()
+        second_tantivy = MagicMock()
+        with (
+            patch(f"{MODULE}.WeMMEmbeddings"),
+            patch(
+                f"{MODULE}.USearchEngine",
+                side_effect=[first_semantic, second_semantic],
+            ),
+            patch(
+                f"{MODULE}.TantivyEngine",
+                side_effect=[first_tantivy, second_tantivy],
+            ),
+        ):
+            with pytest.raises(RuntimeError) as raised:
+                MemoryManager(config, mock_logger.structured, coordinator=coordinator)
+
+            reopened = MemoryManager(
+                config, mock_logger.structured, coordinator=coordinator
+            )
+
+        assert raised.value is primary
+        first_tantivy.close.assert_called_once_with()
+        first_semantic.close.assert_called_once_with()
+        second_semantic.ensure_initialized.assert_called_once_with()
+        second_tantivy.ensure_initialized.assert_called_once_with()
+        assert reopened._semantic_engine is second_semantic
+
+    def test_cleanup_errors_preserve_primary_and_attempt_every_resource(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        primary = RuntimeError("eager warmup failed")
+        tantivy_error = OSError("tantivy cleanup failed")
+        semantic_error = OSError("semantic cleanup failed")
+        semantic = MagicMock()
+        semantic.ensure_initialized.side_effect = primary
+        semantic.close.side_effect = semantic_error
+        tantivy = MagicMock()
+        tantivy.close.side_effect = tantivy_error
+        with (
+            patch(f"{MODULE}.WeMMEmbeddings"),
+            patch(f"{MODULE}.USearchEngine", return_value=semantic),
+            patch(f"{MODULE}.TantivyEngine", return_value=tantivy),
+            pytest.raises(BaseExceptionGroup) as raised,
+        ):
+            MemoryManager(
+                replace(mock_config, eager_initialization=True),
+                mock_logger.structured,
+                coordinator=_fake_coordinator(),
+            )
+
+        assert raised.value.exceptions == (primary, tantivy_error, semantic_error)
+        tantivy.close.assert_called_once_with()
+        semantic.close.assert_called_once_with()
+
+    def test_semantic_close_failure_still_closes_owned_embedder(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        primary = RuntimeError("tantivy construction failed")
+        cleanup_error = OSError("semantic close failed")
+        semantic = MagicMock()
+        semantic.close.side_effect = cleanup_error
+        with (
+            patch.object(WeMMEmbeddings, "close", autospec=True) as close_embedder,
+            patch(f"{MODULE}.USearchEngine", return_value=semantic),
+            patch(f"{MODULE}.TantivyEngine", side_effect=primary),
+            pytest.raises(BaseExceptionGroup) as raised,
+        ):
+            MemoryManager(
+                mock_config, mock_logger.structured, coordinator=_fake_coordinator()
+            )
+
+        assert raised.value.exceptions == (primary, cleanup_error)
+        close_embedder.assert_called_once()
+        assert isinstance(close_embedder.call_args.args[0], WeMMEmbeddings)
+        semantic.close.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -1229,6 +1362,72 @@ class TestGetAll:
 
         with pytest.raises(StorageError, match="Failed to retrieve memories"):
             manager.get_all()
+
+    def test_page_with_total_uses_one_read_scope(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, semantic, _ = _make_manager(mock_config, mock_logger)
+        events: list[str] = []
+        with (
+            patch.object(manager, "_shared_workspace") as lease,
+            patch.object(manager, "_lock") as lock,
+            patch.object(manager, "_refresh_engines") as refresh,
+        ):
+            lease.return_value.__enter__.side_effect = lambda: events.append("lease")
+            lease.return_value.__exit__.side_effect = lambda *_: events.append(
+                "release"
+            )
+            lock.__enter__.side_effect = lambda: events.append("lock")
+            lock.__exit__.side_effect = lambda *_: events.append("unlock")
+            refresh.side_effect = lambda: events.append("refresh")
+            semantic.get_all.side_effect = lambda **_: (
+                events.append("page") or ["second"]
+            )
+            semantic.count.side_effect = lambda *_: events.append("count") or 3
+
+            result = manager.get_page_with_total(limit=1, offset=1)
+
+        assert result == (["second"], 3)
+        assert events == [
+            "lease",
+            "lock",
+            "refresh",
+            "page",
+            "count",
+            "unlock",
+            "release",
+        ]
+        semantic.get_all.assert_called_once_with(
+            workspace_id="test_project", limit=1, offset=1
+        )
+        semantic.count.assert_called_once_with("test_project")
+
+    @pytest.mark.parametrize("failing_read", ["get_all", "count"])
+    def test_page_with_total_releases_read_scope_on_failure(
+        self, mock_config: Config, mock_logger: LogCapture, failing_read: str
+    ) -> None:
+        manager, semantic, _ = _make_manager(mock_config, mock_logger)
+        semantic.get_all.return_value = ["first"]
+        events: list[str] = []
+        with (
+            patch.object(manager, "_shared_workspace") as lease,
+            patch.object(manager, "_lock") as lock,
+        ):
+            lease.return_value.__enter__.side_effect = lambda: events.append("lease")
+            lease.return_value.__exit__.side_effect = lambda *_: events.append(
+                "release"
+            )
+            lock.__enter__.side_effect = lambda: events.append("lock")
+            lock.__exit__.side_effect = lambda *_: events.append("unlock")
+            if failing_read == "get_all":
+                semantic.get_all.side_effect = RuntimeError("db error")
+            else:
+                semantic.count.side_effect = RuntimeError("db error")
+
+            with pytest.raises(StorageError, match="Failed to retrieve memories"):
+                manager.get_page_with_total(limit=1)
+
+        assert events == ["lease", "lock", "unlock", "release"]
 
 
 # ---------------------------------------------------------------------------

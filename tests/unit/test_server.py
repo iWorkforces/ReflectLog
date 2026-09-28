@@ -1,5 +1,6 @@
 """Unit tests for reflectlog/server.py CLI module."""
 
+import asyncio
 from collections.abc import Callable
 import io
 import os
@@ -7,8 +8,9 @@ from pathlib import Path
 import signal
 import sys
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import anyio
 import pytest
 
 # Add project root to path
@@ -618,6 +620,355 @@ class TestWarmupNumbaWithConfig:
 @pytest.mark.unit
 class TestGracefulShutdown:
     """Test graceful shutdown signal handler (lines 232-242)."""
+
+    @pytest.mark.asyncio
+    async def test_direct_lifespan_cancel_waits_for_manager_close(
+        self, set_env_vars: dict[str, str]
+    ) -> None:
+        from reflectlog.application.config.settings import Config
+        from reflectlog.application.mcp_server import FastMCPServer
+        from reflectlog.application.memory.manager import MemoryManager
+
+        entered = threading.Event()
+        release = threading.Event()
+
+        def close_manager() -> None:
+            entered.set()
+            assert release.wait(timeout=10)
+
+        manager = MagicMock(spec=MemoryManager)
+        manager.close.side_effect = close_manager
+        with patch(
+            "reflectlog.application.mcp_server.MemoryManager", return_value=manager
+        ):
+            server = FastMCPServer(Config.from_environment())
+            async with server._registry.acquire("alpha"):
+                pass
+            serving = asyncio.Event()
+
+            async def run_lifespan() -> None:
+                async with server._lifespan(server.mcp):
+                    serving.set()
+                    await asyncio.Event().wait()
+
+            task = asyncio.create_task(run_lifespan())
+            await serving.wait()
+            task.cancel()
+            try:
+                assert await asyncio.wait_for(asyncio.to_thread(entered.wait), 10)
+                assert not task.done()
+            finally:
+                release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            manager.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_anyio_scope_cancel_persists_before_lifespan_exit(
+        self, set_env_vars: dict[str, str]
+    ) -> None:
+        from reflectlog.application.config.settings import Config
+        from reflectlog.application.mcp_server import FastMCPServer
+        from reflectlog.application.memory.manager import MemoryManager
+
+        manager = MagicMock(spec=MemoryManager)
+        with patch(
+            "reflectlog.application.mcp_server.MemoryManager", return_value=manager
+        ):
+            server = FastMCPServer(Config.from_environment())
+            async with server._registry.acquire("alpha"):
+                pass
+            with anyio.CancelScope() as scope:
+                async with server._lifespan(server.mcp):
+                    scope.cancel()
+            manager.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_failed_server_close_is_shared_and_retryable(
+        self, set_env_vars: dict[str, str]
+    ) -> None:
+        from reflectlog.application.config.settings import Config
+        from reflectlog.application.mcp_server import FastMCPServer
+        from reflectlog.application.memory.manager import MemoryManager
+
+        entered = threading.Event()
+        release = threading.Event()
+        attempts = 0
+
+        def close_manager() -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                entered.set()
+                assert release.wait(timeout=10)
+                raise RuntimeError("persist failed")
+
+        manager = MagicMock(spec=MemoryManager)
+        manager.close.side_effect = close_manager
+        with patch(
+            "reflectlog.application.mcp_server.MemoryManager", return_value=manager
+        ):
+            server = FastMCPServer(Config.from_environment())
+            async with server._registry.acquire("alpha"):
+                pass
+            first = asyncio.create_task(server.aclose())
+            second = asyncio.create_task(server.aclose())
+            try:
+                assert await asyncio.wait_for(asyncio.to_thread(entered.wait), 10)
+            finally:
+                release.set()
+            results = await asyncio.gather(first, second, return_exceptions=True)
+            assert isinstance(results[0], ExceptionGroup)
+            assert results[0] is results[1]
+            assert attempts == 1
+
+            await server.aclose()
+            await server.aclose()
+            assert attempts == 2
+
+    @pytest.mark.asyncio
+    async def test_signal_cancels_serving_task_without_cancelling_other_tasks(
+        self,
+    ) -> None:
+        from reflectlog.server import _start_server
+
+        handlers: dict[int, Callable[[int, object], None]] = {}
+        server = MagicMock()
+        server.shutdown_started = False
+        server.cancel_serving.return_value = False
+        server.aclose = AsyncMock()
+
+        def capture(number: int, handler: Callable[[int, object], None]) -> None:
+            handlers[number] = handler
+
+        with (
+            patch("reflectlog.server.signal.signal", side_effect=capture),
+            patch("reflectlog.server._server_cls", return_value=lambda: server),
+        ):
+            _ = _start_server(io.StringIO(), 0.0, {})
+
+        waiting = asyncio.Event()
+        sibling = asyncio.create_task(waiting.wait())
+        completed = asyncio.Event()
+
+        async def serving() -> None:
+            handlers[signal.SIGTERM](signal.SIGTERM, None)
+            await asyncio.sleep(0)
+
+        with patch(
+            "reflectlog.server.signal.raise_signal",
+            side_effect=lambda _number: completed.set(),
+        ):
+            try:
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.create_task(serving())
+                await asyncio.wait_for(completed.wait(), 10)
+                assert not sibling.done()
+                server.close.assert_not_called()
+                server.aclose.assert_awaited_once()
+            finally:
+                sibling.cancel()
+                _ = await asyncio.gather(sibling, return_exceptions=True)
+
+    @pytest.mark.asyncio
+    async def test_signal_during_shutdown_leaves_cleanup_task_running(self) -> None:
+        from reflectlog.server import _start_server
+
+        handlers: dict[int, Callable[[int, object], None]] = {}
+        server = MagicMock()
+        server.shutdown_started = True
+
+        def capture(number: int, handler: Callable[[int, object], None]) -> None:
+            handlers[number] = handler
+
+        with (
+            patch("reflectlog.server.signal.signal", side_effect=capture),
+            patch("reflectlog.server._server_cls", return_value=lambda: server),
+        ):
+            _ = _start_server(io.StringIO(), 0.0, {})
+
+        async def closing() -> bool:
+            handlers[signal.SIGINT](signal.SIGINT, None)
+            await asyncio.sleep(0)
+            return True
+
+        assert await asyncio.create_task(closing()) is True
+        server.close.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_signal_callback_cancels_real_lifespan_only(
+        self, set_env_vars: dict[str, str]
+    ) -> None:
+        from reflectlog.application.config.settings import Config
+        from reflectlog.application.mcp_server import FastMCPServer
+        from reflectlog.application.memory.manager import MemoryManager
+        from reflectlog.server import _start_server
+
+        handlers: dict[int, Callable[[int, object], None]] = {}
+        manager = MagicMock(spec=MemoryManager)
+        completed = asyncio.Event()
+
+        def capture(number: int, handler: Callable[[int, object], None]) -> None:
+            handlers[number] = handler
+
+        with (
+            patch(
+                "reflectlog.application.mcp_server.MemoryManager", return_value=manager
+            ),
+            patch("reflectlog.server.signal.signal", side_effect=capture),
+            patch(
+                "reflectlog.server.signal.raise_signal",
+                side_effect=lambda _number: completed.set(),
+            ),
+            patch(
+                "reflectlog.server._server_cls",
+                return_value=lambda: FastMCPServer(Config.from_environment()),
+            ),
+        ):
+            server = _start_server(io.StringIO(), 0.0, {})
+            async with server._registry.acquire("alpha"):
+                pass
+            serving = asyncio.Event()
+
+            async def run_lifespan() -> None:
+                async with server._lifespan(server.mcp):
+                    serving.set()
+                    await asyncio.Event().wait()
+
+            task = asyncio.create_task(run_lifespan())
+            sibling = asyncio.create_task(asyncio.Event().wait())
+            try:
+                await serving.wait()
+                asyncio.get_running_loop().call_soon(
+                    handlers[signal.SIGTERM], signal.SIGTERM, None
+                )
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(task, 10)
+                await asyncio.wait_for(completed.wait(), 10)
+                assert not sibling.done()
+                manager.close.assert_called_once()
+            finally:
+                sibling.cancel()
+                _ = await asyncio.gather(sibling, return_exceptions=True)
+
+    @pytest.mark.asyncio
+    async def test_signal_persists_while_serving_cancellation_is_blocked(
+        self, set_env_vars: dict[str, str]
+    ) -> None:
+        from reflectlog.application.config.settings import Config
+        from reflectlog.application.mcp_server import FastMCPServer
+        from reflectlog.application.memory.manager import MemoryManager
+        from reflectlog.server import _start_server
+
+        handlers: dict[int, Callable[[int, object], None]] = {}
+        entered = threading.Event()
+        manager = MagicMock(spec=MemoryManager)
+        manager.close.side_effect = entered.set
+        completed = asyncio.Event()
+
+        def capture(number: int, handler: Callable[[int, object], None]) -> None:
+            handlers[number] = handler
+
+        with (
+            patch(
+                "reflectlog.application.mcp_server.MemoryManager", return_value=manager
+            ),
+            patch("reflectlog.server.signal.signal", side_effect=capture),
+            patch(
+                "reflectlog.server.signal.raise_signal",
+                side_effect=lambda _number: completed.set(),
+            ),
+            patch(
+                "reflectlog.server._server_cls",
+                return_value=lambda: FastMCPServer(Config.from_environment()),
+            ),
+        ):
+            server = _start_server(io.StringIO(), 0.0, {})
+            async with server._registry.acquire("alpha"):
+                pass
+            serving = asyncio.Event()
+            cancelled = asyncio.Event()
+            release = asyncio.Event()
+
+            async def run_lifespan() -> None:
+                async with server._lifespan(server.mcp):
+                    serving.set()
+                    try:
+                        await asyncio.Event().wait()
+                    except asyncio.CancelledError:
+                        cancelled.set()
+                        await release.wait()
+
+            task = asyncio.create_task(run_lifespan())
+            try:
+                await serving.wait()
+                asyncio.get_running_loop().call_soon(
+                    handlers[signal.SIGTERM], signal.SIGTERM, None
+                )
+                await cancelled.wait()
+                assert await asyncio.wait_for(asyncio.to_thread(entered.wait), 1)
+                assert not task.done()
+                manager.close.assert_called_once()
+            finally:
+                release.set()
+                await task
+            await asyncio.wait_for(completed.wait(), 10)
+
+    @pytest.mark.asyncio
+    async def test_signal_outside_task_schedules_async_shutdown(self) -> None:
+        from reflectlog.server import _start_server
+
+        handlers: dict[int, Callable[[int, object], None]] = {}
+        server = MagicMock()
+        server.shutdown_started = False
+        server.cancel_serving.return_value = False
+        server.aclose = AsyncMock()
+
+        def capture(number: int, handler: Callable[[int, object], None]) -> None:
+            handlers[number] = handler
+
+        with (
+            patch("reflectlog.server.signal.signal", side_effect=capture),
+            patch("reflectlog.server._server_cls", return_value=lambda: server),
+        ):
+            _ = _start_server(io.StringIO(), 0.0, {})
+
+        completed = asyncio.Event()
+        with patch(
+            "reflectlog.server.signal.raise_signal",
+            side_effect=lambda _number: completed.set(),
+        ):
+            loop = asyncio.get_running_loop()
+            _ = loop.call_soon(handlers[signal.SIGTERM], signal.SIGTERM, None)
+            await asyncio.wait_for(completed.wait(), 10)
+            server.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_async_signal_reports_persistence_failure(self) -> None:
+        from reflectlog.server import _start_server
+
+        handlers: dict[int, Callable[[int, object], None]] = {}
+        server = MagicMock()
+        server.shutdown_started = False
+        server.cancel_serving.return_value = False
+        server.aclose = AsyncMock(side_effect=RuntimeError("persist failed"))
+        output = io.StringIO()
+
+        def capture(number: int, handler: Callable[[int, object], None]) -> None:
+            handlers[number] = handler
+
+        with (
+            patch("reflectlog.server.signal.signal", side_effect=capture),
+            patch("reflectlog.server._server_cls", return_value=lambda: server),
+        ):
+            _ = _start_server(output, 0.0, {})
+
+        asyncio.get_running_loop().call_soon(
+            handlers[signal.SIGTERM], signal.SIGTERM, None
+        )
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert "Shutdown persist failed: persist failed" in output.getvalue()
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("reflectlog.server.warmup_numba_functions")

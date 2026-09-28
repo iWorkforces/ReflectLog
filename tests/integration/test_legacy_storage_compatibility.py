@@ -266,8 +266,7 @@ async def test_mcp_tool_signatures_and_public_result_shapes() -> None:
     memory = MagicMock(spec=MemoryManager)
     memory.add_memories_async = AsyncMock()
     memory.search = AsyncMock(return_value=[LIVE_A])
-    memory.get_all = MagicMock(return_value=[LIVE_A])
-    memory.count = MagicMock(return_value=1)
+    memory.get_page_with_total = MagicMock(return_value=([LIVE_A], 1))
     memory.search_engine_status = MagicMock(
         return_value={
             "semantic_engine": EngineReadiness.INITIALIZED,

@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from time import monotonic
@@ -10,7 +11,7 @@ from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.utils.logging import create_logger
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable
+    from collections.abc import AsyncGenerator, Callable, Coroutine
 
     from reflectlog.application.config.settings import Config
 
@@ -29,6 +30,24 @@ class _Entry:
     manager: MemoryManager
     active: int
     idle_since: float
+
+
+async def _finish_owned[T](
+    operation: Coroutine[None, None, T],
+) -> tuple[asyncio.Task[T], bool]:
+    task = asyncio.create_task(operation)
+    return task, await _wait_owned(task)
+
+
+async def _wait_owned[T](task: asyncio.Task[T]) -> bool:
+    cancelled = False
+    with anyio.CancelScope(shield=True):
+        while not task.done():
+            try:
+                _ = await asyncio.wait({task})
+            except asyncio.CancelledError:
+                cancelled = True
+    return cancelled
 
 
 class WorkspaceRegistry:
@@ -54,24 +73,43 @@ class WorkspaceRegistry:
         self._closed = anyio.Event()
         self._closing = False
         self._close_error: ExceptionGroup | None = None
+        self._close_task: asyncio.Task[None] | None = None
 
     @asynccontextmanager
     async def acquire(self, workspace_id: str) -> AsyncGenerator[MemoryManager]:
         """Pin a canonical workspace manager through the whole tool invocation."""
         key = canonical_workspace_id(workspace_id)
-        entry = await self._acquire_entry(key)
+        task, cancelled = await _finish_owned(self._acquire_entry(key))
         try:
+            entry = task.result()
+        except Exception as error:
+            if cancelled:
+                raise asyncio.CancelledError from error
+            raise
+        try:
+            if cancelled:
+                raise asyncio.CancelledError
             yield entry.manager
         finally:
-            with anyio.CancelScope(shield=True):
-                async with self._lock:
-                    entry.active -= 1
-                    if entry.active == 0:
-                        entry.idle_since = self._clock()
-                    if all(item.active == 0 for item in self._entries.values()):
-                        self._drained.set()
-                    if not self._closing:
-                        await self._prune_locked()
+            release_task, release_cancelled = await _finish_owned(
+                self._release_entry(entry)
+            )
+            try:
+                release_task.result()
+            finally:
+                if release_cancelled:
+                    raise asyncio.CancelledError
+
+    async def _release_entry(self, entry: _Entry) -> None:
+        with anyio.CancelScope(shield=True):
+            async with self._lock:
+                entry.active -= 1
+                if entry.active == 0:
+                    entry.idle_since = self._clock()
+                if all(item.active == 0 for item in self._entries.values()):
+                    self._drained.set()
+                if not self._closing:
+                    await self._prune_locked()
 
     async def _acquire_entry(self, key: str) -> _Entry:
         with anyio.CancelScope(shield=True):
@@ -115,6 +153,14 @@ class WorkspaceRegistry:
         return None
 
     async def prune(self) -> None:
+        task, cancelled = await _finish_owned(self._prune())
+        try:
+            task.result()
+        finally:
+            if cancelled:
+                raise asyncio.CancelledError
+
+    async def _prune(self) -> None:
         with anyio.CancelScope(shield=True):
             async with self._lock:
                 if not self._closing:
@@ -131,6 +177,17 @@ class WorkspaceRegistry:
 
     async def close(self) -> None:
         """Reject new acquisitions, drain active users, then persist managers."""
+        if self._close_task is None or self._close_task.done():
+            self._close_task = asyncio.create_task(self._close())
+        task = self._close_task
+        cancelled = await _wait_owned(task)
+        try:
+            task.result()
+        finally:
+            if cancelled:
+                raise asyncio.CancelledError
+
+    async def _close(self) -> None:
         with anyio.CancelScope(shield=True):
             async with self._lock:
                 if not self._closing:

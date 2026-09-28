@@ -8,6 +8,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
+import sys
 import threading
 import time
 from typing import TYPE_CHECKING, Any, final
@@ -1126,11 +1127,16 @@ class TantivyEngine(BaseModel):
         """
         with self._lease(LeaseMode.EXCLUSIVE):
             return self._soft_delete_unlocked(
-                workspace_id, content, verify_exists=verify_exists
+                workspace_id, content, verify_exists=verify_exists, finalize_writer=True
             )
 
     def _soft_delete_unlocked(
-        self, workspace_id: str, content: str, *, verify_exists: bool
+        self,
+        workspace_id: str,
+        content: str,
+        *,
+        verify_exists: bool,
+        finalize_writer: bool,
     ) -> bool:
         if verify_exists:
             existing = self.find_by_exact_match(workspace_id, content)
@@ -1151,7 +1157,7 @@ class TantivyEngine(BaseModel):
             return False
 
         self._add_tombstone_docs(workspace_id, content, needed)
-        if self.coordinator is not None:
+        if finalize_writer and self.coordinator is not None:
             self._finalize_writer(relinquish=True)
 
         if self.logger:
@@ -1292,11 +1298,52 @@ class TantivyEngine(BaseModel):
     ) -> int:
         if self.config.soft_delete_enabled:
             deleted = 0
-            for content in contents:
-                if self.soft_delete(workspace_id, content, verify_exists=verify_exists):
-                    deleted += 1
-            if deleted:
-                self.commit()
+            seen: set[str] = set()
+            try:
+                for content in contents:
+                    if content in seen:
+                        continue
+                    if self._soft_delete_unlocked(
+                        workspace_id,
+                        content,
+                        verify_exists=verify_exists,
+                        finalize_writer=False,
+                    ):
+                        seen.add(content)
+                        deleted += 1
+            finally:
+                if deleted or (
+                    self.coordinator is not None and self._writer is not None
+                ):
+                    item_error = sys.exception()
+                    try:
+                        self.commit()
+                    except BaseException as commit_error:
+                        cleanup_errors: list[BaseException] = []
+                        if self.coordinator is not None:
+                            with self._writer_lock:
+                                writer = self._writer
+                                if writer is not None:
+                                    try:
+                                        writer.rollback()
+                                    except BaseException as rollback_error:
+                                        cleanup_errors.append(rollback_error)
+                                    try:
+                                        writer.wait_merging_threads()
+                                    except BaseException as release_error:
+                                        cleanup_errors.append(release_error)
+                                    finally:
+                                        self._writer = None
+                        if item_error is not None:
+                            raise item_error from BaseExceptionGroup(
+                                "Tantivy batch finalization failed",
+                                [commit_error, *cleanup_errors],
+                            )
+                        if cleanup_errors:
+                            raise commit_error from BaseExceptionGroup(
+                                "Tantivy writer cleanup failed", cleanup_errors
+                            )
+                        raise
             return deleted
         deleted = 0
         for content in contents:

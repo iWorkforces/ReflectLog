@@ -290,11 +290,26 @@ def _start_server(
     Registers SIGINT/SIGTERM handlers for graceful shutdown.
     """
     server: FastMCPServerCls | None = None
+    shutdown_task: asyncio.Task[None] | None = None
 
     shutting_down = {"value": False}
+    shutdown_signal: int = signal.SIGTERM
+
+    def report_shutdown(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            print("Shutdown persist cancelled.", file=output_stream)
+            return
+        error = task.exception()
+        if error is not None:
+            print(f"Shutdown persist failed: {error}", file=output_stream)
+            return
+        print("Shutdown complete.", file=output_stream)
+        _ = signal.signal(shutdown_signal, signal.SIG_DFL)
+        signal.raise_signal(shutdown_signal)
 
     def graceful_shutdown(signum: int, frame: object) -> None:
         """Signal handler for graceful shutdown."""
+        nonlocal shutdown_task, shutdown_signal
         if shutting_down["value"]:
             _ = signal.signal(signal.SIGINT, signal.SIG_DFL)
             _ = signal.signal(signal.SIGTERM, signal.SIG_DFL)
@@ -303,6 +318,7 @@ def _start_server(
             signal.raise_signal(signum)
             return
         shutting_down["value"] = True
+        shutdown_signal = signum
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         print(
             f"\nReceived {signal_name}, initiating graceful shutdown...",
@@ -315,8 +331,16 @@ def _start_server(
             except RuntimeError:
                 pass
             else:
-                for task in asyncio.all_tasks(loop):
-                    _ = task.cancel()
+                if not server.shutdown_started:
+                    shutdown_task = loop.create_task(server.aclose())
+                    _ = loop.call_soon_threadsafe(
+                        shutdown_task.add_done_callback, report_shutdown
+                    )
+                if server.cancel_serving():
+                    return
+                serving_task = asyncio.current_task(loop=loop)
+                if serving_task is not None and not server.shutdown_started:
+                    _ = serving_task.cancel()
                 return
             try:
                 server.close()

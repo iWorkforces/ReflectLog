@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 import multiprocessing
 import multiprocessing.synchronize
 import os
 from pathlib import Path
+from queue import Empty
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -14,6 +19,10 @@ from reflectlog.core.enums import EmbedderProvider
 from reflectlog.core.types import Embeddings
 from reflectlog.infrastructure.storage_coordinator import PortalockerStorageCoordinator
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
+from tests.integration.test_concurrent_operations import (
+    create_memory_manager,
+    create_test_config,
+)
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_USEARCH_CONCURRENCY_TESTS") != "1",
@@ -233,3 +242,93 @@ def test_delete_and_readd_later_write_wins(tmp_path: Path) -> None:
             if process.is_alive():
                 process.kill()
                 process.join(timeout=5.0)
+
+
+def _manager_writer(
+    root: str,
+    workspace_id: str,
+    ready: multiprocessing.synchronize.Event,
+    go: multiprocessing.synchronize.Event,
+    attempting: multiprocessing.synchronize.Event,
+    result: multiprocessing.Queue[int],
+) -> None:
+    os.chdir(root)
+    manager = create_memory_manager(create_test_config(workspace_id))
+    original_exclusive = manager._exclusive_workspace
+
+    @contextmanager
+    def signaled_exclusive() -> Generator[None]:
+        attempting.set()
+        with original_exclusive():
+            yield
+
+    try:
+        ready.set()
+        with patch.object(manager, "_exclusive_workspace", signaled_exclusive):
+            if go.wait(timeout=30.0):
+                result.put(manager.add_memories(["fourth"]))
+    finally:
+        manager.close()
+
+
+@pytest.mark.integration
+def test_spawn_writer_cannot_commit_between_page_and_total(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    workspace_id = "coherent-process"
+    manager = create_memory_manager(create_test_config(workspace_id))
+    ctx = multiprocessing.get_context("spawn")
+    ready = ctx.Event()
+    go = ctx.Event()
+    attempting = ctx.Event()
+    page_read = ctx.Event()
+    release_read = ctx.Event()
+    result: multiprocessing.Queue[int] = ctx.Queue()
+    original_get_all = USearchEngine.get_all
+
+    def paused_get_all(
+        engine: USearchEngine,
+        workspace_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[str]:
+        page = original_get_all(engine, workspace_id, limit=limit, offset=offset)
+        page_read.set()
+        assert release_read.wait(timeout=30.0)
+        return page
+
+    process = ctx.Process(
+        target=_manager_writer,
+        args=(str(tmp_path), workspace_id, ready, go, attempting, result),
+    )
+    try:
+        assert manager.add_memories(["first", "second", "third"]) == 3
+        process.start()
+        assert ready.wait(timeout=30.0)
+        with patch.object(USearchEngine, "get_all", paused_get_all):
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                reader = pool.submit(manager.get_page_with_total, 2, 1)
+                try:
+                    assert page_read.wait(timeout=30.0)
+                    go.set()
+                    assert attempting.wait(timeout=30.0)
+                    with pytest.raises(Empty):
+                        result.get(timeout=0.2)
+                finally:
+                    release_read.set()
+                assert reader.result(timeout=30.0) == (["second", "third"], 3)
+        assert result.get(timeout=30.0) == 1
+        process.join(timeout=30.0)
+        assert process.exitcode == 0
+        assert manager.get_page_with_total() == (
+            ["first", "second", "third", "fourth"],
+            4,
+        )
+    finally:
+        release_read.set()
+        go.set()
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=5.0)
+        manager.close()

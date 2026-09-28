@@ -270,6 +270,12 @@ class IMemoryManager(Protocol):
         """Retrieve stored memories from the semantic backend."""
         ...
 
+    def get_page_with_total(
+        self, limit: int | None = None, offset: int = 0
+    ) -> tuple[list[str], int]:
+        """Retrieve a semantic page and its total in one read scope."""
+        ...
+
     async def search(
         self,
         query: str,
