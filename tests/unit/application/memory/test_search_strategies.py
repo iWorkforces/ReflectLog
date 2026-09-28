@@ -212,6 +212,91 @@ class TestSearchPipelineExecute:
 
         assert len(result.memories) >= 1
 
+    @pytest.mark.asyncio
+    async def test_default_completes_timestamps_without_reranker(
+        self,
+        pipeline: SearchPipeline,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_fusion_engine: MagicMock,
+    ) -> None:
+        mock_semantic_engine.search.return_value = [("semantic", 0.9, "semantic-time")]
+        mock_tantivy_engine.search.return_value = [("lexical", 0.8)]
+        mock_fusion_engine.fuse.return_value = [
+            ("semantic", 0.5),
+            ("lexical", 0.4),
+        ]
+        record = Mock(content="lexical", created_at="lexical-time")
+        mock_semantic_engine.get_records_by_contents.return_value = [record]
+
+        result = await pipeline.execute(_make_context())
+
+        assert result.timestamp_map == {
+            "semantic": "semantic-time",
+            "lexical": "lexical-time",
+        }
+        mock_semantic_engine.get_records_by_contents.assert_called_once_with(
+            "test_project", ["lexical"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_memories_only_without_reranker_skips_timestamp_lookup(
+        self,
+        pipeline: SearchPipeline,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_fusion_engine: MagicMock,
+    ) -> None:
+        mock_semantic_engine.search.return_value = [("semantic", 0.9, "semantic-time")]
+        mock_tantivy_engine.search.return_value = [("lexical", 0.8)]
+        mock_fusion_engine.fuse.return_value = [
+            ("semantic", 0.5),
+            ("lexical", 0.4),
+        ]
+
+        result = await pipeline.execute(_make_context(), include_timestamp_map=False)
+
+        assert result.memories == ["semantic", "lexical"]
+        assert result.timestamp_map == {"semantic": "semantic-time"}
+        mock_semantic_engine.get_records_by_contents.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_memories_only_with_reranker_completes_timestamps(
+        self,
+        pipeline: SearchPipeline,
+        mock_config: Mock,
+        mock_memory_manager: MagicMock,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_fusion_engine: MagicMock,
+    ) -> None:
+        mock_config.reranker_engine = "cross_encoder"
+        reranker = MagicMock()
+        reranker.rerank_async = AsyncMock(return_value=[("lexical", 0.9)])
+        mock_memory_manager.cross_encoder_reranker = reranker
+        mock_semantic_engine.search.return_value = [("semantic", 0.9, "semantic-time")]
+        mock_tantivy_engine.search.return_value = [("lexical", 0.8)]
+        mock_fusion_engine.fuse.return_value = [
+            ("semantic", 0.5),
+            ("lexical", 0.4),
+        ]
+        mock_semantic_engine.get_records_by_contents.return_value = [
+            Mock(content="lexical", created_at="lexical-time")
+        ]
+
+        result = await pipeline.execute(_make_context(), include_timestamp_map=False)
+
+        assert result.memories == ["lexical"]
+        assert result.timestamp_map == {
+            "semantic": "semantic-time",
+            "lexical": "lexical-time",
+        }
+        mock_semantic_engine.get_records_by_contents.assert_called_once_with(
+            "test_project", ["lexical"]
+        )
+        assert reranker.rerank_async.await_args is not None
+        assert reranker.rerank_async.await_args.args[2] == result.timestamp_map
+
 
 # ---------------------------------------------------------------------------
 # TestSearchTantivy – line 295 (tantivy_engine is None)
