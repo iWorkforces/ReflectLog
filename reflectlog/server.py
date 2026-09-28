@@ -201,7 +201,7 @@ def main() -> None:
     output_stream = sys.stderr if transport_mode == TransportMode.STDIO else sys.stdout
 
     print(
-        "Starting ReflectLog - Project-based AI Agent Memories...",
+        "Starting ReflectLog - Workspace-based AI Agent Memories...",
         file=output_stream,
     )
     print(f"Version: {__version__}", file=output_stream)

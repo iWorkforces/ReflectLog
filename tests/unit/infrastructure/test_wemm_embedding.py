@@ -2,7 +2,7 @@
 
 import math
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import pytest
@@ -41,6 +41,7 @@ def test_model_load_is_lazy_and_uses_official_sentence_transformer_contract() ->
         WeMMModel.EMBEDDING_2B.value,
         trust_remote_code=True,
         device="cpu",
+        local_files_only=True,
     )
     model_class.return_value.encode_query.assert_called_once_with(
         ["query text"],
@@ -192,6 +193,121 @@ def test_device_selection_is_forwarded(
         WeMMModel.EMBEDDING_2B.value,
         trust_remote_code=True,
         device=constructor_device,
+        local_files_only=True,
+    )
+
+
+def test_cached_model_is_reused_without_online_load() -> None:
+    with patch(
+        "reflectlog.infrastructure.embeddings.wemm_embedding.SentenceTransformer"
+    ) as model_class:
+        model_class.return_value.encode_query.return_value = _vector_rows(1, 64)
+        model_class.return_value.encode_document.return_value = _vector_rows(1, 64)
+        embeddings = WeMMEmbeddings(_config())
+
+        query = embeddings.embed_query("query")
+        documents = embeddings.embed_documents(["document"])
+
+    model_class.assert_called_once_with(
+        WeMMModel.EMBEDDING_2B.value,
+        trust_remote_code=True,
+        device="cpu",
+        local_files_only=True,
+    )
+    assert query == pytest.approx([0.125] * 64)
+    assert documents[0] == pytest.approx([0.125] * 64)
+
+
+def test_cache_miss_retries_online_and_reuses_downloaded_model() -> None:
+    model = MagicMock()
+    model.encode_query.return_value = _vector_rows(1, 64)
+    with patch(
+        "reflectlog.infrastructure.embeddings.wemm_embedding.SentenceTransformer",
+        side_effect=[OSError("cache miss"), model],
+    ) as model_class:
+        embeddings = WeMMEmbeddings(_config())
+
+        first = embeddings.embed_query("first")
+        second = embeddings.embed_query("second")
+
+    assert model_class.call_args_list == [
+        call(
+            WeMMModel.EMBEDDING_2B.value,
+            trust_remote_code=True,
+            device="cpu",
+            local_files_only=True,
+        ),
+        call(
+            WeMMModel.EMBEDDING_2B.value,
+            trust_remote_code=True,
+            device="cpu",
+            local_files_only=False,
+        ),
+    ]
+    assert first == pytest.approx([0.125] * 64)
+    assert second == pytest.approx([0.125] * 64)
+
+
+def test_new_instance_reloads_cached_model_without_online_retry() -> None:
+    first_model = MagicMock()
+    first_model.encode_query.return_value = _vector_rows(1, 64)
+    cached_model = MagicMock()
+    cached_model.encode_query.return_value = _vector_rows(1, 64)
+    with patch(
+        "reflectlog.infrastructure.embeddings.wemm_embedding.SentenceTransformer",
+        side_effect=[OSError("cache miss"), first_model, cached_model],
+    ) as model_class:
+        first = WeMMEmbeddings(_config())
+        assert first.embed_query("first") == pytest.approx([0.125] * 64)
+        first.close()
+
+        reloaded = WeMMEmbeddings(_config()).embed_query("second")
+
+    assert reloaded == pytest.approx([0.125] * 64)
+    assert [args.kwargs["local_files_only"] for args in model_class.call_args_list] == [
+        True,
+        False,
+        True,
+    ]
+
+
+def test_cache_miss_and_online_failure_preserve_online_cause() -> None:
+    online_error = OSError("network unavailable")
+    with patch(
+        "reflectlog.infrastructure.embeddings.wemm_embedding.SentenceTransformer",
+        side_effect=[OSError("cache miss"), online_error],
+    ) as model_class:
+        embeddings = WeMMEmbeddings(_config())
+
+        with pytest.raises(RuntimeError, match="WeMM model load failed") as exc:
+            embeddings.embed_query("query")
+
+    assert exc.value.__cause__ is online_error
+    assert embeddings.is_loaded is False
+    assert [args.kwargs["local_files_only"] for args in model_class.call_args_list] == [
+        True,
+        False,
+    ]
+
+
+def test_model_runtime_failure_does_not_retry_online() -> None:
+    cause = RuntimeError("invalid checkpoint")
+    with patch(
+        "reflectlog.infrastructure.embeddings.wemm_embedding.SentenceTransformer",
+        side_effect=cause,
+    ) as model_class:
+        embeddings = WeMMEmbeddings(_config())
+
+        with pytest.raises(RuntimeError, match="WeMM model load failed") as exc:
+            embeddings.embed_query("query")
+
+    assert exc.value.__cause__ is cause
+    assert embeddings.is_loaded is False
+    model_class.assert_called_once_with(
+        WeMMModel.EMBEDDING_2B.value,
+        trust_remote_code=True,
+        device="cpu",
+        local_files_only=True,
     )
 
 
@@ -302,6 +418,92 @@ def test_concurrent_first_use_loads_model_once() -> None:
 
     assert len(results) == 4
     model_class.assert_called_once()
+
+
+def test_concurrent_first_loads_across_instances_wait_for_cached_checkpoint() -> None:
+    download_started = threading.Event()
+    release_download = threading.Event()
+    second_finished = threading.Event()
+    state_lock = threading.Lock()
+    cache_ready = False
+    download_active = False
+    constructor_calls: list[tuple[str, bool]] = []
+    results: dict[str, list[float]] = {}
+    errors: dict[str, BaseException] = {}
+    model = MagicMock()
+    model.encode_query.return_value = _vector_rows(1, 64)
+
+    def construct_model(
+        _model_name: str,
+        *,
+        trust_remote_code: bool,
+        device: str | None,
+        local_files_only: bool,
+    ) -> MagicMock:
+        nonlocal cache_ready, download_active
+        with state_lock:
+            constructor_calls.append(
+                (threading.current_thread().name, local_files_only)
+            )
+            if local_files_only:
+                if cache_ready:
+                    return model
+                if download_active:
+                    raise OSError("checkpoint download incomplete")
+                raise OSError("checkpoint cache miss")
+            if download_active:
+                raise OSError("concurrent online load failed")
+            download_active = True
+        download_started.set()
+        assert release_download.wait(timeout=5)
+        with state_lock:
+            cache_ready = True
+            download_active = False
+        return model
+
+    def embed(embeddings: WeMMEmbeddings) -> None:
+        name = threading.current_thread().name
+        try:
+            result = embeddings.embed_query(name)
+            with state_lock:
+                results[name] = result
+        except BaseException as exc:
+            with state_lock:
+                errors[name] = exc
+        finally:
+            if name == "second":
+                second_finished.set()
+
+    first = threading.Thread(
+        name="first", target=embed, args=(WeMMEmbeddings(_config()),)
+    )
+    second = threading.Thread(
+        name="second", target=embed, args=(WeMMEmbeddings(_config()),)
+    )
+    started: list[threading.Thread] = []
+    with patch(
+        "reflectlog.infrastructure.embeddings.wemm_embedding.SentenceTransformer",
+        side_effect=construct_model,
+    ):
+        try:
+            first.start()
+            started.append(first)
+            assert download_started.wait(timeout=2)
+            second.start()
+            started.append(second)
+            second_finished.wait(timeout=2)
+        finally:
+            release_download.set()
+            for thread in started:
+                thread.join(timeout=5)
+
+    assert all(not thread.is_alive() for thread in started)
+    assert errors == {}, f"worker failures: {errors!r}; calls: {constructor_calls!r}"
+    assert results == {
+        "first": pytest.approx([0.125] * 64),
+        "second": pytest.approx([0.125] * 64),
+    }
+    assert constructor_calls == [("first", True), ("first", False), ("second", True)]
 
 
 def test_inference_is_serialized_with_model_lifecycle() -> None:

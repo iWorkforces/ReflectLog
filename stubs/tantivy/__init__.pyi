@@ -98,6 +98,7 @@ class Searcher:
         """Retrieve a document by address."""
         ...
 
+    @property
     def num_docs(self) -> int:
         """Return the total number of documents in the index."""
         ...

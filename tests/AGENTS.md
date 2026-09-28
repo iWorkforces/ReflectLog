@@ -1,7 +1,7 @@
 # Test Suite
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -51,7 +51,11 @@ tests/
 
 ## CI
 
-Focused workflow `.github/workflows/platform-storage.yml` exists. It runs `scripts/run_platform_gates.py --focused` plus a **subset** of coordinator/engine tests. It does **not** run the full suite, lint, typecheck, or coverage.
+`pr-quality.yml` runs `./start-type-check.sh --check`, `./start-lint.sh --check`, and `NUMBA_DISABLE_JIT=1 ./start-unittest.sh --coverage` on Ubuntu. Triggers: PRs to `develop`/`main`, push to `main`.
+
+`platform-storage.yml` runs `scripts/run_platform_gates.py --focused` plus a **subset** of coordinator/engine tests on macOS, Ubuntu, and Windows. It does **not** run the full suite, lint, typecheck, or coverage. Push to `develop` hits this workflow only.
+
+WeMM tests need `RUN_LOCAL_MODEL_TESTS=1` (`slow`). Qwen HTTP needs `RUN_REAL_API_TESTS=1`.
 
 ## RUNNING
 

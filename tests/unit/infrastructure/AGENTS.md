@@ -1,7 +1,7 @@
 # Infrastructure Unit Tests
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -19,6 +19,9 @@ tests/unit/infrastructure/
 ├── test_cross_encoder_reranker.py
 ├── test_smart_replacer.py
 ├── test_qwen3_embedding.py
+├── test_wemm_embedding.py          # RUN_LOCAL_MODEL_TESTS=1
+├── test_embedding_identity.py
+├── test_usearch_config_identity.py
 ├── test_cached_embeddings.py
 ├── test_replacement_transitions.py
 ├── test_reranker_post_processor.py
@@ -34,6 +37,7 @@ tests/unit/infrastructure/
 | `test_memory_store.py` | Identity + journal `add\|delete\|replace` |
 | `test_usearch_engine.py` | HNSW + SQLite SoT; fail-closed empty SQLite |
 | `test_storage_coordinator.py` | Portalocker lease; focused CI includes this |
+| `test_embedding_identity.py` | Sidecar mismatch refuses HNSW open |
 | `test_cached_embeddings.py` | LRU; short-batch raise (no pad with `[]`) |
 
 ## ANTI-PATTERNS

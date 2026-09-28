@@ -1,7 +1,7 @@
 # Memory Package
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -11,6 +11,7 @@
 ```
 memory/
 ├── manager.py                 # Locks, public API, lazy CE / SmartReplacer
+├── workspace_registry.py      # acquire() pins one manager per workspace
 ├── add_phases.py              # 3-phase add (dedup → replace → store)
 ├── search_strategies.py       # 4-step SearchPipeline
 ├── engine_factory.py          # Exists; unused at runtime
@@ -25,6 +26,7 @@ memory/
 | Task | Location | Notes |
 |------|----------|-------|
 | Public API | `manager.py` | Portalocker → `_write_lock` → `_lock` |
+| Per-workspace pin | `workspace_registry.py` | Not a second facade; builds `MemoryManager` |
 | Persist / replace | `add_phases.py` | Embed outside exclusive; NEW then OLD |
 | Restart converge | `replacement_recovery.py` | Generation after converge; leftover ADD then replace complete |
 | Exact identity | `match_utils.has_exact_match` | SQLite `(workspace_id, content)` only |
@@ -32,7 +34,8 @@ memory/
 
 ## CONVENTIONS
 
-- 3-phase add: `DuplicateDetectionPhase` → `SmartReplacementPhase` → `StoragePhase`.
+- 3-phase add is the async path only. Sync `add_memories` journals `ADD` and skips smart replace.
+- `DuplicateDetectionPhase` → `SmartReplacementPhase` → `StoragePhase`.
 - 4-step search: parallel backends → RRF/concat → fusion threshold → CE if >1 hit.
 - Embed outside exclusive. Phase 3: journal → persist NEW + commit → delete OLD → extra commit → publish generation after converge → leftover ADD complete → replace complete.
 - Identity is SQLite unique `(workspace_id, content)`. Tantivy `en_stem` is not exact match.

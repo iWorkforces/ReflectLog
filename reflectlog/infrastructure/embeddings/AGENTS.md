@@ -1,17 +1,18 @@
 # Agent Guidelines for reflectlog/infrastructure/embeddings/
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
-Only populated child of `infrastructure/`. Qwen OpenRouter client + LRU cache.
+Only populated child of `infrastructure/`. Local WeMM, Qwen OpenRouter, and an LRU cache.
 
 ## STRUCTURE
 
 ```
 embeddings/
 ├── cached_embeddings.py  # SHA-256 LRU; fail-closed batches
+├── wemm_embedding.py     # Local SentenceTransformer; text only
 └── qwen3_embedding.py    # OpenAI-compat OpenRouter client
 ```
 
@@ -19,7 +20,8 @@ embeddings/
 
 | Task | Location | Notes |
 |------|----------|-------|
-| LRU wrap | `cached_embeddings.py` | `embed_query` + per-text `embed_documents` |
+| LRU wrap | `cached_embeddings.py` | `role_separated=True` only for WeMM |
+| WeMM | `wemm_embedding.py` | `local_files_only=True`, then download on `OSError` |
 | Qwen HTTP | `qwen3_embedding.py` | `LangchainQwenEmbeddings` name leftover |
 | HTTP pool | `utility/http.py` | `HttpClientFactory` |
 
@@ -28,11 +30,14 @@ embeddings/
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
 | `CachedEmbeddings` | Class | `cached_embeddings.py` | LRU; fail-closed short/empty |
+| `WeMMEmbeddings` | Class | `wemm_embedding.py` | Lazy, thread-safe, text-only |
 | `LangchainQwenEmbeddings` | Class | `qwen3_embedding.py` | OpenRouter OpenAI-compat |
 
 ## CONVENTIONS
 
 - Imports: `reflectlog.infrastructure.embeddings.*`. Not at package root.
+- WeMM query and document encoders differ. The manager sets `CachedEmbeddings.role_separated=True` for WeMM only. Qwen shares one SHA-256 key.
+- WeMM load tries `local_files_only=True`, then downloads on `OSError`. Empty, short, non-finite, or zero vectors raise.
 - Qwen is OpenAI-compatible OpenRouter. Langchain name is leftover.
 - Fail-closed on short/empty batches. Cache raises `RuntimeError` on size mismatch or empty vector. Qwen raises if `len(results) != len(texts)` or any empty item.
 - `aembed_documents` may init slots as `[]`; leftover empty slots raise. Never treat that as a successful pad.

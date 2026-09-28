@@ -233,7 +233,7 @@ class TantivyEngine(BaseModel):
         """Return committed document count, or None when the path is unopenable."""
         try:
             index = tantivy.Index.open(index_path)
-            return int(index.searcher().num_docs())
+            return int(index.searcher().num_docs)
         except Exception:
             return None
 
@@ -1469,7 +1469,7 @@ class TantivyEngine(BaseModel):
         num_docs: int | None = None
 
         try:
-            num_docs = searcher.num_docs()
+            num_docs = searcher.num_docs
         except Exception as e:
             if self.logger:
                 self.logger.debug(

@@ -109,7 +109,7 @@ class TestBuildInstructions:
         """Header should always be included."""
         result = build_instructions([("add", "    • add snippet")])
 
-        assert "ReflectLog Server" in result
+        assert result.startswith(f"{INSTRUCTIONS_HEADER}\n")
         assert "Available Tools:" in result
 
     def test_tool_order_constant(self):
@@ -293,5 +293,5 @@ class TestBackwardCompatibility:
         """MCP_INSTRUCTIONS should have proper header."""
         from reflectlog.core.prompts import MCP_INSTRUCTIONS
 
-        assert "ReflectLog Server" in MCP_INSTRUCTIONS
+        assert MCP_INSTRUCTIONS.startswith(f"{INSTRUCTIONS_HEADER}\n")
         assert "Available Tools:" in MCP_INSTRUCTIONS

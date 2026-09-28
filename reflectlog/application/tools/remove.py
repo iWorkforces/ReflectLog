@@ -7,7 +7,7 @@ from asyncer import asyncify
 from reflectlog.core.enums import ToolName
 from reflectlog.core.exceptions import StorageError
 
-from ..utils.validation import validate_remove_batch, validate_remove_memories
+from ..utils.validation import validate_remove_memories
 from .base import BaseTool
 
 if TYPE_CHECKING:
@@ -48,11 +48,6 @@ class RemoveTool(BaseTool):
             Note: Uses asyncify() to bridge to sync MemoryManager methods without
             blocking the event loop. This enables concurrent tool calls.
 
-            Performance Note: Memories are processed sequentially (O(n) where n is
-            the number of memories). For bulk removals (100+ memories), consider
-            batching into smaller groups or using a dedicated bulk operation if
-            available in the future.
-
             Args:
                 memories: List of memory strings to remove from storage. Can be empty
                     (treated as no-op). Memories not found in the store are ignored.
@@ -77,16 +72,17 @@ class RemoveTool(BaseTool):
                 self.logger.info("Remove called with empty list, skipping")
                 return
 
-            unique_memories = list(dict.fromkeys(memories))
-            is_valid, error_msg = validate_remove_memories(unique_memories)
-            if is_valid:
-                is_valid, error_msg = validate_remove_batch(
-                    unique_memories,
-                    self.config.max_add_batch,
-                    self.config.max_add_chars,
-                )
+            is_valid, error_msg = validate_remove_memories(memories)
             if not is_valid:
                 raise ValueError(f"Invalid memory: {error_msg}")
+            unique_memories = list(dict.fromkeys(memories))
+            if (
+                sum(len(memory) for memory in unique_memories)
+                > self.config.max_add_chars
+            ):
+                raise ValueError(
+                    f"Invalid memory: Remove payload too large (max: {self.config.max_add_chars} characters)"
+                )
 
             self.log_invocation(
                 ToolName.REMOVE,
@@ -113,14 +109,16 @@ class RemoveTool(BaseTool):
             memories_not_found: list[str] = []
 
             try:
-                deleted = await asyncify(self.memory.delete_memories)(unique_memories)
-                deleted_set = set(deleted)
-                actual_removed = len(deleted_set)
-                memories_not_found = [
-                    f"index:{idx}"
-                    for idx, memory in enumerate(unique_memories)
-                    if memory not in deleted_set
-                ]
+                for start in range(0, len(unique_memories), self.config.max_add_batch):
+                    batch = unique_memories[start : start + self.config.max_add_batch]
+                    deleted = await asyncify(self.memory.delete_memories)(batch)
+                    deleted_set = set(deleted)
+                    actual_removed += len(deleted_set)
+                    memories_not_found.extend(
+                        f"index:{idx}"
+                        for idx in range(start, start + len(batch))
+                        if unique_memories[idx] not in deleted_set
+                    )
 
                 # Log final summary
                 self.logger.info(

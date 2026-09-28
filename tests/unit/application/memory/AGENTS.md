@@ -1,7 +1,7 @@
 # Memory Pipeline Unit Tests
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -18,6 +18,8 @@ tests/unit/application/memory/
 ├── test_search_strategies.py
 ├── test_search_pipeline.py
 ├── test_engine_factory.py
+├── test_workspace_registry.py
+├── test_wemm_wiring.py
 ├── test_replacement_recovery.py
 └── reranking/test_normalization.py
 ```

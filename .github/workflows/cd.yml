@@ -1,0 +1,89 @@
+name: cd
+
+on:
+  workflow_run:
+    workflows: [pr-quality, platform-storage]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.id == github.event.repository.id }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify merged PR and both CI runs
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPOSITORY_ID: ${{ github.event.repository.id }}
+        run: |
+          set -euo pipefail
+
+          prs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$MERGE_SHA/pulls" --jq '.[]')
+          if ! jq -es --arg sha "$MERGE_SHA" --argjson repo "$REPOSITORY_ID" \
+            'any(.[]; .merged_at != null and .base.ref == "main" and .base.repo.id == $repo and .merge_commit_sha == $sha)' \
+            <<< "$prs" >/dev/null; then
+            echo 'No merged PR to main produced this commit; no release.'
+            exit 0
+          fi
+
+          for workflow in pr-quality platform-storage; do
+            runs=$(gh api -X GET --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow.yml/runs" \
+              -f head_sha="$MERGE_SHA" -f branch=main -f event=push -f per_page=100 \
+              --jq '.workflow_runs[]')
+            if ! jq -es --arg sha "$MERGE_SHA" --arg name "$workflow" --argjson repo "$REPOSITORY_ID" \
+              'any(.[]; .name == $name and .head_sha == $sha and .head_branch == "main" and .event == "push" and .head_repository.id == $repo and .status == "completed" and .conclusion == "success")' \
+              <<< "$runs" >/dev/null; then
+              echo "$workflow has no successful completed push run for $MERGE_SHA; no release."
+              exit 0
+            fi
+          done
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Create release for project version
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          version=$(python3 -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')
+          tag="v$version"
+
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            tagged_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')
+            if [[ "$tagged_sha" != "$MERGE_SHA" ]]; then
+              echo "Tag $tag points to $tagged_sha, not $MERGE_SHA" >&2
+              exit 1
+            fi
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$tag" -f sha="$MERGE_SHA" >/dev/null
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists for $MERGE_SHA."
+          else
+            gh release create "$tag" --verify-tag --target "$MERGE_SHA" \
+              --title "$tag" --notes "Release $tag"
+          fi

@@ -1,7 +1,7 @@
 # Reranking (pointer)
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -17,7 +17,7 @@ reranking/
 
 | Need | Location | Notes |
 |------|----------|-------|
-| Batch min-max | `utility/scoring.py` | `normalize_reranker_scores` |
+| Batch min-max | `utility/scoring.py` | `normalize_reranker_scores`; single/equal → `1.0` |
 | CE / fusion gate | `utility/scoring.py` | `apply_threshold_with_safety_net` |
 | Recency factor | `utility/scoring.py` | `calculate_recency_factor` = `exp(-rate * hours)` |
 | Recency apply | `utility/scoring.py` | `apply_recency_decay` re-sorts |
@@ -26,6 +26,7 @@ reranking/
 ## CONVENTIONS
 
 - Do not add scoring functions here. Import from `utility/scoring.py`.
+- Default CE `normalize=True` applies sigmoid and forces `batch_normalize=False`. Batch min-max is the off-sigmoid path.
 - Recency only after CE normalize + threshold. Never decay first; never gate on decayed scores.
 - Threshold assumes a [0, 1] batch. Normalize the whole list, not each score.
 - `reranker_min_results` keeps at least the best hit when the gate would empty the list.
@@ -35,7 +36,7 @@ reranking/
 
 - Never implement scoring in this package.
 - Never apply recency before CE normalize + threshold.
-- Never skip batch normalization so a raw CE score can be compared to a 0–1 gate.
+- Never compare a raw CE logit to the 0–1 gate. Sigmoid is the default. Batch min-max runs only when sigmoid is off.
 - Never return empty when the safety net can keep `min_results`.
 - Never move Numba RRF helpers here; fusion owns those imports.
 

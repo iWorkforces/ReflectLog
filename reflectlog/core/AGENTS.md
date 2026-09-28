@@ -1,7 +1,7 @@
 # ReflectLog Core Protocols
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -12,7 +12,7 @@ Protocols, StrEnums, adapters, exceptions, replacement prompts. No engines.
 ```
 core/
 ├── types.py             # MemoryRecord, Embeddings, IStoredMemory, ISemanticSearchEngine
-├── enums.py             # StrEnums: RerankerEngine, FusionMethod, TransportMode, TransitionKind
+├── enums.py             # StrEnums: RerankerEngine, EmbedderProvider, WeMMModel, TransitionKind
 ├── config.py            # IServerConfig … IAppConfig (6 sub-protocols)
 ├── config_adapters.py   # ConfigAdapter + fine-grained + create_*_adapter()
 ├── storage_coordination.py  # IStorageCoordinator, LeaseMode, IStorageLease

@@ -1,7 +1,7 @@
 # ReflectLog Application Layer
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -16,6 +16,7 @@ application/
 ├── config/              # Frozen Config; settings.setup_config_reload unused
 ├── memory/
 │   ├── manager.py       # Public API; inlines USearch/Tantivy/fusion
+│   ├── workspace_registry.py # One manager per workspace_id
 │   ├── engine_factory.py # EngineFactory exists; unused at runtime
 │   ├── add_phases.py    # 3-phase add; embed outside lease
 │   ├── search_strategies.py # 4-step SearchPipeline
@@ -28,8 +29,9 @@ application/
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Tool wiring | `mcp_server.py` | Injects `MemoryManager`; `ALLOWED_TOOLS` filter |
+| Tool wiring | `mcp_server.py` | `WorkspaceRegistry.acquire` then a per-call tool |
 | Facade | `memory/manager.py` | Portalocker → `_write_lock` → `_lock` |
+| Workspace pin | `memory/workspace_registry.py` | Idle TTL 900s, max 8 idle; reaper in lifespan |
 | Add | `memory/add_phases.py` | Embed outside exclusive; leftover ADD after generation |
 | Search | `memory/search_strategies.py` | 4-step; skip CE if ≤1 hit |
 | Config reload | `config/settings.py` `setup_config_reload` | SIGHUP helper; not called at startup |
@@ -39,7 +41,8 @@ application/
 
 - `FastMCPServer(server_config: Config | None = None)`; defaults to `get_config()`.
 - Engines: manager calls `USearchConfig.from_config(ConfigAdapter(config))` (CE/replacer same). Do not route startup through `EngineFactory`.
-- Tools: `AddTool` / `SearchTool` / `GetAllTool` / `RemoveTool` / `HealthCheckTool` only. Never import engines or fusion.
+- Tools: `AddTool` / `SearchTool` / `GetAllTool` / `RemoveTool` / `HealthCheckTool` only. Each MCP call passes `workspace_id`. Never import engines or fusion.
+- `get_all` calls `get_page_with_total` (page and total from one read). Sync `add_memories` skips smart replace; MCP `add` uses the async pipeline.
 - Add: embed outside lease. After engines converge, publish generation, then leftover ADD complete, then replace complete.
 - `application/utils/` has no `http_client.py` / `metrics.py` / `retry.py` / `circuit_breaker.py`.
 - `access.py` deleted. No `getattr` / `optional_attr` / `invoke_if_callable`.
