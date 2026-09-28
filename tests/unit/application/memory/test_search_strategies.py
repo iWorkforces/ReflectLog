@@ -89,6 +89,7 @@ def mock_memory_manager() -> MagicMock:
     """Mock MemoryManager for lazy reranker fetching."""
     manager = MagicMock()
     manager.cross_encoder_reranker = None
+    manager.openrouter_reranker = None
     return manager
 
 
@@ -492,6 +493,36 @@ class TestStep4Reranking:
 
         reranked = await pipeline._step4_reranking(ctx, results, {}, 4)
         assert reranked == results
+
+    async def test_openrouter_dispatch_and_failure_fallback(
+        self,
+        pipeline: SearchPipeline,
+        mock_config: Mock,
+        mock_memory_manager: MagicMock,
+        mock_logger: Mock,
+    ) -> None:
+        mock_config.reranker_engine = "openrouter"
+        reranker = Mock()
+        reranker.rerank_async = AsyncMock(return_value=[("second", 0.95)])
+        mock_memory_manager.openrouter_reranker = reranker
+        context = _make_context(reranker_engine="openrouter", limit=5)
+        candidates = [("first", 0.04), ("second", 0.03)]
+        stamps = {"first": "2025-01-01T00:00:00Z"}
+        assert await pipeline._step4_reranking(context, candidates, stamps, 4) == [
+            ("second", 0.95)
+        ]
+        reranker.rerank_async.assert_awaited_once_with(
+            "test query", candidates, stamps, top_k=5
+        )
+
+        reranker.rerank_async.side_effect = RuntimeError("private response body")
+        assert (
+            await pipeline._step4_reranking(context, candidates, stamps, 4)
+            == candidates
+        )
+        warning = mock_logger.warning.call_args
+        assert warning.kwargs["extra"]["error_type"] == "RuntimeError"
+        assert "private response body" not in str(warning)
 
 
 # ---------------------------------------------------------------------------
