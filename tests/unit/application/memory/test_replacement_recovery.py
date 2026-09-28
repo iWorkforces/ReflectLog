@@ -3,7 +3,7 @@
 import os
 import tempfile
 import threading
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -35,6 +35,7 @@ def _stub_journal(
     semantic.memory_store.list_pending_transitions.return_value = (
         list(rows) if rows else [_transition()]
     )
+    semantic.memory_store.is_pending_transition.return_value = True
     semantic.memory_store.has_later_intent.return_value = False
     _stub_contains(semantic)
 
@@ -352,6 +353,84 @@ class TestReconcilePendingReplacements:
             assert pending[0].new_content == "ghost-content"
             semantic.add.assert_not_called()
             semantic.add_batch.assert_not_called()
+            store.close()
+
+    def test_multiple_intents_only_decode_two_snapshots_and_isolate_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            stale, failing, successful, last = store.begin_add_intents(
+                "proj", ["stale", "failing", "successful", "last"]
+            )
+            deleted = store.begin_delete_intents("proj", [(42, "stale")])[0]
+            store.complete_replacement_transition(deleted.id)
+            semantic = MagicMock()
+            semantic.memory_store = store
+            semantic.embedder.embed_documents.return_value = [[0.1, 0.2]] * 4
+            live: dict[str, int] = {}
+            semantic.get_id_by_content.side_effect = lambda _workspace, content: (
+                live.get(content)
+            )
+            semantic.contains_id.side_effect = lambda memory_id: (
+                memory_id in live.values()
+            )
+
+            def add_batch(
+                _workspace: str,
+                contents: list[str],
+                *,
+                infer: bool,
+                vectors: list[list[float]],
+            ) -> list[str]:
+                _ = infer, vectors
+                content = contents[0]
+                if content == "failing":
+                    raise RuntimeError("write failed")
+                live[content] = 100 + len(live)
+                return contents
+
+            semantic.add_batch.side_effect = add_batch
+            logger = MagicMock()
+            with (
+                patch.object(
+                    MemoryStore,
+                    "list_pending_transitions",
+                    autospec=True,
+                    side_effect=MemoryStore.list_pending_transitions,
+                ) as list_pending,
+                patch.object(
+                    MemoryStore,
+                    "_row_to_transition",
+                    autospec=True,
+                    side_effect=MemoryStore._row_to_transition,
+                ) as decode,
+                patch.object(
+                    MemoryStore,
+                    "is_pending_transition",
+                    autospec=True,
+                    side_effect=MemoryStore.is_pending_transition,
+                ) as is_pending,
+            ):
+                count = reconcile_pending_replacements(
+                    semantic_engine=semantic,
+                    tantivy_engine=None,
+                    write_lock=threading.Lock(),
+                    lock=threading.RLock(),
+                    logger=logger,
+                )
+                assert list_pending.call_count == 2
+                assert decode.call_count == 8
+                assert is_pending.call_count == 8
+
+            assert count == 3
+            assert live == {"successful": 100, "last": 101}
+            assert [row.id for row in store.list_pending_transitions()] == [failing.id]
+            assert not store.is_pending_transition(stale.id)
+            assert not store.is_pending_transition(successful.id)
+            assert not store.is_pending_transition(last.id)
+            assert not store.is_pending_transition(deleted.id)
+            logger.error.assert_called_once()
             store.close()
 
     def test_pending_add_indexes_document_role_vector(self) -> None:
@@ -882,13 +961,33 @@ class TestReconcilePendingReplacements:
                 memory_id in semantic.index
             )
 
-            count = reconcile_pending_replacements(
-                semantic_engine=semantic,
-                tantivy_engine=None,
-                write_lock=threading.Lock(),
-                lock=threading.RLock(),
-                logger=MagicMock(),
-            )
+            with (
+                patch.object(
+                    MemoryStore,
+                    "list_pending_transitions",
+                    autospec=True,
+                    side_effect=MemoryStore.list_pending_transitions,
+                ) as list_pending,
+                patch.object(
+                    MemoryStore,
+                    "is_pending_transition",
+                    autospec=True,
+                    side_effect=MemoryStore.is_pending_transition,
+                ) as is_pending,
+            ):
+                count = reconcile_pending_replacements(
+                    semantic_engine=semantic,
+                    tantivy_engine=None,
+                    write_lock=threading.Lock(),
+                    lock=threading.RLock(),
+                    logger=MagicMock(),
+                )
+                assert list_pending.call_count == 3
+                assert [call.args[1] for call in is_pending.call_args_list] == [
+                    replaced.id,
+                    replaced.id,
+                    added.id,
+                ]
             assert count >= 1
             assert "I live in NYC" not in live
             assert "I moved to Boston" in live
@@ -988,6 +1087,7 @@ class TestReconcilePendingReplacements:
             kind=TransitionKind.ADD,
         )
         semantic.memory_store.list_pending_transitions.return_value = [row]
+        semantic.memory_store.is_pending_transition.return_value = True
         semantic.memory_store.has_later_intent.return_value = False
         semantic.get_id_by_content.return_value = 1
         semantic.contains_id.return_value = True
