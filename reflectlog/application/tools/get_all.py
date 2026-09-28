@@ -53,10 +53,9 @@ class GetAllTool(BaseTool):
                     self.config.get_all_limit if limit is None else max(0, limit)
                 )
                 page_size = min(page_size, self.config.get_all_limit)
-                page = await asyncify(self.memory.get_all)(
+                page, total = await asyncify(self.memory.get_page_with_total)(
                     limit=page_size, offset=start
                 )
-                total = self.memory.count()
                 truncated = start + len(page) < total
                 if truncated:
                     self.logger.warning(

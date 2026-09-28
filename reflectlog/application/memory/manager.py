@@ -28,7 +28,7 @@ Example:
     )
 """
 
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 import os
 import threading
 import time
@@ -44,6 +44,7 @@ from reflectlog.core.exceptions import (
     SearchError,
     StorageError,
 )
+from reflectlog.core.types import Closable
 from reflectlog.infrastructure.cross_encoder_reranker import (
     CrossEncoderConfig,
     CrossEncoderReranker,
@@ -146,6 +147,7 @@ class MemoryManager:
                 workspace_id=config.workspace_id
             ).lower(),
         )
+        self._construction_embedder: Embeddings | None = None
         try:
             self._init_semantic_engine()
             self._init_search_engine()
@@ -163,12 +165,17 @@ class MemoryManager:
                     "Startup replacement reconcile failed; continuing with pending rows",
                     extra={"error": str(exc)},
                 )
-        except BaseException:
-            self._dispose_partial_init()
+            if config.eager_initialization:
+                self._eager_initialize_engines()
+            self._construction_embedder = None
+        except BaseException as primary:
+            cleanup_failures = self._dispose_partial_init()
+            if cleanup_failures:
+                raise BaseExceptionGroup(
+                    "MemoryManager initialization and cleanup failed",
+                    [primary, *cleanup_failures],
+                ) from primary
             raise
-
-        if config.eager_initialization:
-            self._eager_initialize_engines()
 
     def _init_locks(self) -> None:
         """Create all threading locks and startup metrics placeholder.
@@ -301,6 +308,7 @@ class MemoryManager:
                         batch_size=config.embedding_batch_size,
                     )
                 )
+        self._construction_embedder = base_embedder
         if config.embedding_cache_enabled:
             match config.embedder_provider:
                 case EmbedderProvider.WEMM:
@@ -320,6 +328,7 @@ class MemoryManager:
                     )
         else:
             embedder = base_embedder
+        self._construction_embedder = embedder
         self._semantic_engine: ISemanticSearchEngine = USearchEngine(
             usearch_config,
             embedder=embedder,
@@ -897,6 +906,23 @@ class MemoryManager:
         except Exception as e:
             raise StorageError(f"Failed to retrieve memories: {e}") from e
 
+    def get_page_with_total(
+        self, limit: int | None = None, offset: int = 0
+    ) -> tuple[list[str], int]:
+        """Retrieve a semantic page and total under one shared read scope."""
+        self._ensure_open()
+        try:
+            with self._shared_workspace(), self._lock:
+                self._ensure_open()
+                self._refresh_engines()
+                memories = self._semantic_engine.get_all(
+                    workspace_id=self.workspace_id, limit=limit, offset=offset
+                )
+                total = self._semantic_engine.count(self.workspace_id)
+                return memories, total
+        except Exception as e:
+            raise StorageError(f"Failed to retrieve memories: {e}") from e
+
     async def search(
         self,
         query: str,
@@ -1377,14 +1403,30 @@ class MemoryManager:
         if self._closed or self._closing:
             raise StorageError("MemoryManager is closed")
 
-    def _dispose_partial_init(self) -> None:
-        """Close engines created before a constructor failure."""
+    def _dispose_partial_init(self) -> list[BaseException]:
+        self._closed = True
+        failures: list[BaseException] = []
         if "_tantivy_engine" in vars(self) and self._tantivy_engine is not None:
-            with suppress(Exception):
+            try:
                 self._tantivy_engine.close()
+            except BaseException as exc:
+                failures.append(exc)
         if "_semantic_engine" in vars(self):
-            with suppress(Exception):
+            try:
                 self._semantic_engine.close()
+            except BaseException as exc:
+                failures.append(exc)
+                if isinstance(self._construction_embedder, Closable):
+                    try:
+                        self._construction_embedder.close()
+                    except BaseException as embedder_exc:
+                        failures.append(embedder_exc)
+        elif isinstance(self._construction_embedder, Closable):
+            try:
+                self._construction_embedder.close()
+            except BaseException as exc:
+                failures.append(exc)
+        return failures
 
     def close(self) -> None:
         """Close all resources and persist data to disk (thread-safe).
