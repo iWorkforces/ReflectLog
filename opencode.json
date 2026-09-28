@@ -13,7 +13,8 @@
             "type": "remote",
             "url": "http://127.0.0.1:9103/mcp",
             "enabled": true,
-            "authToken": "518I1wod29fF"
+            "oauth": false,
+            "headers": { "Authorization": "Bearer 518I1wod29fF" }
         }
     }
 }
