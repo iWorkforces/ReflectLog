@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from typing import ParamSpec, TypeVar, overload
 
 from fastmcp.client.client import CallToolResult
+from fastmcp.client.transports import StreamableHttpTransport
 
 type JSONScalar = str | int | float | bool | None
 type JSONValue = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
@@ -89,7 +90,7 @@ class ToolManager:
 
 class Client:
     """FastMCP Client for connecting to MCP servers."""
-    def __init__(self, server_url: str) -> None: ...
+    def __init__(self, transport: str | FastMCP | StreamableHttpTransport) -> None: ...
     async def __aenter__(self) -> Client: ...
     async def __aexit__(self, *args: object) -> None: ...
     async def list_tools(self) -> list[Tool]: ...
@@ -97,6 +98,8 @@ class Client:
         self,
         tool_name: str,
         arguments: dict[str, JSONValue] | dict[str, object] | None = None,
+        *,
+        raise_on_error: bool = True,
     ) -> CallToolResult: ...
 
 __all__ = ["Client", "FastMCP", "Tool", "ToolManager"]
