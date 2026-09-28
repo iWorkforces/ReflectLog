@@ -156,10 +156,13 @@ class TestPendingTransitionLifecycle:
             pending = store.list_pending_transitions()
             assert len(pending) == 1
             assert pending[0].id == transition.id
+            assert store.is_pending_transition(transition.id)
+            assert not store.is_pending_transition(transition.id + 1)
 
             store.complete_replacement_transition(transition.id)
             store.complete_replacement_transition(transition.id)
 
+            assert not store.is_pending_transition(transition.id)
             assert store.list_pending_transitions() == []
             archives = store.get_archived("proj1")
             assert len(archives) == 1

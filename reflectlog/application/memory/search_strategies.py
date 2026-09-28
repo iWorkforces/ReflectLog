@@ -125,11 +125,14 @@ class SearchPipeline:
         self.logger = logger
         self._memory_manager = memory_manager
 
-    async def execute(self, context: SearchContext) -> SearchResult:
+    async def execute(
+        self, context: SearchContext, *, include_timestamp_map: bool = True
+    ) -> SearchResult:
         """Execute the full search pipeline.
 
         Args:
             context: Search context with query, limit, and configuration.
+            include_timestamp_map: Complete timestamps for all candidates even without reranking.
 
         Returns:
             SearchResult with memories and metadata.
@@ -142,7 +145,7 @@ class SearchPipeline:
             work already running in a worker thread.
         """
         try:
-            return await self._execute_hybrid_search(context)
+            return await self._execute_hybrid_search(context, include_timestamp_map)
 
         except SearchError:
             raise
@@ -157,7 +160,9 @@ class SearchPipeline:
             )
             raise SearchError(f"Failed to execute search: {e}") from e
 
-    async def _execute_hybrid_search(self, context: SearchContext) -> SearchResult:
+    async def _execute_hybrid_search(
+        self, context: SearchContext, include_timestamp_map: bool
+    ) -> SearchResult:
         """Execute 4-step hybrid search pipeline."""
         # Step 1: Parallel Search
         (
@@ -216,11 +221,15 @@ class SearchPipeline:
         if len(hybrid_results) <= 1:
             self._log_skip_reranking(len(hybrid_results), rerank_step_num)
         else:
-            timestamp_map = await asyncify(self._complete_timestamp_map)(
-                timestamp_map,
-                [msg for msg, _ in hybrid_results],
-                context.workspace_id,
-            )
+            if (
+                include_timestamp_map
+                or self.config.reranker_engine == RerankerEngine.CROSS_ENCODER
+            ):
+                timestamp_map = await asyncify(self._complete_timestamp_map)(
+                    timestamp_map,
+                    [msg for msg, _ in hybrid_results],
+                    context.workspace_id,
+                )
             hybrid_results = await self._step4_reranking(
                 context, hybrid_results, timestamp_map, rerank_step_num
             )

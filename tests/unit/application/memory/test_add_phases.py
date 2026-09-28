@@ -5,6 +5,7 @@ Covers uncovered lines: 291, 417-524, 588-663, 670, 676, 719,
 723-731, 759-768, 782-815, 824, 850-900.
 """
 
+import asyncio
 import threading
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -25,7 +26,7 @@ from reflectlog.application.memory.add_phases import (
     _persist_list_for_add,
 )
 from reflectlog.application.utils.logging import StructuredLogger
-from reflectlog.core.enums import TransitionStatus
+from reflectlog.core.enums import TransitionKind, TransitionStatus
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import ReplacementTransition, ReplacementTransitionRequest
@@ -76,6 +77,9 @@ def mock_semantic_engine():
     engine.embedder.embed_documents.side_effect = lambda texts: [
         [0.1] * 4 for _ in texts
     ]
+    engine.embedder.aembed_documents = AsyncMock(
+        side_effect=lambda texts: [[0.1] * 4 for _ in texts]
+    )
     engine.memory_store = MagicMock()
     engine.memory_store.exists_many = MagicMock(return_value=set())
     engine.memory_store.begin_add_intents = MagicMock(return_value=[])
@@ -100,6 +104,7 @@ def mock_tantivy_engine():
         side_effect=lambda _workspace, contents, verify_exists=True: len(contents)
     )
     engine.find_by_exact_match = MagicMock(side_effect=lambda _ws, content: [content])
+    engine.get_all = MagicMock(return_value=[])
     engine.commit = MagicMock(return_value=None)
     engine.search = MagicMock(return_value=[])
     engine.is_ready = MagicMock(return_value=True)
@@ -602,6 +607,210 @@ class TestSmartReplacementPhase:
 @pytest.mark.unit
 class TestStoragePhase:
     """Tests for Phase 3: Sequential Storage."""
+
+    async def test_execute_awaits_ordered_vectors_before_exclusive_lease(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        coordinator = MagicMock()
+        memories = ["first", "second", "third"]
+
+        async def async_vectors(texts: list[str]) -> list[list[float]]:
+            assert texts == memories
+            coordinator.acquire.assert_not_called()
+
+            return [[float(index + 1)] for index in range(len(texts))]
+
+        mock_semantic_engine.embedder.aembed_documents.side_effect = async_vectors
+        phase = StoragePhase(
+            mock_semantic_engine,
+            mock_tantivy_engine,
+            mock_config,
+            mock_logger,
+            coordinator=coordinator,
+        )
+
+        result = await phase.execute(memories, {})
+
+        assert result.stored_count == 3
+        mock_semantic_engine.embedder.aembed_documents.assert_awaited_once_with(
+            memories
+        )
+        mock_semantic_engine.embedder.embed_documents.assert_not_called()
+        assert mock_semantic_engine.add_batch.call_args.kwargs["vectors"] == [
+            [1.0],
+            [2.0],
+            [3.0],
+        ]
+        coordinator.acquire.assert_called_once()
+
+    @pytest.mark.parametrize("vectors", [[], [[1.0]], [[1.0], []]])
+    async def test_execute_rejects_invalid_async_vectors_before_persist(
+        self,
+        vectors: list[list[float]],
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        coordinator = MagicMock()
+        mock_semantic_engine.embedder.aembed_documents.side_effect = None
+        mock_semantic_engine.embedder.aembed_documents.return_value = vectors
+        phase = StoragePhase(
+            mock_semantic_engine,
+            mock_tantivy_engine,
+            mock_config,
+            mock_logger,
+            coordinator=coordinator,
+        )
+
+        with pytest.raises(StorageError, match="Embedding"):
+            await phase.execute(["first", "second"], {})
+
+        coordinator.acquire.assert_not_called()
+        mock_semantic_engine.add_batch.assert_not_called()
+        mock_semantic_engine.memory_store.begin_add_intents.assert_not_called()
+
+    async def test_cancelled_async_embedding_does_not_start_persist(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        entered = asyncio.Event()
+
+        async def blocked_embed(_texts: list[str]) -> list[list[float]]:
+            entered.set()
+            await asyncio.Event().wait()
+            return [[1.0]]
+
+        mock_semantic_engine.embedder.aembed_documents.side_effect = blocked_embed
+        phase = StoragePhase(
+            mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+        )
+        task = asyncio.create_task(phase.execute(["first"], {}))
+        await asyncio.wait_for(entered.wait(), 5)
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        mock_semantic_engine.add_batch.assert_not_called()
+
+    def test_sync_persist_keeps_sync_embedding_contract(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        phase = StoragePhase(
+            mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+        )
+
+        count, replacements = phase._persist_replacements(["first"], {})
+
+        assert count == 1
+        assert replacements == []
+        mock_semantic_engine.embedder.embed_documents.assert_called_once_with(["first"])
+        mock_semantic_engine.embedder.aembed_documents.assert_not_awaited()
+        assert mock_semantic_engine.add_batch.call_args.kwargs["vectors"] == [[0.1] * 4]
+
+    def test_add_intents_complete_only_after_both_backends_converge_with_one_scan(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        contents = ["ready", "missing tantivy", "missing sqlite", "ready too"]
+        intents = [
+            ReplacementTransition(
+                id=index,
+                workspace_id="test_project",
+                old_memory_id=0,
+                old_content="",
+                new_content=content,
+                archive_id=0,
+                reason="",
+                confidence=0,
+                status=TransitionStatus.PENDING,
+                kind=TransitionKind.ADD,
+            )
+            for index, content in enumerate(contents, 1)
+        ]
+        mock_semantic_engine.get_id_by_content.side_effect = (
+            lambda _workspace, content: None if content == "missing sqlite" else 1
+        )
+        mock_tantivy_engine.get_all.return_value = [
+            "ready",
+            "missing sqlite",
+            "ready too",
+            "Missing tantivy",
+        ]
+        phase = StoragePhase(
+            mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+        )
+
+        phase._complete_add_intents(intents)
+
+        mock_tantivy_engine.get_all.assert_called_once_with("test_project")
+        mock_tantivy_engine.find_by_exact_match.assert_not_called()
+        assert (
+            mock_semantic_engine.memory_store.complete_replacement_transition.call_args_list
+            == [
+                ((1,), {}),
+                ((4,), {}),
+            ]
+        )
+
+    def test_add_intents_empty_batch_skips_scan(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        phase = StoragePhase(
+            mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+        )
+
+        phase._complete_add_intents([])
+
+        mock_tantivy_engine.get_all.assert_not_called()
+        mock_semantic_engine.memory_store.complete_replacement_transition.assert_not_called()
+
+    def test_add_intents_snapshot_failure_leaves_intents_pending(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        intent = ReplacementTransition(
+            id=1,
+            workspace_id="test_project",
+            old_memory_id=0,
+            old_content="",
+            new_content="ready",
+            archive_id=0,
+            reason="",
+            confidence=0,
+            status=TransitionStatus.PENDING,
+            kind=TransitionKind.ADD,
+        )
+        mock_tantivy_engine.get_all.side_effect = RuntimeError("snapshot failed")
+        phase = StoragePhase(
+            mock_semantic_engine, mock_tantivy_engine, mock_config, mock_logger
+        )
+
+        with pytest.raises(RuntimeError, match="snapshot failed"):
+            phase._complete_add_intents([intent])
+
+        mock_semantic_engine.memory_store.complete_replacement_transition.assert_not_called()
 
     async def test_execute_no_replacements(
         self,
@@ -1319,6 +1528,7 @@ class TestStoragePhase:
             result = await phase.execute([], {})
 
         assert result.stored_count == 0
+        mock_semantic_engine.embedder.aembed_documents.assert_not_awaited()
         reconcile.assert_called_once()
 
     async def test_reconcile_skipped_without_write_lock(

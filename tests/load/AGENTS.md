@@ -1,46 +1,16 @@
-# Load Tests
+# MCP Load Benchmark
 
-**Generated:** 2026-09-28
-**Commit:** aaebf3c
-**Branch:** develop
+`locustfile.py` is a standalone FastMCP Client benchmark, not a Locust scenario or a pytest file. It invokes the real `add`, `search`, `get_all`, and `health_check` tools over MCP with `workspace_id` on every call. No extra dependency is needed.
 
-## OVERVIEW
-
-Locust scenarios against a running MCP server. **Locust is not a project dependency.** `tests/load/` is **not** pytest.
-
-## STRUCTURE
-
-```
-tests/load/
-└── locustfile.py    # ReflectLogUser — add / search / get_all / health
-```
-
-## WHERE TO LOOK
-
-| Task | Location |
-|------|----------|
-| Add | `ReflectLogUser.add_memory` → `POST /mcp/add` |
-| Search | `ReflectLogUser.search_memory` → `POST /mcp/search` |
-| Get all | `ReflectLogUser.get_all_memories` → `GET /mcp/get_all` |
-| Health | `ReflectLogUser.health_check` → `GET /mcp/health_check` |
-
-## CONVENTIONS
-
-Locust imported only when not type-checking. Install locust yourself:
+Start a local HTTP server separately, then run:
 
 ```bash
-# not `uv run` — locust is not in the lockfile
-locust -f tests/load/locustfile.py --host http://localhost:9103
-locust -f tests/load/locustfile.py --headless -u 100 -r 10 -t 60s
+uv run --frozen --no-sync reflectlog --transport http --port 9103
+uv run --frozen --no-sync python tests/load/locustfile.py --clients 2 --iterations 10
 ```
 
-## ANTI-PATTERNS
+The default endpoint is `http://127.0.0.1:9103/mcp`. Override it with `--url` when needed. Set `REFLECTLOG_MCP_TOKEN` for a server requiring a bearer token; it is never printed. The default workspace is a fresh `bench-<uuid>`; use `--workspace-id` only for an isolated disposable workspace. The benchmark removes only its own per-run seed and measured memories; unrelated workspace contents are preserved. If cleanup fails, the report records `cleanup_errors` and the CLI exits nonzero. Never point this benchmark at production.
 
-- Never add locust to `pyproject.toml` just to run this file.
-- Never put `tests/load/` on pytest paths.
-- Never run against production.
-- Never drop `wait_time`.
+One connected client is used per worker (1 to 32). Each worker adds and searches a per-run seed before the measured phase; connection and warmup durations are reported separately. Each measured iteration adds one distinct memory, searches it, reads a bounded page of 10, and checks health. `--timeout` sets the per-tool deadline in seconds (default 30), including warmup and cleanup. JSON output gives count, MCP/transport/timeout error count, mean, p50 and p95 latency per tool, and aggregate throughput across the measured phase (excluding teardown and cleanup). No token, memory content, or server error text is printed. A warmup tool error stops the run rather than producing misleading metrics.
 
-## NOTES
-
-Start the server separately (`uv run reflectlog --transport http --port 9103`). Focused CI does not run Locust. Pre-push does not run load tests.
+Integration coverage lives in `tests/integration/test_mcp_load_benchmark.py`; it runs the same harness against an in-process MCP server with real storage and deterministic embeddings, without a model download or external API.

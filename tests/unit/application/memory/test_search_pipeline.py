@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+import inspect
 from pathlib import Path
 import threading
 from typing import Any, cast
@@ -16,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, PropertyMock, patch
 import pytest
 
 from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.fusion.ranx_fusion import RanxFusionEngine
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.memory.search_strategies import (
     SearchContext,
@@ -28,6 +30,7 @@ from reflectlog.core.enums import EmbedderProvider
 from reflectlog.core.exceptions import InitializationError, SearchError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.storage_coordinator import PortalockerStorageCoordinator
+from reflectlog.utility.scoring import compute_rrf_scores_batch
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -703,11 +706,142 @@ class TestBackendFailureContracts:
         semantic.memory_store.exists_many.side_effect = lambda *_args: set()
         tantivy = MagicMock()
         tantivy.search.return_value = [("deleted text", 4.0)]
-        pipeline = _make_pipeline(semantic=semantic, tantivy=tantivy)
+        encoder = AsyncMock()
+        manager = MagicMock()
+        manager.cross_encoder_reranker = encoder
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=RanxFusionEngine(method="rrf"),
+            config=_make_config(reranker_engine="cross_encoder"),
+            memory_manager=manager,
+        )
 
         with pytest.raises(SearchError, match="Failed to execute search") as exc_info:
             await pipeline.execute(_make_context())
         assert exc_info.value.__cause__ is cause
+        encoder.rerank_async.assert_not_awaited()
+
+    async def test_semantic_error_and_one_live_fts_hit_keeps_bm25_score(self) -> None:
+        semantic = MagicMock()
+        semantic.search.side_effect = RuntimeError("embed fail")
+        semantic.memory_store.exists_many.side_effect = lambda _workspace_id, contents: (
+            set(contents) & {"live text"}
+        )
+        tantivy = MagicMock()
+        tantivy.search.return_value = [("deleted text", 9.0), ("live text", 4.25)]
+        encoder = AsyncMock()
+        manager = MagicMock()
+        manager.cross_encoder_reranker = encoder
+        logger = Mock(spec=StructuredLogger)
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=RanxFusionEngine(method="rrf"),
+            config=_make_config(reranker_engine="cross_encoder"),
+            logger=cast(IStructuredLogger, logger),
+            memory_manager=manager,
+        )
+
+        result = await pipeline.execute(_make_context())
+
+        assert result.memories == ["live text"]
+        assert result.semantic_results == []
+        assert result.tantivy_results == [("live text", 4.25)]
+        assert logger.info.call_args.kwargs["extra"]["top_score"] == 4.25
+        encoder.rerank_async.assert_not_awaited()
+
+    async def test_semantic_error_and_multiple_live_fts_hits_survive_ce_error(
+        self,
+    ) -> None:
+        semantic = MagicMock()
+        semantic.search.side_effect = RuntimeError("embed fail")
+        semantic.memory_store.exists_many.side_effect = lambda _workspace_id, contents: (
+            set(contents) & {"second", "first"}
+        )
+        tantivy = MagicMock()
+        tantivy.search.return_value = [
+            ("deleted text", 12.0),
+            ("second", 2.5),
+            ("first", 8.75),
+        ]
+        encoder = AsyncMock()
+        encoder.rerank_async.side_effect = RuntimeError("CE unavailable")
+        manager = MagicMock()
+        manager.cross_encoder_reranker = encoder
+        logger = Mock(spec=StructuredLogger)
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=RanxFusionEngine(method="rrf"),
+            config=_make_config(reranker_engine="cross_encoder"),
+            logger=cast(IStructuredLogger, logger),
+            memory_manager=manager,
+        )
+
+        result = await pipeline.execute(_make_context())
+
+        assert result.memories == ["first", "second"]
+        assert result.semantic_results == []
+        assert result.tantivy_results == [("second", 2.5), ("first", 8.75)]
+        encoder.rerank_async.assert_awaited_once_with(
+            "test query",
+            [("first", 8.75), ("second", 2.5)],
+            {},
+            top_k=20,
+        )
+        assert logger.info.call_args.kwargs["extra"]["top_score"] == 8.75
+
+    async def test_two_live_backend_lists_keep_raw_rrf_scores(self) -> None:
+        semantic = MagicMock()
+        semantic.search.return_value = [
+            ("semantic only", 0.9, _TS),
+            ("shared", 0.7, _TS),
+        ]
+        semantic.memory_store.exists_many.side_effect = lambda _workspace_id, contents: (
+            set(contents) & {"semantic only", "shared", "fts only"}
+        )
+        tantivy = MagicMock()
+        tantivy.search.return_value = [
+            ("deleted text", 20.0),
+            ("shared", 6.0),
+            ("fts only", 3.0),
+        ]
+        encoder = AsyncMock()
+        encoder.rerank_async.side_effect = RuntimeError("CE unavailable")
+        manager = MagicMock()
+        manager.cross_encoder_reranker = encoder
+        pipeline = _make_pipeline(
+            semantic=semantic,
+            tantivy=tantivy,
+            fusion=RanxFusionEngine(method="rrf"),
+            config=_make_config(reranker_engine="cross_encoder"),
+            memory_manager=manager,
+        )
+
+        scorer = (
+            compute_rrf_scores_batch
+            if inspect.isfunction(compute_rrf_scores_batch)
+            else cast(Any, compute_rrf_scores_batch).py_func
+        )
+        with patch(
+            "reflectlog.application.memory.fusion.ranx_fusion.compute_rrf_scores_batch",
+            scorer,
+        ):
+            result = await pipeline.execute(_make_context())
+
+        assert result.memories == ["shared", "semantic only", "fts only"]
+        assert result.tantivy_results == [("shared", 6.0), ("fts only", 3.0)]
+        encoder.rerank_async.assert_awaited_once_with(
+            "test query",
+            [
+                ("shared", pytest.approx(1 / 62 + 1 / 61)),
+                ("semantic only", pytest.approx(1 / 61)),
+                ("fts only", pytest.approx(1 / 62)),
+            ],
+            {"semantic only": _TS, "shared": _TS},
+            top_k=20,
+        )
 
     async def test_semantic_error_and_unavailable_tantivy_raises_search_error(
         self,

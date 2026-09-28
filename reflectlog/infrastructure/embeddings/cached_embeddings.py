@@ -1,4 +1,4 @@
-"""Cached embeddings wrapper for query embedding LRU caching."""
+"""Cached embeddings wrapper for query and document LRU caching."""
 
 from __future__ import annotations
 
@@ -30,8 +30,9 @@ class CachedEmbeddings(BaseModel):
     query may be executed multiple times (e.g., during result refinement).
 
     `embed_documents()` consults the same per-text LRU by default so add-path
-    Phase 2 query embeds can be reused during Phase 3 persist. Providers with
-    distinct query and document encoders can opt into role-separated keys.
+    Phase 2 query embeds can be reused during Phase 3 persist. Concurrent
+    document batches share in-flight keys within the same sync or async mode.
+    Providers with distinct encoders can opt into role-separated keys.
 
     Thread-safety: cachetools.LRUCache is not thread-safe; access is locked.
 
@@ -228,35 +229,68 @@ class CachedEmbeddings(BaseModel):
         if not self.enabled or not texts:
             return self.embedder.embed_documents(texts)
 
-        results: list[list[float] | None] = [None] * len(texts)
-        miss_indices: list[int] = []
-        miss_texts: list[str] = []
-        for idx, text in enumerate(texts):
-            cached = self._get_cached(self._hash_document(text))
-            if cached is not None:
-                results[idx] = cached
-            else:
-                miss_indices.append(idx)
-                miss_texts.append(text)
+        keys = [self._hash_document(text) for text in texts]
+        results: dict[str, list[float]] = {}
+        owned: dict[str, tuple[str, _SyncInFlight]] = {}
+        followers: dict[str, _SyncInFlight] = {}
+        with self._cache_lock:
+            for key, text in zip(keys, texts, strict=True):
+                if key in results:
+                    self._hits += 1
+                    continue
+                if key in owned or key in followers:
+                    self._coalesced += 1
+                    continue
+                cached = self._cache.get(key)
+                if cached is not None:
+                    self._hits += 1
+                    results[key] = cached
+                elif flight := self._sync_inflight.get(key):
+                    self._coalesced += 1
+                    followers[key] = flight
+                else:
+                    flight = _SyncInFlight()
+                    self._sync_inflight[key] = flight
+                    owned[key] = (text, flight)
+                    self._misses += 1
 
-        if miss_texts:
-            computed = self.embedder.embed_documents(miss_texts)
-            if len(computed) != len(miss_texts):
-                raise RuntimeError(
-                    "Embedding batch size mismatch for cached embed_documents"
+        if owned:
+            try:
+                computed = self.embedder.embed_documents(
+                    [text for text, _ in owned.values()]
                 )
-            for idx, embedding in zip(miss_indices, computed, strict=True):
-                if not embedding:
+                if len(computed) != len(owned):
+                    raise RuntimeError(
+                        "Embedding batch size mismatch for cached embed_documents"
+                    )
+                if any(not embedding for embedding in computed):
                     raise RuntimeError("Empty embedding returned for cached document")
-                self._set_cached(self._hash_document(texts[idx]), embedding)
-                results[idx] = embedding
+                with self._cache_lock:
+                    for (key, (_, flight)), embedding in zip(
+                        owned.items(), computed, strict=True
+                    ):
+                        self._cache[key] = embedding
+                        results[key] = embedding
+                        flight.value = embedding
+                    for key, (_, flight) in owned.items():
+                        _ = self._sync_inflight.pop(key)
+                        flight.event.set()
+            except BaseException as exc:
+                with self._cache_lock:
+                    for key, (_, flight) in owned.items():
+                        _ = self._sync_inflight.pop(key)
+                        flight.error = exc
+                        flight.event.set()
+                raise
 
-        filled: list[list[float]] = []
-        for embedding in results:
-            if embedding is None:
+        for key, flight in followers.items():
+            _ = flight.event.wait()
+            if flight.error is not None:
+                raise flight.error
+            if flight.value is None:
                 raise RuntimeError("Missing cached embedding slot")
-            filled.append(embedding)
-        return filled
+            results[key] = flight.value
+        return [results[key] for key in keys]
 
     async def aembed_query(self, text: str) -> list[float]:
         """Async version of embed_query with LRU caching.
@@ -298,6 +332,7 @@ class CachedEmbeddings(BaseModel):
                         "asyncio.Future[list[float]]",
                         asyncio.get_running_loop().create_future(),
                     )
+                    shared.add_done_callback(self._consume_future_error)
                     self._async_inflight[cache_key] = shared
                     leader = True
                     self._misses += 1
@@ -345,35 +380,68 @@ class CachedEmbeddings(BaseModel):
         if not self.enabled or not texts:
             return await self.embedder.aembed_documents(texts)
 
-        results: list[list[float] | None] = [None] * len(texts)
-        miss_indices: list[int] = []
-        miss_texts: list[str] = []
-        for idx, text in enumerate(texts):
-            cached = self._get_cached(self._hash_document(text))
-            if cached is not None:
-                results[idx] = cached
-            else:
-                miss_indices.append(idx)
-                miss_texts.append(text)
+        keys = [self._hash_document(text) for text in texts]
+        results: dict[str, list[float]] = {}
+        owned: dict[str, tuple[str, asyncio.Future[list[float]]]] = {}
+        followers: dict[str, asyncio.Future[list[float]]] = {}
+        gate = self._ensure_async_gate()
+        async with gate:
+            with self._cache_lock:
+                for key, text in zip(keys, texts, strict=True):
+                    if key in results:
+                        self._hits += 1
+                        continue
+                    if key in owned or key in followers:
+                        self._coalesced += 1
+                        continue
+                    cached = self._cache.get(key)
+                    if cached is not None:
+                        self._hits += 1
+                        results[key] = cached
+                    elif shared := self._async_inflight.get(key):
+                        self._coalesced += 1
+                        followers[key] = shared
+                    else:
+                        shared = asyncio.get_running_loop().create_future()
+                        shared.add_done_callback(self._consume_future_error)
+                        self._async_inflight[key] = shared
+                        owned[key] = (text, shared)
+                        self._misses += 1
 
-        if miss_texts:
-            computed = await self.embedder.aembed_documents(miss_texts)
-            if len(computed) != len(miss_texts):
-                raise RuntimeError(
-                    "Embedding batch size mismatch for cached aembed_documents"
+        if owned:
+            try:
+                computed = await self.embedder.aembed_documents(
+                    [text for text, _ in owned.values()]
                 )
-            for idx, embedding in zip(miss_indices, computed, strict=True):
-                if not embedding:
+                if len(computed) != len(owned):
+                    raise RuntimeError(
+                        "Embedding batch size mismatch for cached aembed_documents"
+                    )
+                if any(not embedding for embedding in computed):
                     raise RuntimeError("Empty embedding returned for cached document")
-                self._set_cached(self._hash_document(texts[idx]), embedding)
-                results[idx] = embedding
+                with self._cache_lock:
+                    for (key, (_, shared)), embedding in zip(
+                        owned.items(), computed, strict=True
+                    ):
+                        self._cache[key] = embedding
+                        results[key] = embedding
+                        shared.set_result(embedding)
+                    for key in owned:
+                        _ = self._async_inflight.pop(key)
+            except BaseException as exc:
+                with self._cache_lock:
+                    for key, (_, shared) in owned.items():
+                        _ = self._async_inflight.pop(key)
+                        shared.set_exception(exc)
+                raise
 
-        filled: list[list[float]] = []
-        for embedding in results:
-            if embedding is None:
-                raise RuntimeError("Missing cached embedding slot")
-            filled.append(embedding)
-        return filled
+        for key, shared in followers.items():
+            results[key] = await asyncio.shield(shared)
+        return [results[key] for key in keys]
+
+    @staticmethod
+    def _consume_future_error(shared: asyncio.Future[list[float]]) -> None:
+        _ = shared.exception()
 
     def get_cache_stats(self) -> dict[str, int | float]:
         """Get cache statistics.

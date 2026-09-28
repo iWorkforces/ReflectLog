@@ -1076,6 +1076,20 @@ class MemoryStore(BaseModel):
             finally:
                 cursor.close()
 
+    def is_pending_transition(self, transition_id: int) -> bool:
+        with self._conn_lock:
+            cursor = self.connection.cursor()
+            try:
+                _ = cursor.execute(
+                    "SELECT 1 FROM replacement_transitions WHERE id = ? AND status = ? LIMIT 1",
+                    (transition_id, TRANSITION_PENDING),
+                )
+                return cursor.fetchone() is not None
+            except sqlite3.Error as e:
+                raise StorageError(f"Failed to look up pending transition: {e}") from e
+            finally:
+                cursor.close()
+
     def get_transition_for_old_memory(
         self, workspace_id: str, old_memory_id: int
     ) -> ReplacementTransition | None:

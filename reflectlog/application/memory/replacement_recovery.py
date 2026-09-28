@@ -114,11 +114,10 @@ def reconcile_pending_replacements(
         if tantivy_engine is not None:
             _refresh_engine(tantivy_engine)
         snapshot = _pending_rows(store.list_pending_transitions())
-        pending_ids = {row.id for row in snapshot}
         for transition in snapshot:
-            if transition.id not in pending_ids:
-                continue
             try:
+                if not store.is_pending_transition(transition.id):
+                    continue
                 if apply_pending_transition(
                     transition,
                     semantic_engine=semantic_engine,
@@ -137,9 +136,6 @@ def reconcile_pending_replacements(
                         "error": str(exc),
                     },
                 )
-            pending_ids = {
-                row.id for row in _pending_rows(store.list_pending_transitions())
-            }
 
     if completed:
         logger.info(
@@ -165,8 +161,7 @@ def apply_pending_transition(
         True when the transition was marked complete.
     """
     store = semantic_engine.memory_store
-    pending_ids = {row.id for row in _pending_rows(store.list_pending_transitions())}
-    if transition.id not in pending_ids:
+    if not store.is_pending_transition(transition.id):
         return False
 
     if transition.kind == TransitionKind.ADD:
@@ -529,34 +524,6 @@ def _later_intent_exists(
     kind: TransitionKind,
     content: str,
 ) -> bool:
-    """Return True when a later add/delete/replace intent for the text exists.
-
-    Listing failures fall through to ``has_later_intent`` rather than treating
-    the later write as absent. Pending rows are workspace-scoped.
-    """
-    pending: list[ReplacementTransition] | None = None
-    try:
-        pending = store.list_pending_transitions()
-    except Exception:
-        pending = None
-    if pending is not None:
-        for other in pending:
-            if other.workspace_id != transition.workspace_id:
-                continue
-            if other.id <= transition.id:
-                continue
-            if (
-                kind == TransitionKind.DELETE
-                and other.kind in {TransitionKind.DELETE, TransitionKind.REPLACE}
-                and other.old_content == content
-            ):
-                return True
-            if (
-                kind == TransitionKind.ADD
-                and other.kind == TransitionKind.ADD
-                and other.new_content == content
-            ):
-                return True
     return store.has_later_intent(
         workspace_id=transition.workspace_id,
         kind=kind,

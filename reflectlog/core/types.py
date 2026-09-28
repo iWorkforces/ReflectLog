@@ -124,6 +124,8 @@ class IArchiveMemoryStore(Protocol):
 
     def list_pending_transitions(self) -> list[ReplacementTransition]: ...
 
+    def is_pending_transition(self, transition_id: int) -> bool: ...
+
     def has_later_intent(
         self,
         *,

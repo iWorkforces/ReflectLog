@@ -337,6 +337,9 @@ class TestAddTool:
             finished.set()
             return [[0.1] * 4 for _ in texts]
 
+        async def aembed(texts: list[str]) -> list[list[float]]:
+            return await anyio.to_thread.run_sync(embed, texts)
+
         async def call_in_scope() -> None:
             with anyio.CancelScope() as scope:
                 scopes.append(scope)
@@ -348,7 +351,9 @@ class TestAddTool:
                 manager.memory.memory_store, "exists_many", return_value=set()
             ),
             patch.object(
-                manager._semantic_engine.embedder, "embed_documents", side_effect=embed
+                manager._semantic_engine.embedder,
+                "aembed_documents",
+                side_effect=aembed,
             ),
             patch.object(manager, "close", wraps=manager.close) as close,
         ):

@@ -31,6 +31,9 @@ class CallToolResult:
 
     content: list[ToolContent]
     isError: bool
+    is_error: bool
+    structured_content: dict[str, object] | None
+    data: object
 
     def __init__(
         self,

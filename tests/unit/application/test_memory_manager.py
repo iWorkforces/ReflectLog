@@ -398,6 +398,9 @@ class TestParallelMemoryAddition:
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
                 lambda texts: [[0.1] * 4 for _ in texts]
             )
+            mock_usearch_class.return_value.embedder.aembed_documents = AsyncMock(
+                side_effect=lambda texts: [[0.1] * 4 for _ in texts]
+            )
             mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
             mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
@@ -428,6 +431,9 @@ class TestParallelMemoryAddition:
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
                 lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.embedder.aembed_documents = AsyncMock(
+                side_effect=lambda texts: [[0.1] * 4 for _ in texts]
             )
             mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
             mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
@@ -467,6 +473,9 @@ class TestParallelMemoryAddition:
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
                 lambda texts: [[0.1] * 4 for _ in texts]
             )
+            mock_usearch_class.return_value.embedder.aembed_documents = AsyncMock(
+                side_effect=lambda texts: [[0.1] * 4 for _ in texts]
+            )
             mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
             mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
@@ -505,6 +514,9 @@ class TestParallelMemoryAddition:
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
                 lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.embedder.aembed_documents = AsyncMock(
+                side_effect=lambda texts: [[0.1] * 4 for _ in texts]
             )
             mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
             mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
@@ -586,6 +598,9 @@ class TestParallelMemoryAddition:
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
                 lambda texts: [[0.1] * 4 for _ in texts]
             )
+            mock_usearch_class.return_value.embedder.aembed_documents = AsyncMock(
+                side_effect=lambda texts: [[0.1] * 4 for _ in texts]
+            )
             mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
             mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
@@ -637,6 +652,9 @@ class TestConcurrencyConfiguration:
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
                 lambda texts: [[0.1] * 4 for _ in texts]
             )
+            mock_usearch_class.return_value.embedder.aembed_documents = AsyncMock(
+                side_effect=lambda texts: [[0.1] * 4 for _ in texts]
+            )
             mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
             mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
             with patch("reflectlog.application.memory.manager.LangchainQwenEmbeddings"):
@@ -667,6 +685,9 @@ class TestConcurrencyConfiguration:
             mock_usearch_class.return_value.get_id_by_content.return_value = None
             mock_usearch_class.return_value.embedder.embed_documents.side_effect = (
                 lambda texts: [[0.1] * 4 for _ in texts]
+            )
+            mock_usearch_class.return_value.embedder.aembed_documents = AsyncMock(
+                side_effect=lambda texts: [[0.1] * 4 for _ in texts]
             )
             mock_usearch_class.return_value.memory_store.begin_add_intents.return_value = []
             mock_usearch_class.return_value.memory_store.list_pending_transitions.return_value = []
@@ -919,7 +940,7 @@ class TestTimestampPropagation:
     ):
         """USearch search results should include created_at timestamps (3-tuples)."""
         mock_config.reranker_engine = "none"  # Skip reranking for simplicity
-        mock_config.enable_rrf_fusion = True
+        mock_config.enable_rrf_fusion = False
 
         with patch(
             "reflectlog.application.memory.manager.USearchEngine"
@@ -941,19 +962,28 @@ class TestTimestampPropagation:
 
                     # Setup Tantivy mock (2-tuples, no timestamps)
                     mock_tantivy = MagicMock()
-                    mock_tantivy.search.return_value = [
-                        ("result 1", 0.85),
-                    ]
+                    mock_tantivy.search.return_value = [("lexical only", 0.85)]
                     mock_tantivy_class.return_value = mock_tantivy
 
                     manager = MemoryManager(mock_config, mock_logger)
-                    results = await manager.search("test query")
+                    with patch.object(
+                        manager._search_pipeline,
+                        "execute",
+                        wraps=manager._search_pipeline.execute,
+                    ) as execute:
+                        results = await manager.search("test query")
+
+                    execute.assert_awaited_once()
+                    assert execute.await_args is not None
+                    assert execute.await_args.kwargs == {"include_timestamp_map": False}
 
                     # USearch should have been called
                     mock_usearch.search.assert_called()
 
                     # Results should be returned
                     assert len(results) >= 1
+                    assert "lexical only" in results
+                    mock_usearch.get_records_by_contents.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_timestamp_map_built_from_semantic_results(

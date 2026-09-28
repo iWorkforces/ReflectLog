@@ -990,7 +990,9 @@ class MemoryManager:
         # Backend reads take their own short shared leases. Do not hold
         # SHARED across embed, fusion, or cross-encoder rerank.
         self._refresh_engines()
-        result = await self._search_pipeline.execute(context)
+        result = await self._search_pipeline.execute(
+            context, include_timestamp_map=False
+        )
 
         return result.memories
 
