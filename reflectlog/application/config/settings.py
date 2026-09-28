@@ -24,6 +24,8 @@ from reflectlog.core.exceptions import ConfigurationError
 from ..utils.security import SecretString
 from .presets import apply_preset_to_env, get_active_preset
 
+_preset_env_lock = threading.RLock()
+
 # Note: LangchainQwenEmbeddings is imported lazily in MemoryManager
 # to avoid unnecessary initialization when not using langchain provider
 
@@ -746,9 +748,17 @@ class Config:
         Raises:
             ConfigurationError: If required environment variables are missing or invalid.
         """
-        preset = get_active_preset()
-        if preset:
-            apply_preset_to_env(preset)
+        with _preset_env_lock:
+            preset = get_active_preset()
+            inserted = apply_preset_to_env(preset) if preset else set[str]()
+            try:
+                return cls._from_environment_values()
+            finally:
+                for name in inserted:
+                    del os.environ[name]
+
+    @classmethod
+    def _from_environment_values(cls) -> Config:
 
         openrouter_api_key_raw = os.environ.get("OPENROUTER_API_KEY")
         if not openrouter_api_key_raw:

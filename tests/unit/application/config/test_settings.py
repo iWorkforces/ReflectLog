@@ -1,5 +1,6 @@
 """Tests for reflectlog.application.config.settings module."""
 
+import os
 import threading
 from typing import Any
 from unittest.mock import patch
@@ -22,6 +23,66 @@ from reflectlog.core.exceptions import ConfigurationError
 REQUIRED_ENV = {
     "OPENROUTER_API_KEY": "sk-test-key-12345",
 }
+
+
+@pytest.mark.unit
+class TestPresetEnvironmentPrecedence:
+    def test_explicit_values_win_over_quality(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+        monkeypatch.setenv("REFLECTLOG_PROFILE", "quality")
+        monkeypatch.setenv("RERANKER_ENGINE", "openrouter")
+        monkeypatch.setenv("OPENROUTER_RERANK_MODEL", "voyageai/rerank-2.5-lite")
+        monkeypatch.setenv("SEARCH_LIMIT", "12")
+        monkeypatch.delenv("SEARCH_SCORE_THRESHOLD", raising=False)
+
+        config = Config.from_environment()
+
+        assert config.reranker_engine == "openrouter"
+        assert config.openrouter_rerank_model == "voyageai/rerank-2.5-lite"
+        assert config.search_limit == 12
+        assert config.search_score_threshold == 0.7
+        assert "SEARCH_SCORE_THRESHOLD" not in os.environ
+
+    def test_switching_profiles_does_not_retain_defaults(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+        monkeypatch.delenv("RERANKER_ENGINE", raising=False)
+        monkeypatch.delenv("SEARCH_LIMIT", raising=False)
+        monkeypatch.delenv("SEARCH_SCORE_THRESHOLD", raising=False)
+        monkeypatch.delenv("OVERFETCH_MULTIPLIER", raising=False)
+        monkeypatch.setenv("REFLECTLOG_PROFILE", "simple")
+        simple = Config.from_environment()
+        monkeypatch.setenv("REFLECTLOG_PROFILE", "quality")
+        quality = Config.from_environment()
+        monkeypatch.setenv("REFLECTLOG_PROFILE", "custom")
+        custom = Config.from_environment()
+
+        assert (simple.search_limit, simple.reranker_engine) == (3, "none")
+        assert (quality.search_limit, quality.reranker_engine) == (5, "cross_encoder")
+        assert (quality.search_score_threshold, quality.overfetch_multiplier) == (
+            0.7,
+            5,
+        )
+        assert (custom.search_score_threshold, custom.overfetch_multiplier) == (0.5, 3)
+        assert "SEARCH_LIMIT" not in os.environ
+        assert "RERANKER_ENGINE" not in os.environ
+
+    def test_failed_load_restores_only_preset_values(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("REFLECTLOG_PROFILE", "quality")
+        monkeypatch.setenv("SEARCH_LIMIT", "12")
+        monkeypatch.delenv("SEARCH_SCORE_THRESHOLD", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+        with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY"):
+            Config.from_environment()
+
+        assert os.environ["SEARCH_LIMIT"] == "12"
+        assert "SEARCH_SCORE_THRESHOLD" not in os.environ
 
 
 # ---------------------------------------------------------------------------
