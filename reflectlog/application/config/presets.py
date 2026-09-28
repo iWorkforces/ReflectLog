@@ -131,7 +131,7 @@ def get_active_preset() -> ConfigPreset | None:
     return PRESETS.get(profile_name.lower())
 
 
-def apply_preset_to_env(preset: ConfigPreset) -> None:
+def apply_preset_to_env(preset: ConfigPreset) -> set[str]:
     """Apply preset settings to environment variables.
 
     Sets environment variables that will be read by Config.from_environment().
@@ -139,52 +139,34 @@ def apply_preset_to_env(preset: ConfigPreset) -> None:
 
     Args:
         preset: Configuration preset to apply.
+
+    Returns:
+        Names of environment variables inserted by the preset.
     """
-    if preset.search_limit is not None:
-        os.environ["SEARCH_LIMIT"] = str(preset.search_limit)
-
-    if preset.search_score_threshold is not None:
-        os.environ["SEARCH_SCORE_THRESHOLD"] = str(preset.search_score_threshold)
-
-    if preset.fusion_rrf_k is not None:
-        os.environ["FUSION_RRF_K"] = str(preset.fusion_rrf_k)
-
-    if preset.overfetch_multiplier is not None:
-        os.environ["OVERFETCH_MULTIPLIER"] = str(preset.overfetch_multiplier)
-
-    if preset.reranker_engine is not None:
-        os.environ["RERANKER_ENGINE"] = preset.reranker_engine
-
-    if preset.enable_recency_boost is not None:
-        os.environ["ENABLE_RECENCY_BOOST"] = str(preset.enable_recency_boost).lower()
-
-    if preset.recency_decay_rate is not None:
-        os.environ["RECENCY_DECAY_RATE"] = str(preset.recency_decay_rate)
-
-    if preset.enable_smart_replace is not None:
-        os.environ["ENABLE_SMART_REPLACE"] = str(preset.enable_smart_replace).lower()
-
-    if preset.smart_replace_threshold is not None:
-        os.environ["SMART_REPLACE_THRESHOLD"] = str(preset.smart_replace_threshold)
-
-    if preset.embedding_batch_size is not None:
-        os.environ["EMBEDDING_BATCH_SIZE"] = str(preset.embedding_batch_size)
-
-    if preset.embedding_max_concurrent_batches is not None:
-        os.environ["EMBEDDING_MAX_CONCURRENT_BATCHES"] = str(
-            preset.embedding_max_concurrent_batches
-        )
-
-    if preset.enable_embedding_cache is not None:
-        os.environ["EMBEDDING_CACHE_ENABLED"] = str(
-            preset.enable_embedding_cache
-        ).lower()
-
-    if preset.embedding_cache_size is not None:
-        os.environ["EMBEDDING_CACHE_SIZE"] = str(preset.embedding_cache_size)
-
-    if preset.usearch_exact_search is not None:
-        os.environ["USEARCH_EXACT_SEARCH"] = str(preset.usearch_exact_search).lower()
+    values = {
+        "SEARCH_LIMIT": preset.search_limit,
+        "SEARCH_SCORE_THRESHOLD": preset.search_score_threshold,
+        "FUSION_RRF_K": preset.fusion_rrf_k,
+        "OVERFETCH_MULTIPLIER": preset.overfetch_multiplier,
+        "RERANKER_ENGINE": preset.reranker_engine,
+        "ENABLE_RECENCY_BOOST": preset.enable_recency_boost,
+        "RECENCY_DECAY_RATE": preset.recency_decay_rate,
+        "ENABLE_SMART_REPLACE": preset.enable_smart_replace,
+        "SMART_REPLACE_THRESHOLD": preset.smart_replace_threshold,
+        "EMBEDDING_BATCH_SIZE": preset.embedding_batch_size,
+        "EMBEDDING_MAX_CONCURRENT_BATCHES": preset.embedding_max_concurrent_batches,
+        "EMBEDDING_CACHE_ENABLED": preset.enable_embedding_cache,
+        "EMBEDDING_CACHE_SIZE": preset.embedding_cache_size,
+        "USEARCH_EXACT_SEARCH": preset.usearch_exact_search,
+    }
+    inserted = set[str]()
+    for name, value in values.items():
+        if value is not None and name not in os.environ:
+            os.environ[name] = (
+                str(value).lower() if isinstance(value, bool) else str(value)
+            )
+            inserted.add(name)
+    return inserted
 
 
 def get_preset_summary() -> str:
