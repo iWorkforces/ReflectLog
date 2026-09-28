@@ -24,6 +24,8 @@ from reflectlog.core.exceptions import ConfigurationError
 from ..utils.security import SecretString
 from .presets import apply_preset_to_env, get_active_preset
 
+_preset_env_lock = threading.RLock()
+
 # Note: LangchainQwenEmbeddings is imported lazily in MemoryManager
 # to avoid unnecessary initialization when not using langchain provider
 
@@ -143,6 +145,7 @@ class SearchConfigDict(TypedDict):
 
 class RerankerConfigDict(TypedDict):
     reranker_engine: RerankerEngine
+    openrouter_rerank_model: str
     llm_provider: LlmProvider
     llm_model: str
     search_score_threshold: float
@@ -307,6 +310,7 @@ class Config:
 
     # Reranker engine selection
     reranker_engine: RerankerEngine = RerankerEngine.CROSS_ENCODER
+    openrouter_rerank_model: str = "voyageai/rerank-2.5-lite"
 
     # LLM settings used by smart replacement (not search reranking)
     llm_model: str = "x-ai/grok-4.1-fast"
@@ -409,9 +413,7 @@ class Config:
             os.environ.get("EMBEDDER_PROVIDER", EmbedderProvider.OPENAI),
             field="EMBEDDER_PROVIDER",
         )
-        embedding_model = os.environ.get(
-            "EMBEDDING_MODEL", "openai/text-embedding-3-large"
-        )
+        embedding_model = os.environ.get("EMBEDDING_MODEL", "voyageai/voyage-4-lite")
         wemm_dimensions = 2048
         if provider is EmbedderProvider.WEMM:
             model = WeMMModel.from_config(embedding_model)
@@ -543,8 +545,11 @@ class Config:
 
         return {
             "reranker_engine": reranker_engine,
+            "openrouter_rerank_model": _env_field_value(
+                "OPENROUTER_RERANK_MODEL", "voyageai/rerank-2.5-lite"
+            ),
             "llm_provider": llm_provider,
-            "llm_model": os.environ.get("LLM_MODEL", "x-ai/grok-4.1-fast"),
+            "llm_model": os.environ.get("LLM_MODEL", "deepseek/deepseek-v4.1-flash"),
             "search_score_threshold": _parse_env_float("SEARCH_SCORE_THRESHOLD", "0.5"),
             "rerank_max_concurrency": _parse_env_int(
                 "RERANK_MAX_CONCURRENCY", "10", minimum=1
@@ -743,9 +748,17 @@ class Config:
         Raises:
             ConfigurationError: If required environment variables are missing or invalid.
         """
-        preset = get_active_preset()
-        if preset:
-            apply_preset_to_env(preset)
+        with _preset_env_lock:
+            preset = get_active_preset()
+            inserted = apply_preset_to_env(preset) if preset else set[str]()
+            try:
+                return cls._from_environment_values()
+            finally:
+                for name in inserted:
+                    del os.environ[name]
+
+    @classmethod
+    def _from_environment_values(cls) -> Config:
 
         openrouter_api_key_raw = os.environ.get("OPENROUTER_API_KEY")
         if not openrouter_api_key_raw:

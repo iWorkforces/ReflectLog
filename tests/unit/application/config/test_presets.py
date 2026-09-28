@@ -1,5 +1,6 @@
 """Tests for reflectlog.application.config.presets module."""
 
+from collections.abc import Iterator
 import os
 
 import pytest
@@ -233,7 +234,7 @@ class TestApplyPresetToEnv:
     """Tests for the apply_preset_to_env function."""
 
     @pytest.fixture(autouse=True)
-    def _clean_env(self, monkeypatch: MonkeyPatch) -> None:
+    def _clean_env(self, monkeypatch: MonkeyPatch) -> Iterator[None]:
         """Remove preset-related env vars before each test."""
         env_keys = [
             "SEARCH_LIMIT",
@@ -253,6 +254,10 @@ class TestApplyPresetToEnv:
         ]
         for key in env_keys:
             monkeypatch.delenv(key, raising=False)
+        yield
+        for key in env_keys:
+            if key in os.environ:
+                del os.environ[key]
 
     def test_simple_preset_sets_expected_env_vars(self):
         """apply_preset_to_env with SIMPLE_PRESET should set all non-None fields."""
@@ -267,6 +272,17 @@ class TestApplyPresetToEnv:
         assert os.environ["EMBEDDING_CACHE_ENABLED"] == "true"
         assert os.environ["EMBEDDING_CACHE_SIZE"] == "50"
         assert os.environ["USEARCH_EXACT_SEARCH"] == "true"
+
+    def test_explicit_values_take_precedence(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("RERANKER_ENGINE", "openrouter")
+        monkeypatch.setenv("SEARCH_LIMIT", "12")
+        monkeypatch.setenv("ENABLE_RECENCY_BOOST", "")
+
+        apply_preset_to_env(QUALITY_PRESET)
+
+        assert os.environ["RERANKER_ENGINE"] == "openrouter"
+        assert os.environ["SEARCH_LIMIT"] == "12"
+        assert os.environ["ENABLE_RECENCY_BOOST"] == ""
 
     def test_simple_preset_does_not_set_none_fields(self):
         """Fields that are None on the preset should not be set."""

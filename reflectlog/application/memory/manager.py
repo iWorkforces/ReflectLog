@@ -57,6 +57,10 @@ from reflectlog.infrastructure.embeddings.wemm_service import (
     WeMMBorrow,
     acquire_wemm,
 )
+from reflectlog.infrastructure.openrouter_reranker import (
+    OpenRouterReranker,
+    OpenRouterRerankerConfig,
+)
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
@@ -377,6 +381,7 @@ class MemoryManager:
         The cross-encoder is created on first search to avoid startup overhead.
         """
         self._cross_encoder_reranker: CrossEncoderReranker | None = None
+        self._openrouter_reranker: OpenRouterReranker | None = None
 
         config = self.config
         if config.reranker_engine == RerankerEngine.CROSS_ENCODER:
@@ -394,10 +399,15 @@ class MemoryManager:
                 "Reranking disabled (RERANKER_ENGINE=none)",
                 extra={"reranker_engine": RerankerEngine.NONE},
             )
+        elif config.reranker_engine == RerankerEngine.OPENROUTER:
+            self.logger.info(
+                "OpenRouter reranker configured (lazy init)",
+                extra={"reranker_engine": RerankerEngine.OPENROUTER},
+            )
         else:
             raise ConfigurationError(
                 f"Invalid RERANKER_ENGINE: '{config.reranker_engine}'. "
-                "Valid options: cross_encoder, none"
+                "Valid options: cross_encoder, openrouter, none"
             )
 
     def _init_smart_replacer(self) -> None:
@@ -567,11 +577,11 @@ class MemoryManager:
         # Pre-warm reranker if explicitly configured (lazy by default)
         if should_init_reranker:
             # Validate that reranker engine type is supported
-            if self.config.reranker_engine != RerankerEngine.CROSS_ENCODER:
+            if self.config.reranker_engine == RerankerEngine.NONE:
                 raise ValueError(
                     f"Invalid reranker_engine for eager initialization: "
                     f"{self.config.reranker_engine!r}. "
-                    f"Must be 'cross_encoder', or set "
+                    f"Must be 'cross_encoder' or 'openrouter', or set "
                     f"eager_initialize_reranker=false for lazy loading."
                 )
 
@@ -584,7 +594,10 @@ class MemoryManager:
             )
             reranker = self.get_reranker()
             if reranker is not None:
-                _ = reranker.model
+                if self.config.reranker_engine == RerankerEngine.CROSS_ENCODER:
+                    cross_encoder = self.cross_encoder_reranker
+                    if cross_encoder is not None:
+                        _ = cross_encoder.model
                 engines_initialized.append(f"reranker_{self.config.reranker_engine}")
             else:
                 self.logger.warning(
@@ -671,6 +684,17 @@ class MemoryManager:
             return self._cross_encoder_reranker
 
     @property
+    def openrouter_reranker(self) -> OpenRouterReranker | None:
+        if self.config.reranker_engine != RerankerEngine.OPENROUTER:
+            return None
+        with self._reranker_lock:
+            if self._openrouter_reranker is None:
+                self._openrouter_reranker = OpenRouterReranker(
+                    OpenRouterRerankerConfig.from_config(ConfigAdapter(self.config))
+                )
+            return self._openrouter_reranker
+
+    @property
     def smart_replacer(self) -> SmartReplacer | None:
         """Get SmartReplacer (lazy initialization with thread-safety).
 
@@ -706,10 +730,11 @@ class MemoryManager:
             )
             return self._smart_replacer
 
-    def get_reranker(self) -> CrossEncoderReranker | None:
-        """Get the configured cross-encoder reranker, or None if disabled."""
+    def get_reranker(self) -> CrossEncoderReranker | OpenRouterReranker | None:
         if self.config.reranker_engine == RerankerEngine.CROSS_ENCODER:
             return self.cross_encoder_reranker
+        if self.config.reranker_engine == RerankerEngine.OPENROUTER:
+            return self.openrouter_reranker
         return None
 
     def add_memories(self, memories: list[str]) -> int:

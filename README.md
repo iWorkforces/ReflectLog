@@ -180,14 +180,16 @@ status = await health_check(workspace_id="my-project")
 
 | Variable | Description |
 |----------|-------------|
-| `OPENROUTER_API_KEY` | OpenRouter API key for LLM/embeddings |
+| `OPENROUTER_API_KEY` | OpenRouter API key for LLM/embeddings and optional remote reranking |
 
 ### Optional Configuration
 
 ```bash
 # Search Settings
 SEARCH_LIMIT=5                    # Max results per search
-RERANKER_ENGINE=cross_encoder     # cross_encoder or none
+RERANKER_ENGINE=cross_encoder     # cross_encoder (default), openrouter, or none
+# OPENROUTER_RERANK_MODEL=voyageai/rerank-2.5-lite
+
 # Memory Replacement
 ENABLE_SMART_REPLACE=true         # LLM-based memory replacement
 SMART_REPLACE_THRESHOLD=0.7       # Confidence threshold
@@ -199,6 +201,16 @@ LOG_LEVEL=INFO                    # Logging level
 ```
 
 See `.env.example` for all available options.
+
+To opt into remote reranking, set `RERANKER_ENGINE=openrouter` and provide
+`OPENROUTER_API_KEY`. Search sends the query and all fused candidate memory
+texts to `POST {OPENROUTER_BASE_URL}/rerank` (default
+`https://openrouter.ai/api/v1/rerank`) using `OPENROUTER_RERANK_MODEL`.
+OpenRouter usage may incur charges. The model setting is separate from the
+smart-replacement `LLM_MODEL`. Remote relevance scores are ranked without
+cross-encoder score thresholds, then optional recency decay is applied; searches
+with at most one result skip reranking. On API failure, search returns the
+original fused results. Use `RERANKER_ENGINE=none` to disable reranking.
 
 ### Local Tencent WeMM Embeddings
 

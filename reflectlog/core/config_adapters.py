@@ -59,6 +59,8 @@ if TYPE_CHECKING:
 def _validated_reranker_engine(reranker_engine: RerankerEngine) -> RerankerEngine:
     if reranker_engine == RerankerEngine.CROSS_ENCODER:
         return RerankerEngine.CROSS_ENCODER
+    if reranker_engine == RerankerEngine.OPENROUTER:
+        return RerankerEngine.OPENROUTER
     if reranker_engine == RerankerEngine.NONE:
         return RerankerEngine.NONE
     assert_never(reranker_engine)
@@ -97,6 +99,18 @@ class ConfigAdapter(IAppConfig):
             config: Application configuration instance.
         """
         self._config = config
+
+    @property
+    def openrouter_rerank_model(self) -> str:
+        return self._config.openrouter_rerank_model
+
+    @property
+    def openrouter_base_url(self) -> str:
+        return self._config.openrouter_base_url
+
+    @property
+    def openrouter_api_key(self) -> str:
+        return self._config.openrouter_api_key.get_secret_value()
 
     # IServerConfig properties
     @property
@@ -554,6 +568,18 @@ class RerankerConfigAdapter(IRerankerConfig):
 
     def __init__(self, config: Config) -> None:
         self._config = config
+
+    @property
+    def openrouter_rerank_model(self) -> str:
+        return self._config.openrouter_rerank_model
+
+    @property
+    def openrouter_base_url(self) -> str:
+        return self._config.openrouter_base_url
+
+    @property
+    def openrouter_api_key(self) -> str:
+        return self._config.openrouter_api_key.get_secret_value()
 
     @property
     def llm_model(self) -> str:

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
     from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
+    from reflectlog.infrastructure.openrouter_reranker import OpenRouterReranker
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
     from ...core.logging import IStructuredLogger
@@ -79,6 +80,9 @@ class SearchResult:
 class RerankerProvider(Protocol):
     @property
     def cross_encoder_reranker(self) -> CrossEncoderReranker | None: ...
+
+    @property
+    def openrouter_reranker(self) -> OpenRouterReranker | None: ...
 
 
 class SearchPipeline:
@@ -221,9 +225,9 @@ class SearchPipeline:
         if len(hybrid_results) <= 1:
             self._log_skip_reranking(len(hybrid_results), rerank_step_num)
         else:
-            if (
-                include_timestamp_map
-                or self.config.reranker_engine == RerankerEngine.CROSS_ENCODER
+            if include_timestamp_map or self.config.reranker_engine in (
+                RerankerEngine.CROSS_ENCODER,
+                RerankerEngine.OPENROUTER,
             ):
                 timestamp_map = await asyncify(self._complete_timestamp_map)(
                     timestamp_map,
@@ -581,7 +585,17 @@ class SearchPipeline:
 
     def _get_reranker(
         self,
-    ) -> tuple[RerankerEngine, CrossEncoderReranker] | tuple[None, None]:
+    ) -> (
+        tuple[RerankerEngine, CrossEncoderReranker | OpenRouterReranker]
+        | tuple[None, None]
+    ):
+        if (
+            self._memory_manager is not None
+            and self.config.reranker_engine == RerankerEngine.OPENROUTER
+        ):
+            openrouter_reranker = self._memory_manager.openrouter_reranker
+            if openrouter_reranker is not None:
+                return (RerankerEngine.OPENROUTER, openrouter_reranker)
         cross_encoder_reranker = self._get_cross_encoder_reranker()
         if cross_encoder_reranker is not None:
             return (RerankerEngine.CROSS_ENCODER, cross_encoder_reranker)
@@ -596,17 +610,33 @@ class SearchPipeline:
         step_num: int,
     ) -> list[tuple[str, float]]:
         """Step 4: Rerank results using the cross-encoder when enabled."""
-        match self._get_reranker():
-            case ("cross_encoder", cross_encoder_reranker):
-                return await self._rerank_cross_encoder(
-                    context,
+        if self.config.reranker_engine == RerankerEngine.CROSS_ENCODER:
+            return await self._rerank_cross_encoder(
+                context, results, step_num, timestamp_map=timestamp_map
+            )
+        if (
+            self.config.reranker_engine == RerankerEngine.OPENROUTER
+            and self._memory_manager is not None
+        ):
+            try:
+                reranker = self._memory_manager.openrouter_reranker
+                if reranker is None:
+                    return results
+                return await reranker.rerank_async(
+                    context.query,
                     results,
-                    step_num,
-                    cross_encoder_reranker,
-                    timestamp_map=timestamp_map,
+                    timestamp_map,
+                    top_k=context.limit,
                 )
-            case _:
-                return results
+            except Exception as exc:
+                self.logger.warning(
+                    "OpenRouter reranking failed; returning fused results",
+                    extra={
+                        "error_type": type(exc).__name__,
+                        "candidate_count": len(results),
+                    },
+                )
+        return results
 
     async def _rerank_cross_encoder(
         self,
