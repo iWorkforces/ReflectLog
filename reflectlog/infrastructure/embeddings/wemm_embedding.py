@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 import threading
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, Final, final
 
 from asyncer import asyncify
 from pydantic import ConfigDict, TypeAdapter, ValidationError
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 _TEXT_LIST_ADAPTER = TypeAdapter(list[str], config=ConfigDict(strict=True))
+_MODEL_LOAD_LOCK: Final = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,23 +63,24 @@ class WeMMEmbeddings:
                     if self.config.device is WeMMDevice.AUTO
                     else self.config.device.value
                 )
-                try:
+                with _MODEL_LOAD_LOCK:
                     try:
-                        model = SentenceTransformer(
-                            self.config.model.value,
-                            trust_remote_code=True,
-                            device=device,
-                            local_files_only=True,
-                        )
-                    except OSError:
-                        model = SentenceTransformer(
-                            self.config.model.value,
-                            trust_remote_code=True,
-                            device=device,
-                            local_files_only=False,
-                        )
-                except (OSError, RuntimeError) as exc:
-                    raise RuntimeError("WeMM model load failed") from exc
+                        try:
+                            model = SentenceTransformer(
+                                self.config.model.value,
+                                trust_remote_code=True,
+                                device=device,
+                                local_files_only=True,
+                            )
+                        except OSError:
+                            model = SentenceTransformer(
+                                self.config.model.value,
+                                trust_remote_code=True,
+                                device=device,
+                                local_files_only=False,
+                            )
+                    except (OSError, RuntimeError) as exc:
+                        raise RuntimeError("WeMM model load failed") from exc
                 self._model = model
             return model
 

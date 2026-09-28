@@ -420,6 +420,92 @@ def test_concurrent_first_use_loads_model_once() -> None:
     model_class.assert_called_once()
 
 
+def test_concurrent_first_loads_across_instances_wait_for_cached_checkpoint() -> None:
+    download_started = threading.Event()
+    release_download = threading.Event()
+    second_finished = threading.Event()
+    state_lock = threading.Lock()
+    cache_ready = False
+    download_active = False
+    constructor_calls: list[tuple[str, bool]] = []
+    results: dict[str, list[float]] = {}
+    errors: dict[str, BaseException] = {}
+    model = MagicMock()
+    model.encode_query.return_value = _vector_rows(1, 64)
+
+    def construct_model(
+        _model_name: str,
+        *,
+        trust_remote_code: bool,
+        device: str | None,
+        local_files_only: bool,
+    ) -> MagicMock:
+        nonlocal cache_ready, download_active
+        with state_lock:
+            constructor_calls.append(
+                (threading.current_thread().name, local_files_only)
+            )
+            if local_files_only:
+                if cache_ready:
+                    return model
+                if download_active:
+                    raise OSError("checkpoint download incomplete")
+                raise OSError("checkpoint cache miss")
+            if download_active:
+                raise OSError("concurrent online load failed")
+            download_active = True
+        download_started.set()
+        assert release_download.wait(timeout=5)
+        with state_lock:
+            cache_ready = True
+            download_active = False
+        return model
+
+    def embed(embeddings: WeMMEmbeddings) -> None:
+        name = threading.current_thread().name
+        try:
+            result = embeddings.embed_query(name)
+            with state_lock:
+                results[name] = result
+        except BaseException as exc:
+            with state_lock:
+                errors[name] = exc
+        finally:
+            if name == "second":
+                second_finished.set()
+
+    first = threading.Thread(
+        name="first", target=embed, args=(WeMMEmbeddings(_config()),)
+    )
+    second = threading.Thread(
+        name="second", target=embed, args=(WeMMEmbeddings(_config()),)
+    )
+    started: list[threading.Thread] = []
+    with patch(
+        "reflectlog.infrastructure.embeddings.wemm_embedding.SentenceTransformer",
+        side_effect=construct_model,
+    ):
+        try:
+            first.start()
+            started.append(first)
+            assert download_started.wait(timeout=2)
+            second.start()
+            started.append(second)
+            second_finished.wait(timeout=2)
+        finally:
+            release_download.set()
+            for thread in started:
+                thread.join(timeout=5)
+
+    assert all(not thread.is_alive() for thread in started)
+    assert errors == {}, f"worker failures: {errors!r}; calls: {constructor_calls!r}"
+    assert results == {
+        "first": pytest.approx([0.125] * 64),
+        "second": pytest.approx([0.125] * 64),
+    }
+    assert constructor_calls == [("first", True), ("first", False), ("second", True)]
+
+
 def test_inference_is_serialized_with_model_lifecycle() -> None:
     first_entered = threading.Event()
     release_first = threading.Event()
