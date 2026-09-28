@@ -63,11 +63,20 @@ class WeMMEmbeddings:
                     else self.config.device.value
                 )
                 try:
-                    model = SentenceTransformer(
-                        self.config.model.value,
-                        trust_remote_code=True,
-                        device=device,
-                    )
+                    try:
+                        model = SentenceTransformer(
+                            self.config.model.value,
+                            trust_remote_code=True,
+                            device=device,
+                            local_files_only=True,
+                        )
+                    except OSError:
+                        model = SentenceTransformer(
+                            self.config.model.value,
+                            trust_remote_code=True,
+                            device=device,
+                            local_files_only=False,
+                        )
                 except (OSError, RuntimeError) as exc:
                     raise RuntimeError("WeMM model load failed") from exc
                 self._model = model
