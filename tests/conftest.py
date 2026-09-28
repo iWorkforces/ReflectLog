@@ -4,7 +4,7 @@ from collections.abc import Callable, Generator
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
 import pytest
@@ -89,10 +89,14 @@ def mock_usearch_engine() -> MagicMock:
     engine.embedder.embed_documents.side_effect = lambda texts: [
         [0.1] * 4 for _ in texts
     ]
+    engine.embedder.aembed_documents = AsyncMock(
+        side_effect=lambda texts: [[0.1] * 4 for _ in texts]
+    )
     engine.embedder.embed_query.side_effect = lambda _query: [0.1] * 4
     engine.memory_store.begin_add_intents.return_value = []
     engine.memory_store.begin_delete_intents.return_value = []
     engine.memory_store.list_pending_transitions.return_value = []
+    engine.memory_store.is_pending_transition.return_value = False
     engine.memory_store.has_later_intent.return_value = False
     engine.memory_store.get.return_value = None
     engine.memory_store.exists_many.side_effect = lambda _workspace, contents: set(

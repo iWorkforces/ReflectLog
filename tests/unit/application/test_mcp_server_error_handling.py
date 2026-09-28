@@ -2,7 +2,7 @@
 # mypy: disable-error-code="misc,var-annotated,method-assign"
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -116,6 +116,9 @@ class TestAddToolErrorHandling:
         mock_usearch_engine.embedder.embed_documents.side_effect = lambda texts: [
             [0.1] * 4 for _ in texts
         ]
+        mock_usearch_engine.embedder.aembed_documents = AsyncMock(
+            side_effect=lambda texts: [[0.1] * 4 for _ in texts]
+        )
         mock_usearch_engine.add_batch.side_effect = Exception("Storage failure")
         mock_usearch_engine.add.side_effect = Exception("Storage failure")
         mock_usearch_engine_class.return_value = mock_usearch_engine
