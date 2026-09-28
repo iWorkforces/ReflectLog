@@ -18,6 +18,7 @@ class SentenceTransformer:
         *,
         device: str | None = None,
         trust_remote_code: bool = False,
+        local_files_only: bool = False,
     ) -> None: ...
     def encode_query(
         self,
