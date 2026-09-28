@@ -8,6 +8,8 @@ files to prove convergence to one active replacement plus an audit row.
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import replace
+from pathlib import Path
+import shutil
 import tempfile
 from unittest.mock import patch
 
@@ -28,6 +30,7 @@ from tests.integration.test_memory_manager_usearch import (
 
 OLD = "Prefer tabs for indentation in this repository"
 NEW = "Prefer spaces for indentation in this repository"
+UNRELATED = "Keep pull requests under 200 lines"
 
 Injector = Callable[[MemoryManager], AbstractContextManager[None]]
 FailedEmbedDocuments = Callable[[list[str]], list[list[float]]]
@@ -117,6 +120,40 @@ def _assert_converged(manager: MemoryManager) -> None:
         assert NEW in new_hits
         assert len(set(new_hits)) == 1
         assert not tantivy.find_by_exact_match(manager.workspace_id, OLD)
+
+
+def _assert_mixed_converged(manager: MemoryManager) -> None:
+    expected = {NEW, UNRELATED}
+    memories = manager.get_all()
+    assert len(memories) == 2
+    assert set(memories) == expected
+    assert manager.get_id_by_content(OLD) is None
+
+    semantic = manager._semantic_engine
+    assert isinstance(semantic, USearchEngine)
+    for content in (NEW, UNRELATED):
+        memory_id = manager.get_id_by_content(content)
+        assert memory_id is not None
+        assert semantic.contains_id(memory_id)
+    for query in (NEW, UNRELATED, OLD):
+        assert {
+            content for content, _, _ in semantic.search(query, manager.workspace_id, 3)
+        } == expected
+
+    tantivy = manager._tantivy_engine
+    assert isinstance(tantivy, TantivyEngine)
+    for term, content in (("spaces", NEW), ("requests", UNRELATED)):
+        hits = [hit for hit, _ in tantivy.search(term, manager.workspace_id, 3)]
+        assert hits == [content]
+    assert tantivy.search("tabs", manager.workspace_id, 3) == []
+
+    store = semantic.memory_store
+    assert isinstance(store, MemoryStore)
+    assert store.list_pending_transitions() == []
+    archives = store.get_archived(manager.workspace_id)
+    assert len(archives) == 1
+    assert archives[0].content == OLD
+    assert archives[0].replaced_by == NEW
 
 
 async def _replace(manager: MemoryManager) -> None:
@@ -369,6 +406,52 @@ class TestReplacementRecoveryIntegration:
     async def test_crash_after_complete_then_repeat_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             await _crash_and_reopen(tmpdir, _crash_after_complete)
+
+    @pytest.mark.parametrize("boundary", ["before_generation", "after_generation"])
+    async def test_mixed_replacement_and_add_recover_at_generation(
+        self, boundary: str
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = _config(tmpdir)
+            workspace_dir = Path.cwd() / "indexes" / config.workspace_id.lower()
+            try:
+                first, _ = create_memory_manager(config)
+                fired = 0
+
+                def fail_once(step: str) -> None:
+                    nonlocal fired
+                    if step == boundary and fired == 0:
+                        fired += 1
+                        raise RuntimeError(f"interrupted at {boundary}")
+
+                try:
+                    assert first.add_memories([OLD]) == 1
+                    first.orchestration_hook = fail_once
+                    with pytest.raises(
+                        RuntimeError, match=f"interrupted at {boundary}"
+                    ):
+                        _ = await first._storage_phase.execute(
+                            [NEW, UNRELATED], {NEW: [_replacement()]}
+                        )
+                    assert fired == 1
+                finally:
+                    _abandon_without_persist(first)
+
+                second, _ = create_memory_manager(config)
+                try:
+                    _assert_mixed_converged(second)
+                finally:
+                    second.close()
+
+                third, _ = create_memory_manager(config)
+                try:
+                    _assert_mixed_converged(third)
+                finally:
+                    cleanup_manager(third)
+            finally:
+                if workspace_dir.exists():
+                    shutil.rmtree(workspace_dir)
+                assert not workspace_dir.exists()
 
     async def test_live_reconcile_after_failed_delete(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
