@@ -6,7 +6,13 @@ correctly, including race conditions, duplicate detection, and data consistency.
 
 import asyncio
 from collections import Counter
+from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from dataclasses import replace
 import os
+from pathlib import Path
+import threading
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -16,11 +22,14 @@ import pytest
 
 from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.tools.get_all import GetAllTool
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.application.utils.security import SecretString
 from reflectlog.core.enums import EmbedderProvider
+from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import Embeddings
+from reflectlog.infrastructure.usearch_engine import USearchEngine
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_USEARCH_CONCURRENCY_TESTS") != "1",
@@ -375,6 +384,205 @@ class TestConcurrentGetAll:
         await asyncio.gather(add_memories(), get_all_memories())
 
         memory_manager.close()
+
+
+@pytest.mark.integration
+class TestCoherentPage:
+    @pytest.mark.asyncio
+    async def test_mcp_page_metadata_uses_one_snapshot(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        config = replace(create_test_config("coherent-mcp"), get_all_limit=2)
+        manager = create_memory_manager(config)
+        handler = GetAllTool(config, manager, manager.logger).get_handler()
+        page_read = threading.Event()
+        release_read = threading.Event()
+        writer_at_lease = threading.Event()
+        writer_done = threading.Event()
+        original_get_all = USearchEngine.get_all
+        original_exclusive = manager._exclusive_workspace
+
+        def paused_get_all(
+            engine: USearchEngine,
+            workspace_id: str,
+            limit: int | None = None,
+            offset: int = 0,
+        ) -> list[str]:
+            page = original_get_all(engine, workspace_id, limit=limit, offset=offset)
+            page_read.set()
+            assert release_read.wait(timeout=20.0)
+            return page
+
+        @contextmanager
+        def signaled_exclusive() -> Generator[None]:
+            writer_at_lease.set()
+            with original_exclusive():
+                yield
+
+        try:
+            assert manager.add_memories(["first", "second", "third"]) == 3
+            with monkeypatch.context() as patcher:
+                patcher.setattr(USearchEngine, "get_all", paused_get_all)
+                patcher.setattr(manager, "_exclusive_workspace", signaled_exclusive)
+
+                def add_row() -> int:
+                    try:
+                        return manager.add_memories(["fourth"])
+                    finally:
+                        writer_done.set()
+
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    response = asyncio.ensure_future(handler(limit=1, offset=1))
+                    try:
+                        assert await asyncify(page_read.wait)(timeout=20.0)
+                        writer = pool.submit(add_row)
+                        assert await asyncify(writer_at_lease.wait)(timeout=20.0)
+                        assert not await asyncify(writer_done.wait)(timeout=0.2)
+                    finally:
+                        release_read.set()
+                    assert await asyncio.wait_for(response, timeout=20.0) == {
+                        "memories": ["second"],
+                        "total": 3,
+                        "offset": 1,
+                        "limit": 1,
+                        "truncated": True,
+                    }
+                    assert writer.result(timeout=20.0) == 1
+            assert await handler(limit=99, offset=2) == {
+                "memories": ["third", "fourth"],
+                "total": 4,
+                "offset": 2,
+                "limit": 2,
+                "truncated": False,
+            }
+            assert await handler(limit=0, offset=99) == {
+                "memories": [],
+                "total": 4,
+                "offset": 99,
+                "limit": 0,
+                "truncated": False,
+            }
+        finally:
+            release_read.set()
+            manager.close()
+
+    def test_thread_writer_waits_for_page_and_total(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        manager = create_memory_manager(create_test_config("coherent-thread"))
+        page_read = threading.Event()
+        release_read = threading.Event()
+        writer_at_lease = threading.Event()
+        writer_done = threading.Event()
+        original_get_all = USearchEngine.get_all
+        original_exclusive = manager._exclusive_workspace
+
+        def paused_get_all(
+            engine: USearchEngine,
+            workspace_id: str,
+            limit: int | None = None,
+            offset: int = 0,
+        ) -> list[str]:
+            page = original_get_all(engine, workspace_id, limit=limit, offset=offset)
+            page_read.set()
+            assert release_read.wait(timeout=20.0)
+            return page
+
+        @contextmanager
+        def signaled_exclusive() -> Generator[None]:
+            writer_at_lease.set()
+            with original_exclusive():
+                yield
+
+        try:
+            assert manager.add_memories(["first", "second", "third"]) == 3
+            monkeypatch.setattr(USearchEngine, "get_all", paused_get_all)
+            monkeypatch.setattr(manager, "_exclusive_workspace", signaled_exclusive)
+
+            def add_row() -> int:
+                try:
+                    return manager.add_memories(["fourth"])
+                finally:
+                    writer_done.set()
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                reader = pool.submit(manager.get_page_with_total, 2, 1)
+                try:
+                    assert page_read.wait(timeout=20.0)
+                    writer = pool.submit(add_row)
+                    assert writer_at_lease.wait(timeout=20.0)
+                    assert not writer_done.wait(timeout=0.2)
+                finally:
+                    release_read.set()
+                assert reader.result(timeout=20.0) == (["second", "third"], 3)
+                assert writer.result(timeout=20.0) == 1
+            assert manager.get_page_with_total() == (
+                ["first", "second", "third", "fourth"],
+                4,
+            )
+        finally:
+            release_read.set()
+            manager.close()
+
+    def test_failed_page_releases_writer_and_preserves_data(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        manager = create_memory_manager(create_test_config("coherent-failure"))
+        page_read = threading.Event()
+        release_read = threading.Event()
+        writer_at_lease = threading.Event()
+        writer_done = threading.Event()
+        original_get_all = USearchEngine.get_all
+        original_exclusive = manager._exclusive_workspace
+
+        def failing_get_all(
+            engine: USearchEngine,
+            workspace_id: str,
+            limit: int | None = None,
+            offset: int = 0,
+        ) -> list[str]:
+            original_get_all(engine, workspace_id, limit=limit, offset=offset)
+            page_read.set()
+            assert release_read.wait(timeout=20.0)
+            raise OSError("page read interrupted")
+
+        @contextmanager
+        def signaled_exclusive() -> Generator[None]:
+            writer_at_lease.set()
+            with original_exclusive():
+                yield
+
+        try:
+            assert manager.add_memories(["original"]) == 1
+            with monkeypatch.context() as patcher:
+                patcher.setattr(USearchEngine, "get_all", failing_get_all)
+                patcher.setattr(manager, "_exclusive_workspace", signaled_exclusive)
+
+                def add_row() -> int:
+                    try:
+                        return manager.add_memories(["after failure"])
+                    finally:
+                        writer_done.set()
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    reader = pool.submit(manager.get_page_with_total, 1, 0)
+                    try:
+                        assert page_read.wait(timeout=20.0)
+                        writer = pool.submit(add_row)
+                        assert writer_at_lease.wait(timeout=20.0)
+                        assert not writer_done.wait(timeout=0.2)
+                    finally:
+                        release_read.set()
+                    with pytest.raises(StorageError, match="page read interrupted"):
+                        reader.result(timeout=20.0)
+                    assert writer.result(timeout=20.0) == 1
+            assert manager.get_page_with_total() == (["original", "after failure"], 2)
+        finally:
+            release_read.set()
+            manager.close()
 
 
 @pytest.mark.integration
