@@ -2,11 +2,13 @@
 # mypy: disable-error-code="misc,var-annotated"
 # Tests are async because tool handlers are async functions
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import replace
 from functools import partial
 from inspect import signature
 import json
+from threading import Event, get_ident
 from typing import Protocol, cast, runtime_checkable
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -317,6 +319,90 @@ class TestWorkspaceSelection:
 class TestAddTool:
     """Test suite for add() tool."""
 
+    @pytest.mark.parametrize("cancellation", ["task", "anyio"])
+    async def test_cancelled_add_keeps_manager_until_embedding_finishes(
+        self, mcp_server, cancellation: str
+    ):
+        manager = mcp_server.memory_manager
+        entered = Event()
+        release = Event()
+        finished = Event()
+        close_waiting = anyio.Event()
+        scope_ready = anyio.Event()
+        scopes: list[anyio.CancelScope] = []
+
+        def embed(texts: list[str]) -> list[list[float]]:
+            entered.set()
+            assert release.wait(5)
+            finished.set()
+            return [[0.1] * 4 for _ in texts]
+
+        async def call_in_scope() -> None:
+            with anyio.CancelScope() as scope:
+                scopes.append(scope)
+                scope_ready.set()
+                await mcp_server.tool_fn("add")(["cancellation regression"])
+
+        with (
+            patch.object(
+                manager.memory.memory_store, "exists_many", return_value=set()
+            ),
+            patch.object(
+                manager._semantic_engine.embedder, "embed_documents", side_effect=embed
+            ),
+            patch.object(manager, "close", wraps=manager.close) as close,
+        ):
+            invocation: asyncio.Task[object] | None = None
+            closing: asyncio.Task[None] | None = None
+            try:
+                invocation = asyncio.create_task(
+                    call_in_scope()
+                    if cancellation == "anyio"
+                    else mcp_server.tool_fn("add")(["cancellation regression"])
+                )
+                with anyio.fail_after(4):
+                    assert await anyio.to_thread.run_sync(entered.wait, 3)
+                if cancellation == "anyio":
+                    await scope_ready.wait()
+                    scopes[0].cancel()
+                else:
+                    _ = invocation.cancel()
+
+                drained = mcp_server._registry._drained
+                wait_for_drain = type(drained).wait
+
+                async def observe_drain(event: anyio.Event) -> None:
+                    if event is drained:
+                        close_waiting.set()
+                    await wait_for_drain(event)
+
+                with patch.object(type(drained), "wait", observe_drain):
+                    closing = asyncio.create_task(mcp_server.aclose())
+                    with anyio.fail_after(4):
+                        await close_waiting.wait()
+                    prematurely_finished = invocation.done()
+                    prematurely_closed = close.called
+                    release.set()
+                    with anyio.fail_after(4):
+                        if cancellation == "anyio":
+                            await invocation
+                            assert scopes[0].cancelled_caught
+                        else:
+                            with pytest.raises(asyncio.CancelledError):
+                                await invocation
+                        await closing
+                assert finished.is_set()
+                manager.memory.add_batch.assert_called_once()
+                close.assert_called_once()
+                assert not prematurely_finished
+                assert not prematurely_closed
+            finally:
+                release.set()
+                if invocation is not None:
+                    _ = await asyncio.wait({invocation}, timeout=4)
+                if closing is not None:
+                    _ = await asyncio.wait({closing}, timeout=4)
+
     async def test_add_single_memory_success(self, mcp_server, sample_memories):
         """Test adding a single valid memory."""
         memories = sample_memories["single"]
@@ -589,8 +675,7 @@ class TestGetAllTool:
 
     async def test_get_all_empty_store(self, mcp_server):
         """Test get_all returns empty list when no memories stored."""
-        mcp_server.memory_manager.memory.get_all.return_value = []
-        mcp_server.memory_manager.count = MagicMock(return_value=0)
+        mcp_server.memory_manager.get_page_with_total = MagicMock(return_value=([], 0))
 
         # Get the get_all tool function
         get_all_func = None
@@ -606,13 +691,16 @@ class TestGetAllTool:
         assert result["memories"] == []
         assert result["truncated"] is False
         assert result["total"] == 0
-        mcp_server.memory_manager.memory.get_all.assert_called_once()
+        mcp_server.memory_manager.get_page_with_total.assert_called_once_with(
+            limit=1000, offset=0
+        )
 
     async def test_get_all_single_memory(self, mcp_server, sample_memories):
         """Test get_all returns single memory."""
         memories = sample_memories["single"]
-        mcp_server.memory_manager.memory.get_all.return_value = memories
-        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
+        mcp_server.memory_manager.get_page_with_total = MagicMock(
+            return_value=(memories, len(memories))
+        )
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -624,13 +712,16 @@ class TestGetAllTool:
         result = await get_all_func()
 
         assert result["memories"] == memories
-        mcp_server.memory_manager.memory.get_all.assert_called_once()
+        mcp_server.memory_manager.get_page_with_total.assert_called_once_with(
+            limit=1000, offset=0
+        )
 
     async def test_get_all_multiple_memories(self, mcp_server, sample_memories):
         """Test get_all returns multiple memories."""
         memories = sample_memories["multiple"]
-        mcp_server.memory_manager.memory.get_all.return_value = memories
-        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
+        mcp_server.memory_manager.get_page_with_total = MagicMock(
+            return_value=(memories, len(memories))
+        )
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -643,13 +734,16 @@ class TestGetAllTool:
 
         assert result["memories"] == memories
         assert len(result["memories"]) == 3
-        mcp_server.memory_manager.memory.get_all.assert_called_once()
+        mcp_server.memory_manager.get_page_with_total.assert_called_once_with(
+            limit=1000, offset=0
+        )
 
     async def test_get_all_returns_copy(self, mcp_server, sample_memories):
         """Test get_all returns a copy of memories (prevents mutation)."""
         memories = sample_memories["multiple"].copy()
-        mcp_server.memory_manager.memory.get_all.return_value = list(memories)
-        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
+        mcp_server.memory_manager.get_page_with_total = MagicMock(
+            return_value=(list(memories), len(memories))
+        )
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -672,8 +766,9 @@ class TestGetAllTool:
     async def test_get_all_with_special_characters(self, mcp_server, sample_memories):
         """Test get_all handles memories with special characters."""
         memories = sample_memories["with_special_chars"]
-        mcp_server.memory_manager.memory.get_all.return_value = memories
-        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
+        mcp_server.memory_manager.get_page_with_total = MagicMock(
+            return_value=(memories, len(memories))
+        )
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -690,8 +785,9 @@ class TestGetAllTool:
     async def test_get_all_large_dataset(self, mcp_server):
         """Test get_all with large number of memories."""
         memories = [f"Memory {i}" for i in range(1000)]
-        mcp_server.memory_manager.memory.get_all.return_value = memories
-        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
+        mcp_server.memory_manager.get_page_with_total = MagicMock(
+            return_value=(memories, len(memories))
+        )
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -707,8 +803,8 @@ class TestGetAllTool:
 
     async def test_get_all_memory_failure_raises_storage_error(self, mcp_server):
         """Test memory retrieval failure raises StorageError."""
-        mcp_server.memory_manager.memory.get_all.side_effect = Exception(
-            "Retrieval failed"
+        mcp_server.memory_manager.get_page_with_total = MagicMock(
+            side_effect=Exception("Retrieval failed")
         )
 
         get_all_func = None
@@ -724,8 +820,9 @@ class TestGetAllTool:
     async def test_get_all_called_multiple_times(self, mcp_server, sample_memories):
         """Test get_all can be called multiple times."""
         memories = sample_memories["multiple"]
-        mcp_server.memory_manager.memory.get_all.return_value = memories
-        mcp_server.memory_manager.count = MagicMock(return_value=len(memories))
+        mcp_server.memory_manager.get_page_with_total = MagicMock(
+            return_value=(memories, len(memories))
+        )
 
         get_all_func = None
         for tool in mcp_server.registered_tools.values():
@@ -739,7 +836,174 @@ class TestGetAllTool:
 
         assert result1["memories"] == memories
         assert result2["memories"] == memories
-        assert mcp_server.memory_manager.memory.get_all.call_count == 2
+        assert mcp_server.memory_manager.get_page_with_total.call_count == 2
+
+
+@pytest.mark.unit
+class TestCoherentGetAllTool:
+    @pytest.mark.parametrize(
+        (
+            "limit",
+            "offset",
+            "page",
+            "total",
+            "expected_limit",
+            "expected_offset",
+            "truncated",
+        ),
+        [
+            (None, 0, [], 0, 1000, 0, False),
+            (None, 0, ["first", "second"], 3, 1000, 0, True),
+            (2, 1, ["second", "third"], 3, 2, 1, False),
+            (0, 0, [], 3, 0, 0, True),
+            (-3, -7, [], 3, 0, 0, True),
+            (10, 20, [], 3, 10, 20, False),
+            (2000, 0, ["first"], 1001, 1000, 0, True),
+        ],
+    )
+    async def test_metadata_from_single_manager_read(
+        self,
+        mcp_server,
+        limit,
+        offset,
+        page,
+        total,
+        expected_limit,
+        expected_offset,
+        truncated,
+    ):
+        manager = mcp_server.memory_manager
+        with (
+            patch.object(
+                manager, "get_page_with_total", return_value=(page, total)
+            ) as read,
+            patch.object(
+                manager, "get_all", side_effect=AssertionError("separate page")
+            ),
+            patch.object(
+                manager, "count", side_effect=AssertionError("separate count")
+            ),
+        ):
+            result = await mcp_server.tool_fn("get_all")(limit=limit, offset=offset)
+
+        assert result == {
+            "memories": page,
+            "total": total,
+            "offset": expected_offset,
+            "limit": expected_limit,
+            "truncated": truncated,
+        }
+        read.assert_called_once_with(limit=expected_limit, offset=expected_offset)
+
+    async def test_configured_cap(self, mcp_server):
+        manager = mcp_server.memory_manager
+        config = replace(mcp_server.config, get_all_limit=2)
+        with (
+            patch.object(
+                manager, "get_page_with_total", return_value=(["one", "two"], 3)
+            ) as read,
+            patch.object(mcp_server, "config", config),
+        ):
+            result = await mcp_server.tool_fn("get_all")(limit=50)
+
+        assert result == {
+            "memories": ["one", "two"],
+            "total": 3,
+            "offset": 0,
+            "limit": 2,
+            "truncated": True,
+        }
+        read.assert_called_once_with(limit=2, offset=0)
+
+    async def test_workspace_routing(self, set_env_vars):
+        config = replace(Config.from_environment(), workspace_id="")
+        managers: dict[str, MagicMock] = {}
+
+        def create_manager(concrete: Config, _logger: object) -> MagicMock:
+            manager = MagicMock(spec=MemoryManager)
+            manager.config = concrete
+            manager.startup_metrics = None
+            manager.get_page_with_total.return_value = ([concrete.workspace_id], 1)
+            managers[concrete.workspace_id] = manager
+            return manager
+
+        with patch(
+            "reflectlog.application.mcp_server.MemoryManager",
+            side_effect=create_manager,
+        ):
+            server = FastMCPServer(config)
+            try:
+                client_factory = cast("Callable[[object], Client]", Client)
+                async with client_factory(server.mcp) as client:
+                    alpha_result = await client.call_tool(
+                        "get_all", {"workspace_id": "alpha"}
+                    )
+                    beta_result = await client.call_tool(
+                        "get_all", {"workspace_id": "beta"}
+                    )
+            finally:
+                await server.aclose()
+
+        alpha = json.loads(alpha_result.content[0].text)
+        beta = json.loads(beta_result.content[0].text)
+        assert alpha["memories"] == ["alpha"]
+        assert beta["memories"] == ["beta"]
+        managers["alpha"].get_page_with_total.assert_called_once_with(
+            limit=1000, offset=0
+        )
+        managers["beta"].get_page_with_total.assert_called_once_with(
+            limit=1000, offset=0
+        )
+
+    async def test_blocked_worker_keeps_event_loop_responsive(self, mcp_server):
+        entered = Event()
+        release = Event()
+        completed = anyio.Event()
+        event_loop_thread = get_ident()
+        worker_threads: list[int] = []
+        results: list[dict[str, object]] = []
+
+        def read_page(*, limit: int, offset: int) -> tuple[list[str], int]:
+            worker_threads.append(get_ident())
+            entered.set()
+            release.wait(5)
+            return ["memory"], 1
+
+        async def call_tool() -> None:
+            results.append(await mcp_server.tool_fn("get_all")())
+            completed.set()
+
+        with patch.object(
+            mcp_server.memory_manager, "get_page_with_total", side_effect=read_page
+        ) as read:
+            try:
+                async with anyio.create_task_group() as tasks:
+                    tasks.start_soon(call_tool)
+                    with anyio.fail_after(3):
+                        assert await anyio.to_thread.run_sync(entered.wait, 2)
+                        await anyio.sleep(0)
+                    assert not completed.is_set()
+                    release.set()
+            finally:
+                release.set()
+
+        assert len(worker_threads) == 1
+        assert worker_threads[0] != event_loop_thread
+        assert results[0]["memories"] == ["memory"]
+        read.assert_called_once_with(limit=1000, offset=0)
+
+    async def test_read_error_remains_storage_error(self, mcp_server):
+        failure = StorageError("read failed")
+        with patch.object(
+            mcp_server.memory_manager, "get_page_with_total", side_effect=failure
+        ) as read:
+            with pytest.raises(
+                StorageError, match="Failed to retrieve memories"
+            ) as raised:
+                await mcp_server.tool_fn("get_all")()
+
+        assert raised.value.__cause__ is failure
+        read.assert_called_once_with(limit=1000, offset=0)
 
 
 @pytest.mark.unit

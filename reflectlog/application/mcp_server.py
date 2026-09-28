@@ -151,6 +151,8 @@ class FastMCPServer:
             self.config, manager_factory=self._create_manager
         )
         self._closed = False
+        self._close_task: asyncio.Task[None] | None = None
+        self._serving_task: asyncio.Task[object] | None = None
 
         # Initialize tools BEFORE creating FastMCP (to build dynamic instructions)
         self._initialize_tools()
@@ -246,11 +248,29 @@ class FastMCPServer:
         )
         return tool.get_handler()
 
+    @staticmethod
+    async def _finish_tool[T](operation: Awaitable[T]) -> T:
+        task = asyncio.ensure_future(operation)
+        try:
+            _ = await asyncio.wait({task})
+        except asyncio.CancelledError:
+            with anyio.CancelScope(shield=True):
+                while not task.done():
+                    try:
+                        _ = await asyncio.wait({task})
+                    except asyncio.CancelledError:
+                        continue
+            _ = task.exception() if not task.cancelled() else None
+            raise
+        return task.result()
+
     async def _add(
         self, memories: list[str], workspace_id: str, dry_run: bool = False
     ) -> dict[str, object]:
         async with self._registry.acquire(workspace_id) as manager:
-            return await self._handler("add", manager)(memories, dry_run)
+            return await self._finish_tool(
+                self._handler("add", manager)(memories, dry_run)
+            )
 
     async def _search(
         self,
@@ -265,24 +285,27 @@ class FastMCPServer:
         workspace_id: str,
     ) -> list[str]:
         async with self._registry.acquire(workspace_id) as manager:
-            return await self._handler("search", manager)(query)
+            return await self._finish_tool(self._handler("search", manager)(query))
 
     async def _get_all(
         self, workspace_id: str, limit: int | None = None, offset: int = 0
     ) -> dict[str, object]:
         async with self._registry.acquire(workspace_id) as manager:
-            return await self._handler("get_all", manager)(limit, offset)
+            return await self._finish_tool(
+                self._handler("get_all", manager)(limit, offset)
+            )
 
     async def _remove(self, memories: list[str], workspace_id: str) -> None:
         async with self._registry.acquire(workspace_id) as manager:
-            await self._handler("remove", manager)(memories)
+            await self._finish_tool(self._handler("remove", manager)(memories))
 
     async def _health_check(self, workspace_id: str) -> dict[str, Any]:
         async with self._registry.acquire(workspace_id) as manager:
-            return await self._handler("health_check", manager)()
+            return await self._finish_tool(self._handler("health_check", manager)())
 
     @asynccontextmanager
     async def _lifespan(self, _server: FastMCP) -> AsyncGenerator[None]:
+        self._serving_task = asyncio.current_task()
         reaper = asyncio.create_task(self._registry.run_reaper())
         try:
             yield
@@ -292,8 +315,17 @@ class FastMCPServer:
                     await self.aclose()
                 finally:
                     _ = reaper.cancel()
+                    cancelled = False
+                    while not reaper.done():
+                        try:
+                            _ = await asyncio.wait({reaper})
+                        except asyncio.CancelledError:
+                            cancelled = True
                     with suppress(asyncio.CancelledError):
-                        await reaper
+                        reaper.result()
+                    self._serving_task = None
+                    if cancelled:
+                        raise asyncio.CancelledError
 
     def _build_dynamic_instructions(self) -> str:
         """Build MCP instructions dynamically from registered tools.
@@ -441,6 +473,33 @@ class FastMCPServer:
     async def aclose(self) -> None:
         if self._closed:
             return
+        task = self._close_task
+        if task is None or task.done():
+            task = asyncio.create_task(self._close_resources())
+            self._close_task = task
+        cancelled = False
+        with anyio.CancelScope(shield=True):
+            while not task.done():
+                try:
+                    _ = await asyncio.wait({task})
+                except asyncio.CancelledError:
+                    cancelled = True
+        task.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
+    @property
+    def shutdown_started(self) -> bool:
+        return self._close_task is not None
+
+    def cancel_serving(self) -> bool:
+        task = self._serving_task
+        if task is None or task.done():
+            return False
+        _ = task.cancel()
+        return True
+
+    async def _close_resources(self) -> None:
         self.logger.info("Initiating graceful server shutdown...")
         try:
             from reflectlog.utility.http import HttpClientFactory
