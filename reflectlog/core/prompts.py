@@ -1,4 +1,4 @@
-"""Prompts and text constants for ReflectLog Server."""
+"""Prompts and text constants for ReflectLog MCP Server."""
 
 from string import Template
 
@@ -76,7 +76,7 @@ REPLACEMENT_DETECTION_PROMPT = format_replacement_detection_prompt(
 )
 
 # Template components for dynamic MCP_INSTRUCTIONS assembly
-INSTRUCTIONS_HEADER = """ReflectLog Server - Project-based memory storage for intelligent AI Agents.
+INSTRUCTIONS_HEADER = """ReflectLog MCP Server - Workspace-based memory storage for intelligent AI Agents.
 
 This server provides persistent memory storage with hybrid search (semantic + full-text)
 and RRF fusion ranking.
