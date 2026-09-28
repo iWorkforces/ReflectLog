@@ -530,6 +530,16 @@ class TantivyEngine(BaseModel):
                 )
             raise RuntimeError(f"Failed to get all docs from Tantivy: {e}") from e
 
+    def get_all(self, workspace_id: str) -> list[str]:
+        """Return the live contents in a workspace from one reader snapshot."""
+        with self._lease(LeaseMode.SHARED):
+            self._refresh_reader()
+            contents = self._get_all_docs(workspace_id)
+            if self.coordinator is not None:
+                with self._searcher_lock:
+                    self._searcher = None
+            return contents
+
     def find_by_exact_match(self, workspace_id: str, content: str) -> list[str]:
         """Find all memories that exactly match the given memory text.
 
@@ -1300,17 +1310,40 @@ class TantivyEngine(BaseModel):
             deleted = 0
             seen: set[str] = set()
             try:
+                counts: dict[str, list[int]] = {}
+                if self._index is not None:
+                    if verify_exists:
+                        self._refresh_reader()
+                    requested = set(contents)
+                    escaped_workspace_id = self._escape_tantivy_query(workspace_id)
+                    query = self._index.parse_query(
+                        query=f'workspace_id:"{escaped_workspace_id}"',
+                        default_field_names=["workspace_id"],
+                    )
+                    pinned = self.searcher
+                    for _, doc_addr in pinned.search(
+                        query=query, limit=self._get_doc_limit()
+                    ).hits:
+                        doc = pinned.doc(doc_addr)
+                        memory = doc.get_first("content")
+                        if memory not in requested:
+                            continue
+                        copies = counts.setdefault(memory, [0, 0])
+                        is_deleted_val = doc.get_first("is_deleted")
+                        is_deleted = (
+                            int(is_deleted_val) if is_deleted_val is not None else 0
+                        )
+                        copies[is_deleted == 1] += 1
                 for content in contents:
                     if content in seen:
                         continue
-                    if self._soft_delete_unlocked(
-                        workspace_id,
-                        content,
-                        verify_exists=verify_exists,
-                        finalize_writer=False,
-                    ):
-                        seen.add(content)
-                        deleted += 1
+                    seen.add(content)
+                    live_count, tomb_count = counts.get(content, (0, 0))
+                    needed = live_count - tomb_count
+                    if needed <= 0:
+                        continue
+                    self._add_tombstone_docs(workspace_id, content, needed)
+                    deleted += 1
             finally:
                 if deleted or (
                     self.coordinator is not None and self._writer is not None

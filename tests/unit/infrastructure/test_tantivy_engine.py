@@ -3110,26 +3110,18 @@ class TestCoordinatedTantivyLifecycle:
             index_path = os.path.join(tmpdir, "idx")
             with _managed_engine(index_path, "ws", coordinator=coordinator) as engine:
                 engine.add_batch("ws", ["drop one", "drop two", "keep"])
-                soft_delete = TantivyEngine._soft_delete_unlocked
+                add_tombstone_docs = TantivyEngine._add_tombstone_docs
                 finalize_writer = TantivyEngine._finalize_writer
 
                 def fail_second(
                     instance: TantivyEngine,
                     workspace_id: str,
                     content: str,
-                    *,
-                    verify_exists: bool,
-                    finalize_writer: bool,
-                ) -> bool:
+                    count: int,
+                ) -> None:
                     if content == "drop two":
                         raise ValueError("second item failed")
-                    return soft_delete(
-                        instance,
-                        workspace_id,
-                        content,
-                        verify_exists=verify_exists,
-                        finalize_writer=finalize_writer,
-                    )
+                    add_tombstone_docs(instance, workspace_id, content, count)
 
                 def finalize_under_lease(
                     instance: TantivyEngine, *, relinquish: bool
@@ -3138,7 +3130,7 @@ class TestCoordinatedTantivyLifecycle:
                     finalize_writer(instance, relinquish=relinquish)
 
                 with (
-                    patch.object(TantivyEngine, "_soft_delete_unlocked", fail_second),
+                    patch.object(TantivyEngine, "_add_tombstone_docs", fail_second),
                     patch.object(
                         TantivyEngine,
                         "_finalize_writer",
@@ -3170,7 +3162,7 @@ class TestCoordinatedTantivyLifecycle:
             item_error = ValueError("second item failed")
             commit_error = RuntimeError("commit failed")
             cleanup_error = OSError("cleanup failed")
-            soft_delete = TantivyEngine._soft_delete_unlocked
+            add_tombstone_docs = TantivyEngine._add_tombstone_docs
             rollback = tantivy.IndexWriter.rollback
             wait = tantivy.IndexWriter.wait_merging_threads
             cleanup_steps: list[str] = []
@@ -3179,19 +3171,11 @@ class TestCoordinatedTantivyLifecycle:
                 instance: TantivyEngine,
                 workspace_id: str,
                 content: str,
-                *,
-                verify_exists: bool,
-                finalize_writer: bool,
-            ) -> bool:
+                count: int,
+            ) -> None:
                 if content == "drop two":
                     raise item_error
-                return soft_delete(
-                    instance,
-                    workspace_id,
-                    content,
-                    verify_exists=verify_exists,
-                    finalize_writer=finalize_writer,
-                )
+                add_tombstone_docs(instance, workspace_id, content, count)
 
             def fail_commit(writer: tantivy.IndexWriter) -> None:
                 assert coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
@@ -3214,7 +3198,7 @@ class TestCoordinatedTantivyLifecycle:
             with _managed_engine(index_path, "ws", coordinator=coordinator) as engine:
                 engine.add_batch("ws", ["drop one", "drop two", "keep"])
                 with (
-                    patch.object(TantivyEngine, "_soft_delete_unlocked", fail_second),
+                    patch.object(TantivyEngine, "_add_tombstone_docs", fail_second),
                     patch.object(tantivy.IndexWriter, "commit", fail_commit),
                     patch.object(tantivy.IndexWriter, "rollback", observe_rollback),
                     patch.object(
@@ -3287,6 +3271,81 @@ class TestCoordinatedTantivyLifecycle:
                 assert set(reopened._get_all_docs("ws")) == {"keep"}
                 assert reopened.find_by_exact_match("other", "drop one") == ["drop one"]
                 assert reopened.delete_batch("ws", ["drop one", "absent"]) == 0
+
+    @pytest.mark.parametrize("verify_exists", [True, False])
+    def test_soft_delete_batch_scans_once_and_preserves_multiplicity(
+        self, verify_exists: bool
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with _managed_engine(tmpdir, "ws") as engine:
+                engine.add_batch(
+                    "ws", ["drop exact", "drop exact", "drop exact!", "gone", "keep"]
+                )
+                engine.add("other", "drop exact")
+                engine.commit()
+                assert engine.delete("ws", "gone") is True
+
+                original_search = tantivy.Searcher.search
+                scans: list[int] = []
+
+                def counted_search(
+                    searcher: tantivy.Searcher, *, query: tantivy.Query, limit: int
+                ) -> tantivy.TopDocs:
+                    scans.append(1)
+                    return original_search(searcher, query=query, limit=limit)
+
+                with patch.object(tantivy.Searcher, "search", counted_search):
+                    deleted = engine.delete_batch(
+                        "ws",
+                        ["absent", "gone", "drop exact", "drop exact", "drop exact!"],
+                        verify_exists=verify_exists,
+                    )
+                assert deleted == 2
+                assert len(scans) == 1
+                assert engine._count_live_and_tomb("ws", "drop exact") == (2, 2)
+                assert engine._get_all_docs("ws") == ["keep"]
+                assert engine.find_by_exact_match("other", "drop exact") == [
+                    "drop exact"
+                ]
+
+            with _managed_engine(tmpdir, "ws") as reopened:
+                assert reopened._get_all_docs("ws") == ["keep"]
+                assert reopened.find_by_exact_match("other", "drop exact") == [
+                    "drop exact"
+                ]
+                assert (
+                    reopened.delete_batch(
+                        "ws",
+                        ["absent", "gone", "drop exact"],
+                        verify_exists=verify_exists,
+                    )
+                    == 0
+                )
+                reopened.add("ws", "drop exact")
+                reopened.commit()
+                assert reopened.find_by_exact_match("ws", "drop exact") == [
+                    "drop exact"
+                ]
+
+    def test_soft_delete_batch_refreshes_reader_before_verified_snapshot(self) -> None:
+        from reflectlog.infrastructure.storage_coordinator import (
+            PortalockerStorageCoordinator,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = PortalockerStorageCoordinator(tmpdir, timeout=1.0)
+            index_path = os.path.join(tmpdir, "idx")
+            with (
+                _managed_engine(index_path, "ws", coordinator=coordinator) as reader,
+                _managed_engine(index_path, "ws", coordinator=coordinator) as writer,
+            ):
+                assert reader._get_all_docs("ws") == []
+                writer.add("ws", "new from writer")
+                assert reader.delete_batch("ws", ["new from writer"]) == 1
+                assert reader._get_all_docs("ws") == []
+
+            with _managed_engine(index_path, "ws", coordinator=coordinator) as reopened:
+                assert reopened._count_live_and_tomb("ws", "new from writer") == (1, 1)
 
     def test_request_path_hard_delete_does_not_replace_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
