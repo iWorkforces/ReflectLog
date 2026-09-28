@@ -126,6 +126,225 @@ async def test_single_flight_construction(config: Config) -> None:
 
 
 @pytest.mark.unit
+async def test_slow_construction_does_not_block_another_workspace(
+    config: Config,
+) -> None:
+    started = threading.Event()
+    finish = threading.Event()
+    fast_entered = anyio.Event()
+
+    def factory(concrete: Config) -> MagicMock:
+        if concrete.workspace_id == "slow":
+            started.set()
+            assert finish.wait(timeout=5)
+        return fake_manager(concrete)
+
+    registry = WorkspaceRegistry(config, factory)
+
+    async def slow_user() -> None:
+        async with registry.acquire("slow"):
+            pass
+
+    async def fast_user() -> None:
+        async with registry.acquire("fast") as manager:
+            assert manager.config.workspace_id == "fast"
+            fast_entered.set()
+
+    slow_task = asyncio.create_task(slow_user())
+    fast_task: asyncio.Task[None] | None = None
+    try:
+        assert await anyio.to_thread.run_sync(started.wait, 5)
+        fast_task = asyncio.create_task(fast_user())
+        with anyio.fail_after(1):
+            await fast_entered.wait()
+    finally:
+        finish.set()
+        await slow_task
+        if fast_task is not None:
+            await fast_task
+        await registry.close()
+
+
+@pytest.mark.unit
+async def test_slow_same_key_construction_is_single_flight(config: Config) -> None:
+    started = threading.Event()
+    finish = threading.Event()
+    created: list[MagicMock] = []
+    seen: list[MemoryManager] = []
+    second_entered = anyio.Event()
+
+    def factory(concrete: Config) -> MagicMock:
+        started.set()
+        assert finish.wait(timeout=5)
+        manager = fake_manager(concrete)
+        created.append(manager)
+        return manager
+
+    registry = WorkspaceRegistry(config, factory)
+
+    async def user(workspace_id: str) -> None:
+        async with registry.acquire(workspace_id) as manager:
+            seen.append(manager)
+            if workspace_id == "SAME":
+                second_entered.set()
+
+    first = asyncio.create_task(user("same"))
+    second: asyncio.Task[None] | None = None
+    try:
+        assert await anyio.to_thread.run_sync(started.wait, 5)
+        second = asyncio.create_task(user("SAME"))
+        await anyio.lowlevel.checkpoint()
+        assert not second_entered.is_set()
+        assert created == []
+    finally:
+        finish.set()
+        await first
+        if second is not None:
+            await second
+        await registry.close()
+    assert len(created) == 1
+    assert seen == [created[0], created[0]]
+    assert was_closed(created[0])
+
+
+@pytest.mark.unit
+async def test_slow_idle_eviction_does_not_block_another_workspace(
+    config: Config,
+) -> None:
+    started = threading.Event()
+    finish = threading.Event()
+    now = [0.0]
+
+    def factory(concrete: Config) -> MagicMock:
+        manager = fake_manager(concrete)
+        if concrete.workspace_id == "slow":
+
+            def persist() -> None:
+                started.set()
+                assert finish.wait(timeout=5)
+                manager.closed = True
+
+            manager.close.side_effect = persist
+        return manager
+
+    registry = WorkspaceRegistry(config, factory, clock=lambda: now[0])
+    fast_entered = anyio.Event()
+
+    async def fast_user() -> None:
+        async with registry.acquire("fast") as manager:
+            assert manager.config.workspace_id == "fast"
+            fast_entered.set()
+
+    async with registry.acquire("slow"):
+        pass
+    now[0] = 901
+    prune_task = asyncio.create_task(registry.prune())
+    fast_task: asyncio.Task[None] | None = None
+    try:
+        assert await anyio.to_thread.run_sync(started.wait, 5)
+        fast_task = asyncio.create_task(fast_user())
+        with anyio.fail_after(1):
+            await fast_entered.wait()
+    finally:
+        finish.set()
+        await prune_task
+        if fast_task is not None:
+            await fast_task
+        await registry.close()
+
+
+@pytest.mark.unit
+async def test_acquire_waits_for_same_key_eviction_before_rebuilding(
+    config: Config,
+) -> None:
+    started = threading.Event()
+    finish = threading.Event()
+    entered = anyio.Event()
+    created: list[MagicMock] = []
+    now = [0.0]
+
+    def factory(concrete: Config) -> MagicMock:
+        manager = fake_manager(concrete)
+        if not created:
+
+            def persist() -> None:
+                started.set()
+                assert finish.wait(timeout=5)
+                manager.closed = True
+
+            manager.close.side_effect = persist
+        created.append(manager)
+        return manager
+
+    registry = WorkspaceRegistry(config, factory, clock=lambda: now[0])
+    async with registry.acquire("same"):
+        pass
+    now[0] = 901
+    prune_task = asyncio.create_task(registry.prune())
+
+    async def user() -> None:
+        async with registry.acquire("SAME") as manager:
+            assert manager is not created[0]
+            entered.set()
+
+    user_task: asyncio.Task[None] | None = None
+    try:
+        assert await anyio.to_thread.run_sync(started.wait, 5)
+        user_task = asyncio.create_task(user())
+        await anyio.lowlevel.checkpoint()
+        assert not entered.is_set()
+        assert len(created) == 1
+    finally:
+        finish.set()
+        await prune_task
+        if user_task is not None:
+            await user_task
+        await registry.close()
+    assert entered.is_set()
+    assert len(created) == 2
+    assert all(was_closed(manager) for manager in created)
+
+
+@pytest.mark.unit
+async def test_close_waits_for_inflight_construction(config: Config) -> None:
+    started = threading.Event()
+    finish = threading.Event()
+    created: list[MagicMock] = []
+
+    def factory(concrete: Config) -> MagicMock:
+        started.set()
+        assert finish.wait(timeout=5)
+        manager = fake_manager(concrete)
+        created.append(manager)
+        return manager
+
+    registry = WorkspaceRegistry(config, factory)
+
+    async def user() -> None:
+        with pytest.raises(RuntimeError, match="closed"):
+            async with registry.acquire("slow"):
+                pytest.fail("Closing registry returned an in-flight manager")
+
+    user_task = asyncio.create_task(user())
+    close_task: asyncio.Task[None] | None = None
+    try:
+        assert await anyio.to_thread.run_sync(started.wait, 5)
+        close_task = asyncio.create_task(registry.close())
+        while not registry._closing:
+            await anyio.lowlevel.checkpoint()
+        assert not close_task.done()
+        assert created == []
+    finally:
+        finish.set()
+        await user_task
+        if close_task is not None:
+            await close_task
+    assert len(created) == 1
+    assert was_closed(created[0])
+    assert created[0].close.call_count == 1
+
+
+@pytest.mark.unit
 async def test_sliding_ttl_and_active_protection(config: Config) -> None:
     now = [0.0]
     registry = WorkspaceRegistry(config, fake_manager, clock=lambda: now[0])

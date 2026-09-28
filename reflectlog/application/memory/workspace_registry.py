@@ -66,6 +66,8 @@ class WorkspaceRegistry:
         self._idle_ttl = idle_ttl
         self._max_idle = max_idle
         self._entries: dict[str, _Entry] = {}
+        self._building: dict[str, anyio.Event] = {}
+        self._evicting: dict[str, asyncio.Task[Exception | None]] = {}
         self._quarantined: dict[str, MemoryManager] = {}
         self._lock = anyio.Lock()
         self._drained = anyio.Event()
@@ -106,50 +108,105 @@ class WorkspaceRegistry:
                 entry.active -= 1
                 if entry.active == 0:
                     entry.idle_since = self._clock()
-                if all(item.active == 0 for item in self._entries.values()):
-                    self._drained.set()
-                if not self._closing:
-                    await self._prune_locked()
+                pending = self._prune_locked() if not self._closing else []
+                self._notify_drained_locked()
+            for task in pending:
+                _ = await asyncio.wait({task})
+
+    def _notify_drained_locked(self) -> None:
+        if (
+            not self._building
+            and not self._evicting
+            and all(entry.active == 0 for entry in self._entries.values())
+        ):
+            self._drained.set()
 
     async def _acquire_entry(self, key: str) -> _Entry:
         with anyio.CancelScope(shield=True):
+            while True:
+                async with self._lock:
+                    if self._closing:
+                        raise RuntimeError("WorkspaceRegistry is closed")
+                    _ = self._prune_locked()
+                    if key in self._quarantined:
+                        raise RuntimeError(
+                            f"Workspace {key!r} has a manager pending close"
+                        )
+                    pending_close = self._evicting.get(key)
+                    pending_build = self._building.get(key)
+                    entry = self._entries.get(key)
+                    if pending_close is None and pending_build is None:
+                        if entry is not None:
+                            if self._drained.is_set():
+                                self._drained = anyio.Event()
+                            entry.active += 1
+                            return entry
+                        pending_build = anyio.Event()
+                        self._building[key] = pending_build
+                        if self._drained.is_set():
+                            self._drained = anyio.Event()
+                        break
+                if pending_close is not None:
+                    _ = await asyncio.wait({pending_close})
+                elif pending_build is not None:
+                    await pending_build.wait()
+            try:
+                concrete = replace(self._config, workspace_id=key)
+                manager = await anyio.to_thread.run_sync(self._factory, concrete)
+            except Exception:
+                async with self._lock:
+                    _ = self._building.pop(key)
+                    pending_build.set()
+                    self._notify_drained_locked()
+                raise
             async with self._lock:
+                entry = _Entry(manager, 0, self._clock())
+                self._entries[key] = entry
+                _ = self._building.pop(key)
+                pending_build.set()
                 if self._closing:
+                    self._notify_drained_locked()
                     raise RuntimeError("WorkspaceRegistry is closed")
-                await self._prune_locked()
-                if key in self._quarantined:
-                    raise RuntimeError(f"Workspace {key!r} has a manager pending close")
-                entry = self._entries.get(key)
-                if entry is None:
-                    concrete = replace(self._config, workspace_id=key)
-                    manager = await anyio.to_thread.run_sync(self._factory, concrete)
-                    entry = _Entry(manager, 0, self._clock())
-                    self._entries[key] = entry
-                if self._drained.is_set():
-                    self._drained = anyio.Event()
                 entry.active += 1
                 return entry
         raise RuntimeError("Workspace acquisition was cancelled")
 
-    async def _prune_locked(self) -> None:
+    def _prune_locked(self) -> list[asyncio.Task[Exception | None]]:
         now = self._clock()
         idle = sorted(
             ((key, entry) for key, entry in self._entries.items() if entry.active == 0),
             key=lambda item: item[1].idle_since,
         )
         excess = max(0, len(idle) - self._max_idle)
+        scheduled: list[asyncio.Task[Exception | None]] = []
         for index, (key, entry) in enumerate(idle):
             if now - entry.idle_since >= self._idle_ttl or index < excess:
-                _ = await self._evict_locked(key, entry.manager)
+                scheduled.append(self._schedule_eviction_locked(key, entry.manager))
+        return scheduled
 
-    async def _evict_locked(self, key: str, manager: MemoryManager) -> Exception | None:
+    def _schedule_eviction_locked(
+        self, key: str, manager: MemoryManager
+    ) -> asyncio.Task[Exception | None]:
         _ = self._entries.pop(key, None)
+        if self._drained.is_set():
+            self._drained = anyio.Event()
+        task = asyncio.create_task(self._evict(key, manager))
+        self._evicting[key] = task
+        return task
+
+    async def _evict(self, key: str, manager: MemoryManager) -> Exception | None:
         try:
             await anyio.to_thread.run_sync(manager.close)
         except Exception as error:
-            self._quarantined[key] = manager
+            async with self._lock:
+                self._quarantined[key] = manager
+                _ = self._evicting.pop(key)
+                self._notify_drained_locked()
             return error
-        _ = self._quarantined.pop(key, None)
+        async with self._lock:
+            _ = self._quarantined.pop(key, None)
+            _ = self._evicting.pop(key)
+            self._notify_drained_locked()
         return None
 
     async def prune(self) -> None:
@@ -163,8 +220,9 @@ class WorkspaceRegistry:
     async def _prune(self) -> None:
         with anyio.CancelScope(shield=True):
             async with self._lock:
-                if not self._closing:
-                    await self._prune_locked()
+                pending = self._prune_locked() if not self._closing else []
+            for task in pending:
+                _ = await asyncio.wait({task})
 
     async def run_reaper(self, interval: float = 60) -> None:
         """Sweep idle managers until close finishes."""
@@ -211,14 +269,16 @@ class WorkspaceRegistry:
             try:
                 async with self._lock:
                     pending = tuple(self._quarantined.items())
-                    for key, entry in tuple(self._entries.items()):
-                        error = await self._evict_locked(key, entry.manager)
-                        if error is not None:
-                            errors.append(error)
+                    tasks = [
+                        self._schedule_eviction_locked(key, entry.manager)
+                        for key, entry in tuple(self._entries.items())
+                    ]
                     for key, manager in pending:
-                        error = await self._evict_locked(key, manager)
-                        if error is not None:
-                            errors.append(error)
+                        tasks.append(self._schedule_eviction_locked(key, manager))
+                for task in tasks:
+                    error = await task
+                    if error is not None:
+                        errors.append(error)
                 if errors:
                     self._close_error = ExceptionGroup(
                         "Workspace managers could not be closed", errors
