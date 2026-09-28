@@ -1,6 +1,9 @@
 """Unit tests for CachedEmbeddings LRU caching wrapper."""
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import threading
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -25,6 +28,19 @@ def unit_embedding(_: str) -> list[float]:
 def create_mock_logger() -> IStructuredLogger:
     """Create a properly typed mock logger for testing."""
     return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
+
+
+class NotifyingCache(LRUCache[str, list[float]]):
+    def __init__(self, ready: threading.Event | asyncio.Event) -> None:
+        super().__init__(maxsize=5)
+        self.ready = ready
+        self.lookups = 0
+
+    def __contains__(self, key: object) -> bool:
+        self.lookups += 1
+        if self.lookups == 3:
+            self.ready.set()
+        return super().__contains__(key)
 
 
 @pytest.fixture
@@ -808,3 +824,370 @@ class TestSingleFlightConcurrent:
         assert mock_embedder.aembed_query.await_count == 1
         assert await cached.aembed_query("cancel-key") == [6.0]
         assert mock_embedder.aembed_query.await_count == 1
+
+
+class TestDocumentSingleFlight:
+    def test_disabled_documents_keep_provider_batch_unchanged(
+        self, cached_disabled: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        mock_embedder.embed_documents.return_value = [[1.0], [2.0]]
+        assert cached_disabled.embed_documents(["same", "same"]) == [[1.0], [2.0]]
+        mock_embedder.embed_documents.assert_called_once_with(["same", "same"])
+
+    async def test_disabled_async_documents_keep_provider_batch_unchanged(
+        self, cached_disabled: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        mock_embedder.aembed_documents.return_value = [[1.0], [2.0]]
+        assert await cached_disabled.aembed_documents(["same", "same"]) == [
+            [1.0],
+            [2.0],
+        ]
+        mock_embedder.aembed_documents.assert_awaited_once_with(["same", "same"])
+
+    def test_sync_reverse_order(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        follower_checked = threading.Event()
+        cached._cache = NotifyingCache(follower_checked)
+
+        def blocked_batch(texts: list[str]) -> list[list[float]]:
+            entered.set()
+            assert release.wait(timeout=2)
+            return [embedding_for_text(text) for text in texts]
+
+        mock_embedder.embed_documents.side_effect = blocked_batch
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(cached.embed_documents, ["alpha", "beta"])
+            assert entered.wait(timeout=2)
+            second = pool.submit(cached.embed_documents, ["beta", "alpha"])
+            assert follower_checked.wait(timeout=2)
+            release.set()
+            assert first.result(timeout=2) == [[97.0], [98.0]]
+            assert second.result(timeout=2) == [[98.0], [97.0]]
+
+        mock_embedder.embed_documents.assert_called_once_with(["alpha", "beta"])
+        assert cached.get_cache_stats()["coalesced"] == 2
+
+    def test_sync_partial_overlap_publishes_owned_before_waiting(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        first_entered = threading.Event()
+        second_entered = threading.Event()
+        release = threading.Event()
+
+        def blocked_batch(texts: list[str]) -> list[list[float]]:
+            if texts == ["alpha", "beta"]:
+                first_entered.set()
+                assert release.wait(timeout=2)
+            else:
+                assert texts == ["gamma"]
+                second_entered.set()
+            return [embedding_for_text(text) for text in texts]
+
+        mock_embedder.embed_documents.side_effect = blocked_batch
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(cached.embed_documents, ["alpha", "beta"])
+            assert first_entered.wait(timeout=2)
+            second = pool.submit(cached.embed_documents, ["beta", "gamma", "alpha"])
+            assert second_entered.wait(timeout=2)
+            release.set()
+            assert first.result(timeout=2) == [[97.0], [98.0]]
+            assert second.result(timeout=2) == [[98.0], [103.0], [97.0]]
+        assert mock_embedder.embed_documents.call_count == 2
+
+    def test_sync_duplicate_normalized_text_and_capacity(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        cached._cache = LRUCache(maxsize=1)
+        mock_embedder.embed_documents.side_effect = lambda texts: [
+            embedding_for_text(text) for text in texts
+        ]
+        result = cached.embed_documents(["alpha\nbeta", "alpha beta", "gamma"])
+        assert result == [[97.0], [97.0], [103.0]]
+        mock_embedder.embed_documents.assert_called_once_with(["alpha\nbeta", "gamma"])
+        assert cached.get_cache_stats()["size"] == 1
+
+    @pytest.mark.parametrize("broken", [[[1.0]], [[1.0], []]])
+    def test_sync_invalid_batch_publishes_nothing_and_retries(
+        self,
+        cached: CachedEmbeddings,
+        mock_embedder: MagicMock,
+        broken: list[list[float]],
+    ) -> None:
+        mock_embedder.embed_documents.side_effect = [broken, [[1.0], [2.0]]]
+        with pytest.raises(RuntimeError):
+            cached.embed_documents(["alpha", "beta"])
+        assert cached.get_cache_stats()["size"] == 0
+        assert cached.embed_documents(["alpha", "beta"]) == [[1.0], [2.0]]
+        assert mock_embedder.embed_documents.call_count == 2
+
+    def test_sync_provider_error_releases_followers_and_retries(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        follower_checked = threading.Event()
+        cached._cache = NotifyingCache(follower_checked)
+
+        def failed_batch(texts: list[str]) -> list[list[float]]:
+            entered.set()
+            assert release.wait(timeout=2)
+            raise ValueError("provider failed")
+
+        mock_embedder.embed_documents.side_effect = failed_batch
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(cached.embed_documents, ["alpha", "beta"])
+            assert entered.wait(timeout=2)
+            second = pool.submit(cached.embed_documents, ["beta", "alpha"])
+            assert follower_checked.wait(timeout=2)
+            release.set()
+            for result in (first, second):
+                with pytest.raises(ValueError, match="provider failed"):
+                    result.result(timeout=2)
+
+        assert cached.get_cache_stats()["size"] == 0
+        mock_embedder.embed_documents.side_effect = None
+        mock_embedder.embed_documents.return_value = [[1.0], [2.0]]
+        assert cached.embed_documents(["alpha", "beta"]) == [[1.0], [2.0]]
+
+    async def test_async_reverse_order(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        follower_checked = asyncio.Event()
+        cached._cache = NotifyingCache(follower_checked)
+
+        async def blocked_batch(texts: list[str]) -> list[list[float]]:
+            entered.set()
+            await release.wait()
+            return [embedding_for_text(text) for text in texts]
+
+        mock_embedder.aembed_documents.side_effect = blocked_batch
+        first = asyncio.create_task(cached.aembed_documents(["alpha", "beta"]))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        second = asyncio.create_task(cached.aembed_documents(["beta", "alpha"]))
+        await asyncio.wait_for(follower_checked.wait(), timeout=2)
+        release.set()
+        assert await asyncio.wait_for(first, timeout=2) == [[97.0], [98.0]]
+        assert await asyncio.wait_for(second, timeout=2) == [[98.0], [97.0]]
+        mock_embedder.aembed_documents.assert_awaited_once_with(["alpha", "beta"])
+        assert cached.get_cache_stats()["coalesced"] == 2
+
+    async def test_async_partial_overlap_publishes_owned_before_waiting(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        first_entered = asyncio.Event()
+        second_entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def blocked_batch(texts: list[str]) -> list[list[float]]:
+            if texts == ["alpha", "beta"]:
+                first_entered.set()
+                await release.wait()
+            else:
+                assert texts == ["gamma"]
+                second_entered.set()
+            return [embedding_for_text(text) for text in texts]
+
+        mock_embedder.aembed_documents.side_effect = blocked_batch
+        first = asyncio.create_task(cached.aembed_documents(["alpha", "beta"]))
+        await asyncio.wait_for(first_entered.wait(), timeout=2)
+        second = asyncio.create_task(
+            cached.aembed_documents(["beta", "gamma", "alpha"])
+        )
+        await asyncio.wait_for(second_entered.wait(), timeout=2)
+        release.set()
+        assert await asyncio.wait_for(first, timeout=2) == [[97.0], [98.0]]
+        assert await asyncio.wait_for(second, timeout=2) == [[98.0], [103.0], [97.0]]
+        assert mock_embedder.aembed_documents.await_count == 2
+
+    async def test_async_duplicate_normalized_text(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        mock_embedder.aembed_documents.side_effect = lambda texts: [
+            embedding_for_text(text) for text in texts
+        ]
+        assert await cached.aembed_documents(
+            ["alpha\nbeta", "alpha beta", "gamma"]
+        ) == [[97.0], [97.0], [103.0]]
+        mock_embedder.aembed_documents.assert_awaited_once_with(
+            ["alpha\nbeta", "gamma"]
+        )
+
+    @pytest.mark.parametrize("broken", [[[1.0]], [[1.0], []]])
+    async def test_async_invalid_batch_publishes_nothing_and_retries(
+        self,
+        cached: CachedEmbeddings,
+        mock_embedder: MagicMock,
+        broken: list[list[float]],
+    ) -> None:
+        mock_embedder.aembed_documents.side_effect = [broken, [[1.0], [2.0]]]
+        with pytest.raises(RuntimeError):
+            await cached.aembed_documents(["alpha", "beta"])
+        assert cached.get_cache_stats()["size"] == 0
+        assert await cached.aembed_documents(["alpha", "beta"]) == [[1.0], [2.0]]
+        assert mock_embedder.aembed_documents.await_count == 2
+
+    async def test_async_provider_error_releases_followers_and_retries(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        follower_checked = asyncio.Event()
+        cached._cache = NotifyingCache(follower_checked)
+
+        async def failed_batch(texts: list[str]) -> list[list[float]]:
+            entered.set()
+            await release.wait()
+            raise ValueError("provider failed")
+
+        mock_embedder.aembed_documents.side_effect = failed_batch
+        first = asyncio.create_task(cached.aembed_documents(["alpha", "beta"]))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        second = asyncio.create_task(cached.aembed_documents(["beta", "alpha"]))
+        await asyncio.wait_for(follower_checked.wait(), timeout=2)
+        release.set()
+        for result in (first, second):
+            with pytest.raises(ValueError, match="provider failed"):
+                await asyncio.wait_for(result, timeout=2)
+
+        assert cached.get_cache_stats()["size"] == 0
+        mock_embedder.aembed_documents.side_effect = None
+        mock_embedder.aembed_documents.return_value = [[1.0], [2.0]]
+        assert await cached.aembed_documents(["alpha", "beta"]) == [[1.0], [2.0]]
+
+    async def test_async_follower_cancellation_leaves_leader_running(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        follower_checked = asyncio.Event()
+        cached._cache = NotifyingCache(follower_checked)
+
+        async def blocked_batch(texts: list[str]) -> list[list[float]]:
+            entered.set()
+            await release.wait()
+            return [embedding_for_text(text) for text in texts]
+
+        mock_embedder.aembed_documents.side_effect = blocked_batch
+        leader = asyncio.create_task(cached.aembed_documents(["alpha", "beta"]))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        follower = asyncio.create_task(cached.aembed_documents(["beta", "alpha"]))
+        await asyncio.wait_for(follower_checked.wait(), timeout=2)
+        follower.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(follower, timeout=2)
+        release.set()
+        assert await asyncio.wait_for(leader, timeout=2) == [[97.0], [98.0]]
+        mock_embedder.aembed_documents.assert_awaited_once_with(["alpha", "beta"])
+
+    async def test_async_leader_cancellation_releases_followers_and_retries(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        entered = asyncio.Event()
+        follower_checked = asyncio.Event()
+        cached._cache = NotifyingCache(follower_checked)
+
+        async def blocked_batch(texts: list[str]) -> list[list[float]]:
+            entered.set()
+            await asyncio.Event().wait()
+            return [embedding_for_text(text) for text in texts]
+
+        mock_embedder.aembed_documents.side_effect = blocked_batch
+        leader = asyncio.create_task(cached.aembed_documents(["alpha", "beta"]))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        follower = asyncio.create_task(cached.aembed_documents(["beta", "alpha"]))
+        await asyncio.wait_for(follower_checked.wait(), timeout=2)
+        leader.cancel()
+        for result in (leader, follower):
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(result, timeout=2)
+
+        assert cached.get_cache_stats()["size"] == 0
+        mock_embedder.aembed_documents.side_effect = None
+        mock_embedder.aembed_documents.return_value = [[1.0], [2.0]]
+        assert await cached.aembed_documents(["alpha", "beta"]) == [[1.0], [2.0]]
+
+    def test_sync_documents_follow_shared_query_flight(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        query_entered = threading.Event()
+        document_entered = threading.Event()
+        release = threading.Event()
+
+        def blocked_query(text: str) -> list[float]:
+            query_entered.set()
+            assert release.wait(timeout=2)
+            return [1.0]
+
+        def document_batch(texts: list[str]) -> list[list[float]]:
+            assert texts == ["extra"]
+            document_entered.set()
+            return [[2.0]]
+
+        mock_embedder.embed_query.side_effect = blocked_query
+        mock_embedder.embed_documents.side_effect = document_batch
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            query = pool.submit(cached.embed_query, "shared")
+            assert query_entered.wait(timeout=2)
+            documents = pool.submit(cached.embed_documents, ["shared", "extra"])
+            assert document_entered.wait(timeout=2)
+            release.set()
+            assert query.result(timeout=2) == [1.0]
+            assert documents.result(timeout=2) == [[1.0], [2.0]]
+
+        mock_embedder.embed_documents.assert_called_once_with(["extra"])
+
+    async def test_async_documents_follow_shared_query_flight(
+        self, cached: CachedEmbeddings, mock_embedder: MagicMock
+    ) -> None:
+        query_entered = asyncio.Event()
+        document_entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def blocked_query(text: str) -> list[float]:
+            query_entered.set()
+            await release.wait()
+            return [1.0]
+
+        async def document_batch(texts: list[str]) -> list[list[float]]:
+            assert texts == ["extra"]
+            document_entered.set()
+            return [[2.0]]
+
+        mock_embedder.aembed_query.side_effect = blocked_query
+        mock_embedder.aembed_documents.side_effect = document_batch
+        query = asyncio.create_task(cached.aembed_query("shared"))
+        await asyncio.wait_for(query_entered.wait(), timeout=2)
+        documents = asyncio.create_task(cached.aembed_documents(["shared", "extra"]))
+        await asyncio.wait_for(document_entered.wait(), timeout=2)
+        release.set()
+        assert await asyncio.wait_for(query, timeout=2) == [1.0]
+        assert await asyncio.wait_for(documents, timeout=2) == [[1.0], [2.0]]
+        mock_embedder.aembed_documents.assert_awaited_once_with(["extra"])
+
+    async def test_async_role_separated_documents_do_not_follow_query(
+        self, mock_embedder: MagicMock
+    ) -> None:
+        cached = CachedEmbeddings(embedder=mock_embedder, role_separated=True)
+        query_entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def blocked_query(text: str) -> list[float]:
+            query_entered.set()
+            await release.wait()
+            return [1.0]
+
+        mock_embedder.aembed_query.side_effect = blocked_query
+        mock_embedder.aembed_documents.return_value = [[2.0]]
+        query = asyncio.create_task(cached.aembed_query("same"))
+        await asyncio.wait_for(query_entered.wait(), timeout=2)
+        assert await asyncio.wait_for(cached.aembed_documents(["same"]), timeout=2) == [
+            [2.0]
+        ]
+        release.set()
+        assert await asyncio.wait_for(query, timeout=2) == [1.0]
+        mock_embedder.aembed_documents.assert_awaited_once_with(["same"])
