@@ -182,6 +182,15 @@ class IRerankerConfig(Protocol):
     """Protocol for reranker configuration."""
 
     @property
+    def openrouter_rerank_model(self) -> str: ...
+
+    @property
+    def openrouter_base_url(self) -> str: ...
+
+    @property
+    def openrouter_api_key(self) -> str: ...
+
+    @property
     def llm_model(self) -> str:
         """LLM model for smart replacement."""
         ...

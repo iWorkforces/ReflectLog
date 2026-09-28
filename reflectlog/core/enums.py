@@ -48,6 +48,7 @@ class RerankerEngine(StrEnum):
     """Search reranker selected by ``RERANKER_ENGINE``."""
 
     CROSS_ENCODER = "cross_encoder"
+    OPENROUTER = "openrouter"
     NONE = "none"
 
 
