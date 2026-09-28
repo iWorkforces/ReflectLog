@@ -3034,6 +3034,244 @@ class TestSoftDeleteDoesNotPlantSurplusTombs:
 class TestCoordinatedTantivyLifecycle:
     """Coordinator-scoped readers/writers and in-place maintenance."""
 
+    def test_soft_delete_batch_finalizes_writer_when_first_write_raises(self) -> None:
+        from reflectlog.core.storage_coordination import LeaseMode
+        from reflectlog.infrastructure.storage_coordinator import (
+            PortalockerStorageCoordinator,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = PortalockerStorageCoordinator(tmpdir, timeout=1.0)
+            index_path = os.path.join(tmpdir, "idx")
+            with _managed_engine(index_path, "ws", coordinator=coordinator) as engine:
+                engine.add_batch("ws", ["drop", "keep"])
+                add_tombstone_docs = TantivyEngine._add_tombstone_docs
+                finalize_writer = TantivyEngine._finalize_writer
+                write_error = RuntimeError("tombstone write failed")
+
+                def fail_after_write(
+                    instance: TantivyEngine, workspace_id: str, content: str, count: int
+                ) -> None:
+                    add_tombstone_docs(instance, workspace_id, content, count)
+                    assert instance._writer is not None
+                    raise write_error
+
+                def finalize_under_lease(
+                    instance: TantivyEngine, *, relinquish: bool
+                ) -> None:
+                    assert coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
+                    finalize_writer(instance, relinquish=relinquish)
+
+                with (
+                    patch.object(
+                        TantivyEngine, "_add_tombstone_docs", fail_after_write
+                    ),
+                    patch.object(
+                        TantivyEngine,
+                        "_finalize_writer",
+                        autospec=True,
+                        side_effect=finalize_under_lease,
+                    ) as finalize,
+                    pytest.raises(RuntimeError) as raised,
+                ):
+                    engine.delete_batch("ws", ["absent", "drop"])
+                assert raised.value is write_error
+                finalize.assert_called_once_with(engine, relinquish=True)
+                assert engine._writer is None
+                assert not coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
+
+            with _managed_engine(index_path, "ws", coordinator=coordinator) as reopened:
+                assert reopened._get_all_docs("ws") == ["keep"]
+
+    def test_soft_delete_batch_finalizes_prefix_when_later_item_raises(self) -> None:
+        from reflectlog.core.storage_coordination import LeaseMode
+        from reflectlog.infrastructure.storage_coordinator import (
+            PortalockerStorageCoordinator,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = PortalockerStorageCoordinator(tmpdir, timeout=1.0)
+            index_path = os.path.join(tmpdir, "idx")
+            with _managed_engine(index_path, "ws", coordinator=coordinator) as engine:
+                engine.add_batch("ws", ["drop one", "drop two", "keep"])
+                soft_delete = TantivyEngine._soft_delete_unlocked
+                finalize_writer = TantivyEngine._finalize_writer
+
+                def fail_second(
+                    instance: TantivyEngine,
+                    workspace_id: str,
+                    content: str,
+                    *,
+                    verify_exists: bool,
+                    finalize_writer: bool,
+                ) -> bool:
+                    if content == "drop two":
+                        raise ValueError("second item failed")
+                    return soft_delete(
+                        instance,
+                        workspace_id,
+                        content,
+                        verify_exists=verify_exists,
+                        finalize_writer=finalize_writer,
+                    )
+
+                def finalize_under_lease(
+                    instance: TantivyEngine, *, relinquish: bool
+                ) -> None:
+                    assert coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
+                    finalize_writer(instance, relinquish=relinquish)
+
+                with (
+                    patch.object(TantivyEngine, "_soft_delete_unlocked", fail_second),
+                    patch.object(
+                        TantivyEngine,
+                        "_finalize_writer",
+                        autospec=True,
+                        side_effect=finalize_under_lease,
+                    ) as finalize,
+                    pytest.raises(ValueError, match="second item failed"),
+                ):
+                    engine.delete_batch("ws", ["drop one", "drop two"])
+                finalize.assert_called_once_with(engine, relinquish=True)
+                assert engine._writer is None
+                assert not coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
+
+            with _managed_engine(index_path, "ws", coordinator=coordinator) as reopened:
+                assert set(reopened._get_all_docs("ws")) == {"drop two", "keep"}
+
+    @pytest.mark.parametrize("cleanup_failure", [None, "rollback", "wait"])
+    def test_soft_delete_batch_preserves_item_error_when_commit_fails(
+        self, cleanup_failure: str | None
+    ) -> None:
+        from reflectlog.core.storage_coordination import LeaseMode
+        from reflectlog.infrastructure.storage_coordinator import (
+            PortalockerStorageCoordinator,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = PortalockerStorageCoordinator(tmpdir, timeout=1.0)
+            index_path = os.path.join(tmpdir, "idx")
+            item_error = ValueError("second item failed")
+            commit_error = RuntimeError("commit failed")
+            cleanup_error = OSError("cleanup failed")
+            soft_delete = TantivyEngine._soft_delete_unlocked
+            rollback = tantivy.IndexWriter.rollback
+            wait = tantivy.IndexWriter.wait_merging_threads
+            cleanup_steps: list[str] = []
+
+            def fail_second(
+                instance: TantivyEngine,
+                workspace_id: str,
+                content: str,
+                *,
+                verify_exists: bool,
+                finalize_writer: bool,
+            ) -> bool:
+                if content == "drop two":
+                    raise item_error
+                return soft_delete(
+                    instance,
+                    workspace_id,
+                    content,
+                    verify_exists=verify_exists,
+                    finalize_writer=finalize_writer,
+                )
+
+            def fail_commit(writer: tantivy.IndexWriter) -> None:
+                assert coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
+                raise commit_error
+
+            def observe_rollback(writer: tantivy.IndexWriter) -> None:
+                assert coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
+                cleanup_steps.append("rollback")
+                rollback(writer)
+                if cleanup_failure == "rollback":
+                    raise cleanup_error
+
+            def observe_wait(writer: tantivy.IndexWriter) -> None:
+                assert coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
+                cleanup_steps.append("wait")
+                wait(writer)
+                if cleanup_failure == "wait":
+                    raise cleanup_error
+
+            with _managed_engine(index_path, "ws", coordinator=coordinator) as engine:
+                engine.add_batch("ws", ["drop one", "drop two", "keep"])
+                with (
+                    patch.object(TantivyEngine, "_soft_delete_unlocked", fail_second),
+                    patch.object(tantivy.IndexWriter, "commit", fail_commit),
+                    patch.object(tantivy.IndexWriter, "rollback", observe_rollback),
+                    patch.object(
+                        tantivy.IndexWriter, "wait_merging_threads", observe_wait
+                    ),
+                    pytest.raises(ValueError) as raised,
+                ):
+                    engine.delete_batch("ws", ["drop one", "drop two"])
+                assert raised.value is item_error
+                assert isinstance(item_error.__cause__, ExceptionGroup)
+                expected = (
+                    (commit_error, cleanup_error)
+                    if cleanup_failure is not None
+                    else (commit_error,)
+                )
+                assert item_error.__cause__.exceptions == expected
+                assert cleanup_steps == ["rollback", "wait"]
+                assert engine._writer is None
+                assert not coordinator.is_held("ws", LeaseMode.EXCLUSIVE)
+
+                with _managed_engine(
+                    index_path, "ws", coordinator=coordinator
+                ) as reopened:
+                    assert set(reopened._get_all_docs("ws")) == {
+                        "drop one",
+                        "drop two",
+                        "keep",
+                    }
+                    reopened.add("ws", "next")
+                    assert "next" in reopened._get_all_docs("ws")
+
+    def test_soft_delete_batch_finalizes_once_and_survives_reopen(self) -> None:
+        from reflectlog.infrastructure.storage_coordinator import (
+            PortalockerStorageCoordinator,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = PortalockerStorageCoordinator(tmpdir, timeout=1.0)
+            config = TantivyConfig(
+                workspace_id="ws", index_path=os.path.join(tmpdir, "idx")
+            )
+            with _managed_engine(
+                config.index_path, "ws", coordinator=coordinator
+            ) as engine:
+                engine.add_batch(
+                    "ws", ["drop one", "drop two", "drop copies", "drop copies", "keep"]
+                )
+                engine.add("other", "drop one")
+                finalize_writer = TantivyEngine._finalize_writer
+                with patch.object(
+                    TantivyEngine,
+                    "_finalize_writer",
+                    autospec=True,
+                    side_effect=finalize_writer,
+                ) as finalize:
+                    deleted = engine.delete_batch(
+                        "ws",
+                        ["drop one", "drop two", "drop one", "absent", "drop copies"],
+                    )
+                    assert deleted == 3
+                    finalize.assert_called_once_with(engine, relinquish=True)
+                assert engine._writer is None
+                assert set(engine._get_all_docs("ws")) == {"keep"}
+                assert engine.find_by_exact_match("other", "drop one") == ["drop one"]
+                assert engine._count_live_and_tomb("ws", "drop copies") == (2, 2)
+
+            with _managed_engine(
+                config.index_path, "ws", coordinator=coordinator
+            ) as reopened:
+                assert set(reopened._get_all_docs("ws")) == {"keep"}
+                assert reopened.find_by_exact_match("other", "drop one") == ["drop one"]
+                assert reopened.delete_batch("ws", ["drop one", "absent"]) == 0
+
     def test_request_path_hard_delete_does_not_replace_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(
