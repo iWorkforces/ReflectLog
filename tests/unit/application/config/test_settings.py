@@ -491,6 +491,23 @@ class TestFromEnvironmentOverrides:
         cfg = self._with_env(monkeypatch, RERANKER_ENGINE="none")
         assert cfg.reranker_engine == "none"
 
+    def test_openrouter_reranker_has_independent_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        cfg = self._with_env(
+            monkeypatch, RERANKER_ENGINE="openrouter", LLM_MODEL="smart-replace-only"
+        )
+        assert cfg.openrouter_rerank_model == "voyageai/rerank-2.5-lite"
+        assert cfg.llm_model == "smart-replace-only"
+        cfg = self._with_env(monkeypatch, OPENROUTER_RERANK_MODEL="voyageai/alternate")
+        assert cfg.openrouter_rerank_model == "voyageai/alternate"
+
+    def test_openrouter_rerank_model_cannot_be_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        with pytest.raises(ConfigurationError, match="OPENROUTER_RERANK_MODEL"):
+            self._with_env(monkeypatch, OPENROUTER_RERANK_MODEL="")
+
     def test_reranker_engine_invalid(self, monkeypatch: pytest.MonkeyPatch):
         for k, v in REQUIRED_ENV.items():
             monkeypatch.setenv(k, v)
