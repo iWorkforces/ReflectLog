@@ -5,7 +5,7 @@ from contextlib import contextmanager
 import os
 import tempfile
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 import tantivy
@@ -2613,19 +2613,18 @@ class TestRebuildIndexWithDocs:
             engine = TantivyEngine(config)
             engine.add("test", "live docs")
             engine.commit()
+            shutil.copytree(live_path, bak_path)
+            engine.add("test", "newer live")
+            engine.commit()
             engine.close()
 
-            shutil.copytree(live_path, bak_path)
-            live = TantivyEngine(config)
-            live.add("test", "newer live")
-            live.commit()
-            live.close()
-
             opened = TantivyEngine(config)
-            docs = opened._get_all_docs("test")
-            assert "live docs" in docs
-            assert "newer live" in docs
-            opened.close()
+            try:
+                assert opened._index_num_docs(live_path) == 2
+                assert set(opened._get_all_docs("test")) == {"live docs", "newer live"}
+                assert os.path.isdir(bak_path)
+            finally:
+                opened.close()
 
     def test_add_after_close_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2670,6 +2669,17 @@ class TestRebuildIndexWithDocs:
 class TestGetDocLimitEdgeCases:
     """Tests for _get_doc_limit edge cases."""
 
+    def test_doc_limit_real_searcher_uses_exact_count_without_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = create_mock_logger()
+            with _managed_engine(tmpdir, logger=logger) as engine:
+                engine.add("test", "first")
+                engine.add("test", "second")
+                engine.commit()
+
+                assert engine._get_doc_limit() == 2
+                logger.warning.assert_not_called()
+
     def test_doc_limit_index_none(self) -> None:
         """Test _get_doc_limit returns 0 when _index is None."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2681,8 +2691,7 @@ class TestGetDocLimitEdgeCases:
             finally:
                 engine.close()
 
-    def test_doc_limit_callable_num_docs(self) -> None:
-        """Test _get_doc_limit uses callable num_docs."""
+    def test_doc_limit_real_num_docs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2697,7 +2706,6 @@ class TestGetDocLimitEdgeCases:
                 engine.close()
 
     def test_doc_limit_numeric_num_docs(self) -> None:
-        """Test _get_doc_limit uses searcher.num_docs()."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
@@ -2706,7 +2714,7 @@ class TestGetDocLimitEdgeCases:
                 engine.commit()
 
                 mock_searcher = MagicMock()
-                mock_searcher.num_docs.return_value = 42
+                mock_searcher.num_docs = 42
                 with patch.object(
                     type(engine),
                     "searcher",
@@ -2721,10 +2729,11 @@ class TestGetDocLimitEdgeCases:
         """Test _get_doc_limit uses fallback when num_docs is negative."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config)
+            logger = create_mock_logger()
+            engine = TantivyEngine(config, logger=logger)
             try:
                 mock_searcher = MagicMock()
-                mock_searcher.num_docs.return_value = -1
+                mock_searcher.num_docs = -1
                 with patch.object(
                     type(engine),
                     "searcher",
@@ -2732,17 +2741,18 @@ class TestGetDocLimitEdgeCases:
                 ):
                     result = engine._get_doc_limit()
                 assert result == DEFAULT_TANTIVY_DOC_LIMIT
+                logger.debug.assert_not_called()
             finally:
                 engine.close()
 
     def test_doc_limit_none_num_docs_uses_fallback(self) -> None:
-        """Test _get_doc_limit uses fallback when num_docs returns None."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
-            engine = TantivyEngine(config)
+            logger = create_mock_logger()
+            engine = TantivyEngine(config, logger=logger)
             try:
                 mock_searcher = MagicMock()
-                mock_searcher.num_docs.return_value = None
+                mock_searcher.num_docs = None
                 with patch.object(
                     type(engine),
                     "searcher",
@@ -2750,22 +2760,30 @@ class TestGetDocLimitEdgeCases:
                 ):
                     result = engine._get_doc_limit()
                 assert result == DEFAULT_TANTIVY_DOC_LIMIT
+                logger.debug.assert_not_called()
             finally:
                 engine.close()
 
     def test_doc_limit_exception_uses_fallback(self) -> None:
-        """Test _get_doc_limit uses fallback when num_docs raises."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = TantivyConfig(workspace_id="test", index_path=tmpdir)
             engine = TantivyEngine(config)
             try:
                 mock_searcher = MagicMock()
-                mock_searcher.num_docs.side_effect = RuntimeError("fail")
-                with patch.object(
-                    type(engine),
-                    "searcher",
-                    new_callable=lambda: property(lambda self: mock_searcher),
+                with (
+                    patch.object(
+                        type(mock_searcher),
+                        "num_docs",
+                        new_callable=PropertyMock,
+                        create=True,
+                    ) as num_docs,
+                    patch.object(
+                        type(engine),
+                        "searcher",
+                        new_callable=lambda: property(lambda self: mock_searcher),
+                    ),
                 ):
+                    num_docs.side_effect = RuntimeError("fail")
                     result = engine._get_doc_limit()
                 assert result == DEFAULT_TANTIVY_DOC_LIMIT
             finally:
@@ -2778,15 +2796,13 @@ class TestGetDocLimitEdgeCases:
             engine = TantivyEngine(config)
             try:
                 mock_searcher = MagicMock()
-                mock_searcher.num_docs.return_value = 0
+                mock_searcher.num_docs = 0
                 with patch.object(
                     type(engine),
                     "searcher",
                     new_callable=lambda: property(lambda self: mock_searcher),
                 ):
                     result = engine._get_doc_limit()
-                # max(1, 0) = 1 (line 1078)
-                # Actually num_docs=0 is not < 0, so it returns max(1, 0) = 1
                 assert result == 1
             finally:
                 engine.close()
