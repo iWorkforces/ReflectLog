@@ -52,9 +52,10 @@ from reflectlog.infrastructure.cross_encoder_reranker import (
 from reflectlog.infrastructure.embedding_identity import ensure_embedding_identity
 from reflectlog.infrastructure.embeddings.cached_embeddings import CachedEmbeddings
 from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEmbeddings
-from reflectlog.infrastructure.embeddings.wemm_embedding import (
-    WeMMEmbeddingConfig,
-    WeMMEmbeddings,
+from reflectlog.infrastructure.embeddings.wemm_embedding import WeMMEmbeddingConfig
+from reflectlog.infrastructure.embeddings.wemm_service import (
+    WeMMBorrow,
+    acquire_wemm,
 )
 from reflectlog.infrastructure.smart_replacer import SmartReplacer, SmartReplacerConfig
 from reflectlog.infrastructure.tantivy_engine import TantivyConfig, TantivyEngine
@@ -95,6 +96,15 @@ if TYPE_CHECKING:
     from ...core.types import Embeddings, ISemanticSearchEngine, ReplacementTransition
     from ..config.settings import Config
     from .fusion.base import FusionEngine
+
+
+def wemm_config(config: Config) -> WeMMEmbeddingConfig:
+    return WeMMEmbeddingConfig(
+        model=WeMMModel.from_config(config.embedding_model),
+        dimensions=config.wemm_embedding_dims,
+        device=config.wemm_device,
+        batch_size=config.embedding_batch_size,
+    )
 
 
 class _ReadyEngine(Protocol):
@@ -148,6 +158,7 @@ class MemoryManager:
             ).lower(),
         )
         self._construction_embedder: Embeddings | None = None
+        self._wemm_borrow: WeMMBorrow | None = None
         try:
             self._init_semantic_engine()
             self._init_search_engine()
@@ -300,14 +311,8 @@ class MemoryManager:
                     }
                 )
             case EmbedderProvider.WEMM:
-                base_embedder = WeMMEmbeddings(
-                    WeMMEmbeddingConfig(
-                        model=WeMMModel.from_config(config.embedding_model),
-                        dimensions=config.wemm_embedding_dims,
-                        device=config.wemm_device,
-                        batch_size=config.embedding_batch_size,
-                    )
-                )
+                self._wemm_borrow = acquire_wemm(wemm_config(config))
+                base_embedder = self._wemm_borrow
         self._construction_embedder = base_embedder
         if config.embedding_cache_enabled:
             match config.embedder_provider:
@@ -1426,6 +1431,11 @@ class MemoryManager:
                 self._construction_embedder.close()
             except BaseException as exc:
                 failures.append(exc)
+        if self._wemm_borrow is not None:
+            try:
+                self._wemm_borrow.close()
+            except BaseException as exc:
+                failures.append(exc)
         return failures
 
     def close(self) -> None:
@@ -1514,6 +1524,9 @@ class MemoryManager:
                             "error": str(e),
                         },
                     )
+                else:
+                    if self._wemm_borrow is not None:
+                        self._wemm_borrow.close()
 
             self._closing = False
             if persist_ok:

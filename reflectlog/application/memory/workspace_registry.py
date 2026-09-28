@@ -7,8 +7,13 @@ from typing import TYPE_CHECKING
 import anyio
 
 from reflectlog.application.config.validation import canonical_workspace_id
-from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.memory.manager import MemoryManager, wemm_config
 from reflectlog.application.utils.logging import create_logger
+from reflectlog.core.enums import EmbedderProvider
+from reflectlog.infrastructure.embeddings.wemm_service import (
+    WeMMBorrow,
+    acquire_wemm,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable, Coroutine
@@ -76,6 +81,7 @@ class WorkspaceRegistry:
         self._closing = False
         self._close_error: ExceptionGroup | None = None
         self._close_task: asyncio.Task[None] | None = None
+        self._wemm_pin: WeMMBorrow | None = None
 
     @asynccontextmanager
     async def acquire(self, workspace_id: str) -> AsyncGenerator[MemoryManager]:
@@ -160,6 +166,12 @@ class WorkspaceRegistry:
                     self._notify_drained_locked()
                 raise
             async with self._lock:
+                if (
+                    type(manager) is MemoryManager
+                    and manager.config.embedder_provider is EmbedderProvider.WEMM
+                    and self._wemm_pin is None
+                ):
+                    self._wemm_pin = acquire_wemm(wemm_config(manager.config))
                 entry = _Entry(manager, 0, self._clock())
                 self._entries[key] = entry
                 _ = self._building.pop(key)
@@ -283,6 +295,9 @@ class WorkspaceRegistry:
                     self._close_error = ExceptionGroup(
                         "Workspace managers could not be closed", errors
                     )
+                elif self._wemm_pin is not None:
+                    self._wemm_pin.close()
+                    self._wemm_pin = None
             finally:
                 self._closed.set()
             if self._close_error is not None:

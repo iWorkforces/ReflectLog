@@ -194,7 +194,7 @@ def _make_manager(
     with (
         patch(f"{MODULE}.USearchEngine") as usearch_cls,
         patch(f"{MODULE}.LangchainQwenEmbeddings"),
-        patch(f"{MODULE}.WeMMEmbeddings"),
+        patch(f"{MODULE}.acquire_wemm"),
         patch(f"{MODULE}.CachedEmbeddings"),
         patch(f"{MODULE}.TantivyEngine") as tantivy_cls,
     ):
@@ -241,7 +241,9 @@ class TestEmbeddingIdentityStartup:
         coordinator = PortalockerStorageCoordinator(os.path.abspath("indexes"))
 
         with (
-            patch(f"{MODULE}.WeMMEmbeddings") as embedder,
+            patch(
+                "reflectlog.infrastructure.embeddings.wemm_service.WeMMEmbeddings"
+            ) as embedder,
             patch(f"{MODULE}.USearchEngine") as semantic,
             patch(f"{MODULE}.TantivyEngine") as tantivy,
             patch.object(MemoryManager, "reconcile_pending_replacements") as reconcile,
@@ -263,7 +265,9 @@ class TestEmbeddingIdentityStartup:
         _make_manager(mock_config, mock_logger, coordinator)
 
         with (
-            patch(f"{MODULE}.WeMMEmbeddings") as embedder,
+            patch(
+                "reflectlog.infrastructure.embeddings.wemm_service.WeMMEmbeddings"
+            ) as embedder,
             patch(f"{MODULE}.TantivyEngine") as tantivy,
             patch.object(MemoryManager, "reconcile_pending_replacements") as reconcile,
             pytest.raises(InitializationError, match="identity"),
@@ -303,7 +307,9 @@ class TestEmbeddingIdentityStartup:
             Path(coordinator.paths_for(mock_config.workspace_id).root) / IDENTITY_NAME
         )
         with (
-            patch(f"{MODULE}.WeMMEmbeddings") as embedder,
+            patch(
+                "reflectlog.infrastructure.embeddings.wemm_service.WeMMEmbeddings"
+            ) as embedder,
             patch(f"{MODULE}.USearchEngine"),
             patch(f"{MODULE}.TantivyEngine"),
             patch.object(MemoryManager, "reconcile_pending_replacements"),
@@ -311,9 +317,12 @@ class TestEmbeddingIdentityStartup:
             embedder.side_effect = lambda *_args: (
                 identity_path.read_bytes() and MagicMock()
             )
-            MemoryManager(mock_config, mock_logger.structured, coordinator=coordinator)
+            manager = MemoryManager(
+                mock_config, mock_logger.structured, coordinator=coordinator
+            )
 
         embedder.assert_called_once()
+        manager.close()
 
 
 @pytest.mark.unit
@@ -374,7 +383,7 @@ class TestConstructorCleanup:
         first_tantivy = MagicMock()
         second_tantivy = MagicMock()
         with (
-            patch(f"{MODULE}.WeMMEmbeddings"),
+            patch("reflectlog.infrastructure.embeddings.wemm_service.WeMMEmbeddings"),
             patch(
                 f"{MODULE}.USearchEngine",
                 side_effect=[first_semantic, second_semantic],
@@ -397,6 +406,7 @@ class TestConstructorCleanup:
         second_semantic.ensure_initialized.assert_called_once_with()
         second_tantivy.ensure_initialized.assert_called_once_with()
         assert reopened._semantic_engine is second_semantic
+        reopened.close()
 
     def test_cleanup_errors_preserve_primary_and_attempt_every_resource(
         self, mock_config: Config, mock_logger: LogCapture
@@ -410,7 +420,7 @@ class TestConstructorCleanup:
         tantivy = MagicMock()
         tantivy.close.side_effect = tantivy_error
         with (
-            patch(f"{MODULE}.WeMMEmbeddings"),
+            patch("reflectlog.infrastructure.embeddings.wemm_service.WeMMEmbeddings"),
             patch(f"{MODULE}.USearchEngine", return_value=semantic),
             patch(f"{MODULE}.TantivyEngine", return_value=tantivy),
             pytest.raises(BaseExceptionGroup) as raised,
@@ -487,6 +497,7 @@ class TestEagerInitialization:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.CrossEncoderConfig"),
             patch(f"{MODULE}.CrossEncoderReranker") as reranker_cls,
@@ -511,6 +522,7 @@ class TestEagerInitialization:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.CrossEncoderConfig"),
             patch(f"{MODULE}.CrossEncoderReranker") as reranker_cls,
@@ -554,6 +566,7 @@ class TestEagerInitialization:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.SmartReplacerConfig"),
             patch(f"{MODULE}.SmartReplacer") as replacer_cls,
@@ -611,6 +624,7 @@ class TestLazyRerankerProperties:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.CrossEncoderConfig"),
             patch(f"{MODULE}.CrossEncoderReranker") as ce_cls,
@@ -632,6 +646,7 @@ class TestLazyRerankerProperties:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.CrossEncoderConfig"),
             patch(f"{MODULE}.CrossEncoderReranker") as ce_cls,
@@ -654,6 +669,7 @@ class TestLazyRerankerProperties:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.CrossEncoderConfig"),
             patch(f"{MODULE}.CrossEncoderReranker"),
@@ -673,6 +689,7 @@ class TestLazyRerankerProperties:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.CrossEncoderConfig"),
             patch(f"{MODULE}.CrossEncoderReranker") as ce_cls,
@@ -719,6 +736,7 @@ class TestSmartReplacerProperty:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.SmartReplacerConfig"),
             patch(f"{MODULE}.SmartReplacer"),
@@ -738,6 +756,7 @@ class TestSmartReplacerProperty:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.SmartReplacerConfig"),
             patch(f"{MODULE}.SmartReplacer") as replacer_cls,
@@ -1087,6 +1106,7 @@ class TestDeleteOperations:
         with (
             patch(f"{MODULE}.USearchEngine") as usearch_cls,
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
         ):
             mock_usearch = MagicMock()
@@ -1470,6 +1490,7 @@ class TestInitLogging:
         with (
             patch(f"{MODULE}.USearchEngine"),
             patch(f"{MODULE}.LangchainQwenEmbeddings"),
+            patch(f"{MODULE}.acquire_wemm"),
             patch(f"{MODULE}.TantivyEngine"),
             patch(f"{MODULE}.CachedEmbeddings") as cached_cls,
         ):
