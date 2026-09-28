@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import Self, cast
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.manager import MemoryManager
+from reflectlog.application.memory.search_strategies import SearchContext
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.application.utils.security import SecretString
 from reflectlog.core.enums import LlmProvider, RerankerEngine
@@ -38,6 +40,7 @@ from reflectlog.infrastructure.storage_coordinator import (
     PortalockerStorageCoordinator,
 )
 from reflectlog.infrastructure.tantivy_engine import TantivyEngine
+from reflectlog.utility.http import HttpClientFactory
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -607,6 +610,68 @@ class TestEagerInitialization:
 @pytest.mark.unit
 class TestLazyRerankerProperties:
     """Tests for cross_encoder_reranker and get_reranker properties."""
+
+    def test_openrouter_lazy_dispatch_without_network(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        config = replace(mock_config, reranker_engine="openrouter")
+        manager, _, _ = _make_manager(config, mock_logger)
+        assert manager.cross_encoder_reranker is None
+        reranker = manager.get_reranker()
+        assert reranker is manager.openrouter_reranker
+        assert reranker is not None
+        assert reranker.config.model == "voyageai/rerank-2.5-lite"
+
+    def test_openrouter_eager_init_does_not_issue_request(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        config = replace(
+            mock_config,
+            reranker_engine="openrouter",
+            eager_initialization=True,
+            eager_initialize_search_engines=False,
+            eager_initialize_reranker=True,
+        )
+        manager, _, _ = _make_manager(config, mock_logger)
+        assert manager.openrouter_reranker is not None
+
+    async def test_manager_pipeline_reranks_over_mock_transport(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        config = replace(mock_config, reranker_engine="openrouter")
+        manager, _, _ = _make_manager(config, mock_logger)
+        context = SearchContext(
+            query="test",
+            limit=2,
+            overfetch_limit=4,
+            enable_rrf_fusion=True,
+            reranker_engine=RerankerEngine.OPENROUTER,
+            workspace_id=config.workspace_id,
+        )
+        candidates = [("first", 0.03), ("second", 0.02)]
+        seen: list[httpx.Request] = []
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {"index": 0, "relevance_score": 0.1},
+                        {"index": 1, "relevance_score": 0.9},
+                    ]
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            with patch.object(
+                HttpClientFactory, "get_async_httpx_client", return_value=client
+            ):
+                ranked = await manager._search_pipeline._step4_reranking(
+                    context, candidates, {}, 4
+                )
+        assert ranked == [("second", 0.9), ("first", 0.1)]
+        assert len(seen) == 1
 
     def test_cross_encoder_reranker_returns_none_when_not_configured(
         self, mock_config: Config, mock_logger: LogCapture
