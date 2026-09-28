@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 import os
 from pathlib import Path
 import signal
 import sys
+import threading
 from typing import cast
 from unittest.mock import MagicMock, PropertyMock, patch
 
+from fastmcp import Client
 import pytest
 
+from reflectlog.application.config.settings import Config
+from reflectlog.application.mcp_server import FastMCPServer
+from reflectlog.application.utils.security import SecretString
 from reflectlog.core.config_adapters import ConfigAdapter
-from reflectlog.core.enums import EmbedderProvider
+from reflectlog.core.enums import EmbedderProvider, RerankerEngine
 from reflectlog.core.exceptions import StorageError
+from reflectlog.infrastructure.embeddings.qwen3_embedding import LangchainQwenEmbeddings
 from reflectlog.infrastructure.storage_coordinator import PortalockerStorageCoordinator
 from reflectlog.server import _start_server
 
@@ -105,6 +112,144 @@ def test_second_signal_restores_default() -> None:
             assert registered[signal.SIGBREAK] is signal.SIG_DFL
 
 
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_signal_shutdown_drains_real_storage_and_reopens(
+    tmp_path: Path, set_env_vars: None
+) -> None:
+    config = Config(
+        workspace_id="",
+        openrouter_api_key=SecretString("test-key"),
+        embedder_provider=EmbedderProvider.OPENAI,
+        embedding_model="openai/text-embedding-3-small",
+        embedding_dims=128,
+        reranker_engine=RerankerEngine.NONE,
+        enable_smart_replace=False,
+        embedding_cache_enabled=False,
+        eager_initialization=False,
+        tantivy_index_path_template=str(tmp_path / "{workspace_id}" / "tantivy"),
+    )
+    handlers: dict[int, Callable[[int, object], None]] = {}
+    completed = asyncio.Event()
+
+    def capture_signal(number: int, handler: Callable[[int, object], None]) -> None:
+        handlers[number] = handler
+
+    def vector(_self: LangchainQwenEmbeddings, _text: str) -> list[float]:
+        return [1.0, *([0.0] * 127)]
+
+    def vectors(_self: LangchainQwenEmbeddings, texts: list[str]) -> list[list[float]]:
+        return [vector(_self, text) for text in texts]
+
+    async def async_vectors(
+        embedder: LangchainQwenEmbeddings, texts: list[str]
+    ) -> list[list[float]]:
+        return vectors(embedder, texts)
+
+    entered = threading.Event()
+    release = threading.Event()
+    close_calls = 0
+    with (
+        patch.object(LangchainQwenEmbeddings, "embed_documents", vectors),
+        patch.object(LangchainQwenEmbeddings, "aembed_documents", async_vectors),
+        patch.object(LangchainQwenEmbeddings, "embed_query", vector),
+        patch("reflectlog.server.signal.signal", side_effect=capture_signal),
+        patch(
+            "reflectlog.server.signal.raise_signal",
+            side_effect=lambda _number: completed.set(),
+        ),
+        patch(
+            "reflectlog.server._server_cls", return_value=lambda: FastMCPServer(config)
+        ),
+    ):
+        server = _start_server(sys.stderr, 0.0, {})
+        client_factory = cast("Callable[[object], Client]", Client)
+        async with client_factory(server.mcp) as client:
+            _ = await client.call_tool(
+                "add",
+                {"workspace_id": "durable", "memories": ["shutdown survives restart"]},
+            )
+
+            async with server._registry.acquire("durable") as manager:
+                original_close = manager.close
+
+            def close_with_barrier() -> None:
+                nonlocal close_calls
+                close_calls += 1
+                entered.set()
+                assert release.wait(timeout=10)
+                original_close()
+
+            with patch.object(manager, "close", side_effect=close_with_barrier):
+                async with server._registry.acquire("durable"):
+                    asyncio.get_running_loop().call_soon(
+                        handlers[signal.SIGTERM], signal.SIGTERM, None
+                    )
+                    await asyncio.sleep(0)
+                    assert close_calls == 0
+                try:
+                    assert await asyncio.wait_for(asyncio.to_thread(entered.wait), 10)
+                    waiter = asyncio.create_task(server.aclose())
+                    await asyncio.sleep(0)
+                    waiter.cancel()
+                finally:
+                    release.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await waiter
+            with pytest.raises(RuntimeError, match="closed"):
+                async with server._registry.acquire("other"):
+                    pass
+        assert close_calls == 1
+        await asyncio.wait_for(completed.wait(), 10)
+
+        reopened = FastMCPServer(config)
+        async with client_factory(reopened.mcp) as client:
+            page = await client.call_tool("get_all", {"workspace_id": "durable"})
+            assert "shutdown survives restart" in page.content[0].text
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_installed_stdio_signal_persists_with_idle_stdin(
+    set_env_vars: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("POSIX SIGTERM path")
+    monkeypatch.setenv("NUMBA_WARMUP", "false")
+    master, slave = os.openpty()
+    try:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "reflectlog.server",
+            "--transport",
+            "stdio",
+            stdin=slave,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    finally:
+        os.close(slave)
+    assert process.stderr is not None
+    try:
+        _ = await asyncio.wait_for(process.stderr.readuntil(b"Starting MCP server"), 15)
+        process.send_signal(signal.SIGTERM)
+        output = await asyncio.wait_for(
+            process.stderr.readuntil(b"Server shutdown complete"), 5
+        )
+        assert b"Received SIGTERM" in output
+        assert await asyncio.wait_for(process.wait(), 2) == -signal.SIGTERM
+    finally:
+        if process.returncode is None:
+            process.send_signal(signal.SIGTERM)
+            try:
+                await asyncio.wait_for(process.wait(), 5)
+            except TimeoutError:
+                process.kill()
+                await process.wait()
+        os.close(master)
+
+
 def _child_wait_for_term(path: str) -> None:
     import signal as sig
     import time
@@ -128,7 +273,7 @@ def test_graceful_signal_sigterm_child(tmp_path: Path) -> None:
     child = ctx.Process(target=_child_wait_for_term, args=(str(marker),))
     child.start()
     try:
-        for _ in range(100):
+        for _ in range(300):
             if marker.exists() and marker.read_text(encoding="utf-8") == "ready":
                 break
             __import__("time").sleep(0.05)
