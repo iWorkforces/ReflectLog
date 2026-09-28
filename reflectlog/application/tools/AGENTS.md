@@ -1,7 +1,7 @@
 # MCP Tools
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -14,7 +14,7 @@ MCP tool implementations. Each `BaseTool` subclass validates input, logs redacte
 tools/
 ├── base.py           # ABC + log + InconsistentStateError re-raise
 ├── add.py            # add(memories, dry_run=False) → counts dict
-├── get_all.py        # paged get_all(limit, offset)
+├── get_all.py        # get_page_with_total(limit, offset)
 ├── search.py         # hybrid search(query) → list[str]
 ├── remove.py         # remove(memories); exact match
 └── health_check.py   # read-only component status
@@ -29,12 +29,13 @@ Registry lives in `application/mcp_server.py` as `AVAILABLE_TOOL_CLASSES`.
 | Add | `add.py` | `validate_memories` + `validate_add_batch`; `add_memories_async` |
 | Search | `search.py` | Manager runs RRF + optional CE; tool returns texts |
 | Remove | `remove.py` | `delete_memories` → `list[str]`; missing ids are a no-op |
-| Get all | `get_all.py` | Cap `Config.get_all_limit` (default 1000) |
+| Get all | `get_all.py` | `get_page_with_total`; cap `Config.get_all_limit` (default 1000) |
 | Health | `health_check.py` | Read-only; leftovers are not reconciled here |
 | Errors | `base.py` | `InconsistentStateError` is re-raised, not wrapped |
 
 ## CONVENTIONS
 
+- Every MCP handler takes `workspace_id`. `FastMCPServer` pins a manager with `WorkspaceRegistry.acquire`, then builds the tool.
 - Tools never touch USearch/Tantivy/SQLite. Go through `MemoryManager` only.
 - Handlers are typed. `get_handler()` returns `Callable[..., Awaitable[...]]`:
   - `add` → `Awaitable[dict[str, object]]` (`memories: list[str]`, `dry_run: bool`)

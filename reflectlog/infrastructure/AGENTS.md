@@ -1,7 +1,7 @@
 # Infrastructure Layer
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -12,16 +12,18 @@ Protocol wrappers. Live engines stay FLAT here. `embeddings/` is the only popula
 ```
 infrastructure/
 ├── storage_coordinator.py      # Portalocker + generation sidecar
+├── embedding_identity.py       # .reflectlog.embedding-identity.json
 ├── usearch_engine.py           # HNSW + SQLite SoT
 ├── tantivy_engine.py           # FTS + tombstones
 ├── memory_store.py             # Identity + journal
-├── cross_encoder_reranker.py   # Local FlagReranker
+├── cross_encoder_reranker.py   # Local FlagReranker; sigmoid default
 ├── reranker_post_processor.py  # CE + temporal compose
 ├── smart_replacer.py           # LLM replacement
 ├── llm_provider_base.py        # OpenAI provider base
 ├── embeddings/                 # ONLY populated child
 │   ├── cached_embeddings.py
-│   └── qwen3_embedding.py
+│   ├── qwen3_embedding.py
+│   └── wemm_embedding.py
 ├── search/                     # empty marker + guide
 ├── llm/                        # empty marker (no guide)
 ├── memory/                     # empty marker (no guide)
@@ -34,6 +36,7 @@ infrastructure/
 |------|----------|-------|
 | Workspace lease | `storage_coordinator.py` | Thread-owned SHARED; `is_held` |
 | Semantic + SoT | `usearch_engine.py` | `get_all`/`count` via MemoryStore |
+| Embed identity | `embedding_identity.py` | `ensure_embedding_identity` before HNSW open |
 | FTS | `tantivy_engine.py` | Tombstone+commit; `compact()` only |
 | Identity/journal | `memory_store.py` | unique `(workspace_id, content)` |
 | CE Step 4 | `cross_encoder_reranker.py` | `rerank` always scores |
@@ -46,6 +49,7 @@ infrastructure/
 - MemoryStore schema: `_create_memories_schema` / `_create_archive_schema` / `_create_transition_schema` only. No `_create_schema`.
 - Thread-owned SHARED. Engines skip nested lease when `coordinator.is_held`.
 - HNSW fail-closed if SQLite missing/empty/unreadable.
+- Embedding identity must match provider, model, and dims. Mismatch tells the caller to export and rebuild offline. Index and SQLite must share a workspace directory.
 - Tantivy delete = tombstone+commit. `compact()` is maintenance only.
 - Factories: `from_config()`, not `from_app_config()`.
 - Search `OSError` → `SearchError`, never `[]`.
@@ -56,6 +60,7 @@ infrastructure/
 - No `_rebuild_index_with_docs`. No MemoryStore `_create_schema`.
 - No nested lease when the calling thread already holds the coordinator.
 - No HNSW load when SQLite is missing/empty/unreadable.
+- No embedding-identity rewrite to accept a different provider, model, or dims. Same width is still incompatible.
 - No compact-on-delete. No leftover rows after mid-batch `index.add` fail.
 - No CE skip ≤1 inside `CrossEncoderReranker.rerank` — SearchPipeline owns that.
 - No extra AGENTS.md under `llm/`, `memory/`, `reranking/`.

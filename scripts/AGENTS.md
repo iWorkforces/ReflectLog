@@ -1,7 +1,7 @@
 # Build and Development Scripts
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -49,10 +49,12 @@ scripts/
 ## ANTI-PATTERNS
 
 - Never edit `.git/hooks/` directly.
-- Do not add full lint/type/coverage CI. `.github/workflows/platform-storage.yml` is the only workflow.
+- `pr-quality.yml` is the Ubuntu typecheck, lint `--check`, and coverage workflow. `platform-storage.yml` is the OS-matrix storage gate.
 - Never treat pre-push lint as `--check` — `--all` writes files.
 - Pre-push still no pytest.
 
 ## NOTES
+
+`pr-quality.yml`: PRs to `develop`/`main`, and push to `main`. `platform-storage.yml`: push to `develop`/`main`, every PR, `workflow_dispatch`. Push to `develop` does not run `pr-quality`.
 
 `git push --no-verify` exists but is not the workflow. After hook edits, re-run setup.

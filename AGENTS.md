@@ -1,12 +1,12 @@
 # ReflectLog Knowledge Base
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
 
-Python 3.14 MCP memory server. USearch + SQLite identity + Tantivy FTS + raw RRF, optional local FlagReranker. LLM is for smart replacement only.
+Python 3.14 MCP memory server. One `MemoryManager` per workspace. USearch + SQLite identity + Tantivy FTS + raw RRF, optional local FlagReranker. Local WeMM is the field default; env load still defaults to OpenAI. LLM is for smart replacement only.
 
 ## STRUCTURE
 
@@ -14,7 +14,7 @@ Python 3.14 MCP memory server. USearch + SQLite identity + Tantivy FTS + raw RRF
 ./
 ├── reflectlog/          # Flat hatch package (not src/)
 │   ├── server.py        # Installed CLI: reflectlog.server:main
-│   ├── application/     # Config, MCP, add/search pipelines, tools
+│   ├── application/     # Config, MCP, workspace registry, add/search, tools
 │   ├── core/            # Protocols, StrEnums, adapters, leases
 │   ├── infrastructure/  # Engines FLAT; embeddings/ is the only full child
 │   ├── plugins/         # Present; not wired at startup
@@ -32,13 +32,15 @@ Python 3.14 MCP memory server. USearch + SQLite identity + Tantivy FTS + raw RRF
 | CLI + signals | `reflectlog/server.py` | Warmup; persist on SIGINT/SIGTERM/SIGBREAK |
 | MCP + auth | `application/mcp_server.py` | Tools via `MemoryManager` only |
 | Memory facade | `application/memory/manager.py` | Locks, journal, public API |
+| Workspace pin | `application/memory/workspace_registry.py` | `acquire()` per tool call; idle TTL 900s |
+| Embedding identity | `infrastructure/embedding_identity.py` | Sidecar before HNSW open |
 | Add / search | `application/memory/` | 3-phase add; 4-step hybrid search |
 | Journal replay | `application/memory/replacement_recovery.py` | Restart converge |
 | Workspace lease | `infrastructure/storage_coordinator.py` | Portalocker + generation sidecar |
 | Config | `application/config/settings.py` | Frozen env `Config` |
 | Protocols | `core/` | `ISemanticSearchEngine`, `IStorageCoordinator` |
 | Backends | `infrastructure/` | USearch, Tantivy, SQLite, CE |
-| Embeddings | `infrastructure/embeddings/` | Qwen client + LRU cache |
+| Embeddings | `infrastructure/embeddings/` | WeMM local + Qwen OpenRouter + LRU |
 | HTTP | `utility/http.py` | `HttpClientFactory` |
 | Score math | `utility/scoring.py` | Numba RRF / min-max / recency |
 
@@ -48,8 +50,11 @@ Python 3.14 MCP memory server. USearch + SQLite identity + Tantivy FTS + raw RRF
 |--------|------|----------|------|------|
 | `main` | Function | `server.py` | CLI | Installed entry |
 | `FastMCPServer` | Class | `application/mcp_server.py` | High | Tool registry + transports |
-| `MemoryManager` | Class | `application/memory/manager.py` | ~139 | Add/search/delete facade |
+| `MemoryManager` | Class | `application/memory/manager.py` | High | Add/search/delete facade |
+| `WorkspaceRegistry` | Class | `application/memory/workspace_registry.py` | High | One manager per workspace |
 | `Config` | Dataclass | `application/config/settings.py` | High | Frozen env settings |
+| `EmbeddingIdentity` | Dataclass | `infrastructure/embedding_identity.py` | Med | Provider/model/dims sidecar |
+| `WeMMEmbeddings` | Class | `infrastructure/embeddings/wemm_embedding.py` | Med | Local SentenceTransformer |
 | `ConfigAdapter` | Class | `core/config_adapters.py` | High | `Config` → protocols |
 | `USearchEngine` | Class | `infrastructure/usearch_engine.py` | High | HNSW + SQLite SoT |
 | `TantivyEngine` | Class | `infrastructure/tantivy_engine.py` | High | FTS + tombstones |
@@ -104,11 +109,14 @@ uv run reflectlog --transport http --port 9103
 - `ty` + pyright include `tests`; tests execution env relaxes mock noise.
 - Default pytest paths omit `tests/load/` and root `tests/test_*.py`.
 - Hooks: edit `scripts/git-hooks/`, install via `scripts/setup-git-hooks.sh`. Pre-push = typecheck + lint `--all` (writes). No pytest in hooks.
-- Focused CI: `.github/workflows/platform-storage.yml` (storage/USearch/Tantivy gates). Not full lint/type/coverage.
-- `pyproject.toml` version and `reflectlog/version.py` can diverge; CLI prints the latter.
+- `pr-quality.yml`: Ubuntu typecheck + lint `--check` + coverage. PRs to `develop`/`main`, push to `main` only.
+- `platform-storage.yml`: macOS/Ubuntu/Windows storage gates. Push to `develop` does not run `pr-quality`.
+- CLI version is `importlib.metadata.version("reflectlog")` (`0.5.0` when installed). Fallback `"0.0.0"` if the package is not installed.
+- Lease, generation, and embedding-identity rules: `docs/storage-coordination.md`.
 
 ## GUIDANCE HIERARCHY
 
 Children: `reflectlog/{application,core,infrastructure,plugins,utility}` and `tests/` mirrors.
 Deep: `memory/fusion`, `memory/reranking` (pointer), `utility/platforms`, `infrastructure/embeddings`, `infrastructure/search` (marker).
+`workspace_registry.py` and `embedding_identity.py` stay in their parent guides.
 No guides on empty `infrastructure/{llm,memory,reranking}`.

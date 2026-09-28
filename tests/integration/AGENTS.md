@@ -1,7 +1,7 @@
 # Integration Tests
 
-**Generated:** 2026-09-03
-**Commit:** e401dbc
+**Generated:** 2026-09-28
+**Commit:** aaebf3c
 **Branch:** develop
 
 ## OVERVIEW
@@ -45,4 +45,4 @@ tests/integration/
 
 ## NOTES
 
-Focused CI (`.github/workflows/platform-storage.yml`) runs a subset, not this whole folder. Coverage fail-under 90% is suite-wide.
+`platform-storage.yml` runs a subset, not this whole folder. `pr-quality.yml` runs the default suite with coverage on Ubuntu. WeMM files stay skipped unless `RUN_LOCAL_MODEL_TESTS=1`.
