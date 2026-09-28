@@ -653,8 +653,16 @@ class StoragePhase:
             return self._dry_run_result(memories, replacement_map, phase_start)
 
         await asyncify(self._reconcile_pending)()
-        stored_count, replacements = await asyncify(self._persist_replacements)(
-            memories, replacement_map
+        vectors = (
+            self._validate_persist_vectors(
+                memories,
+                await self._semantic_engine.embedder.aembed_documents(memories),
+            )
+            if memories
+            else None
+        )
+        stored_count, replacements = await asyncify(self._persist_with_vectors)(
+            memories, replacement_map, vectors
         )
 
         duration = time.perf_counter() - phase_start
@@ -698,6 +706,14 @@ class StoragePhase:
     ) -> tuple[int, list[ReplacementInfo]]:
         """Embed outside the write lock, then record, delete, add, and commit."""
         vectors = self._embed_for_persist(memories)
+        return self._persist_with_vectors(memories, replacement_map, vectors)
+
+    def _persist_with_vectors(
+        self,
+        memories: list[str],
+        replacement_map: dict[str, list[ReplacementInfo]],
+        vectors: list[list[float]] | None,
+    ) -> tuple[int, list[ReplacementInfo]]:
         if self._coordinator is not None:
             with self._coordinator.acquire(self._workspace_id, LeaseMode.EXCLUSIVE):
                 return self._persist_under_locks(memories, replacement_map, vectors)
@@ -784,6 +800,12 @@ class StoragePhase:
         if not memories:
             return None
         computed = self._semantic_engine.embedder.embed_documents(memories)
+        return self._validate_persist_vectors(memories, computed)
+
+    @staticmethod
+    def _validate_persist_vectors(
+        memories: list[str], computed: list[list[float]]
+    ) -> list[list[float]]:
         if len(computed) != len(memories):
             raise StorageError("Embedding batch size mismatch for persist")
         typed: list[list[float]] = []
@@ -1090,6 +1112,13 @@ class StoragePhase:
 
     def _complete_add_intents(self, intents: list[ReplacementTransition]) -> None:
         """Mark add intents complete when both backends have the content."""
+        if not intents:
+            return
+        live_contents = (
+            set(self._tantivy_engine.get_all(self._workspace_id))
+            if self._tantivy_engine is not None
+            else None
+        )
         store = self._semantic_engine.memory_store
         for intent in intents:
             new_id = self._semantic_engine.get_id_by_content(
@@ -1097,12 +1126,8 @@ class StoragePhase:
             )
             if new_id is None:
                 continue
-            if self._tantivy_engine is not None:
-                matches = self._tantivy_engine.find_by_exact_match(
-                    self._workspace_id, intent.new_content
-                )
-                if intent.new_content not in matches:
-                    continue
+            if live_contents is not None and intent.new_content not in live_contents:
+                continue
             store.complete_replacement_transition(intent.id)
 
     def _complete_add_intents_for_contents(self, contents: list[str]) -> None:

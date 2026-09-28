@@ -307,6 +307,44 @@ async def _crash_and_reopen(
 class TestReplacementRecoveryIntegration:
     """Crash-injection + reopen proves restart-safe replacement."""
 
+    async def test_multi_add_completion_reads_one_live_tantivy_snapshot(self) -> None:
+        contents = [NEW, UNRELATED, "Keep issue titles descriptive"]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with _manager(tmpdir) as manager:
+                tantivy = manager._tantivy_engine
+                assert isinstance(tantivy, TantivyEngine)
+                store = manager._semantic_engine.memory_store
+                assert isinstance(store, MemoryStore)
+                generation = manager._coordinator.read_generation(manager.workspace_id)
+                original_scan = TantivyEngine._get_all_docs
+                original_complete = MemoryStore.complete_replacement_transition
+                scan_count = 0
+
+                def scan(engine: TantivyEngine, workspace_id: str) -> list[str]:
+                    nonlocal scan_count
+                    scan_count += 1
+                    return original_scan(engine, workspace_id)
+
+                def complete(memory_store: MemoryStore, transition_id: int) -> None:
+                    assert (
+                        manager._coordinator.read_generation(manager.workspace_id)
+                        > generation
+                    )
+                    original_complete(memory_store, transition_id)
+
+                with (
+                    patch.object(TantivyEngine, "_get_all_docs", scan),
+                    patch.object(
+                        MemoryStore, "complete_replacement_transition", complete
+                    ),
+                ):
+                    result = await manager._storage_phase.execute(contents, {})
+
+                assert result.stored_count == len(contents)
+                assert scan_count == 1
+                assert set(manager.get_all()) == set(contents)
+                assert store.list_pending_transitions() == []
+
     async def test_normal_replacement_and_dry_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             with _manager(tmpdir) as manager:
