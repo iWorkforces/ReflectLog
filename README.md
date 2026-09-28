@@ -224,7 +224,15 @@ Exactly three model selectors are accepted:
 Omit `WEMM_EMBEDDING_DIMS` to use the selected model's native width. Set
 `WEMM_DEVICE` to `auto`, `cpu`, `cuda`, or `mps`; `auto` delegates device
 selection to SentenceTransformers. The first embedding call downloads and loads
-the checkpoint. `SentenceTransformer(..., trust_remote_code=True)` is required
+the checkpoint if it is not already cached: ReflectLog first tries a local-only
+load, then allows a Hugging Face download if that load raises `OSError`.
+Set `HF_HOME` to a persistent, writable directory shared across restarts to
+retain the checkpoint cache (for example, `export HF_HOME=/path/to/hf-cache`).
+After the complete checkpoint and its dependencies are cached, the local-only
+load can work without network access. For strict offline operation, set
+`HF_HUB_OFFLINE=1` and ensure the cache is populated beforehand; an empty or
+incomplete cache cannot load offline, and a subsequent download attempt will
+fail. `SentenceTransformer(..., trust_remote_code=True)` is required
 by Tencent's official integration, so only run a checkpoint revision whose
 repository code you trust.
 
