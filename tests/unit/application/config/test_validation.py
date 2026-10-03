@@ -20,6 +20,8 @@ from reflectlog.core.enums import (
     TransportMode,
 )
 from reflectlog.core.exceptions import ConfigurationError
+from reflectlog.core.exceptions import ValidationError as WorkspaceValidationError
+from reflectlog.utility import security as workspace_security
 
 # ---------------------------------------------------------------------------
 # ValidationError dataclass
@@ -118,6 +120,20 @@ class TestValidatorLifecycle:
 
 @pytest.mark.unit
 class TestCanonicalWorkspaceId:
+    def test_configuration_delegates_to_shared_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def reject(workspace_id: str) -> str:
+            raise WorkspaceValidationError("shared-rule sentinel")
+
+        monkeypatch.setattr(workspace_security, "validate_workspace_id", reject)
+        with pytest.raises(ConfigurationError, match="shared-rule sentinel") as failure:
+            canonical_workspace_id("valid")
+        assert isinstance(failure.value.__cause__, WorkspaceValidationError)
+        validator = ConfigurationValidator()
+        assert validator.validate_workspace_id("valid") is False
+        assert validator.errors[0].message == "shared-rule sentinel"
+
     def test_normalized_length_is_validated(self):
         assert canonical_workspace_id(f"  {'A' * 64} \t") == "a" * 64
 
@@ -146,13 +162,13 @@ class TestValidateWorkspaceId:
         v = ConfigurationValidator()
         assert v.validate_workspace_id("") is False
         assert v.has_errors()
-        assert "Cannot be empty" in v.errors[0].message
+        assert "cannot be empty" in v.errors[0].message
 
     def test_invalid_characters(self):
         """Characters outside [A-Za-z0-9_.-] are rejected."""
         v = ConfigurationValidator()
         assert v.validate_workspace_id("bad@chars!") is False
-        assert "Must contain only" in v.errors[0].message
+        assert "invalid characters" in v.errors[0].message
 
     def test_too_long(self):
         """ID longer than 64 characters is rejected."""
@@ -1027,9 +1043,20 @@ class TestValidateConfig:
         errors = validate_config(cfg)
         assert any(e.field == "WORKSPACE_ID" for e in errors)
 
-    def test_unset_workspace_id_is_valid(self):
+    def test_unset_workspace_id_is_rejected_by_default(self):
         config = self._make_config(workspace_id="")
-        assert validate_config(config) == []
+        errors = validate_config(config)
+        assert any(e.field == "WORKSPACE_ID" for e in errors)
+
+    def test_unset_workspace_id_is_valid_for_unbound_template(self):
+        config = self._make_config(workspace_id="")
+        assert validate_config(config, allow_unbound_workspace=True) == []
+
+    @pytest.mark.parametrize("workspace_id", [".", "   ", "a..b", "bad@id!", "x" * 65])
+    def test_unbound_template_does_not_excuse_invalid_ids(self, workspace_id):
+        config = self._make_config(workspace_id=workspace_id)
+        errors = validate_config(config, allow_unbound_workspace=True)
+        assert any(e.field == "WORKSPACE_ID" for e in errors)
 
     def test_invalid_port(self):
         """Invalid port produces error."""

@@ -51,6 +51,7 @@ from reflectlog.core.enums import (
     WeMMDevice,
     parse_str_enum,
 )
+from reflectlog.utility.security import validate_workspace_id
 
 if TYPE_CHECKING:
     from reflectlog.application.config.settings import Config
@@ -193,13 +194,13 @@ class ConfigAdapter(IAppConfig):
     @property
     def usearch_index_path(self) -> str:
         """Path to USearch index files."""
-        return f"indexes/{self._config.workspace_id.lower()}/usearch"
+        return f"indexes/{validate_workspace_id(self._config.workspace_id)}/usearch"
 
     @property
     def tantivy_index_path(self) -> str:
         """Path to Tantivy index files."""
         return self._config.tantivy_index_path_template.format(
-            workspace_id=self._config.workspace_id.lower()
+            workspace_id=validate_workspace_id(self._config.workspace_id)
         )
 
     @property
@@ -511,12 +512,12 @@ class StorageConfigAdapter(IStorageConfig):
 
     @property
     def usearch_index_path(self) -> str:
-        return f"indexes/{self._config.workspace_id.lower()}/usearch"
+        return f"indexes/{validate_workspace_id(self._config.workspace_id)}/usearch"
 
     @property
     def tantivy_index_path(self) -> str:
         return self._config.tantivy_index_path_template.format(
-            workspace_id=self._config.workspace_id.lower()
+            workspace_id=validate_workspace_id(self._config.workspace_id)
         )
 
     @property

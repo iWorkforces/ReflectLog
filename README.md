@@ -138,17 +138,18 @@ ReflectLog provides five MCP tools:
 2. `get_all(workspace_id: str, limit: int | None = None, offset: int = 0) -> dict`: Page stored memories (default cap 1000); includes `total` and `truncated`
 3. `search(query: str, workspace_id: str) -> list[str]`: Hybrid semantic + full-text search
 4. `remove(memories: list[str], workspace_id: str)`: Remove memories by exact match
-5. `health_check(workspace_id: str) -> dict`: Workspace-specific health, including `pending_intent_count`
+5. `health_check(workspace_id: str) -> dict`: Workspace-specific health, including `pending_intent_count` and `search_failures`. The latter reports `count`, `last_failure_at` (UTC ISO timestamp or null), and `exception_type` (class name only or null) for `semantic`, `tantivy`, `cross_encoder`, and `openrouter_reranker`; it never includes exception messages, queries, or memory text. A vector-index refusal that `search` raises is counted under `semantic` as well. Historical search failures do not change the existing overall status logic.
 
 Every tool call, including `health_check`, requires an explicit `workspace_id`.
 `WORKSPACE_ID` in the environment or `.env` is not used as a default. Active
 workspace managers are cached per workspace. Idle managers expire after 15
 minutes without a call; a sweep runs every 60 seconds, with at most 8 idle
-managers retained.
+managers retained. Search failure records belong to each cached workspace manager,
+not persisted storage, and reset when an idle manager is evicted and recreated.
 
 Workspace IDs must be 1 to 64 characters from `A-Z`, `a-z`, `0-9`, `_`, `.`,
-and `-`; `.` and traversal-like IDs are rejected. Storage treats IDs without
-regard to case, so names that differ only in capitalization share a workspace.
+and `-`; `.` and any occurrence of `..` are rejected. Surrounding whitespace
+is ignored. IDs are stored lowercase, so capitalization does not distinguish workspaces.
 The MCP bearer token authenticates access to the server, not to an individual
 workspace. Only give workspace access to trusted clients; `workspace_id` is not
 an authorization boundary.
@@ -286,6 +287,9 @@ memories, has unknown index occupancy, or has pending intents also requires
 this offline export and rebuild. Do not create or rewrite the identity sidecar
 to make unknown vectors appear compatible. ReflectLog does not migrate or
 delete existing storage automatically, or fall back to full-text-only search.
+If a workspace's vector index and SQLite memory ids disagree, for example after
+restoring only one of them from a backup, it is refused with an error that says
+to restore a consistent backup or rebuild offline; nothing is repaired automatically.
 See [storage coordination](docs/storage-coordination.md) for recovery details.
 
 Real checkpoint tests are opt-in and are never part of normal CI:

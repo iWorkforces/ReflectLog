@@ -87,7 +87,7 @@ class EmbeddingIdentity:
 
     @classmethod
     def from_config(cls, config: USearchConfig) -> EmbeddingIdentity:
-        workspace_id = validate_workspace_id(config.workspace_id).lower()
+        workspace_id = validate_workspace_id(config.workspace_id)
         if not config.embedding_model or config.embedding_dims <= 0:
             raise InitializationError(
                 "Embedding model and dimensions must be specified"
@@ -103,12 +103,13 @@ class EmbeddingIdentity:
 
 class _DirectCoordinator(PortalockerStorageCoordinator):
     def __init__(self, root: Path, workspace_id: str) -> None:
+        canonical = validate_workspace_id(workspace_id)
         super().__init__(str(root.parent))
         self._root = root
-        self._workspace_id = workspace_id
+        self._workspace_id = canonical
 
     def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
-        if validate_workspace_id(workspace_id).lower() != self._workspace_id:
+        if validate_workspace_id(workspace_id) != self._workspace_id:
             raise InitializationError(
                 "Coordinator workspace does not match embedding identity"
             )
@@ -132,6 +133,7 @@ def _workspace_root(config: USearchConfig) -> Path:
 def _coordinator_for(
     config: USearchConfig, coordinator: IStorageCoordinator | None
 ) -> tuple[Path, IStorageCoordinator]:
+    identity = EmbeddingIdentity.from_config(config)
     root = _workspace_root(config)
     if (
         root.is_symlink()
@@ -139,7 +141,6 @@ def _coordinator_for(
         or Path(config.index_path).parent.is_symlink()
     ):
         raise InitializationError("Embedding workspace paths must not be symlinks")
-    identity = EmbeddingIdentity.from_config(config)
     active = (
         coordinator
         if coordinator is not None
@@ -319,7 +320,7 @@ def ensure_embedding_identity(
             _ = preflight_embedding_identity(
                 config, active, tantivy_index_path=tantivy_index_path
             )
-    workspace_id = validate_workspace_id(config.workspace_id).lower()
+    workspace_id = validate_workspace_id(config.workspace_id)
     if active.is_held(workspace_id) and not active.is_held(
         workspace_id, LeaseMode.EXCLUSIVE
     ):
