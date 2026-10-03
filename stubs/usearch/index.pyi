@@ -67,6 +67,27 @@ class BatchMatches:
         """Get match at index."""
         ...
 
+class IndexedKeys:
+    """Read-only view of the live keys stored in an ``Index``.
+
+    The installed runtime class subclasses ``Sequence``; only the integer
+    accessors ReflectLog uses are stubbed. ``list(index.keys)`` yields
+    Python ``int`` keys; removed keys are absent once the index was saved
+    and restored.
+    """
+
+    def __len__(self) -> int:
+        """Return the number of live keys."""
+        ...
+
+    def __iter__(self) -> Iterator[int]:
+        """Iterate over live keys as Python integers."""
+        ...
+
+    def __getitem__(self, offset: int) -> int:
+        """Return the key stored at ``offset``."""
+        ...
+
 class Index:
     """USearch HNSW (Hierarchical Navigable Small World) vector index.
 
@@ -192,6 +213,11 @@ class Index:
         Raises:
             IOError: If the file cannot be written.
         """
+        ...
+
+    @property
+    def keys(self) -> IndexedKeys:
+        """Live keys of the index (removed keys are absent after save/restore)."""
         ...
 
     def __len__(self) -> int:

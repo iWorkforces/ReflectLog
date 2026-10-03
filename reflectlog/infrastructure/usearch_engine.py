@@ -14,6 +14,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 import os
+from pathlib import Path
 import threading
 import time
 from typing import TYPE_CHECKING, Any, Self, final
@@ -32,9 +33,22 @@ from reflectlog.core.enums import EmbedderProvider, parse_str_enum
 from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
-from reflectlog.core.types import Closable, Embeddings, IStoredMemory
+from reflectlog.core.types import (
+    Closable,
+    Embeddings,
+    IStoredMemory,
+    MemoryStoreSnapshot,
+)
 from reflectlog.infrastructure.embedding_identity import ensure_embedding_identity
-from reflectlog.infrastructure.memory_store import MemoryStore
+from reflectlog.infrastructure.index_integrity import (
+    evaluate_index_integrity,
+    index_drift_message,
+)
+from reflectlog.infrastructure.memory_store import (
+    MemoryStore,
+    MemoryStoreSnapshotError,
+    read_memory_store_snapshot,
+)
 from reflectlog.utility.scoring import distance_to_similarity_cosine
 from reflectlog.utility.security import validate_workspace_id
 
@@ -150,13 +164,21 @@ def _cleanup_orphan_hnsw_temps(index_path: str, *, only_pid: int | None = None) 
 
 
 def _sqlite_memory_count(db_path: str) -> int | None:
-    """Return memory row count, 0 if the DB is absent, or None if unreadable."""
+    """Return memory row count, 0 if the DB is absent, or None if unreadable.
+
+    The connection is read-only. A read-write open would let SQLite roll back
+    a crashed transaction's hot journal, changing the database file before the
+    workspace is verified; a database that needs that recovery reads as
+    unreadable here and the callers refuse it instead.
+    """
     if not os.path.exists(db_path):
         return 0
     import sqlite3
 
     try:
-        connection = sqlite3.connect(db_path, timeout=5.0)
+        connection = sqlite3.connect(
+            f"{Path(db_path).absolute().as_uri()}?mode=ro", uri=True, timeout=5.0
+        )
         try:
             _ = connection.execute("PRAGMA busy_timeout = 5000")
             row = connection.execute("SELECT COUNT(*) FROM memories").fetchone()
@@ -209,6 +231,11 @@ class USearchConfig:
     expansion_search: int = 64
     exact_search: bool = False
     exact_search_threshold: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "workspace_id", validate_workspace_id(self.workspace_id)
+        )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> USearchConfig:
@@ -378,6 +405,92 @@ class USearchEngine(BaseModel):
             "readable memory store."
         )
 
+    def _prepare_index_files(self) -> None:
+        """Create the index directory and drop dead writers' temp files.
+
+        Runs only after a candidate index was accepted. Neither step can
+        touch the live vector file or the SQLite database.
+        """
+        index_dir = os.path.dirname(self.config.index_path)
+        if index_dir:
+            os.makedirs(index_dir, exist_ok=True)
+        _cleanup_orphan_hnsw_temps(self.config.index_path)
+
+    def _verify_candidate(self, candidate: Index) -> None:
+        """Refuse an index whose keys disagree with SQLite beyond pending rows.
+
+        Keeps the existing empty/missing/unreadable-store refusals first, then
+        compares SQLite row ids with the index keys inside one read-only
+        snapshot. Never touches ``self.memory_store`` (it would take the
+        non-reentrant ``_init_lock``), never writes, and never puts memory
+        text in the error.
+
+        Raises:
+            InitializationError: If the id sets disagree and no pending
+                journal row accounts for the difference.
+        """
+        size = len(candidate)
+        self._reject_populated_hnsw_without_db(size)
+        if size == 0:
+            return
+        try:
+            snapshot = read_memory_store_snapshot(
+                self.config.db_path, self.config.workspace_id
+            )
+        except MemoryStoreSnapshotError as error:
+            raise InitializationError(
+                f"Cannot verify the USearch index against SQLite: {error}"
+            ) from error
+        report = evaluate_index_integrity(
+            workspace_id=self.config.workspace_id,
+            sqlite_rows=snapshot.contents_by_id,
+            vector_keys=(int(key) for key in candidate.keys),
+            pending=snapshot.pending_transitions,
+        )
+        if report.is_consistent:
+            return
+        if self.logger:
+            self.logger.error(
+                "USearch index and SQLite memory rows disagree; refusing workspace",
+                extra={
+                    "workspace_id": self.config.workspace_id,
+                    "rows_without_vector": len(report.unexplained_missing_ids),
+                    "vectors_without_row": len(report.unexplained_orphan_ids),
+                },
+            )
+        raise InitializationError(index_drift_message(report))
+
+    def verify_index_integrity(self) -> None:
+        """Re-verify the open index against a fresh read-only snapshot.
+
+        Opens (and thereby verifies) the index first when it is not loaded.
+        The compare runs under a shared workspace lease acquired before
+        ``_index_lock`` (skipped when the calling thread already holds one, so
+        the manager may call it under its exclusive lease); it never writes.
+
+        Raises:
+            InitializationError: If SQLite ids and index keys disagree and no
+                pending journal row accounts for the difference.
+        """
+        if self._closed:
+            raise StorageError("USearchEngine is closed")
+        if self._index is None:
+            _ = self.index
+            return
+        with self._read_lease(), self._index_lock:
+            self._verify_candidate(self._index)
+
+    def read_memory_snapshot(self) -> MemoryStoreSnapshot:
+        """Read this workspace's rows and pending journal without writing.
+
+        Opens its own read-only connection; the writable store is never
+        created or touched.
+
+        Raises:
+            StorageError: If the database is missing or unreadable.
+        """
+        return read_memory_store_snapshot(self.config.db_path, self.config.workspace_id)
+
     @property
     def name(self) -> str:
         """Engine name for identification."""
@@ -398,38 +511,29 @@ class USearchEngine(BaseModel):
         if self._index is not None:
             return self._index
 
+        # Lock order: workspace lease, then ``_init_lock``. The lease keeps a
+        # writer from publishing between the restore, the drift check and the
+        # identity capture, so neither a half-published pair is refused nor a
+        # stale index is paired with the newer file's identity.
+        with self._read_lease():
+            return self._open_index()
+
+    def _open_index(self) -> Index:
+        """Restore, verify and install the index. Caller holds the lease."""
         with self._init_lock:
             if self._closed:
                 raise StorageError("USearchEngine is closed")
             if self._index is None:
                 try:
-                    # Ensure directory exists
-                    index_dir = os.path.dirname(self.config.index_path)
-                    if index_dir:
-                        os.makedirs(index_dir, exist_ok=True)
-                    _cleanup_orphan_hnsw_temps(self.config.index_path)
-
                     # Optimization: Try restore first, avoid extra os.path.exists() call
-                    # This is faster for existing indices (one less syscall)
+                    # This is faster for existing indices (one less syscall).
+                    # Directory creation and temp cleanup wait until a candidate
+                    # is accepted so a refused workspace is left untouched.
                     try:
                         loaded_index = Index.restore(self.config.index_path)
                         if loaded_index is None:
                             raise RuntimeError(
                                 f"Index.restore() returned None for {self.config.index_path}"
-                            )
-                        self._reject_populated_hnsw_without_db(len(loaded_index))
-                        self._index = loaded_index
-                        self._seen_identity = _index_file_identity(
-                            self.config.index_path
-                        )
-                        if self.logger:
-                            self.logger.info(
-                                "Loaded existing USearch index",
-                                extra={
-                                    "workspace_id": self.config.workspace_id,
-                                    "index_path": self.config.index_path,
-                                    "size": len(loaded_index),
-                                },
                             )
                     except (RuntimeError, FileNotFoundError, OSError) as restore_error:
                         index_exists = os.path.exists(self.config.index_path)
@@ -468,6 +572,7 @@ class USearchEngine(BaseModel):
                                     "index_path": self.config.index_path,
                                 },
                             )
+                        self._prepare_index_files()
                         new_index = Index(
                             ndim=self.config.embedding_dims,
                             metric=self.config.metric,
@@ -488,6 +593,24 @@ class USearchEngine(BaseModel):
                                     "workspace_id": self.config.workspace_id,
                                     "index_path": self.config.index_path,
                                     "dims": self.config.embedding_dims,
+                                },
+                            )
+                    else:
+                        # Verify before anything is assigned: a refusal leaves
+                        # ``_index`` unset so every retry refuses again.
+                        self._verify_candidate(loaded_index)
+                        self._prepare_index_files()
+                        self._index = loaded_index
+                        self._seen_identity = _index_file_identity(
+                            self.config.index_path
+                        )
+                        if self.logger:
+                            self.logger.info(
+                                "Loaded existing USearch index",
+                                extra={
+                                    "workspace_id": self.config.workspace_id,
+                                    "index_path": self.config.index_path,
+                                    "size": len(loaded_index),
                                 },
                             )
 
@@ -562,8 +685,16 @@ class USearchEngine(BaseModel):
             yield
 
     def refresh(self) -> None:
-        """Reload a newer HNSW published by another writer."""
-        _ = self.index
+        """Reload a newer HNSW published by another writer.
+
+        An index that is not loaded yet is left alone: opening (and verifying)
+        it is the job of the first operation that needs vectors, so SQLite-only
+        reads keep working on a workspace the check would refuse.
+        """
+        if self._closed:
+            raise StorageError("USearchEngine is closed")
+        if self._index is None:
+            return
         self._maybe_reload_external()
 
     def _maybe_reload_external(self, *, refuse_stale: bool = False) -> None:
@@ -575,16 +706,26 @@ class USearchEngine(BaseModel):
                     "Refusing to publish a stale in-memory HNSW over a newer file"
                 )
             return
-        if current == self._seen_identity:
+        if current is None or current == self._seen_identity:
             return
-        if current is None:
+        with self._read_lease():
+            self._reload_published_index()
+
+    def _reload_published_index(self) -> None:
+        """Restore, verify and install a newer file. Caller holds the lease.
+
+        The decision is repeated here because a writer may have published, or
+        this engine may have turned dirty, while the lease was being awaited.
+        """
+        current = _index_file_identity(self.config.index_path)
+        if self._dirty or current is None or current == self._seen_identity:
             return
         loaded = Index.restore(self.config.index_path)
         if loaded is None:
             raise RuntimeError(
                 f"Index.restore() returned None for {self.config.index_path}"
             )
-        self._reject_populated_hnsw_without_db(len(loaded))
+        self._verify_candidate(loaded)
         self._index = loaded
         self._seen_identity = current
 
@@ -681,6 +822,8 @@ class USearchEngine(BaseModel):
                         "error": str(e),
                     },
                 )
+            raise
+        except InitializationError:
             raise
         except Exception as e:
             if self.logger:
@@ -1036,6 +1179,8 @@ class USearchEngine(BaseModel):
 
             return results
 
+        except InitializationError:
+            raise
         except Exception as e:
             if self.logger:
                 self.logger.error(
@@ -1211,6 +1356,8 @@ class USearchEngine(BaseModel):
                     },
                 )
             raise RuntimeError(f"Invalid memory_id format: {e}") from e
+        except InitializationError:
+            raise
         except Exception as e:
             if self.logger:
                 self.logger.error(
@@ -1253,7 +1400,7 @@ class USearchEngine(BaseModel):
                             "size": len(self.index),
                         },
                     )
-        except StorageError:
+        except StorageError, InitializationError:
             raise
         except Exception as e:
             if self.logger:

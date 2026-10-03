@@ -18,6 +18,7 @@ from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import Embeddings
 from reflectlog.infrastructure.embedding_identity import ensure_embedding_identity
+from reflectlog.infrastructure.memory_store import MemoryStore
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 
@@ -80,6 +81,15 @@ class ToggleableFailingQueryEmbedder(MockEmbedder):
 
 def _spawn_exit_immediately() -> None:
     return
+
+
+def journal_add(config: USearchConfig, *contents: str) -> None:
+    """Record pending ADD intents exactly as MemoryManager does before an add."""
+    store = MemoryStore(db_path=config.db_path)
+    try:
+        _ = store.begin_add_intents(config.workspace_id, list(contents))
+    finally:
+        store.close()
 
 
 @pytest.fixture
@@ -720,10 +730,14 @@ class TestUSearchConfigFromDict:
     def test_from_dict_with_defaults(self) -> None:
         """from_dict should use defaults for missing keys."""
         config = USearchConfig.from_dict(
-            {"embedder_provider": "openai", "embedding_model": "test/mock-3072"}
+            {
+                "workspace_id": "defaults-test",
+                "embedder_provider": "openai",
+                "embedding_model": "test/mock-3072",
+            }
         )
 
-        assert config.workspace_id == ""
+        assert config.workspace_id == "defaults-test"
         assert config.index_path == ""
         assert config.db_path == ""
         assert config.embedding_dims == 3072
@@ -1714,6 +1728,7 @@ class TestAtomicUSearchPublication:
                 raise RuntimeError("injected publish fail")
 
         second = USearchEngine(config=config, embedder=embedder, publish_hook=boom)
+        journal_add(config, "new-row")
         try:
             second.add("test", "new-row", infer=False)
             with pytest.raises(RuntimeError, match="Failed to save USearch index"):
@@ -1756,6 +1771,7 @@ class TestAtomicUSearchPublication:
                 raise RuntimeError(f"injected {step}")
 
         second = USearchEngine(config=config, embedder=embedder, publish_hook=boom)
+        journal_add(config, "new-row")
         try:
             second.add("test", "new-row", infer=False)
             with pytest.raises(RuntimeError, match="Failed to save USearch index"):
@@ -1936,6 +1952,7 @@ class TestAtomicUSearchPublication:
         writer = USearchEngine(config=config, embedder=embedder)
         try:
             _ = stale.index
+            journal_add(config, "stale-row", "newer-row")
             stale.add("test", "stale-row", infer=False)
             writer.add("test", "newer-row", infer=False)
             writer.commit()
