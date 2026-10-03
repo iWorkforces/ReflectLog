@@ -36,6 +36,11 @@ def _fingerprint(path: Path) -> tuple[str, int] | None:
     )
 
 
+def _wal_digest(path: Path) -> str:
+    """Return the sha256 of the WAL's bytes, counting an absent WAL as empty."""
+    return hashlib.sha256(path.read_bytes() if path.exists() else b"").hexdigest()
+
+
 def _seed(db_path: Path) -> dict[str, int]:
     """Create rows and one pending journal row of each kind, then checkpoint."""
     store = MemoryStore(db_path=str(db_path))
@@ -219,15 +224,17 @@ class TestSnapshotIsReadOnly:
     ) -> None:
         _ = _seed(db_path)
         wal = Path(f"{db_path}-wal")
-        shm = Path(f"{db_path}-shm")
-        before = (_fingerprint(db_path), _fingerprint(wal), shm.exists())
+        before = (_fingerprint(db_path), _wal_digest(wal))
 
         _ = read_memory_store_snapshot(str(db_path), WS)
         _ = read_memory_store_snapshot(str(db_path), OTHER)
 
-        # The -shm wal-index is shared memory that any reader touches, so only
-        # its presence is part of the contract, not its bytes or mtime.
-        assert (_fingerprint(db_path), _fingerprint(wal), shm.exists()) == before
+        # Sidecar existence and -shm are not compared: stock SQLite deletes
+        # -wal and -shm when the last connection closes and a read-only
+        # connection must recreate them (sqlite.org/wal.html, section 5),
+        # while Apple's build keeps them. The contract is therefore the
+        # database by sha256 and mtime and the WAL by content, absent == empty.
+        assert (_fingerprint(db_path), _wal_digest(wal)) == before
 
     def test_rollback_journal_database_gains_no_sidecar_files(
         self, db_path: Path, tmp_path: Path
