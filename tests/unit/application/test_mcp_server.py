@@ -25,6 +25,7 @@ from reflectlog.core.exceptions import (
     SearchError,
     StorageError,
 )
+from reflectlog.core.search_health import SearchFailureSnapshot
 
 
 class _TestServer(FastMCPServer):
@@ -112,6 +113,9 @@ class TestWorkspaceSelection:
 
         def create_manager(concrete: Config, _logger: object) -> MagicMock:
             manager = MagicMock(spec=MemoryManager)
+            manager.search_failure_snapshot = MagicMock(
+                return_value=SearchFailureSnapshot()
+            )
             manager.config = concrete
             manager.startup_metrics = None
             manager.search_engine_status.return_value = {
@@ -162,6 +166,9 @@ class TestWorkspaceSelection:
 
         def create_manager(concrete: Config, _logger: object) -> MagicMock:
             manager = MagicMock(spec=MemoryManager)
+            manager.search_failure_snapshot = MagicMock(
+                return_value=SearchFailureSnapshot()
+            )
             manager.config = concrete
             manager.startup_metrics = None
             manager.search_engine_status.return_value = {
@@ -214,6 +221,9 @@ class TestWorkspaceSelection:
 
         def create_manager(concrete: Config, _logger: object) -> MagicMock:
             manager = MagicMock(spec=MemoryManager)
+            manager.search_failure_snapshot = MagicMock(
+                return_value=SearchFailureSnapshot()
+            )
             manager.config = concrete
             manager.startup_metrics = None
             manager.count.return_value = 1
@@ -260,6 +270,9 @@ class TestWorkspaceSelection:
         config = replace(Config.from_environment(), workspace_id="test_project")
         with patch("reflectlog.application.mcp_server.MemoryManager") as factory:
             manager = MagicMock(spec=MemoryManager)
+            manager.search_failure_snapshot = MagicMock(
+                return_value=SearchFailureSnapshot()
+            )
             manager.config = config
             manager.startup_metrics = None
             manager.search_engine_status.return_value = {
@@ -926,6 +939,9 @@ class TestCoherentGetAllTool:
 
         def create_manager(concrete: Config, _logger: object) -> MagicMock:
             manager = MagicMock(spec=MemoryManager)
+            manager.search_failure_snapshot = MagicMock(
+                return_value=SearchFailureSnapshot()
+            )
             manager.config = concrete
             manager.startup_metrics = None
             manager.get_page_with_total.return_value = ([concrete.workspace_id], 1)

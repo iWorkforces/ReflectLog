@@ -12,10 +12,12 @@ from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.memory.workspace_registry import WorkspaceRegistry
 from reflectlog.application.utils.security import SecretString
 from reflectlog.core.exceptions import ConfigurationError
+from reflectlog.core.search_health import SearchFailureSnapshot
 
 
 def fake_manager(config: Config) -> MagicMock:
     manager = MagicMock(spec=MemoryManager)
+    manager.search_failure_snapshot = MagicMock(return_value=SearchFailureSnapshot())
     manager.config = config
     manager.closed = False
     manager.close.side_effect = lambda: setattr(manager, "closed", True)

@@ -45,8 +45,8 @@ class HealthCheckTool(BaseTool):
             Returns:
                 Dictionary containing health status information with keys:
                 - status: Overall status string ("healthy", "degraded", or
-                  "unhealthy"). Degraded means leftover replacement transitions
-                  are still pending. This check is read-only; leftovers are
+                  "unhealthy"). Degraded means pending journal intents or lazy
+                  engines awaiting initialization. This check is read-only; leftovers are
                   finished on startup or the next add persist.
                 - workspace_id: The configured workspace identifier
                 - semantic_engine: "initialized", "pending", or "not_initialized"
@@ -55,8 +55,19 @@ class HealthCheckTool(BaseTool):
                 - hybrid_search_enabled: Whether full-text search is enabled
                 - rrf_fusion_enabled: Whether RRF fusion is enabled
                 - recency_boost_enabled: Whether recency boost is enabled
-                - pending_replacement_transitions: Leftover replacement rows
+                - pending_intent_count: Leftover add/delete/replace journal intents
+                - search_failures: semantic, tantivy, cross_encoder, and
+                  openrouter_reranker records, each with count, last_failure_at
+                  (aware UTC ISO timestamp or null), and exception_type (class
+                  name only or null). No exception messages, queries, or memory
+                  text. Per cached workspace manager; resets on idle eviction.
+                  Historical failures do not change the overall status logic.
                 - startup_metrics: Optional dict with startup timing data (milliseconds)
+
+                On diagnostic errors, keys are status, workspace_id, error,
+                error_type, diagnostics, and search_failures. diagnostics contains
+                semantic_engine, tantivy_engine, reranker_engine, and
+                hybrid_search_enabled.
 
             Examples:
                 >>> health_check()
@@ -68,7 +79,14 @@ class HealthCheckTool(BaseTool):
                     "reranker_engine": "cross_encoder",
                     "hybrid_search_enabled": True,
                     "rrf_fusion_enabled": True,
-                    "recency_boost_enabled": True,
+                     "recency_boost_enabled": True,
+                     "pending_intent_count": 0,
+                     "search_failures": {
+                         "semantic": {"count": 0, "last_failure_at": None, "exception_type": None},
+                         "tantivy": {"count": 0, "last_failure_at": None, "exception_type": None},
+                         "cross_encoder": {"count": 0, "last_failure_at": None, "exception_type": None},
+                         "openrouter_reranker": {"count": 0, "last_failure_at": None, "exception_type": None}
+                     },
                     "startup_metrics": {
                         "numba_warmup": 250.5,
                         "server_initialization": 150.3,
@@ -76,6 +94,7 @@ class HealthCheckTool(BaseTool):
                     }
                 }
             """
+            search_failures = self.memory.search_failure_snapshot().to_dict()
             engine_status = {
                 "semantic_engine": EngineReadiness.UNKNOWN,
                 "tantivy_engine": EngineReadiness.UNKNOWN,
@@ -117,6 +136,7 @@ class HealthCheckTool(BaseTool):
                     "rrf_fusion_enabled": self.config.enable_rrf_fusion,
                     "recency_boost_enabled": self.config.enable_recency_boost,
                     "pending_intent_count": pending_count,
+                    "search_failures": search_failures,
                 }
 
                 # Add startup metrics if available
@@ -142,6 +162,7 @@ class HealthCheckTool(BaseTool):
                     "workspace_id": self.config.workspace_id,
                     "error": str(e),
                     "error_type": type(e).__name__,
+                    "search_failures": search_failures,
                     # Provide component states even during error
                     "diagnostics": {
                         **engine_status,
