@@ -28,7 +28,7 @@ from reflectlog.application.memory.fusion.base import FusionEngine
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.application.utils.security import SecretString
 from reflectlog.core.enums import RerankerEngine
-from reflectlog.core.exceptions import InitializationError
+from reflectlog.core.exceptions import ConfigurationError, InitializationError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.infrastructure.embedding_identity import ensure_embedding_identity
 from reflectlog.infrastructure.storage_coordinator import PortalockerStorageCoordinator
@@ -515,6 +515,39 @@ class TestCreateTantivyEngine:
 
         call_kwargs = mock_tantivy_config_cls.call_args
         assert call_kwargs[1]["index_path"] == "indexes/myproject/tantivy"
+
+    @patch("reflectlog.application.memory.engine_factory.TantivyEngine")
+    @patch("reflectlog.application.memory.engine_factory.TantivyConfig")
+    def test_padded_workspace_id_is_canonical_in_path_and_field(
+        self,
+        mock_tantivy_config_cls: Mock,
+        mock_tantivy_cls: Mock,
+        mock_config: Mock,
+        mock_logger: Mock,
+        factory: EngineFactory,
+    ) -> None:
+        """Surrounding whitespace never reaches the Tantivy path or workspace field."""
+        mock_config.workspace_id = "  MyProject  "
+        mock_config.tantivy_index_path_template = "indexes/{workspace_id}/tantivy"
+        mock_config.tantivy_normalize_scores = False
+
+        factory._create_tantivy_engine(mock_config, mock_logger)
+
+        call_kwargs = mock_tantivy_config_cls.call_args[1]
+        assert call_kwargs["index_path"] == "indexes/myproject/tantivy"
+        assert call_kwargs["workspace_id"] == "myproject"
+
+    def test_invalid_workspace_id_is_rejected_before_any_engine(
+        self,
+        mock_config: Mock,
+        mock_logger: Mock,
+        factory: EngineFactory,
+    ) -> None:
+        mock_config.workspace_id = "../escape"
+        mock_config.tantivy_index_path_template = "indexes/{workspace_id}/tantivy"
+
+        with pytest.raises(ConfigurationError):
+            factory._create_tantivy_engine(mock_config, mock_logger)
 
 
 @pytest.mark.unit

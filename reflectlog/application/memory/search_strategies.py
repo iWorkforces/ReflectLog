@@ -22,14 +22,15 @@ if TYPE_CHECKING:
     from ...core.types import ISemanticSearchEngine
     from ..config.settings import Config
     from .fusion.base import FusionEngine
+    from .search_health import SearchFailureRecorder
 
 from asyncer import (
     asyncify,
     create_task_group,
 )
 
-from reflectlog.core.enums import RerankerEngine
-from reflectlog.core.exceptions import SearchError
+from reflectlog.core.enums import RerankerEngine, SearchComponent
+from reflectlog.core.exceptions import InitializationError, SearchError
 
 from ..utils.logging import format_fusion_score_status
 
@@ -107,6 +108,8 @@ class SearchPipeline:
         config: Config,
         logger: IStructuredLogger | None,
         memory_manager: RerankerProvider | None,
+        *,
+        failure_recorder: SearchFailureRecorder | None = None,
     ) -> None:
         """Initialize search pipeline.
 
@@ -117,6 +120,7 @@ class SearchPipeline:
             config: Application configuration.
             logger: Structured logger instance.
             memory_manager: MemoryManager instance for lazy reranker fetching (optional).
+            failure_recorder: Optional recorder for swallowed component failures.
         """
         super().__init__()
         if logger is None:
@@ -128,6 +132,12 @@ class SearchPipeline:
         self.config = config
         self.logger = logger
         self._memory_manager = memory_manager
+        self._failure_recorder = failure_recorder
+
+    def _record_failure(self, component: SearchComponent, error: BaseException) -> None:
+        """Record a swallowed failure when instrumentation is configured."""
+        if self._failure_recorder is not None:
+            self._failure_recorder.record(component, error)
 
     async def execute(
         self, context: SearchContext, *, include_timestamp_map: bool = True
@@ -143,6 +153,9 @@ class SearchPipeline:
 
         Raises:
             SearchError: If search operation fails.
+            InitializationError: If the semantic index was refused (for example
+                SQLite and vector ids disagree). It propagates unchanged
+                instead of degrading to full-text results.
 
         Note:
             Cancelling this await does not abort native USearch or Tantivy
@@ -151,7 +164,7 @@ class SearchPipeline:
         try:
             return await self._execute_hybrid_search(context, include_timestamp_map)
 
-        except SearchError:
+        except SearchError, InitializationError:
             raise
         except Exception as e:
             self.logger.error(
@@ -175,6 +188,11 @@ class SearchPipeline:
             semantic_error,
             tantivy_error,
         ) = await self._step1_parallel_search(context)
+        # A refused index must reach the caller, not degrade to full-text hits.
+        # The error is returned (not raised) by the task-group child so no
+        # ExceptionGroup hides it; it is re-raised here, after the group.
+        if isinstance(semantic_error, InitializationError):
+            raise semantic_error
         semantic_results = self._filter_semantic_threshold(semantic_results)
         tantivy_results = await asyncify(self._filter_live_hits)(
             tantivy_results, context.workspace_id
@@ -325,6 +343,7 @@ class SearchPipeline:
             )
             return results, None
         except Exception as e:
+            self._record_failure(SearchComponent.SEMANTIC, e)
             self.logger.warning(
                 "Semantic search failed - falling back to Tantivy full-text only",
                 extra={
@@ -352,6 +371,7 @@ class SearchPipeline:
             )(query, workspace_id, limit)
             return tantivy_results, None
         except Exception as e:
+            self._record_failure(SearchComponent.TANTIVY, e)
             self.logger.warning(
                 "Tantivy search failed - continuing with semantic results only",
                 extra={
@@ -629,6 +649,7 @@ class SearchPipeline:
                     top_k=context.limit,
                 )
             except Exception as exc:
+                self._record_failure(SearchComponent.OPENROUTER_RERANKER, exc)
                 self.logger.warning(
                     "OpenRouter reranking failed; returning fused results",
                     extra={
@@ -679,6 +700,7 @@ class SearchPipeline:
                     top_k=self._cross_encoder_top_k(context),
                 )
         except Exception as exc:
+            self._record_failure(SearchComponent.CROSS_ENCODER, exc)
             self.logger.warning(
                 "CrossEncoder failed; returning fused results",
                 extra={"error": str(exc), "candidate_count": len(results)},

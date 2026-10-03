@@ -3,6 +3,7 @@
 import os
 import tempfile
 import threading
+from typing import Protocol
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,10 +13,18 @@ from reflectlog.application.memory.replacement_recovery import (
     reconcile_pending_replacements,
     replacement_converged,
 )
-from reflectlog.core.enums import TransitionKind, TransitionStatus
+from reflectlog.core.enums import SearchComponent, TransitionKind, TransitionStatus
+from reflectlog.core.exceptions import InitializationError, StorageError
+from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.storage_coordination import LeaseMode, WorkspaceStoragePaths
-from reflectlog.core.types import ReplacementTransition
+from reflectlog.core.types import (
+    IMemorySnapshotReader,
+    ISemanticSearchEngine,
+    MemoryStoreSnapshot,
+    ReplacementTransition,
+)
 from reflectlog.infrastructure.memory_store import MemoryStore
+from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 
 
 def _stub_contains(semantic: MagicMock) -> None:
@@ -1173,3 +1182,383 @@ class TestReconcilePendingReplacements:
             assert added.id not in pending_ids
             assert replaced.id not in pending_ids
             store.close()
+
+
+REFUSAL = "Restore a consistent backup or rebuild this workspace offline."
+
+
+def _planted_replace(tmpdir: str) -> tuple[MemoryStore, MagicMock]:
+    store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+    _ = store.begin_replacement_transition(
+        old_memory_id=11,
+        workspace_id="proj",
+        old_content="old convention",
+        new_content="new convention",
+        reason="updated",
+        confidence=0.9,
+    )
+    semantic = MagicMock(spec=ISemanticSearchEngine)
+    semantic.memory_store = store
+    _stub_contains(semantic)
+    semantic.get_id_by_content.side_effect = lambda _ws, content: (
+        99 if content == "new convention" else None
+    )
+    semantic.index = {99}
+    return store, semantic
+
+
+@pytest.mark.unit
+class TestPostRecoveryVerification:
+    """Recovery re-verifies the index ids under the lease and manager locks."""
+
+    def test_verifies_once_after_the_recovery_loop_while_locks_are_held(self) -> None:
+        events: list[str] = []
+        write_lock, inner_lock = threading.Lock(), threading.RLock()
+        original = MemoryStore.complete_replacement_transition
+
+        def record_complete(store: MemoryStore, transition_id: int) -> None:
+            events.append(f"complete-{transition_id}")
+            original(store, transition_id)
+
+        def verify() -> None:
+            assert write_lock.locked()
+            events.append("verify")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, semantic = _planted_replace(tmpdir)
+            semantic.verify_index_integrity.side_effect = verify
+            try:
+                with patch.object(
+                    MemoryStore, "complete_replacement_transition", record_complete
+                ):
+                    count = reconcile_pending_replacements(
+                        semantic_engine=semantic,
+                        tantivy_engine=None,
+                        write_lock=write_lock,
+                        lock=inner_lock,
+                        logger=MagicMock(spec=IStructuredLogger),
+                    )
+            finally:
+                store.close()
+
+            assert count == 1
+            assert events == ["complete-1", "verify"]
+
+    def test_does_not_verify_when_nothing_is_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            semantic = MagicMock(spec=ISemanticSearchEngine)
+            semantic.memory_store = store
+
+            count = reconcile_pending_replacements(
+                semantic_engine=semantic,
+                tantivy_engine=None,
+                write_lock=threading.Lock(),
+                lock=threading.RLock(),
+                logger=MagicMock(spec=IStructuredLogger),
+            )
+
+            assert count == 0
+            semantic.verify_index_integrity.assert_not_called()
+            store.close()
+
+    def test_a_failed_verification_refuses_instead_of_opening(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, semantic = _planted_replace(tmpdir)
+            semantic.verify_index_integrity.side_effect = InitializationError(REFUSAL)
+
+            with pytest.raises(InitializationError, match="Restore a consistent"):
+                _ = reconcile_pending_replacements(
+                    semantic_engine=semantic,
+                    tantivy_engine=None,
+                    write_lock=threading.Lock(),
+                    lock=threading.RLock(),
+                    logger=MagicMock(spec=IStructuredLogger),
+                )
+
+            store.close()
+
+    def test_a_refusal_inside_one_transition_is_not_swallowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, semantic = _planted_replace(tmpdir)
+            semantic.delete.side_effect = InitializationError(REFUSAL)
+            logger = MagicMock(spec=IStructuredLogger)
+
+            with pytest.raises(InitializationError, match="Restore a consistent"):
+                _ = reconcile_pending_replacements(
+                    semantic_engine=semantic,
+                    tantivy_engine=None,
+                    write_lock=threading.Lock(),
+                    lock=threading.RLock(),
+                    logger=logger,
+                )
+
+            logger.error.assert_not_called()
+            semantic.verify_index_integrity.assert_not_called()
+            assert len(store.list_pending_transitions()) == 1
+            store.close()
+
+
+class _SnapshotCapableEngine(ISemanticSearchEngine, IMemorySnapshotReader, Protocol):
+    """The semantic engine as ``USearchEngine`` is: it can read a snapshot."""
+
+
+def _snapshot(
+    *pending: ReplacementTransition, unrecognized: int = 0
+) -> MemoryStoreSnapshot:
+    return MemoryStoreSnapshot(
+        workspace_id="proj",
+        contents_by_id={},
+        pending_transitions=pending,
+        unrecognized_pending_count=unrecognized,
+    )
+
+
+@pytest.mark.unit
+class TestJournalIsReadBeforeTheWritableStoreOpens:
+    """Nothing pending: the writable store stays closed. Pending: verify first."""
+
+    def test_no_pending_rows_never_open_the_writable_store(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "memories.db")
+            with open(db_path, "wb"):
+                pass  # exists, so only the snapshot can end recovery early
+            store = MemoryStore(db_path=db_path)
+            semantic = MagicMock(spec=_SnapshotCapableEngine)
+            semantic.memory_store = store
+            semantic.read_memory_snapshot.return_value = _snapshot()
+            try:
+                count = reconcile_pending_replacements(
+                    semantic_engine=semantic,
+                    tantivy_engine=None,
+                    write_lock=threading.Lock(),
+                    lock=threading.RLock(),
+                    logger=MagicMock(spec=IStructuredLogger),
+                )
+
+                assert count == 0
+                assert not store.is_ready()
+                semantic.ensure_initialized.assert_not_called()
+            finally:
+                store.close()
+
+    @pytest.mark.parametrize("unrecognized", [0, 1])
+    def test_pending_rows_verify_the_index_before_the_store_lists_them(
+        self, unrecognized: int
+    ) -> None:
+        events: list[str] = []
+        original = MemoryStore.list_pending_transitions
+
+        def record_list(store: MemoryStore) -> list[ReplacementTransition]:
+            events.append("list")
+            return original(store)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, planted = _planted_replace(tmpdir)
+            semantic = MagicMock(spec=_SnapshotCapableEngine)
+            semantic.memory_store = store
+            semantic.contains_id.side_effect = planted.contains_id.side_effect
+            semantic.get_id_by_content.side_effect = (
+                planted.get_id_by_content.side_effect
+            )
+            semantic.index = planted.index
+            row = original(store)[0]
+            semantic.read_memory_snapshot.return_value = (
+                _snapshot(row) if not unrecognized else _snapshot(unrecognized=1)
+            )
+            semantic.ensure_initialized.side_effect = lambda: events.append("verify")
+            try:
+                with patch.object(MemoryStore, "list_pending_transitions", record_list):
+                    _ = reconcile_pending_replacements(
+                        semantic_engine=semantic,
+                        tantivy_engine=None,
+                        write_lock=threading.Lock(),
+                        lock=threading.RLock(),
+                        logger=MagicMock(spec=IStructuredLogger),
+                    )
+            finally:
+                store.close()
+
+            assert events[:2] == ["verify", "list"]
+
+    def test_a_refusal_while_verifying_leaves_the_writable_store_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "memories.db")
+            with open(db_path, "wb"):
+                pass  # exists, so recovery does not short-circuit on a missing file
+            store = MemoryStore(db_path=db_path)
+            semantic = MagicMock(spec=_SnapshotCapableEngine)
+            semantic.memory_store = store
+            semantic.read_memory_snapshot.return_value = _snapshot(
+                ReplacementTransition(
+                    id=3,
+                    workspace_id="proj",
+                    old_memory_id=11,
+                    old_content="old convention",
+                    new_content="new convention",
+                    archive_id=8,
+                    reason="updated",
+                    confidence=0.9,
+                    status=TransitionStatus.PENDING,
+                )
+            )
+            semantic.ensure_initialized.side_effect = InitializationError(REFUSAL)
+            try:
+                with pytest.raises(InitializationError, match="Restore a consistent"):
+                    _ = reconcile_pending_replacements(
+                        semantic_engine=semantic,
+                        tantivy_engine=None,
+                        write_lock=threading.Lock(),
+                        lock=threading.RLock(),
+                        logger=MagicMock(spec=IStructuredLogger),
+                    )
+
+                assert not store.is_ready()
+            finally:
+                store.close()
+
+    def test_an_unreadable_snapshot_falls_back_to_the_writable_store(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, planted = _planted_replace(tmpdir)
+            semantic = MagicMock(spec=_SnapshotCapableEngine)
+            semantic.memory_store = store
+            semantic.contains_id.side_effect = planted.contains_id.side_effect
+            semantic.get_id_by_content.side_effect = (
+                planted.get_id_by_content.side_effect
+            )
+            semantic.index = planted.index
+            semantic.read_memory_snapshot.side_effect = StorageError("unreadable")
+            try:
+                count = reconcile_pending_replacements(
+                    semantic_engine=semantic,
+                    tantivy_engine=None,
+                    write_lock=threading.Lock(),
+                    lock=threading.RLock(),
+                    logger=MagicMock(spec=IStructuredLogger),
+                )
+
+                assert count == 1
+            finally:
+                store.close()
+
+    def test_an_unreadable_snapshot_verifies_the_index_before_the_store_opens(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "memories.db")
+            with open(db_path, "wb"):
+                pass  # exists, so recovery does not short-circuit on a missing file
+            store = MemoryStore(db_path=db_path)
+            semantic = MagicMock(spec=_SnapshotCapableEngine)
+            semantic.memory_store = store
+            semantic.read_memory_snapshot.side_effect = StorageError("unreadable")
+            semantic.ensure_initialized.side_effect = InitializationError(REFUSAL)
+            reported: list[SearchComponent] = []
+            try:
+                with pytest.raises(InitializationError, match="Restore a consistent"):
+                    _ = reconcile_pending_replacements(
+                        semantic_engine=semantic,
+                        tantivy_engine=None,
+                        write_lock=threading.Lock(),
+                        lock=threading.RLock(),
+                        logger=MagicMock(spec=IStructuredLogger),
+                        on_refusal=lambda component, _error: reported.append(component),
+                    )
+
+                assert not store.is_ready()
+                assert reported == [SearchComponent.SEMANTIC]
+            finally:
+                store.close()
+
+
+@pytest.mark.unit
+class TestRefusalsAreReportedAgainstTheEngineThatRaised:
+    """``on_refusal`` fires once per refusal, by call site, before the re-raise."""
+
+    @staticmethod
+    def _reconcile(
+        semantic: MagicMock,
+        tantivy: MagicMock | None,
+        reported: list[tuple[SearchComponent, InitializationError]],
+    ) -> int:
+        return reconcile_pending_replacements(
+            semantic_engine=semantic,
+            tantivy_engine=tantivy,
+            write_lock=threading.Lock(),
+            lock=threading.RLock(),
+            logger=MagicMock(spec=IStructuredLogger),
+            on_refusal=lambda component, error: reported.append((component, error)),
+        )
+
+    def test_a_semantic_open_refusal_is_semantic(self) -> None:
+        refusal = InitializationError(REFUSAL)
+        reported: list[tuple[SearchComponent, InitializationError]] = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, semantic = _planted_replace(tmpdir)
+            semantic.ensure_initialized.side_effect = refusal
+            try:
+                with pytest.raises(InitializationError) as caught:
+                    _ = self._reconcile(semantic, None, reported)
+            finally:
+                store.close()
+
+        assert caught.value is refusal
+        assert reported == [(SearchComponent.SEMANTIC, refusal)]
+
+    def test_a_tantivy_initialization_refusal_is_tantivy(self) -> None:
+        refusal = InitializationError("Failed to open existing Tantivy index")
+        reported: list[tuple[SearchComponent, InitializationError]] = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, semantic = _planted_replace(tmpdir)
+            tantivy = MagicMock(spec=TantivyEngine)
+            tantivy.ensure_initialized.side_effect = refusal
+            try:
+                with pytest.raises(InitializationError) as caught:
+                    _ = self._reconcile(semantic, tantivy, reported)
+            finally:
+                store.close()
+
+        assert caught.value is refusal
+        assert reported == [(SearchComponent.TANTIVY, refusal)]
+
+    def test_a_refusal_while_converging_a_row_is_semantic(self) -> None:
+        refusal = InitializationError(REFUSAL)
+        reported: list[tuple[SearchComponent, InitializationError]] = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, semantic = _planted_replace(tmpdir)
+            semantic.delete.side_effect = refusal
+            try:
+                with pytest.raises(InitializationError):
+                    _ = self._reconcile(semantic, None, reported)
+            finally:
+                store.close()
+
+        assert reported == [(SearchComponent.SEMANTIC, refusal)]
+
+    def test_a_failed_post_recovery_verification_is_semantic_and_reported_once(
+        self,
+    ) -> None:
+        refusal = InitializationError(REFUSAL)
+        reported: list[tuple[SearchComponent, InitializationError]] = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, semantic = _planted_replace(tmpdir)
+            semantic.verify_index_integrity.side_effect = refusal
+            try:
+                with pytest.raises(InitializationError):
+                    _ = self._reconcile(semantic, None, reported)
+            finally:
+                store.close()
+
+        assert reported == [(SearchComponent.SEMANTIC, refusal)]
+
+    def test_an_ordinary_error_is_not_a_refusal(self) -> None:
+        reported: list[tuple[SearchComponent, InitializationError]] = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, semantic = _planted_replace(tmpdir)
+            semantic.delete.side_effect = RuntimeError("disk")
+            try:
+                _ = self._reconcile(semantic, None, reported)
+            finally:
+                store.close()
+
+        assert reported == []

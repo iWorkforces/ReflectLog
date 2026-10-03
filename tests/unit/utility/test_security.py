@@ -1,9 +1,4 @@
-"""Characterization tests for security module equivalence.
-
-Proves that reflectlog.utility.security.validate_workspace_id and
-reflectlog.application.utils.security.validate_workspace_id have identical
-behavior before module consolidation.
-"""
+"""Tests for the shared workspace rule and its application delegate."""
 
 import inspect
 
@@ -18,11 +13,22 @@ from reflectlog.application.utils.security import (
     validate_workspace_id as app_validate,
 )
 from reflectlog.core.exceptions import ValidationError
+from reflectlog.utility import security as workspace_security
 from reflectlog.utility.security import validate_workspace_id as util_validate
 
 
 class TestValidateWorkspaceIdEquivalence:
-    """Prove both validate_workspace_id implementations are identical."""
+    """Both entry points must use one rule, not equivalent copies."""
+
+    def test_application_delegates_to_shared_rule(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def reject(workspace_id: str) -> str:
+            raise ValidationError("shared-rule sentinel")
+
+        monkeypatch.setattr(workspace_security, "validate_workspace_id", reject)
+        with pytest.raises(ValidationError, match="shared-rule sentinel"):
+            app_validate("valid")
 
     def test_function_signature_matches(self) -> None:
         """Both functions have the same signature."""
@@ -39,7 +45,7 @@ class TestValidateWorkspaceIdEquivalence:
             ("MyProject", "myproject"),
             ("ABC-123", "abc-123"),
             ("a", "a"),
-            ("a" * 128, "a" * 128),
+            ("a" * 64, "a" * 64),
             ("simple123", "simple123"),
             ("dotted.name.here", "dotted.name.here"),
             ("under_score", "under_score"),
@@ -52,7 +58,7 @@ class TestValidateWorkspaceIdEquivalence:
             "uppercase-lowered",
             "mixed-case-lowered",
             "single-char",
-            "max-length-128",
+            "max-length-64",
             "simple-alphanumeric",
             "multi-dotted",
             "underscore-only",
@@ -63,6 +69,10 @@ class TestValidateWorkspaceIdEquivalence:
         """Both functions accept valid IDs and return the same lowercased result."""
         assert util_validate(workspace_id) == expected
         assert app_validate(workspace_id) == expected
+
+    def test_surrounding_whitespace_is_ignored(self) -> None:
+        for fn in (util_validate, app_validate):
+            assert fn(" \tMiXeD\n") == "mixed"
 
     @pytest.mark.parametrize(
         "workspace_id,error_match",
@@ -77,7 +87,7 @@ class TestValidateWorkspaceIdEquivalence:
             ("path/slash", "invalid characters"),
             ("back\\slash", "invalid characters"),
             ("semi;colon", "invalid characters"),
-            ("a" * 129, "too long"),
+            ("a" * 65, "too long"),
             ("has\nnewline", "invalid characters"),
             ("has\ttab", "invalid characters"),
         ],
@@ -92,7 +102,7 @@ class TestValidateWorkspaceIdEquivalence:
             "forward-slash",
             "backslash",
             "semicolon",
-            "too-long-129",
+            "too-long-65",
             "newline",
             "tab",
         ],
@@ -111,6 +121,14 @@ class TestValidateWorkspaceIdEquivalence:
             with pytest.raises(ValidationError) as exc_info:
                 fn("")
             assert exc_info.type is ValidationError
+
+    @pytest.mark.parametrize(
+        "workspace_id", [".", " \t\n", "café", "a" * 128, "a" * 129]
+    )
+    def test_formerly_divergent_ids_are_rejected(self, workspace_id: str) -> None:
+        for fn in (util_validate, app_validate):
+            with pytest.raises(ValidationError):
+                fn(workspace_id)
 
     def test_path_traversal_after_lowercase(self) -> None:
         """Path traversal check happens after lowercasing."""

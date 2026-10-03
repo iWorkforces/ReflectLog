@@ -8,50 +8,27 @@ import re
 
 
 def validate_workspace_id(workspace_id: str) -> str:
-    """Validate workspace_id to prevent path traversal attacks.
+    """Strip and lowercase a safe 1..64-character ASCII workspace identifier.
 
-    This function validates that a workspace_id contains only safe characters
-    and does not contain path traversal patterns like "../" that could allow
-    writing files outside the intended directory.
-
-    Args:
-        workspace_id: The workspace identifier to validate.
-
-    Returns:
-        The validated workspace_id (lowercased).
-
-    Raises:
-        ValidationError: If workspace_id contains invalid characters or path patterns.
-
-    Example:
-        >>> validate_workspace_id("my-project-123")
-        'my-project-123'
-        >>> validate_workspace_id("../../../etc")
-        ValidationError: Invalid workspace_id: ../../../etc
+    Only A-Za-z0-9_.- are allowed; '.' and every '..' occurrence are rejected.
+    Invalid identifiers raise core ValidationError without exposing raw input.
     """
     from reflectlog.core.exceptions import ValidationError
 
-    if not workspace_id:
+    normalized = workspace_id.strip()
+    if not normalized:
         raise ValidationError("workspace_id cannot be empty")
-
-    # Normalize to lowercase first (before other checks)
-    workspace_id = workspace_id.lower()
-
-    # Check for path traversal patterns
-    if ".." in workspace_id or workspace_id.startswith("/"):
-        raise ValidationError(f"Invalid workspace_id: {workspace_id}")
-
-    # Allow only alphanumeric, hyphen, underscore, and dot
-    if not re.match(r"^[a-zA-Z0-9_.-]+$", workspace_id):
+    if len(normalized) > 64:
         raise ValidationError(
-            f"workspace_id contains invalid characters: {workspace_id}. "
-            "Only alphanumeric, hyphens, underscores, and dots are allowed."
+            "workspace_id too long (max 64 characters after stripping)"
         )
-
-    # Length limit (prevent excessively long workspace IDs)
-    if len(workspace_id) > 128:
+    if re.fullmatch(r"[A-Za-z0-9_.-]+", normalized, flags=re.ASCII) is None:
         raise ValidationError(
-            f"workspace_id too long (max 128 characters): {len(workspace_id)}"
+            "Invalid workspace_id: contains invalid characters. "
+            "Only ASCII A-Za-z0-9_.- are allowed."
         )
-
-    return workspace_id
+    if normalized == "." or ".." in normalized:
+        raise ValidationError(
+            "Invalid workspace_id: Path traversal patterns '.' and '..' are not allowed"
+        )
+    return normalized.lower()

@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import anyio
 import pytest
 
+from reflectlog.core.search_health import SearchFailureSnapshot
+
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
@@ -637,6 +639,9 @@ class TestGracefulShutdown:
             assert release.wait(timeout=10)
 
         manager = MagicMock(spec=MemoryManager)
+        manager.search_failure_snapshot = MagicMock(
+            return_value=SearchFailureSnapshot()
+        )
         manager.close.side_effect = close_manager
         with patch(
             "reflectlog.application.mcp_server.MemoryManager", return_value=manager
@@ -672,6 +677,9 @@ class TestGracefulShutdown:
         from reflectlog.application.memory.manager import MemoryManager
 
         manager = MagicMock(spec=MemoryManager)
+        manager.search_failure_snapshot = MagicMock(
+            return_value=SearchFailureSnapshot()
+        )
         with patch(
             "reflectlog.application.mcp_server.MemoryManager", return_value=manager
         ):
@@ -704,6 +712,9 @@ class TestGracefulShutdown:
                 raise RuntimeError("persist failed")
 
         manager = MagicMock(spec=MemoryManager)
+        manager.search_failure_snapshot = MagicMock(
+            return_value=SearchFailureSnapshot()
+        )
         manager.close.side_effect = close_manager
         with patch(
             "reflectlog.application.mcp_server.MemoryManager", return_value=manager
@@ -806,6 +817,9 @@ class TestGracefulShutdown:
 
         handlers: dict[int, Callable[[int, object], None]] = {}
         manager = MagicMock(spec=MemoryManager)
+        manager.search_failure_snapshot = MagicMock(
+            return_value=SearchFailureSnapshot()
+        )
         completed = asyncio.Event()
 
         def capture(number: int, handler: Callable[[int, object], None]) -> None:
@@ -863,6 +877,9 @@ class TestGracefulShutdown:
         handlers: dict[int, Callable[[int, object], None]] = {}
         entered = threading.Event()
         manager = MagicMock(spec=MemoryManager)
+        manager.search_failure_snapshot = MagicMock(
+            return_value=SearchFailureSnapshot()
+        )
         manager.close.side_effect = entered.set
         completed = asyncio.Event()
 

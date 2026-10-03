@@ -16,6 +16,8 @@ from reflectlog.core.enums import (
     TransportMode,
 )
 from reflectlog.core.exceptions import ConfigurationError as WorkspaceConfigurationError
+from reflectlog.core.exceptions import ValidationError as WorkspaceValidationError
+from reflectlog.utility import security as workspace_security
 
 if TYPE_CHECKING:
     from reflectlog.application.config.settings import Config
@@ -50,9 +52,6 @@ class ConfigurationValidator:
     This class provides methods to validate various configuration settings,
     checking for type correctness, value ranges, and logical consistency.
     """
-
-    # Regex patterns
-    WORKSPACE_ID_PATTERN: ClassVar = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
     # Valid values for enums
     VALID_TRANSPORTS: ClassVar = frozenset(TransportMode)
@@ -94,24 +93,10 @@ class ConfigurationValidator:
         Returns:
             True if valid, False otherwise
         """
-        if not workspace_id:
-            self.add_error("WORKSPACE_ID", workspace_id, "Cannot be empty")
-            return False
-
-        if not self.WORKSPACE_ID_PATTERN.match(workspace_id):
-            self.add_error(
-                "WORKSPACE_ID",
-                workspace_id,
-                "Must contain only A-Za-z0-9_.- and be 1-64 characters",
-            )
-            return False
-
-        if workspace_id == "." or ".." in workspace_id:
-            self.add_error(
-                "WORKSPACE_ID",
-                workspace_id,
-                "Path traversal patterns not allowed",
-            )
+        try:
+            _ = workspace_security.validate_workspace_id(workspace_id)
+        except WorkspaceValidationError as exc:
+            self.add_error("WORKSPACE_ID", workspace_id, str(exc))
             return False
 
         return True
@@ -659,21 +644,20 @@ class ConfigurationValidator:
 
 
 def canonical_workspace_id(workspace_id: str) -> str:
-    normalized = workspace_id.strip().lower()
-    validator = ConfigurationValidator()
-    if not validator.validate_workspace_id(normalized):
-        raise WorkspaceConfigurationError(
-            f"Invalid WORKSPACE_ID: {validator.errors[0].message.lower()}"
-        )
-    return normalized
+    try:
+        return workspace_security.validate_workspace_id(workspace_id)
+    except WorkspaceValidationError as exc:
+        raise WorkspaceConfigurationError(f"Invalid WORKSPACE_ID: {exc}") from exc
 
 
 def _validate_server_config(
     validator: ConfigurationValidator,
     config: Config,
+    *,
+    allow_unbound_workspace: bool = False,
 ) -> None:
     """Validate server transport, port, and workspace ID."""
-    if config.workspace_id:
+    if not (allow_unbound_workspace and config.workspace_id == ""):
         _ = validator.validate_workspace_id(config.workspace_id)
     _ = validator.validate_transport(config.transport)
     _ = validator.validate_port(config.port)
@@ -768,7 +752,9 @@ def _validate_security_fields(
         _ = validator.validate_openrouter_api_key_format(api_key)
 
 
-def validate_config(config: Config) -> list[ValidationError]:
+def validate_config(
+    config: Config, *, allow_unbound_workspace: bool = False
+) -> list[ValidationError]:
     """Validate a configuration object.
 
     This is a convenience function that creates a validator and runs
@@ -776,13 +762,16 @@ def validate_config(config: Config) -> list[ValidationError]:
 
     Args:
         config: Application configuration.
+        allow_unbound_workspace: Permit only the exact empty-string MCP template ID.
 
     Returns:
         List of validation errors (empty if valid)
     """
     validator = ConfigurationValidator()
 
-    _validate_server_config(validator, config)
+    _validate_server_config(
+        validator, config, allow_unbound_workspace=allow_unbound_workspace
+    )
     _validate_search_config(validator, config)
     _validate_storage_config(validator, config)
     _validate_embedder_config(validator, config)

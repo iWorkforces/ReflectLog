@@ -52,6 +52,15 @@ class RerankerEngine(StrEnum):
     NONE = "none"
 
 
+class SearchComponent(StrEnum):
+    """Search components whose swallowed failures are counted."""
+
+    SEMANTIC = "semantic"
+    TANTIVY = "tantivy"
+    CROSS_ENCODER = "cross_encoder"
+    OPENROUTER_RERANKER = "openrouter_reranker"
+
+
 class FusionMethod(StrEnum):
     """Hybrid-search fusion algorithm selected by ``FUSION_METHOD``."""
 

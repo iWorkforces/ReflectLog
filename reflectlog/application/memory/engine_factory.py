@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from reflectlog.application.config.validation import canonical_workspace_id
 from reflectlog.application.memory.fusion import create_fusion_engine
 from reflectlog.core.config_adapters import ConfigAdapter
 from reflectlog.core.enums import EmbedderProvider, RerankerEngine, WeMMModel
@@ -84,7 +85,7 @@ class EngineFactory:
             USearchConfig.from_config(ConfigAdapter(config)),
             coordinator,
             tantivy_index_path=config.tantivy_index_path_template.format(
-                workspace_id=config.workspace_id
+                workspace_id=canonical_workspace_id(config.workspace_id)
             ).lower(),
         )
 
@@ -212,10 +213,11 @@ class EngineFactory:
         Returns:
             TantivyEngine instance.
         """
+        workspace_id = canonical_workspace_id(config.workspace_id)
         tantivy_config = TantivyConfig(
-            workspace_id=config.workspace_id,
+            workspace_id=workspace_id,
             index_path=config.tantivy_index_path_template.format(
-                workspace_id=config.workspace_id
+                workspace_id=workspace_id
             ).lower(),
             normalize_scores=config.tantivy_normalize_scores,
             soft_delete_enabled=config.tantivy_soft_delete_enabled,

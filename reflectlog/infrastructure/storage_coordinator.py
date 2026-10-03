@@ -102,7 +102,7 @@ class PortalockerStorageCoordinator:
         return self._timeout
 
     def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
-        safe_id = validate_workspace_id(workspace_id).lower()
+        safe_id = validate_workspace_id(workspace_id)
         root = os.path.join(self._indexes_root, safe_id)
         return WorkspaceStoragePaths(
             workspace_id=safe_id,
@@ -241,7 +241,7 @@ class PortalockerStorageCoordinator:
 
     def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
         """Return True when the calling thread already holds a lease."""
-        safe_id = validate_workspace_id(workspace_id).lower()
+        safe_id = validate_workspace_id(workspace_id)
         owner = threading.get_ident()
         state = self._state_for(safe_id)
         with state.cond:

@@ -10,16 +10,23 @@ Types defined here:
     IArchiveMemoryStore: Protocol for archive operations.
     IStoredMemory: Protocol for stored memory rows.
     ISemanticSearchEngine: Protocol for semantic search engines.
+    MemoryStoreSnapshot: Read-only view of one workspace's rows and journal.
+    IMemorySnapshotReader: Protocol for engines that can read that view.
+    IIndexIntegrityVerifier: Protocol for engines that can verify vector ids.
 """
 
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     Protocol,
     TypedDict,
     runtime_checkable,
 )
 
 from reflectlog.core.enums import TransitionKind, TransitionStatus
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 ReplacementTransitionStatus = TransitionStatus
 IndexIntentKind = TransitionKind
@@ -66,6 +73,25 @@ class ReplacementTransitionRequest:
     new_content: str
     reason: str
     confidence: float
+
+
+@dataclass(frozen=True)
+class MemoryStoreSnapshot:
+    """One transactional, read-only view of a workspace's SQLite state.
+
+    ``contents_by_id`` maps every memory row id of the workspace to its text
+    so callers can match journal rows by content. It is matching data only:
+    never put it in a log line or an error message. ``pending_transitions``
+    holds the workspace's journal rows whose status is pending and whose kind
+    and fields are recognised, in journal order. Pending rows with an
+    unrecognised kind or malformed fields authorise nothing and are only
+    counted in ``unrecognized_pending_count``.
+    """
+
+    workspace_id: str
+    contents_by_id: Mapping[int, str]
+    pending_transitions: tuple[ReplacementTransition, ...]
+    unrecognized_pending_count: int = 0
 
 
 @runtime_checkable
@@ -226,6 +252,42 @@ class Closable(Protocol):
     """Resource with synchronous idempotent cleanup."""
 
     def close(self) -> None: ...
+
+
+@runtime_checkable
+class IMemorySnapshotReader(Protocol):
+    """Engine capability: read rows and pending journal without writing.
+
+    Implementations open their own read-only SQLite connection. They must
+    never instantiate or touch the writable memory store, so a refused
+    workspace is left byte-for-byte as it was found.
+    """
+
+    def read_memory_snapshot(self) -> MemoryStoreSnapshot:
+        """Return one transactional snapshot of this engine's workspace.
+
+        Raises:
+            StorageError: If the database is missing or unreadable.
+        """
+        ...
+
+
+@runtime_checkable
+class IIndexIntegrityVerifier(Protocol):
+    """Engine capability: compare SQLite memory ids with live vector keys."""
+
+    def verify_index_integrity(self) -> None:
+        """Raise ``InitializationError`` when the two id sets disagree.
+
+        A difference is accepted only when a pending journal row of the same
+        workspace accounts for it. Must not write, delete, re-embed, or call
+        ``Index.save`` on a live index, and must not log memory text.
+
+        Raises:
+            InitializationError: With operator guidance to restore a
+                consistent backup or rebuild the workspace offline.
+        """
+        ...
 
 
 class ISemanticSearchEngine(Protocol):
@@ -391,6 +453,10 @@ class ISemanticSearchEngine(Protocol):
         Use this before parallel operations to prevent race conditions in
         lazy initialization.
 
+        Opening the vector index also verifies it against the memory rows, so
+        a refused workspace raises here and stays unopened: every retry
+        refuses again. Cheap once the index is open.
+
         Note: May be a no-op for eagerly initialized engines.
 
         Returns:
@@ -398,11 +464,21 @@ class ISemanticSearchEngine(Protocol):
 
         Raises:
             RuntimeError: If initialization fails.
+            InitializationError: If the index was refused.
         """
         ...
 
     def is_ready(self) -> bool:
         """Return True if lazy initialization has already completed."""
+        ...
+
+    def verify_index_integrity(self) -> None:
+        """Re-verify the open index against SQLite, without writing.
+
+        Raises:
+            InitializationError: If memory ids and index keys disagree and no
+                pending journal row accounts for the difference.
+        """
         ...
 
     def count(self, workspace_id: str) -> int:

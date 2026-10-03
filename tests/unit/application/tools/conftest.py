@@ -11,6 +11,7 @@ from reflectlog.application.tools.add import AddTool
 from reflectlog.application.tools.remove import RemoveTool
 from reflectlog.application.tools.search import SearchTool
 from reflectlog.core.enums import EngineReadiness
+from reflectlog.core.search_health import SearchFailureSnapshot
 
 
 @pytest.fixture
@@ -39,6 +40,7 @@ def mock_memory_manager() -> MagicMock:
         }
     )
     mm.pending_intent_count = MagicMock(return_value=0)
+    mm.search_failure_snapshot = MagicMock(return_value=SearchFailureSnapshot())
     mm.count = MagicMock(return_value=0)
     mm.startup_metrics = None
     return mm

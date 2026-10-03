@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from reflectlog.core.enums import EngineReadiness
+    from reflectlog.core.search_health import SearchFailureSnapshot
     from reflectlog.core.types import MemoryRecord
 
 
@@ -264,6 +265,10 @@ class IMemoryManager(Protocol):
 
     def search_engine_status(self) -> dict[str, EngineReadiness]:
         """Return public readiness of search engines for health checks."""
+        ...
+
+    def search_failure_snapshot(self) -> SearchFailureSnapshot:
+        """Return detached per-manager search failures without storage locks."""
         ...
 
     def get_all(self, limit: int | None = None, offset: int = 0) -> list[str]:

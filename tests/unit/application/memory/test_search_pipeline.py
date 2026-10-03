@@ -1559,7 +1559,7 @@ class TestSearchResponsiveness:
             memory_manager=manager,
         )
 
-        def blocking_reconcile() -> int:
+        def blocking_reconcile(*, count_search_refusals: bool = False) -> int:
             recover_threads.append(threading.get_ident())
             entered.set()
             if not release.wait(timeout=_BACKEND_WAIT_TIMEOUT):
@@ -1623,7 +1623,7 @@ class TestSearchResponsiveness:
         manager._tantivy_engine = None
         cause = InitializationError("index missing")
 
-        def boom() -> int:
+        def boom(*, count_search_refusals: bool = False) -> int:
             raise cause
 
         patched: Any = manager

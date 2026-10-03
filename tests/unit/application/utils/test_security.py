@@ -275,14 +275,19 @@ class TestValidateWorkspaceId:
             validate_workspace_id("project@id")
 
     def test_max_length_enforced(self) -> None:
-        """Test maximum length constraint (128 characters)."""
+        """Test maximum length constraint (64 normalized characters)."""
         with pytest.raises(ValidationError, match="too long"):
-            validate_workspace_id("a" * 129)
+            validate_workspace_id("a" * 65)
 
     def test_max_length_boundary(self) -> None:
-        """Test 128 character workspace_id passes validation."""
-        result = validate_workspace_id("a" * 128)
-        assert result == "a" * 128
+        """Test 64 character workspace_id passes validation after stripping."""
+        result = validate_workspace_id(f"  {'A' * 64}\t")
+        assert result == "a" * 64
+
+    @pytest.mark.parametrize("length", [128, 129])
+    def test_old_length_boundary_is_rejected(self, length: int) -> None:
+        with pytest.raises(ValidationError, match="too long"):
+            validate_workspace_id("a" * length)
 
     def test_special_characters_not_allowed(self) -> None:
         """Test special characters are not allowed."""

@@ -12,6 +12,7 @@ import pytest
 
 from reflectlog.core.enums import EmbedderProvider
 from reflectlog.core.types import Embeddings
+from reflectlog.infrastructure.memory_store import MemoryStore
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 pytestmark = pytest.mark.skipif(
@@ -64,6 +65,12 @@ def _writer_die_at(
     first.close()
     ready.set()
     second = USearchEngine(config=config, embedder=_HashEmbedder(), publish_hook=boom)
+    # MemoryManager journals a pending ADD before it inserts the row.
+    store = MemoryStore(db_path=db_path)
+    try:
+        _ = store.begin_add_intents(workspace_id, ["new-row"])
+    finally:
+        store.close()
     second.add(workspace_id, "new-row", infer=False)
     second.commit()
 

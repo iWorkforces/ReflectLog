@@ -14,12 +14,16 @@ import tempfile
 from unittest.mock import patch
 
 import pytest
+from usearch.index import Index
 
 from reflectlog.application.config.settings import Config
 from reflectlog.application.memory.add_phases import ReplacementInfo
 from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.core.exceptions import StorageError
-from reflectlog.infrastructure.memory_store import MemoryStore
+from reflectlog.infrastructure.memory_store import (
+    MemoryStore,
+    read_memory_store_snapshot,
+)
 from reflectlog.infrastructure.tantivy_engine import TantivyEngine
 from reflectlog.infrastructure.usearch_engine import USearchEngine
 from tests.integration.test_memory_manager_usearch import (
@@ -92,7 +96,23 @@ def _abandon_without_persist(manager: MemoryManager) -> None:
     tantivy._index = None
 
 
+def _assert_sqlite_ids_equal_live_keys(manager: MemoryManager) -> None:
+    """After convergence the live and the saved vector keys are the SQLite ids."""
+    engine = manager._semantic_engine
+    assert isinstance(engine, USearchEngine)
+    sqlite_ids = set(
+        read_memory_store_snapshot(
+            engine.config.db_path, manager.workspace_id
+        ).contents_by_id
+    )
+    saved = Index.restore(engine.config.index_path)
+    assert saved is not None
+    assert {int(key) for key in engine.index.keys} == sqlite_ids
+    assert {int(key) for key in saved.keys} == sqlite_ids
+
+
 def _assert_converged(manager: MemoryManager) -> None:
+    _assert_sqlite_ids_equal_live_keys(manager)
     memories = manager.get_all()
     assert memories == [NEW]
     new_id = manager.get_id_by_content(NEW)
@@ -123,6 +143,7 @@ def _assert_converged(manager: MemoryManager) -> None:
 
 
 def _assert_mixed_converged(manager: MemoryManager) -> None:
+    _assert_sqlite_ids_equal_live_keys(manager)
     expected = {NEW, UNRELATED}
     memories = manager.get_all()
     assert len(memories) == 2

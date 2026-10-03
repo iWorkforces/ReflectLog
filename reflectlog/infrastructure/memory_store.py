@@ -10,6 +10,7 @@ Uses SQLite with WAL mode for improved concurrent write performance via MVCC.
 from collections.abc import Sequence
 from dataclasses import dataclass
 import os
+from pathlib import Path
 import sqlite3
 import threading
 from typing import Any, TypeGuard, final
@@ -20,6 +21,7 @@ from reflectlog.core.enums import TransitionKind, TransitionStatus
 from reflectlog.core.exceptions import StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import (
+    MemoryStoreSnapshot,
     ReplacementTransition,
     ReplacementTransitionRequest,
 )
@@ -1730,3 +1732,146 @@ class MemoryStore(BaseModel):
         Forces lazy initialization to complete.
         """
         _ = self.connection
+
+
+class MemoryStoreSnapshotError(StorageError):
+    """Raised when the read-only snapshot cannot be taken.
+
+    Messages carry the database path and the SQLite error text only, never
+    memory content.
+
+    Attributes:
+        db_missing: True when the database file does not exist.
+    """
+
+    def __init__(self, message: str, *, db_missing: bool = False) -> None:
+        super().__init__(message)
+        self.db_missing = db_missing
+
+
+def read_memory_store_snapshot(
+    db_path: str, workspace_id: str, *, timeout: float = 5.0
+) -> MemoryStoreSnapshot:
+    """Read a workspace's rows and pending journal in one read-only transaction.
+
+    Works before any writable ``MemoryStore`` exists and never changes the
+    database: the connection is opened ``mode=ro`` and no schema is created,
+    no pragma is set, and nothing is written. Rows and journal come from a
+    single deferred transaction, so they describe the same committed state
+    even while another connection writes.
+
+    Args:
+        db_path: Path of the SQLite memory database.
+        workspace_id: Workspace whose rows and journal are read.
+        timeout: Busy timeout in seconds for the read.
+
+    Returns:
+        The snapshot. A database that predates the journal table (or its
+        ``kind`` column) yields no pending rows (or legacy replace rows),
+        mirroring what the writable store would migrate it to.
+
+    Raises:
+        MemoryStoreSnapshotError: If the file is missing or cannot be read,
+            or has no ``memories`` table.
+    """
+    if not os.path.exists(db_path):
+        raise MemoryStoreSnapshotError(
+            f"SQLite memory store is missing at {db_path}", db_missing=True
+        )
+    uri = f"{Path(db_path).absolute().as_uri()}?mode=ro"
+    try:
+        connection = sqlite3.connect(
+            uri, uri=True, timeout=timeout, isolation_level=None
+        )
+        try:
+            _ = connection.execute("BEGIN")
+            return _read_snapshot(connection, db_path, workspace_id)
+        finally:
+            connection.close()
+    except sqlite3.Error as e:
+        raise MemoryStoreSnapshotError(
+            f"SQLite memory store is unreadable at {db_path}: {e}"
+        ) from e
+
+
+def _read_snapshot(
+    connection: sqlite3.Connection, db_path: str, workspace_id: str
+) -> MemoryStoreSnapshot:
+    tables = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    if "memories" not in tables:
+        raise MemoryStoreSnapshotError(
+            f"SQLite memory store at {db_path} has no memories table"
+        )
+    contents_by_id: dict[int, str] = {}
+    for row_id, content in connection.execute(
+        "SELECT id, content FROM memories WHERE workspace_id = ? ORDER BY id",
+        (workspace_id,),
+    ):
+        if not isinstance(row_id, int) or not isinstance(content, str):
+            raise MemoryStoreSnapshotError(
+                f"SQLite memory store at {db_path} holds a malformed memory row"
+            )
+        contents_by_id[row_id] = content
+    pending, unrecognized = _read_pending_snapshot(connection, tables, workspace_id)
+    return MemoryStoreSnapshot(
+        workspace_id=workspace_id,
+        contents_by_id=contents_by_id,
+        pending_transitions=pending,
+        unrecognized_pending_count=unrecognized,
+    )
+
+
+def _read_pending_snapshot(
+    connection: sqlite3.Connection, tables: set[str], workspace_id: str
+) -> tuple[tuple[ReplacementTransition, ...], int]:
+    if "replacement_transitions" not in tables:
+        return (), 0
+    columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(replacement_transitions)")
+    }
+    kind_expr = _KIND_COALESCE if "kind" in columns else f"'{TransitionKind.REPLACE}'"
+    rows = connection.execute(
+        f"""
+        SELECT id, workspace_id, old_memory_id, old_content, new_content,
+               archive_id, reason, confidence, status, {kind_expr}
+        FROM replacement_transitions
+        WHERE workspace_id = ? AND status = ?
+        ORDER BY id
+        """,
+        (workspace_id, TRANSITION_PENDING),
+    ).fetchall()
+    pending: list[ReplacementTransition] = []
+    unrecognized = 0
+    for row in rows:
+        transition = _snapshot_transition(row)
+        if transition is None:
+            unrecognized += 1
+        else:
+            pending.append(transition)
+    return tuple(pending), unrecognized
+
+
+def _snapshot_transition(row: object) -> ReplacementTransition | None:
+    """Map a pending journal row, or None when it must authorise nothing."""
+    cells = _transition_row_cells(row)
+    try:
+        return ReplacementTransition(
+            id=int(str(cells[0])),
+            workspace_id=str(cells[1]),
+            old_memory_id=int(str(cells[2])),
+            old_content=str(cells[3]),
+            new_content=str(cells[4]),
+            archive_id=int(str(cells[5])),
+            reason=str(cells[6]),
+            confidence=float(str(cells[7])),
+            status=TransitionStatus.from_stored(str(cells[8])),
+            kind=TransitionKind.from_stored(str(cells[9])),
+        )
+    except ValueError:
+        return None

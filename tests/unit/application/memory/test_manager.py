@@ -11,6 +11,7 @@ from dataclasses import replace
 import logging
 import os
 from pathlib import Path
+from threading import Event, Thread
 from typing import Self, cast
 from unittest.mock import MagicMock, patch
 
@@ -22,13 +23,14 @@ from reflectlog.application.memory.manager import MemoryManager
 from reflectlog.application.memory.search_strategies import SearchContext
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.application.utils.security import SecretString
-from reflectlog.core.enums import LlmProvider, RerankerEngine
+from reflectlog.core.enums import LlmProvider, RerankerEngine, SearchComponent
 from reflectlog.core.exceptions import (
     InconsistentStateError,
     InitializationError,
     SearchError,
     StorageError,
 )
+from reflectlog.core.search_health import SearchFailureSnapshot
 from reflectlog.core.storage_coordination import IStorageCoordinator
 from reflectlog.core.types import ISemanticSearchEngine
 from reflectlog.infrastructure.cross_encoder_reranker import CrossEncoderReranker
@@ -230,6 +232,67 @@ def _make_manager(
             config, logger.structured, coordinator=coordinator or _fake_coordinator()
         )
         return manager, mock_usearch, mock_tantivy
+
+
+@pytest.mark.unit
+class TestSearchFailureSnapshot:
+    def test_detached_snapshots_and_manager_isolation(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        first, _, _ = _make_manager(mock_config, mock_logger)
+        second, _, _ = _make_manager(
+            replace(mock_config, workspace_id="other"), mock_logger
+        )
+        before = first.search_failure_snapshot()
+        try:
+            first._search_failure_recorder.record(
+                SearchComponent.SEMANTIC, OSError("private")
+            )
+
+            after = first.search_failure_snapshot()
+
+            assert before == SearchFailureSnapshot()
+            assert after.semantic.count == 1
+            assert second.search_failure_snapshot() == SearchFailureSnapshot()
+            payload = after.to_dict()
+            payload["semantic"]["count"] = 99
+            assert first.search_failure_snapshot().semantic.count == 1
+        finally:
+            first.close()
+            second.close()
+
+    def test_snapshot_does_not_wait_for_manager_locks_or_lease(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, _, _ = _make_manager(mock_config, mock_logger)
+        locked, release, returned = Event(), Event(), Event()
+        snapshots: list[SearchFailureSnapshot] = []
+
+        def hold_locks() -> None:
+            with manager._write_lock, manager._lock:
+                locked.set()
+                assert release.wait(5)
+
+        def snapshot() -> None:
+            snapshots.append(manager.search_failure_snapshot())
+            returned.set()
+
+        holder = Thread(target=hold_locks)
+        reader = Thread(target=snapshot)
+        holder.start()
+        try:
+            assert locked.wait(5)
+            with patch.object(
+                manager._coordinator, "acquire", side_effect=AssertionError("lease")
+            ):
+                reader.start()
+                assert returned.wait(2)
+            assert snapshots == [SearchFailureSnapshot()]
+        finally:
+            release.set()
+            holder.join(5)
+            reader.join(5)
+            manager.close()
 
 
 @pytest.mark.unit
@@ -1592,6 +1655,171 @@ class TestCoordinatorLifecycle:
             manager.add_memories(["after-close"])
         with pytest.raises(StorageError, match="closed"):
             _ = manager.get_all()
+
+
+REFUSAL = "Restore a consistent backup or rebuild this workspace offline."
+
+
+def _refusing_manager(
+    config: Config, logger: LogCapture
+) -> tuple[MemoryManager, MagicMock, MagicMock, InitializationError]:
+    """A lazy manager whose engine refuses the index (explicit stub)."""
+    manager, usearch, tantivy = _make_manager(config, logger)
+    refusal = InitializationError(REFUSAL)
+    usearch.ensure_initialized.reset_mock()
+    usearch.ensure_initialized.side_effect = refusal
+    return manager, usearch, tantivy, refusal
+
+
+@pytest.mark.unit
+class TestVectorIndexPreflight:
+    """The manager opens and verifies the index before any write or search."""
+
+    @pytest.mark.parametrize(
+        "operation",
+        [
+            "add",
+            "add_async",
+            "add_async_dry_run",
+            "delete_by_memory",
+            "delete_by_id",
+            "delete_memories",
+            "search",
+        ],
+    )
+    async def test_refusal_reaches_the_caller_before_any_write(
+        self, mock_config: Config, mock_logger: LogCapture, operation: str
+    ) -> None:
+        manager, usearch, tantivy, refusal = _refusing_manager(mock_config, mock_logger)
+        try:
+            with patch.object(
+                manager._coordinator, "acquire", side_effect=AssertionError("lease")
+            ):
+                with pytest.raises(InitializationError) as raised:
+                    match operation:
+                        case "add":
+                            _ = manager.add_memories(["new memory"])
+                        case "add_async":
+                            _ = await manager.add_memories_async(["new memory"])
+                        case "add_async_dry_run":
+                            _ = await manager.add_memories_async(
+                                ["new memory"], dry_run=True
+                            )
+                        case "delete_by_memory":
+                            _ = manager.delete_by_memory("old memory")
+                        case "delete_by_id":
+                            manager.delete_by_id("42")
+                        case "delete_memories":
+                            _ = manager.delete_memories(["old memory"])
+                        case _:
+                            _ = await manager.search("query")
+            assert raised.value is refusal
+            usearch.memory_store.begin_add_intents.assert_not_called()
+            usearch.memory_store.begin_delete_intents.assert_not_called()
+            usearch.memory_store.begin_replacement_transitions.assert_not_called()
+            usearch.embedder.embed_documents.assert_not_called()
+            usearch.add_batch.assert_not_called()
+            usearch.delete.assert_not_called()
+            usearch.commit.assert_not_called()
+            tantivy.add_batch.assert_not_called()
+            tantivy.delete.assert_not_called()
+        finally:
+            manager.close()
+
+    @pytest.mark.parametrize("operation", ["add", "delete_memories", "search"])
+    async def test_a_refused_index_is_refused_again_on_retry(
+        self, mock_config: Config, mock_logger: LogCapture, operation: str
+    ) -> None:
+        manager, usearch, _tantivy, _refusal = _refusing_manager(
+            mock_config, mock_logger
+        )
+        try:
+            for _attempt in range(2):
+                with pytest.raises(InitializationError):
+                    match operation:
+                        case "add":
+                            _ = manager.add_memories(["new memory"])
+                        case "delete_memories":
+                            _ = manager.delete_memories(["old memory"])
+                        case _:
+                            _ = await manager.search("query")
+            assert usearch.ensure_initialized.call_count == 2
+        finally:
+            manager.close()
+
+    async def test_empty_requests_do_no_index_work(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, usearch, _tantivy, _refusal = _refusing_manager(
+            mock_config, mock_logger
+        )
+        try:
+            assert manager.delete_memories([]) == []
+            assert await manager.search("   ") == []
+            _ = await manager.add_memories_async([])
+            usearch.ensure_initialized.assert_not_called()
+        finally:
+            manager.close()
+
+    async def test_sqlite_only_reads_never_run_the_preflight(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, usearch, _tantivy, _refusal = _refusing_manager(
+            mock_config, mock_logger
+        )
+        usearch.get_all.return_value = ["row"]
+        usearch.count.return_value = 1
+        try:
+            assert manager.get_all() == ["row"]
+            assert manager.get_page_with_total() == (["row"], 1)
+            assert manager.count() == 1
+            assert manager.search_for_removal("row") == []
+            usearch.ensure_initialized.assert_not_called()
+        finally:
+            manager.close()
+
+    def test_preflight_precedes_the_first_journal_write(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, usearch, _tantivy = _make_manager(mock_config, mock_logger)
+        events: list[str] = []
+        usearch.ensure_initialized.reset_mock()
+        usearch.ensure_initialized.side_effect = lambda: events.append("preflight")
+        usearch.memory_store.begin_add_intents.side_effect = (
+            lambda _workspace, _contents: events.append("journal") or []
+        )
+        usearch.memory_store.begin_delete_intents.side_effect = (
+            lambda _workspace, _items: events.append("journal") or []
+        )
+        usearch.get_id_by_content.return_value = 7
+        try:
+            _ = manager.add_memories(["new memory"])
+            _ = manager.delete_memories(["old memory"])
+        finally:
+            manager.close()
+
+        assert events[0] == "preflight"
+        assert events.index("journal") > events.index("preflight")
+        assert events.count("preflight") == 2
+
+    def test_refusal_inside_a_delete_is_not_wrapped(
+        self, mock_config: Config, mock_logger: LogCapture
+    ) -> None:
+        manager, usearch, _tantivy = _make_manager(mock_config, mock_logger)
+        refusal = InitializationError(REFUSAL)
+        usearch.delete.side_effect = refusal
+        usearch.get_id_by_content.return_value = 7
+        usearch.memory_store.get.return_value = type("Rec", (), {"content": "x"})()
+        try:
+            with pytest.raises(InitializationError) as by_memory:
+                _ = manager.delete_by_memory("x")
+            with pytest.raises(InitializationError) as by_id:
+                manager.delete_by_id("7")
+        finally:
+            manager.close()
+
+        assert by_memory.value is refusal
+        assert by_id.value is refusal
 
 
 if __name__ == "__main__":

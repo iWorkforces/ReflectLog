@@ -800,7 +800,7 @@ class Config:
 
         from reflectlog.application.config.validation import validate_config
 
-        errors = validate_config(config)
+        errors = validate_config(config, allow_unbound_workspace=True)
         if errors:
             raise ConfigurationError(
                 "Configuration validation failed:\n"

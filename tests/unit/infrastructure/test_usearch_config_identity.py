@@ -90,6 +90,7 @@ def test_direct_config_requires_provider_and_model() -> None:
 
 def test_from_dict_parses_provider_and_keeps_model() -> None:
     given = {
+        "workspace_id": "identity-test",
         "embedder_provider": "wemm",
         "embedding_model": WeMMModel.EMBEDDING_4B.value,
         "embedding_dims": 1024,
