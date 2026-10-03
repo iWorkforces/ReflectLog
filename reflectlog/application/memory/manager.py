@@ -29,6 +29,7 @@ Example:
 """
 
 from contextlib import contextmanager
+from dataclasses import replace
 import os
 import threading
 import time
@@ -36,6 +37,7 @@ from typing import TYPE_CHECKING, Any, Protocol, final, runtime_checkable
 
 from asyncer import asyncify
 
+from reflectlog.application.config.validation import canonical_workspace_id
 from reflectlog.application.constants import LOG_ADD_MEMORY_PREVIEW_LIMIT
 from reflectlog.core.exceptions import (
     ConfigurationError,
@@ -70,6 +72,7 @@ from ...core.enums import (
     EmbedderProvider,
     EngineReadiness,
     RerankerEngine,
+    SearchComponent,
     TransitionKind,
     WeMMModel,
 )
@@ -87,6 +90,7 @@ from .match_utils import has_exact_match
 from .replacement_recovery import (
     reconcile_pending_replacements as apply_pending_replacements,
 )
+from .search_health import SearchFailureRecorder
 from .search_strategies import (
     SearchContext,
     SearchPipeline,
@@ -97,6 +101,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
     from ...core.logging import IStructuredLogger
+    from ...core.search_health import SearchFailureSnapshot
     from ...core.types import Embeddings, ISemanticSearchEngine, ReplacementTransition
     from ..config.settings import Config
     from .fusion.base import FusionEngine
@@ -147,12 +152,16 @@ class MemoryManager:
         if logger is None:
             raise ValueError("logger is required")
 
+        canonical_id = canonical_workspace_id(config.workspace_id)
+        if canonical_id != config.workspace_id:
+            config = replace(config, workspace_id=canonical_id)
         self.config = config
         self.logger: IStructuredLogger = logger
         self.workspace_id = config.workspace_id
         self.orchestration_hook = orchestration_hook
 
         self._init_locks()
+        self._search_failure_recorder = SearchFailureRecorder()
         self._coordinator = coordinator or self._create_coordinator()
         self._coordinator = ensure_embedding_identity(
             USearchConfig.from_config(ConfigAdapter(config)),
@@ -248,6 +257,20 @@ class MemoryManager:
         engine = self._semantic_engine
         if isinstance(engine, _RefreshableEngine):
             engine.refresh()
+
+    def _preflight_vector_index(self) -> None:
+        """Open and verify the vector index before any journal or SQLite write.
+
+        ``ensure_initialized`` opens the index and compares its keys with the
+        SQLite rows (journal-aware); a refusal raises ``InitializationError``
+        and leaves the index unopened so every retry refuses again. Once the
+        index is open this only touches already-created objects. It takes no
+        manager lock; the engine takes its own short shared workspace lease
+        around the first open and the verification (before its init lock), so
+        callers invoke it before acquiring any manager lock. SQLite-only
+        reads (``get_all``, ``count``) deliberately never call it.
+        """
+        self._semantic_engine.ensure_initialized()
 
     def _tantivy_has(self, content: str) -> bool | None:
         engine = self._tantivy_engine
@@ -444,6 +467,7 @@ class MemoryManager:
             config=self.config,
             logger=self.logger,
             memory_manager=self,  # Pass self for lazy reranker fetching
+            failure_recorder=self._search_failure_recorder,
         )
 
         self._duplicate_detection_phase = DuplicateDetectionPhase(
@@ -477,11 +501,19 @@ class MemoryManager:
             logger=self.logger,
         )
 
-    def reconcile_pending_replacements(self) -> int:
+    def reconcile_pending_replacements(
+        self, *, count_search_refusals: bool = False
+    ) -> int:
         """Finish replacements interrupted by a previous process stop.
 
         Called at startup and at the start of the next add persist.
         Not invoked by health_check. Acquires ``_write_lock`` then ``_lock``.
+
+        Args:
+            count_search_refusals: Only ``search`` passes True. An engine
+                refusal raised during recovery is then recorded once in the
+                search failure counters (against the engine that raised it)
+                before it propagates; add, remove and startup leave them alone.
         """
         return apply_pending_replacements(
             semantic_engine=self._semantic_engine,
@@ -492,6 +524,9 @@ class MemoryManager:
             coordinator=self._coordinator,
             workspace_id=self.workspace_id,
             orchestration_hook=self._emit_orchestration_hook,
+            on_refusal=(
+                self._search_failure_recorder.record if count_search_refusals else None
+            ),
         )
 
     def pending_replacement_count(self) -> int:
@@ -505,6 +540,10 @@ class MemoryManager:
         while the journal is unreadable.
         """
         return len(self._semantic_engine.memory_store.list_pending_transitions())
+
+    def search_failure_snapshot(self) -> SearchFailureSnapshot:
+        """Return detached search failures without storage leases or manager locks."""
+        return self._search_failure_recorder.snapshot()
 
     def _log_configuration(self) -> None:
         """Log the final configuration state after initialization."""
@@ -752,6 +791,7 @@ class MemoryManager:
             RuntimeError: If storage operation fails.
         """
         self._ensure_open()
+        self._preflight_vector_index()
         try:
             _ = self.reconcile_pending_replacements()
         except InitializationError:
@@ -887,6 +927,11 @@ class MemoryManager:
             RuntimeError: If storage operation fails (not raised in dry_run mode).
         """
         self._ensure_open()
+        if memories:
+            await asyncify(self._preflight_vector_index)()
+            # Pick up (and verify) a vector file published since the index was
+            # opened before the pipeline journals anything. Search does the same.
+            await asyncify(self._refresh_engines)()
         return await self._add_pipeline.execute(memories, dry_run)
 
     async def add_messages_async(
@@ -984,7 +1029,25 @@ class MemoryManager:
         if not query.strip():
             return []
         try:
-            _ = await asyncify(self.reconcile_pending_replacements)()
+            await asyncify(self._preflight_vector_index)()
+        except InitializationError as refusal:
+            # The pipeline never runs, so this is the only place that can count
+            # the refusal. It still reaches the caller unchanged.
+            self._search_failure_recorder.record(SearchComponent.SEMANTIC, refusal)
+            raise
+        except Exception as exc:
+            # An ordinary open failure is left for the pipeline's semantic
+            # backend to hit, record, and degrade to full-text as before.
+            self.logger.debug(
+                "Vector index preflight failed; deferring to the search pipeline",
+                extra={"error_type": type(exc).__name__},
+            )
+        try:
+            # A recovery refusal is recorded inside, once and against the engine
+            # that raised it, because the pipeline never runs to count it.
+            _ = await asyncify(self.reconcile_pending_replacements)(
+                count_search_refusals=True
+            )
         except InitializationError:
             raise
         except Exception as exc:
@@ -1014,7 +1077,14 @@ class MemoryManager:
 
         # Backend reads take their own short shared leases. Do not hold
         # SHARED across embed, fusion, or cross-encoder rerank.
-        self._refresh_engines()
+        try:
+            self._refresh_engines()
+        except InitializationError as refusal:
+            # Only the semantic engine is refreshed: a newly published vector
+            # file failed verification. Counted here because the pipeline
+            # (which counts its own failures) has not started.
+            self._search_failure_recorder.record(SearchComponent.SEMANTIC, refusal)
+            raise
         result = await self._search_pipeline.execute(
             context, include_timestamp_map=False
         )
@@ -1115,6 +1185,7 @@ class MemoryManager:
             StorageError: If deletion fails.
         """
         self._ensure_open()
+        self._preflight_vector_index()
         with self._exclusive_workspace(), self._write_lock, self._lock:
             self._ensure_open()
             self._refresh_engines()
@@ -1143,7 +1214,7 @@ class MemoryManager:
                     self._complete_intents_after_generation(
                         lambda: self._complete_delete_intents(delete_intents)
                     )
-            except InconsistentStateError:
+            except InconsistentStateError, InitializationError:
                 raise
             except Exception as e:
                 raise StorageError(f"Failed to delete memory: {e}") from e
@@ -1168,6 +1239,7 @@ class MemoryManager:
             RuntimeError: If deletion fails or results in inconsistent state.
         """
         self._ensure_open()
+        self._preflight_vector_index()
         with self._exclusive_workspace(), self._write_lock, self._lock:
             self._ensure_open()
             self._refresh_engines()
@@ -1238,7 +1310,7 @@ class MemoryManager:
 
                 return True
 
-            except InconsistentStateError:
+            except InconsistentStateError, InitializationError:
                 raise  # Re-raise inconsistent state errors with full context
             except Exception as e:
                 raise StorageError(f"Failed to delete memory: {e}") from e
@@ -1256,6 +1328,7 @@ class MemoryManager:
         unique = list(dict.fromkeys(memories))
         if not unique:
             return []
+        self._preflight_vector_index()
         with self._exclusive_workspace(), self._write_lock, self._lock:
             self._ensure_open()
             self._refresh_engines()

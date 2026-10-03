@@ -27,7 +27,7 @@ from reflectlog.application.memory.add_phases import (
 )
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.enums import TransitionKind, TransitionStatus
-from reflectlog.core.exceptions import StorageError
+from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import ReplacementTransition, ReplacementTransitionRequest
 from reflectlog.infrastructure.tantivy_engine import TantivyEngine
@@ -1939,3 +1939,86 @@ class TestStoragePhaseCoordination:
         kept, vectors = phase._revalidate_persist_inputs(["dup"], [[0.1, 0.2]], {})
         assert kept == []
         assert vectors == []
+
+
+REFUSAL = "Restore a consistent backup or rebuild this workspace offline."
+
+
+@pytest.mark.unit
+class TestRefusedIndexIsNeverWrapped:
+    """InitializationError keeps its type and operator text through the add path."""
+
+    def test_add_batch_refusal_is_not_wrapped_in_storage_error(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        refusal = InitializationError(REFUSAL)
+        mock_semantic_engine.add_batch.side_effect = refusal
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+            write_lock=None,
+        )
+
+        with pytest.raises(InitializationError) as raised:
+            phase._add_memories_batch(["x"])
+
+        assert raised.value is refusal
+
+    def test_replacement_delete_refusal_is_not_wrapped_in_storage_error(
+        self,
+        mock_semantic_engine: MagicMock,
+        mock_tantivy_engine: MagicMock,
+        mock_config: Config,
+        mock_logger: Mock,
+    ) -> None:
+        refusal = InitializationError(REFUSAL)
+        mock_semantic_engine.delete.side_effect = refusal
+        phase = StoragePhase(
+            semantic_engine=mock_semantic_engine,
+            tantivy_engine=mock_tantivy_engine,
+            config=mock_config,
+            logger=mock_logger,
+        )
+        transition = ReplacementTransition(
+            id=9,
+            workspace_id="test_project",
+            old_memory_id=42,
+            old_content="old msg",
+            new_content="new msg",
+            archive_id=100,
+            reason="updated",
+            confidence=0.9,
+            status=TransitionStatus.PENDING,
+        )
+
+        with pytest.raises(InitializationError) as raised:
+            phase._delete_recorded_olds([transition])
+
+        assert raised.value is refusal
+
+    async def test_pipeline_does_not_wrap_a_refusal(
+        self, mock_config: Config, mock_logger: Mock
+    ) -> None:
+        refusal = InitializationError(REFUSAL)
+        phase1 = MagicMock(spec=DuplicateDetectionPhase)
+        phase1.execute = AsyncMock(side_effect=refusal)
+        phase2 = MagicMock(spec=SmartReplacementPhase)
+        phase2._get_smart_replacer.return_value = None
+        pipeline = AddPipeline(
+            duplicate_detection_phase=phase1,
+            smart_replacement_phase=phase2,
+            storage_phase=MagicMock(spec=StoragePhase),
+            config=mock_config,
+            logger=mock_logger,
+        )
+
+        with pytest.raises(InitializationError) as raised:
+            await pipeline.execute(["msg1"], dry_run=False)
+
+        assert raised.value is refusal

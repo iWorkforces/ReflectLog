@@ -28,7 +28,11 @@ import anyio
 from asyncer import asyncify, create_task_group
 
 from reflectlog.core.enums import TransitionKind
-from reflectlog.core.exceptions import InconsistentStateError, StorageError
+from reflectlog.core.exceptions import (
+    InconsistentStateError,
+    InitializationError,
+    StorageError,
+)
 from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 
 from ...core.types import (
@@ -974,6 +978,8 @@ class StoragePhase:
             try:
                 self._semantic_engine.delete(memory_id=str(transition.old_memory_id))
                 contents.append(transition.old_content)
+            except InitializationError:
+                raise
             except Exception as delete_error:
                 self.logger.warning(
                     f"Failed to delete old memory: {delete_error}",
@@ -1053,6 +1059,8 @@ class StoragePhase:
                 with self._write_lock:
                     return self._add_memories_unlocked(memories, vectors)
             return self._add_memories_unlocked(memories, vectors)
+        except InitializationError:
+            raise
         except Exception as e:
             raise StorageError(f"Failed to add memory batch: {e}") from e
 
@@ -1332,7 +1340,7 @@ class AddPipeline:
             if persist_skipped > 0:
                 result.skipped_count += persist_skipped
 
-        except InconsistentStateError:
+        except InconsistentStateError, InitializationError:
             raise
         except Exception as e:
             mode_str = "DRY_RUN" if dry_run else "LIVE"

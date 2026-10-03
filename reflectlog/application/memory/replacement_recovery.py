@@ -8,20 +8,23 @@ SQLite or hybrid Tantivy still disagree.
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 import os
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
-from reflectlog.core.enums import TransitionKind
+from reflectlog.core.enums import SearchComponent, TransitionKind
+from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
 from reflectlog.core.types import (
     IArchiveMemoryStore,
+    IMemorySnapshotReader,
     ISemanticSearchEngine,
+    MemoryStoreSnapshot,
     ReplacementTransition,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Generator
 
     from reflectlog.core.logging import IStructuredLogger
     from reflectlog.infrastructure.tantivy_engine import TantivyEngine
@@ -35,6 +38,24 @@ class _RefreshableEngine(Protocol):
 def _refresh_engine(engine: object) -> None:
     if isinstance(engine, _RefreshableEngine):
         engine.refresh()
+
+
+@contextmanager
+def _refusal_of(
+    component: SearchComponent,
+    on_refusal: Callable[[SearchComponent, InitializationError], None] | None,
+) -> Generator[None]:
+    """Report an ``InitializationError`` from one engine call, then re-raise it.
+
+    Attribution is by call site: wrap exactly one engine's call so the refusal
+    is reported once, against the component that raised it.
+    """
+    try:
+        yield
+    except InitializationError as refusal:
+        if on_refusal is not None:
+            on_refusal(component, refusal)
+        raise
 
 
 def _complete_converged_intent(
@@ -77,10 +98,18 @@ def reconcile_pending_replacements(
     coordinator: IStorageCoordinator | None = None,
     workspace_id: str = "",
     orchestration_hook: Callable[[str], None] | None = None,
+    on_refusal: Callable[[SearchComponent, InitializationError], None] | None = None,
 ) -> int:
     """Finish pending replacements using the semantic store as source of truth.
 
     Acquires ``write_lock`` before ``lock`` when both are provided.
+
+    ``on_refusal`` is called once, before the error is re-raised unchanged,
+    when an engine refuses to open or verify: with the semantic or tantivy
+    component for the engine call that raised, or ``SEMANTIC`` for a refusal
+    raised while converging a row (the tantivy engine opened successfully
+    above and only refuses at construction, so that is the vector index).
+    Callers that do not count refusals leave it unset.
 
     Returns:
         Number of pending transitions that were marked complete.
@@ -89,13 +118,42 @@ def reconcile_pending_replacements(
     if store is None:
         return 0
 
+    # Listing through the writable store would switch an older database to WAL
+    # and migrate its schema before the vector index has been verified, so a
+    # workspace the drift check refuses would still be modified. Look at the
+    # journal read-only first. Only a real snapshot is trusted; an engine
+    # without a reader takes the original path.
+    if isinstance(semantic_engine, IMemorySnapshotReader):
+        try:
+            snapshot = _real_snapshot(semantic_engine.read_memory_snapshot())
+        except StorageError:
+            # The journal cannot be read without recovery (a crashed
+            # transaction's hot journal, a damaged file). Verify the index
+            # before the writable store can touch the file: a refusal then
+            # leaves it as found, and an empty or new index passes through.
+            with _refusal_of(SearchComponent.SEMANTIC, on_refusal):
+                semantic_engine.ensure_initialized()
+        else:
+            if snapshot is not None:
+                if (
+                    not snapshot.pending_transitions
+                    and not snapshot.unrecognized_pending_count
+                ):
+                    return 0
+                # Opens the index and refuses drift before the writable store
+                # opens.
+                with _refusal_of(SearchComponent.SEMANTIC, on_refusal):
+                    semantic_engine.ensure_initialized()
+
     pending = _pending_rows(store.list_pending_transitions())
     if not pending:
         return 0
 
-    semantic_engine.ensure_initialized()
+    with _refusal_of(SearchComponent.SEMANTIC, on_refusal):
+        semantic_engine.ensure_initialized()
     if tantivy_engine is not None:
-        tantivy_engine.ensure_initialized()
+        with _refusal_of(SearchComponent.TANTIVY, on_refusal):
+            tantivy_engine.ensure_initialized()
 
     precomputed = _precompute_add_vectors(pending, semantic_engine, logger)
 
@@ -107,12 +165,16 @@ def reconcile_pending_replacements(
         else nullcontext()
     )
     with lease, write_lock, inner_lock:
-        semantic_engine.ensure_initialized()
+        with _refusal_of(SearchComponent.SEMANTIC, on_refusal):
+            semantic_engine.ensure_initialized()
         if tantivy_engine is not None:
-            tantivy_engine.ensure_initialized()
-        _refresh_engine(semantic_engine)
+            with _refusal_of(SearchComponent.TANTIVY, on_refusal):
+                tantivy_engine.ensure_initialized()
+        with _refusal_of(SearchComponent.SEMANTIC, on_refusal):
+            _refresh_engine(semantic_engine)
         if tantivy_engine is not None:
-            _refresh_engine(tantivy_engine)
+            with _refusal_of(SearchComponent.TANTIVY, on_refusal):
+                _refresh_engine(tantivy_engine)
         snapshot = _pending_rows(store.list_pending_transitions())
         for transition in snapshot:
             try:
@@ -128,6 +190,10 @@ def reconcile_pending_replacements(
                     orchestration_hook=orchestration_hook,
                 ):
                     completed += 1
+            except InitializationError as refusal:
+                if on_refusal is not None:
+                    on_refusal(SearchComponent.SEMANTIC, refusal)
+                raise
             except Exception as exc:
                 logger.error(
                     "Skipping pending replacement after recovery error",
@@ -136,6 +202,12 @@ def reconcile_pending_replacements(
                         "error": str(exc),
                     },
                 )
+        if snapshot:
+            # Recovery must leave the ids consistent. Completed intents now
+            # authorize nothing and any still-pending one keeps only its narrow
+            # allowances. No lease or lock is taken here: all are held already.
+            with _refusal_of(SearchComponent.SEMANTIC, on_refusal):
+                semantic_engine.verify_index_integrity()
 
     if completed:
         logger.info(
@@ -549,6 +621,16 @@ def _remove_recorded_old(
         transition.old_content,
         verify_exists=False,
     )
+
+
+def _real_snapshot(raw: object) -> MemoryStoreSnapshot | None:
+    """Accept only a real snapshot, like ``_pending_rows`` for journal rows.
+
+    The snapshot is filtered to the engine's workspace while
+    ``list_pending_transitions`` lists every workspace; a database file belongs
+    to exactly one workspace, so the two agree.
+    """
+    return raw if isinstance(raw, MemoryStoreSnapshot) else None
 
 
 def _recovery_store(

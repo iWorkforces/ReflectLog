@@ -30,6 +30,7 @@ from reflectlog.core.enums import (
     TransitionStatus,
 )
 from reflectlog.core.exceptions import InitializationError, StorageError
+from reflectlog.core.search_health import SearchFailureSnapshot
 from reflectlog.core.types import ReplacementTransitionRequest
 from reflectlog.infrastructure.embedding_identity import ensure_embedding_identity
 from reflectlog.infrastructure.memory_store import MemoryStore
@@ -274,6 +275,7 @@ async def test_mcp_tool_signatures_and_public_result_shapes() -> None:
         }
     )
     memory.pending_intent_count = MagicMock(return_value=0)
+    memory.search_failure_snapshot = MagicMock(return_value=SearchFailureSnapshot())
     memory.startup_metrics = None
 
     add = AddTool(config, memory, logger)
@@ -340,4 +342,6 @@ async def test_mcp_tool_signatures_and_public_result_shapes() -> None:
         "rrf_fusion_enabled",
         "recency_boost_enabled",
         "pending_intent_count",
+        "search_failures",
     }
+    assert health_payload["search_failures"] == SearchFailureSnapshot().to_dict()
