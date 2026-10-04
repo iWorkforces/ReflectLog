@@ -5,13 +5,79 @@ dependencies (LLM providers, APIs) fail or are unavailable.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from reflectlog.application.config.settings import Config
+from reflectlog.application.memory.add_phases import SmartReplacementPhase
+from reflectlog.application.utils.security import SecretString
+from reflectlog.core.types import ISemanticSearchEngine
 from reflectlog.infrastructure.smart_replacer import (
     OpenAIReplacementProvider,
+    SmartReplacer,
+    SmartReplacerConfig,
 )
+from tests.unit.infrastructure.test_smart_replacer import RecordingLogger
+
+
+@pytest.mark.parametrize(
+    "scenario", ["accepted", "rejected", "candidate_error", "search_error"]
+)
+async def test_candidate_checks_keep_memory_and_reply_private(scenario: str) -> None:
+    sentinel = "PRIVATE_SENTINEL_CANDIDATE"
+    logger = RecordingLogger()
+    phase = SmartReplacementPhase(
+        Mock(spec=ISemanticSearchEngine),
+        Config(workspace_id="test", openrouter_api_key=SecretString("key")),
+        logger,
+        None,
+    )
+    replacer = SmartReplacer(
+        config=SmartReplacerConfig("key", "https://example.com", "model", enabled=False)
+    )
+    with (
+        patch.object(
+            SmartReplacer,
+            "check_replacement",
+            autospec=True,
+            return_value=(scenario == "accepted", 0.9, sentinel),
+            side_effect=RuntimeError(sentinel)
+            if scenario == "candidate_error"
+            else None,
+        ),
+        patch.object(
+            SmartReplacementPhase,
+            "_search_candidates",
+            autospec=True,
+            side_effect=RuntimeError(sentinel),
+        ),
+    ):
+        result = (
+            await phase._check_for_replacement(sentinel, replacer)
+            if scenario == "search_error"
+            else await phase._check_candidates_with_llm(
+                [(sentinel, 0.9)], sentinel, replacer
+            )
+        )
+    assert logger.records
+    assert sentinel not in repr(logger.records)
+    assert sentinel not in repr(logger.exception_text)
+    assert all(not record[3] for record in logger.records)
+    if scenario == "accepted":
+        assert len(result) == 1
+        assert result[0].reason == sentinel
+        assert result[0].old_memory == sentinel
+        assert result[0].new_memory == sentinel
+    else:
+        assert result == []
+    if scenario in {"accepted", "rejected"}:
+        assert logger.records[0][2]
+        assert logger.records[0][2]["reason_length"] == len(sentinel)
+        assert logger.records[0][2]["confidence"] == 0.9
+    else:
+        assert logger.records[0][2]
+        assert logger.records[0][2]["exception_type"] == "RuntimeError"
 
 
 @pytest.mark.unit

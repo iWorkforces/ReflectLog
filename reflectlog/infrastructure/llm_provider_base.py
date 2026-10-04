@@ -18,7 +18,8 @@ Example:
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Protocol
+import math
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import (
@@ -29,6 +30,83 @@ from reflectlog.utility.http import HttpClientFactory
 
 if TYPE_CHECKING:
     from reflectlog.core.logging import IStructuredLogger
+
+
+class InvalidReplacementDecisionError(ValueError):
+    """A model reply is not a well-formed replacement decision.
+
+    The message is fixed and never contains the rejected value, so the error
+    is safe to log.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Invalid replacement decision")
+
+
+def _strict_bool(value: object) -> bool:
+    """Return ``value`` only when it is a real bool (no truthiness coercion)."""
+    if not isinstance(value, bool):
+        raise InvalidReplacementDecisionError
+    return value
+
+
+def _strict_string(value: object) -> str:
+    """Return ``value`` only when it is a str (no ``str()`` coercion)."""
+    if not isinstance(value, str):
+        raise InvalidReplacementDecisionError
+    return value
+
+
+def _strict_float(
+    value: object, bounds: tuple[float, float] | None = (0.0, 1.0)
+) -> float:
+    """Return a finite number as float, clamped into ``bounds`` when given.
+
+    Booleans, strings, ``NaN`` and infinities are rejected. Out-of-range
+    integers of any size are clamped rather than converted.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise InvalidReplacementDecisionError
+    if isinstance(value, float) and not math.isfinite(value):
+        raise InvalidReplacementDecisionError
+    if bounds is not None:
+        lower, upper = bounds
+        if value <= lower:
+            return lower
+        if value >= upper:
+            return upper
+    try:
+        return float(value)
+    except OverflowError:
+        raise InvalidReplacementDecisionError from None
+
+
+def parse_replacement_decision(raw: object) -> tuple[bool, float, str]:
+    """Validate a model's replacement decision without coercing any field.
+
+    Missing fields keep their defaults (``False``, ``0.0``, ``"No reason
+    provided"``). ``should_replace`` must be a real bool, ``confidence`` a
+    finite int or float that is not a bool (clamped into [0.0, 1.0]) and
+    ``reason`` a str.
+
+    Args:
+        raw: Decoded JSON from the model.
+
+    Returns:
+        Tuple of (should_replace, confidence, reason).
+
+    Raises:
+        InvalidReplacementDecisionError: If ``raw`` is not an object or any
+            present field has the wrong type or a non-finite value.
+    """
+    if not isinstance(raw, dict):
+        raise InvalidReplacementDecisionError
+    fields = cast("dict[object, object]", raw)
+    return (
+        _strict_bool(fields.get("should_replace", False)),
+        _strict_float(fields.get("confidence", 0.0)),
+        _strict_string(fields.get("reason", "No reason provided")),
+    )
 
 
 class IStructuredOutputSchema(Protocol):
@@ -138,7 +216,10 @@ class BaseOpenAIProvider:
                     self._logger.warning(
                         "Model doesn't support structured outputs, "
                         "falling back to json_object",
-                        extra={"model": self._model, "error": str(e)},
+                        extra={
+                            "model": self._model,
+                            "exception_type": type(e).__name__,
+                        },
                     )
                 client = self._get_client()
                 response = await client.chat.completions.create(
@@ -156,7 +237,10 @@ class BaseOpenAIProvider:
         if content is None:
             raise ValueError("Empty response from LLM")
 
-        result = json.loads(content)
+        try:
+            result = json.loads(content)
+        except json.JSONDecodeError:
+            raise json.JSONDecodeError("Invalid JSON from LLM", "", 0) from None
         return result
 
     def _clamp_float(
@@ -172,7 +256,7 @@ class BaseOpenAIProvider:
         Returns:
             Clamped value within [min_value, max_value].
         """
-        return max(min_value, min(max_value, value))
+        return _strict_float(value, (min_value, max_value))
 
     def _extract_string_field(
         self,
@@ -190,7 +274,7 @@ class BaseOpenAIProvider:
         Returns:
             String value or default.
         """
-        return str(data.get(field, default))
+        return _strict_string(data.get(field, default))
 
     def _extract_float_field(
         self,
@@ -210,8 +294,7 @@ class BaseOpenAIProvider:
         Returns:
             Float value (clamped if clamp=True).
         """
-        value = float(data.get(field, default))
-        return self._clamp_float(value) if clamp else value
+        return _strict_float(data.get(field, default), (0.0, 1.0) if clamp else None)
 
     def _extract_bool_field(
         self,
@@ -229,4 +312,4 @@ class BaseOpenAIProvider:
         Returns:
             Boolean value or default.
         """
-        return bool(data.get(field, default))
+        return _strict_bool(data.get(field, default))

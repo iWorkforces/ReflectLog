@@ -148,9 +148,11 @@ async def generate_content(
 
     Args:
         prompt: The prompt to send to Claude.
-        model: Optional model to use (e.g., 'claude-sonnet-4-5-20250929').
+        model: Optional model to use (e.g., 'claude-sonnet-5.5').
         system_prompt: Optional system prompt.
-        allowed_tools: Optional list of allowed tools (empty = no tools).
+        allowed_tools: Optional list of tools auto-approved without a permission
+            prompt. Does not restrict which tools exist; built-in tools are
+            disabled by tools=[].
 
     Returns:
         The generated content as a string.
@@ -166,6 +168,7 @@ async def generate_content(
     options = _claude.ClaudeAgentOptions(
         model=model,
         system_prompt=system_prompt,
+        tools=[],
         allowed_tools=allowed_tools or [],
         permission_mode="default",
     )
