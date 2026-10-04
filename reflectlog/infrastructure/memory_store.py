@@ -1785,7 +1785,27 @@ def read_memory_store_snapshot(
         )
         try:
             _ = connection.execute("BEGIN")
-            return _read_snapshot(connection, db_path, workspace_id)
+            snapshot = _read_snapshot(connection, db_path, workspace_id)
+            journal_exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                "AND name = 'replacement_transitions'"
+            ).fetchone()
+            foreign_pending_count = 0
+            if journal_exists is not None:
+                foreign_pending_count = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM replacement_transitions "
+                        "WHERE status = ? AND workspace_id != ?",
+                        (TransitionStatus.PENDING.value, workspace_id),
+                    ).fetchone()[0]
+                )
+            return MemoryStoreSnapshot(
+                workspace_id=snapshot.workspace_id,
+                contents_by_id=snapshot.contents_by_id,
+                pending_transitions=snapshot.pending_transitions,
+                unrecognized_pending_count=snapshot.unrecognized_pending_count,
+                foreign_pending_count=foreign_pending_count,
+            )
         finally:
             connection.close()
     except sqlite3.Error as e:

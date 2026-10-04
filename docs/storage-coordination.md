@@ -90,6 +90,18 @@ An empty SQLite store with a populated vector index stays refused, including
 the case where the last memory was deleted and the process stopped before the
 index was saved.
 
+A missing `vectors.usearch` next to a populated SQLite store is refused as
+well, with one exception: a workspace whose first add stopped before the first
+publish. When pending ADD journal rows of the workspace account for every
+SQLite row and nothing else is pending (no pending row of another workspace,
+of another kind, or unrecognised), the engine opens an empty in-memory index
+and writes nothing. Recovery then embeds the missing vectors, indexes every
+pending add, publishes the first `vectors.usearch` through the usual temp
+file and replace, and advances the generation only after SQLite, Tantivy and
+the vector index agree. If embedding or indexing fails, the journal rows stay
+pending and the generation stays where it was, `health_check` reports the
+count in `pending_intent_count`, and the next start tries again.
+
 ## Engines
 
 - **USearch** publishes HNSW snapshots via a same-directory temp file,

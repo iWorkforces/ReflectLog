@@ -12,6 +12,7 @@ Types defined here:
     ISemanticSearchEngine: Protocol for semantic search engines.
     MemoryStoreSnapshot: Read-only view of one workspace's rows and journal.
     IMemorySnapshotReader: Protocol for engines that can read that view.
+    IUnpublishedBootstrap: Protocol for first-publish recovery state.
     IIndexIntegrityVerifier: Protocol for engines that can verify vector ids.
 """
 
@@ -85,13 +86,15 @@ class MemoryStoreSnapshot:
     holds the workspace's journal rows whose status is pending and whose kind
     and fields are recognised, in journal order. Pending rows with an
     unrecognised kind or malformed fields authorise nothing and are only
-    counted in ``unrecognized_pending_count``.
+    counted in ``unrecognized_pending_count``. ``foreign_pending_count`` counts
+    pending journal rows of OTHER workspaces in the same database.
     """
 
     workspace_id: str
     contents_by_id: Mapping[int, str]
     pending_transitions: tuple[ReplacementTransition, ...]
     unrecognized_pending_count: int = 0
+    foreign_pending_count: int = 0
 
 
 @runtime_checkable
@@ -268,6 +271,20 @@ class IMemorySnapshotReader(Protocol):
 
         Raises:
             StorageError: If the database is missing or unreadable.
+        """
+        ...
+
+
+@runtime_checkable
+class IUnpublishedBootstrap(Protocol):
+    """Engine capability: expose authorized first-publish recovery state."""
+
+    @property
+    def unpublished_bootstrap(self) -> bool:
+        """True from authorized recovery until the first index-file commit.
+
+        Recovery can hold the storage generation back until every pending
+        add is indexed.
         """
         ...
 
