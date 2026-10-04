@@ -18,6 +18,14 @@ and lowercased) and contains:
 
 NFS client-local locks and SMB/CIFS `nobrl` are **unsupported**.
 
+## Lease nesting
+
+An EXCLUSIVE owner may nest EXCLUSIVE and SHARED leases; a SHARED-only owner
+may nest SHARED leases. SHARED-to-EXCLUSIVE requests raise `LeaseUpgradeError`
+immediately, leaving the existing lease and its ownership unchanged. Release
+the SHARED lease before requesting EXCLUSIVE. Other threads and processes
+continue to wait up to the configured lease timeout.
+
 ## Embedding identity and offline rebuild
 
 A workspace reopens with the same embedding provider, model selector, and

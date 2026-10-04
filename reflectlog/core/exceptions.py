@@ -10,6 +10,10 @@ Hierarchy:
     ├── InitializationError - Engine/client initialization failures
     ├── StorageError - Storage operation failures
     │   ├── DuplicateError - Duplicate entry detected
+    │   ├── StorageCoordinationError - Workspace coordination failures
+    │   │   ├── LeaseTimeoutError - Lease acquisition timeout
+    │   │   ├── LeaseUpgradeError - Shared-to-exclusive upgrade rejected
+    │   │   └── GenerationError - Invalid generation sidecar
     │   └── InconsistentStateError - Dual-engine state mismatch
     ├── SearchError - Search operation failures
     └── EmbeddingError - Embedding generation failures
@@ -101,6 +105,10 @@ class LeaseTimeoutError(StorageCoordinationError):
     """Raised when a workspace lease cannot be acquired in time."""
 
     pass
+
+
+class LeaseUpgradeError(StorageCoordinationError):
+    """Raised when a thread holding only a shared lease requests an exclusive one."""
 
 
 class GenerationError(StorageCoordinationError):

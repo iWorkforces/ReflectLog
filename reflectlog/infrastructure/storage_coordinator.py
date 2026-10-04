@@ -11,7 +11,11 @@ from typing import TYPE_CHECKING, Self
 import portalocker
 from portalocker.exceptions import AlreadyLocked, LockException
 
-from reflectlog.core.exceptions import GenerationError, LeaseTimeoutError
+from reflectlog.core.exceptions import (
+    GenerationError,
+    LeaseTimeoutError,
+    LeaseUpgradeError,
+)
 from reflectlog.core.storage_coordination import (
     LeaseMode,
     WorkspaceStoragePaths,
@@ -170,6 +174,15 @@ class PortalockerStorageCoordinator:
         exclusive = mode is LeaseMode.EXCLUSIVE
         owner = threading.get_ident()
         with state.cond:
+            if (
+                exclusive
+                and owner in state.shared_holders
+                and not (state.exclusive_depth > 0 and state.exclusive_owner == owner)
+            ):
+                raise LeaseUpgradeError(
+                    "SHARED-to-EXCLUSIVE lease upgrades are forbidden for "
+                    f"{paths.workspace_id}"
+                )
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:

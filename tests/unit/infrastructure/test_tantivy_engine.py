@@ -10,8 +10,14 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 import tantivy
 
-from reflectlog.core.exceptions import ConfigurationError, SearchError
+from reflectlog.core.exceptions import (
+    ConfigurationError,
+    LeaseUpgradeError,
+    SearchError,
+)
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.core.storage_coordination import LeaseMode
+from reflectlog.infrastructure.storage_coordinator import PortalockerStorageCoordinator
 from reflectlog.infrastructure.tantivy_engine import (
     DEFAULT_TANTIVY_DOC_LIMIT,
     TantivyConfig,
@@ -3466,3 +3472,46 @@ class TestCoordinatedTantivyLifecycle:
             assert hits == ["from-writer"]
             writer.close()
             reader.close()
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_shared_tantivy_write_rejects_upgrade(nested: bool) -> None:
+    with tempfile.TemporaryDirectory() as root:
+        coordinator = PortalockerStorageCoordinator(root, timeout=5.0)
+        with _managed_engine(
+            os.path.join(root, "idx"), coordinator=coordinator
+        ) as engine:
+            engine.add("test", "seed")
+            lease = (
+                engine._lease(LeaseMode.SHARED)
+                if nested
+                else coordinator.acquire("test", LeaseMode.SHARED)
+            )
+            with lease:
+                with pytest.raises(LeaseUpgradeError) as error:
+                    engine.add("test", "new")
+                assert type(error.value).__name__ == "LeaseUpgradeError"
+                assert coordinator.is_held("test", LeaseMode.SHARED)
+                assert not coordinator.is_held("test", LeaseMode.EXCLUSIVE)
+                assert engine.search("seed", "test", 10)
+
+
+def test_rejected_tantivy_close_leaves_engine_usable() -> None:
+    with tempfile.TemporaryDirectory() as root:
+        coordinator = PortalockerStorageCoordinator(root, timeout=5.0)
+        with _managed_engine(
+            os.path.join(root, "idx"), coordinator=coordinator
+        ) as engine:
+            engine.add("test", "seed")
+            with coordinator.acquire("test", LeaseMode.SHARED):
+                with pytest.raises(LeaseUpgradeError) as error:
+                    engine.close()
+                assert type(error.value).__name__ == "LeaseUpgradeError"
+                assert not engine._closed
+                assert engine.search("seed", "test", 10)
+            with coordinator.acquire("test", LeaseMode.EXCLUSIVE):
+                with engine._lease(LeaseMode.SHARED):
+                    with engine._lease(LeaseMode.EXCLUSIVE):
+                        engine.add("test", "after")
+            engine.close()
+            assert engine._closed

@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
-from reflectlog.core.exceptions import GenerationError, LeaseTimeoutError
+from reflectlog.core.exceptions import (
+    GenerationError,
+    LeaseTimeoutError,
+    LeaseUpgradeError,
+    StorageCoordinationError,
+)
 from reflectlog.core.storage_coordination import LeaseMode
 from reflectlog.infrastructure.storage_coordinator import (
     PortalockerStorageCoordinator,
@@ -257,3 +264,98 @@ def test_sidecar_paths_are_stable(
     assert paths.generation_path.endswith(
         str(Path("my.workspace") / ".reflectlog.storage-generation")
     )
+
+
+def test_shared_upgrade_rejected_and_shared_retained(tmp_path: Path) -> None:
+    root = str(tmp_path / "indexes")
+    coordinator = PortalockerStorageCoordinator(root, timeout=5.0)
+    with coordinator.acquire("alpha", LeaseMode.SHARED):
+        state = coordinator._states["alpha"]
+        before = (
+            state.exclusive_depth,
+            state.exclusive_owner,
+            dict(state.shared_holders),
+            state.os_lock,
+        )
+        started = time.monotonic()
+        with pytest.raises(LeaseUpgradeError) as error:
+            with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+                pytest.fail("upgrade granted")
+        assert type(error.value).__name__ == "LeaseUpgradeError"
+        assert time.monotonic() - started < 2.0
+        assert coordinator.is_held("alpha", LeaseMode.SHARED)
+        assert not coordinator.is_held("alpha", LeaseMode.EXCLUSIVE)
+        assert before == (
+            state.exclusive_depth,
+            state.exclusive_owner,
+            dict(state.shared_holders),
+            state.os_lock,
+        )
+        with coordinator.acquire("alpha", LeaseMode.SHARED):
+            assert coordinator.is_held("alpha", LeaseMode.SHARED)
+    with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE, timeout=0.2):
+        assert coordinator.is_held("alpha", LeaseMode.EXCLUSIVE)
+    other = PortalockerStorageCoordinator(root, timeout=0.2)
+    with other.acquire("alpha", LeaseMode.EXCLUSIVE):
+        assert other.is_held("alpha", LeaseMode.EXCLUSIVE)
+
+
+@pytest.mark.parametrize(
+    "modes",
+    [
+        (LeaseMode.EXCLUSIVE, LeaseMode.EXCLUSIVE),
+        (LeaseMode.EXCLUSIVE, LeaseMode.SHARED),
+        (LeaseMode.SHARED, LeaseMode.SHARED),
+        (LeaseMode.EXCLUSIVE, LeaseMode.SHARED, LeaseMode.EXCLUSIVE),
+    ],
+)
+def test_legal_lease_nesting(
+    coordinator: PortalockerStorageCoordinator, modes: tuple[LeaseMode, ...]
+) -> None:
+    from contextlib import ExitStack
+
+    with ExitStack() as stack:
+        for mode in modes:
+            stack.enter_context(coordinator.acquire("alpha", mode))
+            assert coordinator.is_held("alpha", mode)
+    assert not coordinator.is_held("alpha")
+
+
+def test_non_lifo_shared_holder_cannot_regain_exclusive(
+    coordinator: PortalockerStorageCoordinator,
+) -> None:
+    exclusive = coordinator.acquire("alpha", LeaseMode.EXCLUSIVE)
+    shared = coordinator.acquire("alpha", LeaseMode.SHARED)
+    exclusive.release()
+    try:
+        with pytest.raises(LeaseUpgradeError) as error:
+            with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+                pytest.fail("upgrade granted")
+        assert type(error.value).__name__ == "LeaseUpgradeError"
+        assert coordinator.is_held("alpha", LeaseMode.SHARED)
+        assert not coordinator.is_held("alpha", LeaseMode.EXCLUSIVE)
+    finally:
+        shared.release()
+    with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+        assert coordinator.is_held("alpha", LeaseMode.EXCLUSIVE)
+
+
+def test_other_thread_exclusive_still_times_out_under_shared(
+    coordinator: PortalockerStorageCoordinator,
+) -> None:
+    errors: list[StorageCoordinationError] = []
+
+    def request() -> None:
+        try:
+            with coordinator.acquire("alpha", LeaseMode.EXCLUSIVE):
+                pass
+        except StorageCoordinationError as error:
+            errors.append(error)
+
+    with coordinator.acquire("alpha", LeaseMode.SHARED):
+        waiter = threading.Thread(target=request)
+        waiter.start()
+        waiter.join(timeout=2.0)
+        assert not waiter.is_alive()
+        assert len(errors) == 1
+        assert isinstance(errors[0], LeaseTimeoutError)

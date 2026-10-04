@@ -30,9 +30,17 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index, Match
 
 from reflectlog.core.enums import EmbedderProvider, parse_str_enum
-from reflectlog.core.exceptions import InitializationError, StorageError
+from reflectlog.core.exceptions import (
+    InitializationError,
+    LeaseUpgradeError,
+    StorageError,
+)
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
+from reflectlog.core.storage_coordination import (
+    IStorageCoordinator,
+    LeaseMode,
+    reject_shared_upgrade,
+)
 from reflectlog.core.types import (
     Closable,
     Embeddings,
@@ -672,6 +680,7 @@ class USearchEngine(BaseModel):
         ):
             yield
             return
+        reject_shared_upgrade(coordinator, self.config.workspace_id)
         with coordinator.acquire(self.config.workspace_id, LeaseMode.EXCLUSIVE):
             yield
 
@@ -1356,7 +1365,7 @@ class USearchEngine(BaseModel):
                     },
                 )
             raise RuntimeError(f"Invalid memory_id format: {e}") from e
-        except InitializationError:
+        except InitializationError, LeaseUpgradeError:
             raise
         except Exception as e:
             if self.logger:

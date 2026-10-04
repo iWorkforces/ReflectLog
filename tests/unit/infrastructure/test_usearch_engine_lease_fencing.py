@@ -19,7 +19,12 @@ import pytest
 from usearch.index import Index
 
 from reflectlog.core.enums import EmbedderProvider
-from reflectlog.core.storage_coordination import IStorageLease, LeaseMode
+from reflectlog.core.exceptions import LeaseUpgradeError
+from reflectlog.core.storage_coordination import (
+    IStorageLease,
+    LeaseMode,
+    WorkspaceStoragePaths,
+)
 from reflectlog.infrastructure import usearch_engine
 from reflectlog.infrastructure.storage_coordinator import PortalockerStorageCoordinator
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
@@ -512,3 +517,84 @@ class TestHolderOfTheLeaseNeverReacquires:
             assert probe.restore_held == [True]
         finally:
             reader.close()
+
+
+@pytest.mark.parametrize("operation", ["add", "add_batch", "delete", "commit"])
+def test_shared_holder_write_entry_points_reject_upgrade(
+    config: USearchConfig,
+    coordinator: PortalockerStorageCoordinator,
+    operation: str,
+) -> None:
+    engine = _engine(config, coordinator)
+    try:
+        engine.add(WS, SEED[0], infer=False)
+        memory_id = engine.get_id_by_content(WS, SEED[0])
+        assert memory_id is not None
+        with coordinator.acquire(WS, LeaseMode.SHARED):
+            with pytest.raises(LeaseUpgradeError) as error:
+                match operation:
+                    case "add":
+                        engine.add(WS, FRESH, infer=False)
+                    case "add_batch":
+                        engine.add_batch(WS, [FRESH], infer=False)
+                    case "delete":
+                        engine.delete(str(memory_id))
+                    case "commit":
+                        engine.commit()
+                    case _:
+                        pytest.fail("unknown operation")
+            assert type(error.value).__name__ == "LeaseUpgradeError"
+            assert coordinator.is_held(WS, LeaseMode.SHARED)
+            assert not coordinator.is_held(WS, LeaseMode.EXCLUSIVE)
+    finally:
+        engine.close()
+
+
+class SharedOnlyCoordinator:
+    timeout = 5.0
+
+    def __init__(self, root: str) -> None:
+        self.delegate = PortalockerStorageCoordinator(root, timeout=self.timeout)
+        self.acquires: list[LeaseMode] = []
+
+    def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
+        return self.delegate.paths_for(workspace_id)
+
+    def acquire(
+        self,
+        workspace_id: str,
+        mode: LeaseMode = LeaseMode.EXCLUSIVE,
+        *,
+        timeout: float | None = None,
+    ) -> IStorageLease:
+        self.acquires.append(mode)
+        return self.delegate.acquire(workspace_id, mode, timeout=timeout)
+
+    def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
+        return mode is not LeaseMode.EXCLUSIVE
+
+    def read_generation(self, workspace_id: str) -> int:
+        return self.delegate.read_generation(workspace_id)
+
+    def publish_generation(self, workspace_id: str, generation: int) -> None:
+        self.delegate.publish_generation(workspace_id, generation)
+
+
+def test_write_lease_rejects_structural_shared_holder_without_acquire(
+    config: USearchConfig, tmp_path: Path
+) -> None:
+    coordinator = SharedOnlyCoordinator(str(tmp_path / "root"))
+    engine = USearchEngine(
+        config=config,
+        embedder=MockEmbedder(dims=DIMS),
+        coordinator=coordinator.delegate,
+    )
+    engine.coordinator = coordinator
+    try:
+        with pytest.raises(LeaseUpgradeError) as error:
+            with engine._write_lease():
+                pytest.fail("write lease granted")
+        assert type(error.value).__name__ == "LeaseUpgradeError"
+        assert coordinator.acquires == []
+    finally:
+        engine.close()

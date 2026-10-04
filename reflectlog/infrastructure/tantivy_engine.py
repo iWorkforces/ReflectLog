@@ -30,7 +30,11 @@ from reflectlog.core.exceptions import (
     SearchError,
 )
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
+from reflectlog.core.storage_coordination import (
+    IStorageCoordinator,
+    LeaseMode,
+    reject_shared_upgrade,
+)
 
 
 def _is_dict_config(config: object) -> TypeGuard[dict[str, Any]]:
@@ -382,6 +386,8 @@ class TantivyEngine(BaseModel):
     def _lease(self, mode: LeaseMode) -> Generator[None]:
         """Acquire a coordinator lease, reusing a nest already held by this thread."""
         coordinator = self.coordinator
+        if mode is LeaseMode.EXCLUSIVE and coordinator is not None:
+            reject_shared_upgrade(coordinator, self.config.workspace_id)
         if coordinator is None or self._thread_lease_depth() > 0:
             self._bump_thread_lease(1)
             try:
@@ -1076,8 +1082,8 @@ class TantivyEngine(BaseModel):
         If not called, resources will be released by Python's garbage collector,
         but file locks may persist until GC runs.
         """
-        self._closed = True
         with self._lease(LeaseMode.EXCLUSIVE):
+            self._closed = True
             self._close_unlocked()
 
     def _close_unlocked(self) -> None:
