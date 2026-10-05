@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
 ]
 dependencies = [
-    "fastmcp==4.0.10",
+    "fastmcp==4.0.11",
     "pydantic==2.14.0b2",
     "fastapi[standard]>=0.142.2",
     "uvicorn[standard]>=0.54.0",
@@ -60,7 +60,7 @@ dependencies = [
     "flash-linear-attention>=0.5.2",
     "pyjwt>=2.15.1",
     "sse-starlette>=3.5.0",
-    "filelock>=4.0.10",
+    "filelock>=4.0.11",
 ]
 
 [project.urls]
