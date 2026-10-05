@@ -26,6 +26,51 @@ OTHER = "other-ws"
 SECRET = "SECRET-MEMORY-TEXT"
 
 
+def test_foreign_pending_count_excludes_own_and_completed(db_path: Path) -> None:
+    store = MemoryStore(db_path=str(db_path))
+    try:
+        store.begin_add_intents(WS, ["own"])
+        store.begin_add_intents(OTHER, ["foreign"])
+        completed = store.begin_add_intents(OTHER, ["completed"])
+        store.complete_replacement_transition(completed[0].id)
+    finally:
+        store.close()
+    snapshot = read_memory_store_snapshot(str(db_path), WS)
+    assert snapshot.foreign_pending_count == 1
+    assert len(snapshot.pending_transitions) == 1
+
+
+def test_foreign_pending_count_without_journal(db_path: Path) -> None:
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(
+            "CREATE TABLE memories (id INTEGER, workspace_id TEXT, content TEXT)"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    assert read_memory_store_snapshot(str(db_path), WS).foreign_pending_count == 0
+
+
+def test_foreign_pending_count_without_kind_column(db_path: Path) -> None:
+    store = MemoryStore(db_path=str(db_path))
+    store.begin_add_intents(OTHER, ["foreign"])
+    store.close()
+    connection = sqlite3.connect(db_path)
+    try:
+        for name in (
+            "idx_transition_old_replace",
+            "idx_transition_old_delete",
+            "idx_pending_add",
+        ):
+            connection.execute(f"DROP INDEX {name}")
+        connection.execute("ALTER TABLE replacement_transitions DROP COLUMN kind")
+        connection.commit()
+    finally:
+        connection.close()
+    assert read_memory_store_snapshot(str(db_path), WS).foreign_pending_count == 1
+
+
 def _fingerprint(path: Path) -> tuple[str, int] | None:
     """Return (sha256, mtime_ns) of a file, or None when it does not exist."""
     if not path.exists():

@@ -490,7 +490,7 @@ class SmartReplacementPhase:
                                 "should_replace": True,
                                 "confidence": confidence,
                                 "similarity_score": similarity_score,
-                                "reason": reason,
+                                "reason_length": len(reason),
                                 "old_memory_length": len(existing_memory),
                                 "new_memory_length": len(new_memory),
                             },
@@ -504,22 +504,22 @@ class SmartReplacementPhase:
                         )
                     else:
                         self.logger.debug(
-                            f"No replacement needed (confidence={confidence:.2f}): {reason}",
+                            f"No replacement needed (confidence={confidence:.2f})",
                             extra={
                                 "workspace_id": self._workspace_id,
                                 "should_replace": False,
                                 "confidence": confidence,
-                                "reason": reason,
+                                "reason_length": len(reason),
                             },
                         )
                         return None
                 except Exception as candidate_error:
                     # Graceful degradation: log warning and skip this candidate
                     self.logger.warning(
-                        f"LLM check failed for candidate: {candidate_error}",
+                        "LLM check failed for candidate",
                         extra={
                             "workspace_id": self._workspace_id,
-                            "error": str(candidate_error),
+                            "exception_type": type(candidate_error).__name__,
                             "existing_memory_length": len(existing_memory),
                         },
                     )
@@ -575,10 +575,10 @@ class SmartReplacementPhase:
         except Exception as e:
             # Graceful degradation: log warning and proceed without replacement
             self.logger.warning(
-                f"Smart replacement check failed: {e}",
+                "Smart replacement check failed",
                 extra={
                     "workspace_id": self._workspace_id,
-                    "error": str(e),
+                    "exception_type": type(e).__name__,
                     "new_memory_length": len(new_memory),
                 },
             )

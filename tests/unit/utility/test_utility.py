@@ -543,6 +543,7 @@ class TestGenerateContent:
         mock_options_cls.assert_called_once_with(
             model="claude-sonnet-4-5-20250929",
             system_prompt="Be helpful",
+            tools=[],
             allowed_tools=["read", "write"],
             permission_mode="default",
         )
@@ -562,9 +563,60 @@ class TestGenerateContent:
         mock_options_cls.assert_called_once_with(
             model=None,
             system_prompt=None,
+            tools=[],
             allowed_tools=[],
             permission_mode="default",
         )
+
+    @patch("reflectlog.utility.utility._claude.query")
+    async def test_default_query_options_disable_builtin_tools(
+        self, mock_query: MagicMock
+    ) -> None:
+        """Should hand query options with all built-in tools disabled."""
+        from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions
+
+        from reflectlog.utility.utility import generate_content
+
+        captured_options: list[ClaudeAgentOptions] = []
+        mock_message = MagicMock(spec=AssistantMessage)
+        mock_message.content = []
+
+        async def mock_query_iter(*, prompt: str, options: ClaudeAgentOptions) -> Any:
+            captured_options.append(options)
+            yield mock_message
+
+        mock_query.side_effect = mock_query_iter
+
+        _ = await generate_content("Test")
+
+        assert len(captured_options) == 1
+        assert captured_options[0].tools == []
+        assert captured_options[0].allowed_tools == []
+
+    @patch("reflectlog.utility.utility._claude.query")
+    async def test_allowed_tools_do_not_enable_builtin_tools(
+        self, mock_query: MagicMock
+    ) -> None:
+        """Should preserve auto-approval settings without enabling built-in tools."""
+        from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions
+
+        from reflectlog.utility.utility import generate_content
+
+        captured_options: list[ClaudeAgentOptions] = []
+        mock_message = MagicMock(spec=AssistantMessage)
+        mock_message.content = []
+
+        async def mock_query_iter(*, prompt: str, options: ClaudeAgentOptions) -> Any:
+            captured_options.append(options)
+            yield mock_message
+
+        mock_query.side_effect = mock_query_iter
+
+        _ = await generate_content("Test", allowed_tools=["Read"])
+
+        assert len(captured_options) == 1
+        assert captured_options[0].tools == []
+        assert captured_options[0].allowed_tools == ["Read"]
 
     @patch("reflectlog.utility.utility._claude.query")
     @patch("reflectlog.utility.utility._claude.ClaudeAgentOptions")

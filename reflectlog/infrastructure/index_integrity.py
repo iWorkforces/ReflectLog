@@ -36,12 +36,30 @@ from reflectlog.core.enums import TransitionKind, TransitionStatus
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from reflectlog.core.types import ReplacementTransition
+    from reflectlog.core.types import MemoryStoreSnapshot, ReplacementTransition
 
 INDEX_DRIFT_OPERATOR_ACTION = (
     "Restore a consistent backup or rebuild this workspace offline."
 )
 MAX_REPORTED_IDS = 10
+
+
+def can_bootstrap_missing_index(snapshot: MemoryStoreSnapshot) -> bool:
+    """Authorize an unpublished empty index only for fully explained first ADDs."""
+    if (
+        not snapshot.contents_by_id
+        or snapshot.unrecognized_pending_count
+        or snapshot.foreign_pending_count
+        or not snapshot.pending_transitions
+        or any(row.kind != TransitionKind.ADD for row in snapshot.pending_transitions)
+    ):
+        return False
+    return evaluate_index_integrity(
+        workspace_id=snapshot.workspace_id,
+        sqlite_rows=snapshot.contents_by_id,
+        vector_keys=(),
+        pending=snapshot.pending_transitions,
+    ).is_consistent
 
 
 @dataclass(frozen=True)

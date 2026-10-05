@@ -14,11 +14,15 @@ import pytest
 
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.enums import EmbedderProvider
-from reflectlog.core.exceptions import StorageError
+from reflectlog.core.exceptions import InitializationError, StorageError
 from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.types import Embeddings
 from reflectlog.infrastructure.embedding_identity import ensure_embedding_identity
-from reflectlog.infrastructure.memory_store import MemoryStore
+from reflectlog.infrastructure.memory_store import (
+    MemoryStore,
+    MemoryStoreSnapshotError,
+    read_memory_store_snapshot,
+)
 from reflectlog.infrastructure.usearch_engine import USearchConfig, USearchEngine
 
 
@@ -90,6 +94,121 @@ def journal_add(config: USearchConfig, *contents: str) -> None:
         _ = store.begin_add_intents(config.workspace_id, list(contents))
     finally:
         store.close()
+
+
+def test_missing_index_bootstrap_is_unpublished(
+    temp_engine: tuple[USearchConfig, MockEmbedder, str],
+) -> None:
+    config, embedder, _ = temp_engine
+    ensure_embedding_identity(config)
+    store = MemoryStore(db_path=config.db_path)
+    store.begin_add_intents(config.workspace_id, ["first"])
+    memory_id = store.insert(config.workspace_id, "first")
+    store.close()
+    engine = USearchEngine(config=config, embedder=embedder)
+    try:
+        assert len(engine.index) == 0
+        assert not os.path.exists(config.index_path)
+        engine.verify_index_integrity()
+        snapshot = read_memory_store_snapshot(config.db_path, config.workspace_id)
+        assert dict(snapshot.contents_by_id) == {memory_id: "first"}
+        engine.memory_store.complete_replacement_transition(
+            engine.memory_store.list_pending_transitions()[0].id
+        )
+        with pytest.raises(InitializationError, match="USearch index is empty"):
+            engine.verify_index_integrity()
+    finally:
+        engine.close()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "no_journal",
+        "partial",
+        "completed",
+        "foreign_only",
+        "foreign_pending",
+        "foreign_row",
+        "delete",
+        "corrupt",
+    ],
+)
+def test_missing_index_bootstrap_refuses_unexplained_rows(
+    temp_engine: tuple[USearchConfig, MockEmbedder, str], case: str
+) -> None:
+    config, embedder, _ = temp_engine
+    ensure_embedding_identity(config)
+    store = MemoryStore(db_path=config.db_path)
+    memory_id = store.insert(config.workspace_id, "first")
+    if case in {"partial", "foreign_pending", "foreign_row", "corrupt"}:
+        store.begin_add_intents(config.workspace_id, ["first"])
+    if case == "partial":
+        store.insert(config.workspace_id, "unexplained")
+    if case == "completed":
+        rows = store.begin_add_intents(config.workspace_id, ["first"])
+        store.complete_replacement_transition(rows[0].id)
+    if case in {"foreign_only", "foreign_pending"}:
+        store.begin_add_intents("foreign", ["first"])
+    if case == "foreign_row":
+        store.insert("foreign", "foreign")
+    if case == "delete":
+        store.begin_delete_intents(config.workspace_id, [(memory_id, "first")])
+    store.close()
+    before = read_memory_store_snapshot(config.db_path, config.workspace_id)
+    if case == "corrupt":
+        with open(config.index_path, "wb") as file:
+            file.write(b"corrupt")
+    engine = USearchEngine(config=config, embedder=embedder)
+    prefix = "USearch index is missing but SQLite has"
+    try:
+        error = RuntimeError if case == "corrupt" else InitializationError
+        if case == "corrupt":
+            prefix = "Failed to initialize USearch index"
+        with pytest.raises(error, match=prefix):
+            _ = engine.index
+        after = read_memory_store_snapshot(config.db_path, config.workspace_id)
+        assert after.contents_by_id == before.contents_by_id
+        assert os.path.exists(config.index_path) is (case == "corrupt")
+    finally:
+        engine.close()
+
+
+@pytest.mark.parametrize("state", ["snapshot_error", "published_empty"])
+def test_bootstrap_authorization_fails_closed_when_state_changes(
+    temp_engine: tuple[USearchConfig, MockEmbedder, str], state: str
+) -> None:
+    config, embedder, _ = temp_engine
+    ensure_embedding_identity(config)
+    store = MemoryStore(db_path=config.db_path)
+    store.begin_add_intents(config.workspace_id, ["first"])
+    store.insert(config.workspace_id, "first")
+    store.close()
+    engine = USearchEngine(config=config, embedder=embedder)
+    try:
+        if state == "snapshot_error":
+            with (
+                patch(
+                    "reflectlog.infrastructure.usearch_engine.read_memory_store_snapshot",
+                    side_effect=MemoryStoreSnapshotError("unreadable snapshot"),
+                ),
+                pytest.raises(
+                    InitializationError, match="USearch index is missing but SQLite has"
+                ),
+            ):
+                _ = engine.index
+            assert not os.path.exists(config.index_path)
+        else:
+            candidate = engine.index
+            temporary = config.index_path + ".external.tmp"
+            candidate.save(temporary)
+            os.replace(temporary, config.index_path)
+            with pytest.raises(InitializationError, match="USearch index is empty"):
+                engine.verify_index_integrity()
+        snapshot = read_memory_store_snapshot(config.db_path, config.workspace_id)
+        assert list(snapshot.contents_by_id.values()) == ["first"]
+    finally:
+        engine.close()
 
 
 @pytest.fixture

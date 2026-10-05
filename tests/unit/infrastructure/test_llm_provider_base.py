@@ -4,6 +4,8 @@ import json
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion
 import pytest
 
 from reflectlog.application.utils.logging import StructuredLogger
@@ -12,8 +14,71 @@ from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
     IStructuredOutputSchema,
 )
+from tests.unit.infrastructure.test_smart_replacer import RecordingLogger
 
 assert IStructuredOutputSchema is not None
+
+
+@pytest.mark.parametrize("scenario", ["fallback", "json"])
+async def test_structured_output_errors_are_private(scenario: str) -> None:
+    sentinel = "PRIVATE_SENTINEL_BASE_REPLY"
+    logger = RecordingLogger()
+    provider = BaseOpenAIProvider("key", "https://example.com", "model", logger=logger)
+    response = ChatCompletion.model_validate(
+        {
+            "id": "id",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "model",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": sentinel if scenario == "json" else "{}",
+                    },
+                }
+            ],
+        }
+    )
+    responses = {
+        "fallback": [RuntimeError(f"json_schema {sentinel}"), response],
+        "json": [response],
+    }
+    async with AsyncOpenAI(api_key="key") as client:
+        with (
+            patch.object(provider, "_get_client", autospec=True, return_value=client),
+            patch.object(
+                client.chat.completions,
+                "create",
+                new=AsyncMock(
+                    spec=client.chat.completions.create, side_effect=responses[scenario]
+                ),
+            ),
+        ):
+            if scenario == "fallback":
+                assert (
+                    await provider._call_llm_with_structured_output(
+                        sentinel, FakeSchema
+                    )
+                    == {}
+                )
+            else:
+                with pytest.raises(Exception) as caught:
+                    await provider._call_llm_with_structured_output(
+                        sentinel, FakeSchema
+                    )
+                assert isinstance(caught.value, json.JSONDecodeError)
+                assert sentinel not in str(caught.value)
+                assert sentinel not in caught.value.doc
+                assert caught.value.__suppress_context__
+    assert sentinel not in repr(logger.records)
+    assert sentinel not in repr(logger.exception_text)
+    assert all(not record[3] for record in logger.records)
+    if scenario == "fallback":
+        assert logger.records[0][2]
+        assert logger.records[0][2]["exception_type"] == "RuntimeError"
 
 
 def create_mock_logger() -> IStructuredLogger:
@@ -354,10 +419,12 @@ class TestExtractStringField:
             provider._extract_string_field({}, "name", default="unknown") == "unknown"
         )
 
-    def test_non_string_value_converted(self) -> None:
-        """Test non-string values are converted via str()."""
+    def test_non_string_value_rejected(self) -> None:
+        """Test non-string values are rejected without coercion."""
         provider = BaseOpenAIProvider(api_key="k", base_url="http://x", model="m")
-        assert provider._extract_string_field({"n": 42}, "n") == "42"
+        with pytest.raises(ValueError, match="Invalid replacement decision") as error:
+            provider._extract_string_field({"n": 42}, "n")
+        assert "42" not in str(error.value)
 
 
 class TestExtractFloatField:
@@ -417,11 +484,11 @@ class TestExtractBoolField:
         provider = BaseOpenAIProvider(api_key="k", base_url="http://x", model="m")
         assert provider._extract_bool_field({}, "flag", default=True) is True
 
-    def test_truthy_value(self) -> None:
-        """Test truthy non-bool value converted via bool()."""
+    @pytest.mark.parametrize("value", [0, 1])
+    def test_non_bool_value_rejected(self, value: int) -> None:
         provider = BaseOpenAIProvider(api_key="k", base_url="http://x", model="m")
-        assert provider._extract_bool_field({"flag": 1}, "flag") is True
-        assert provider._extract_bool_field({"flag": 0}, "flag") is False
+        with pytest.raises(ValueError, match="Invalid replacement decision"):
+            provider._extract_bool_field({"flag": value}, "flag")
 
 
 class TestIStructuredOutputSchemaProtocol:

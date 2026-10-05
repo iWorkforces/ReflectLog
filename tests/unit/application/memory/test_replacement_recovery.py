@@ -20,6 +20,7 @@ from reflectlog.core.storage_coordination import LeaseMode, WorkspaceStoragePath
 from reflectlog.core.types import (
     IMemorySnapshotReader,
     ISemanticSearchEngine,
+    IUnpublishedBootstrap,
     MemoryStoreSnapshot,
     ReplacementTransition,
 )
@@ -308,6 +309,269 @@ class TestApplyPendingTransition:
 @pytest.mark.unit
 class TestReconcilePendingReplacements:
     """Startup reconciliation respects lock order and skips empty stores."""
+
+    def test_add_only_batch_stages_every_add_before_generation(self) -> None:
+        events: list[str] = []
+
+        class _Lease:
+            workspace_id = "proj"
+            mode = LeaseMode.EXCLUSIVE
+
+            def release(self) -> None:
+                return None
+
+            def __enter__(self) -> _Lease:
+                return self
+
+            def __exit__(
+                self,
+                exc_type: type[BaseException] | None,
+                exc: BaseException | None,
+                traceback: object,
+            ) -> None:
+                _ = exc_type, exc, traceback
+
+        class _Coordinator:
+            timeout = 1.0
+
+            def acquire(
+                self,
+                workspace_id: str,
+                mode: LeaseMode = LeaseMode.EXCLUSIVE,
+                *,
+                timeout: float | None = None,
+            ) -> _Lease:
+                _ = timeout
+                lease = _Lease()
+                lease.workspace_id = workspace_id
+                lease.mode = mode
+                return lease
+
+            def read_generation(self, workspace_id: str) -> int:
+                _ = workspace_id
+                return 0
+
+            def publish_generation(self, workspace_id: str, generation: int) -> None:
+                _ = workspace_id, generation
+
+            def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
+                _ = workspace_id, mode
+                return False
+
+            def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
+                return WorkspaceStoragePaths(
+                    workspace_id=workspace_id,
+                    root="/tmp",
+                    lock_path="/tmp/.lock",
+                    generation_path="/tmp/.gen",
+                )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            store.begin_add_intents("proj", ["first add", "second add"])
+            semantic = MagicMock(spec=ISemanticSearchEngine)
+            semantic.memory_store = store
+            semantic.embedder.embed_documents.return_value = [[0.1, 0.2]] * 2
+            live: dict[str, int] = {}
+            semantic.get_id_by_content.side_effect = lambda _workspace, content: (
+                live.get(content)
+            )
+            semantic.contains_id.side_effect = lambda memory_id: (
+                memory_id in live.values()
+            )
+
+            def add_batch(
+                _workspace: str,
+                contents: list[str],
+                *,
+                infer: bool,
+                vectors: list[list[float]],
+            ) -> list[str]:
+                _ = infer, vectors
+                content = contents[0]
+                events.append(f"add:{content}")
+                live[content] = 100 + len(live)
+                return contents
+
+            semantic.add_batch.side_effect = add_batch
+            try:
+                count = reconcile_pending_replacements(
+                    semantic_engine=semantic,
+                    tantivy_engine=None,
+                    write_lock=threading.Lock(),
+                    lock=threading.RLock(),
+                    logger=MagicMock(spec=IStructuredLogger),
+                    coordinator=_Coordinator(),
+                    workspace_id="proj",
+                    orchestration_hook=events.append,
+                )
+                first_generation = events.index("before_generation")
+                assert events.index("add:first add") < first_generation
+                assert events.index("add:second add") < first_generation
+                assert count == 2
+                assert store.list_pending_transitions() == []
+            finally:
+                store.close()
+
+    @pytest.mark.parametrize(
+        ("bootstrap", "failure", "expected_count"),
+        [
+            (True, "tantivy", 0),
+            (False, "tantivy", 1),
+            (True, "none", 2),
+            (True, "vector", 0),
+        ],
+    )
+    def test_first_publish_batch_holds_until_indexed(
+        self, bootstrap: bool, failure: str, expected_count: int
+    ) -> None:
+        events: list[str] = []
+
+        class _Lease:
+            workspace_id = "proj"
+            mode = LeaseMode.EXCLUSIVE
+
+            def release(self) -> None:
+                return None
+
+            def __enter__(self) -> _Lease:
+                return self
+
+            def __exit__(
+                self,
+                exc_type: type[BaseException] | None,
+                exc: BaseException | None,
+                traceback: object,
+            ) -> None:
+                _ = exc_type, exc, traceback
+
+        class _Coordinator:
+            timeout = 1.0
+
+            def acquire(
+                self,
+                workspace_id: str,
+                mode: LeaseMode = LeaseMode.EXCLUSIVE,
+                *,
+                timeout: float | None = None,
+            ) -> _Lease:
+                _ = timeout
+                lease = _Lease()
+                lease.workspace_id = workspace_id
+                lease.mode = mode
+                return lease
+
+            def read_generation(self, workspace_id: str) -> int:
+                _ = workspace_id
+                return 0
+
+            def publish_generation(self, workspace_id: str, generation: int) -> None:
+                _ = workspace_id, generation
+
+            def is_held(self, workspace_id: str, mode: LeaseMode | None = None) -> bool:
+                _ = workspace_id, mode
+                return False
+
+            def paths_for(self, workspace_id: str) -> WorkspaceStoragePaths:
+                return WorkspaceStoragePaths(
+                    workspace_id=workspace_id,
+                    root="/tmp",
+                    lock_path="/tmp/.lock",
+                    generation_path="/tmp/.gen",
+                )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            store.begin_add_intents("proj", ["first add", "second add"])
+            semantic = MagicMock(spec=_BootstrapEngine)
+            semantic.unpublished_bootstrap = bootstrap
+            semantic.memory_store = store
+            live: dict[str, int] = {}
+            documents: set[str] = set()
+            semantic.get_id_by_content.side_effect = lambda _workspace, content: (
+                live.get(content)
+            )
+            semantic.contains_id.side_effect = lambda memory_id: (
+                memory_id in live.values()
+            )
+            fulltext = MagicMock(spec=TantivyEngine)
+            fulltext.find_by_exact_match.side_effect = lambda _workspace, content: (
+                [content] if content in documents else []
+            )
+
+            def add_batch(
+                _workspace: str,
+                contents: list[str],
+                *,
+                infer: bool,
+                vectors: list[list[float]],
+            ) -> list[str]:
+                _ = infer, vectors
+                live[contents[0]] = 100 + len(live)
+                events.append(f"vector:{contents[0]}")
+                return contents
+
+            def add_document(_workspace: str, content: str) -> None:
+                if content == "second add" and failure == "tantivy":
+                    assert content in live
+                    raise RuntimeError("full-text staging interrupted")
+                documents.add(content)
+                events.append(f"document:{content}")
+
+            semantic.add_batch.side_effect = add_batch
+            semantic.commit.side_effect = lambda: events.append("semantic_commit")
+            fulltext.add.side_effect = add_document
+            fulltext.commit.side_effect = lambda: events.append("tantivy_commit")
+            logger = MagicMock(spec=IStructuredLogger)
+            vectors = {"first add": [0.1, 0.2]}
+            if failure != "vector":
+                vectors["second add"] = [0.1, 0.2]
+            try:
+                with (
+                    patch(
+                        "reflectlog.application.memory.replacement_recovery._precompute_add_vectors",
+                        return_value=vectors,
+                    ),
+                    patch.object(
+                        MemoryStore,
+                        "complete_replacement_transition",
+                        autospec=True,
+                        side_effect=MemoryStore.complete_replacement_transition,
+                    ) as complete,
+                ):
+                    count = reconcile_pending_replacements(
+                        semantic_engine=semantic,
+                        tantivy_engine=fulltext,
+                        write_lock=threading.Lock(),
+                        lock=threading.RLock(),
+                        logger=logger,
+                        coordinator=_Coordinator(),
+                        workspace_id="proj",
+                        orchestration_hook=events.append,
+                    )
+                    assert count == expected_count
+                    assert complete.call_count == expected_count
+                    semantic.verify_index_integrity.assert_called_once()
+                    assert len(store.list_pending_transitions()) == 2 - expected_count
+                    hold_warnings = [
+                        call
+                        for call in logger.warning.call_args_list
+                        if call.kwargs.get("extra") == {"pending_count": 2}
+                    ]
+                    assert len(hold_warnings) == (1 if expected_count == 0 else 0)
+                    if expected_count == 0:
+                        assert "before_generation" not in events
+                    else:
+                        generation = events.index("before_generation")
+                        assert events.index("tantivy_commit") < generation
+                        assert events.index("semantic_commit") < generation
+                        if expected_count == 2:
+                            assert events.index("document:second add") < events.index(
+                                "tantivy_commit"
+                            )
+                            assert events.count("before_generation") == 2
+            finally:
+                store.close()
 
     def test_noops_for_mock_store(self) -> None:
         semantic = MagicMock()
@@ -1299,6 +1563,10 @@ class TestPostRecoveryVerification:
             store.close()
 
 
+class _BootstrapEngine(ISemanticSearchEngine, IUnpublishedBootstrap, Protocol):
+    """Semantic engine with optional first-publish recovery state."""
+
+
 class _SnapshotCapableEngine(ISemanticSearchEngine, IMemorySnapshotReader, Protocol):
     """The semantic engine as ``USearchEngine`` is: it can read a snapshot."""
 
@@ -1533,6 +1801,29 @@ class TestRefusalsAreReportedAgainstTheEngineThatRaised:
             finally:
                 store.close()
 
+        assert reported == [(SearchComponent.SEMANTIC, refusal)]
+
+    def test_a_refusal_while_staging_a_first_publish_batch_is_not_swallowed(
+        self,
+    ) -> None:
+        refusal = InitializationError(REFUSAL)
+        reported: list[tuple[SearchComponent, InitializationError]] = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(db_path=os.path.join(tmpdir, "memories.db"))
+            _ = store.begin_add_intents("proj", ["first add", "second add"])
+            semantic = MagicMock(spec=_BootstrapEngine)
+            semantic.memory_store = store
+            semantic.unpublished_bootstrap = True
+            semantic.embedder.embed_documents.return_value = [[0.1, 0.2]] * 2
+            semantic.get_id_by_content.return_value = None
+            semantic.add_batch.side_effect = refusal
+            try:
+                with pytest.raises(InitializationError) as caught:
+                    _ = self._reconcile(semantic, None, reported)
+            finally:
+                store.close()
+
+        assert caught.value is refusal
         assert reported == [(SearchComponent.SEMANTIC, refusal)]
 
     def test_a_failed_post_recovery_verification_is_semantic_and_reported_once(

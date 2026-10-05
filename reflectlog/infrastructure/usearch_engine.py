@@ -30,9 +30,17 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from usearch.index import BatchMatches, Index, Match
 
 from reflectlog.core.enums import EmbedderProvider, parse_str_enum
-from reflectlog.core.exceptions import InitializationError, StorageError
+from reflectlog.core.exceptions import (
+    InitializationError,
+    LeaseUpgradeError,
+    StorageError,
+)
 from reflectlog.core.logging import IStructuredLogger
-from reflectlog.core.storage_coordination import IStorageCoordinator, LeaseMode
+from reflectlog.core.storage_coordination import (
+    IStorageCoordinator,
+    LeaseMode,
+    reject_shared_upgrade,
+)
 from reflectlog.core.types import (
     Closable,
     Embeddings,
@@ -41,6 +49,7 @@ from reflectlog.core.types import (
 )
 from reflectlog.infrastructure.embedding_identity import ensure_embedding_identity
 from reflectlog.infrastructure.index_integrity import (
+    can_bootstrap_missing_index,
     evaluate_index_integrity,
     index_drift_message,
 )
@@ -349,6 +358,7 @@ class USearchEngine(BaseModel):
     _init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _index_lock: threading.RLock = PrivateAttr(default_factory=threading.RLock)
     _dirty: bool = PrivateAttr(default=False)
+    _unpublished_bootstrap: bool = PrivateAttr(default=False)
     _closed: bool = PrivateAttr(default=False)
     _seen_identity: tuple[int, int] | None = PrivateAttr(default=None)
 
@@ -478,7 +488,42 @@ class USearchEngine(BaseModel):
             _ = self.index
             return
         with self._read_lease(), self._index_lock:
+            if (
+                self._unpublished_bootstrap
+                and len(self._index) == 0
+                and not os.path.exists(self.config.index_path)
+                and self._authorizes_first_publish_recovery(
+                    _sqlite_memory_count(self.config.db_path)
+                )
+            ):
+                return
             self._verify_candidate(self._index)
+
+    def _authorizes_first_publish_recovery(self, sqlite_rows: int | None) -> bool:
+        try:
+            snapshot = read_memory_store_snapshot(
+                self.config.db_path, self.config.workspace_id
+            )
+        except MemoryStoreSnapshotError:
+            return False
+        if len(snapshot.contents_by_id) != sqlite_rows:
+            return False
+        if not can_bootstrap_missing_index(snapshot):
+            return False
+        if not self._unpublished_bootstrap and self.logger:
+            self.logger.info(
+                "Authorized unpublished USearch bootstrap for pending first ADDs",
+                extra={
+                    "sqlite_rows": sqlite_rows,
+                    "pending_add_count": len(snapshot.pending_transitions),
+                },
+            )
+        return True
+
+    @property
+    def unpublished_bootstrap(self) -> bool:
+        """Return whether authorized recovery awaits its first index publish."""
+        return self._unpublished_bootstrap
 
     def read_memory_snapshot(self) -> MemoryStoreSnapshot:
         """Read this workspace's rows and pending journal without writing.
@@ -558,12 +603,14 @@ class USearchEngine(BaseModel):
                                 "overwrite the file."
                             ) from restore_error
                         if sqlite_populated:
-                            raise InitializationError(
-                                "USearch index is missing but SQLite has "
-                                f"{sqlite_rows} memories at {self.config.db_path}. "
-                                "Refusing to create an empty HNSW that would "
-                                "hide existing rows."
-                            ) from restore_error
+                            if not self._authorizes_first_publish_recovery(sqlite_rows):
+                                raise InitializationError(
+                                    "USearch index is missing but SQLite has "
+                                    f"{sqlite_rows} memories at {self.config.db_path}. "
+                                    "Refusing to create an empty HNSW that would "
+                                    "hide existing rows."
+                                ) from restore_error
+                            self._unpublished_bootstrap = True
                         if self.logger:
                             self.logger.debug(
                                 "USearch index not found, creating new index",
@@ -672,6 +719,7 @@ class USearchEngine(BaseModel):
         ):
             yield
             return
+        reject_shared_upgrade(coordinator, self.config.workspace_id)
         with coordinator.acquire(self.config.workspace_id, LeaseMode.EXCLUSIVE):
             yield
 
@@ -727,6 +775,7 @@ class USearchEngine(BaseModel):
             )
         self._verify_candidate(loaded)
         self._index = loaded
+        self._unpublished_bootstrap = False
         self._seen_identity = current
 
     def _publish_index(self) -> None:
@@ -756,6 +805,7 @@ class USearchEngine(BaseModel):
             self._emit_publish_hook("after_fsync")
             self._emit_publish_hook("before_replace")
             os.replace(temp_path, live_path)
+            self._unpublished_bootstrap = False
             self._emit_publish_hook("after_replace")
             _fsync_directory(live_path)
             self._dirty = False
@@ -1356,7 +1406,7 @@ class USearchEngine(BaseModel):
                     },
                 )
             raise RuntimeError(f"Invalid memory_id format: {e}") from e
-        except InitializationError:
+        except InitializationError, LeaseUpgradeError:
             raise
         except Exception as e:
             if self.logger:

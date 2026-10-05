@@ -25,6 +25,7 @@ class ClaudeAgentOptions:
 
     model: str | None = None
     system_prompt: str | None = None
+    tools: list[str] | None = None
     allowed_tools: list[str] | None = None
     permission_mode: str = "bypassPermissions"
 

@@ -6,17 +6,64 @@ from dataclasses import dataclass
 import pytest
 
 from reflectlog.core.enums import TransitionKind, TransitionStatus
-from reflectlog.core.types import ReplacementTransition
+from reflectlog.core.types import MemoryStoreSnapshot, ReplacementTransition
 from reflectlog.infrastructure.index_integrity import (
     INDEX_DRIFT_OPERATOR_ACTION,
     MAX_REPORTED_IDS,
     IndexIntegrityReport,
+    can_bootstrap_missing_index,
     evaluate_index_integrity,
     index_drift_message,
 )
 
 WS = "ws"
 SECRET = "SECRET-MEMORY-TEXT"
+
+
+@pytest.mark.parametrize(
+    ("rows", "kinds", "contents", "unknown", "foreign", "expected"),
+    [
+        ({1: "a"}, [TransitionKind.ADD], ["a"], 0, 0, True),
+        ({1: "a", 2: "b"}, [TransitionKind.ADD] * 2, ["a", "b"], 0, 0, True),
+        ({1: "a"}, [TransitionKind.ADD] * 2, ["a", "later"], 0, 0, True),
+        ({}, [TransitionKind.ADD], ["a"], 0, 0, False),
+        ({1: "a"}, [], [], 0, 0, False),
+        ({1: "a", 2: "b"}, [TransitionKind.ADD], ["a"], 0, 0, False),
+        ({1: "a"}, [TransitionKind.ADD], ["wrong"], 0, 0, False),
+        ({1: "a"}, [TransitionKind.ADD], ["a"], 1, 0, False),
+        ({1: "a"}, [TransitionKind.ADD], ["a"], 0, 1, False),
+        ({1: "a"}, [TransitionKind.REPLACE], ["a"], 0, 0, False),
+        ({1: "a"}, [TransitionKind.DELETE], ["a"], 0, 0, False),
+        ({1: "a"}, [TransitionKind.ADD, TransitionKind.DELETE], ["a", ""], 0, 0, False),
+        (
+            {1: "a"},
+            [TransitionKind.ADD, TransitionKind.REPLACE],
+            ["a", ""],
+            0,
+            0,
+            False,
+        ),
+    ],
+)
+def test_bootstrap_authorization(
+    rows: dict[int, str],
+    kinds: list[TransitionKind],
+    contents: list[str],
+    unknown: int,
+    foreign: int,
+    expected: bool,
+) -> None:
+    snapshot = MemoryStoreSnapshot(
+        workspace_id=WS,
+        contents_by_id=rows,
+        pending_transitions=tuple(
+            _row(kind, new=content, row_id=i)
+            for i, (kind, content) in enumerate(zip(kinds, contents, strict=True))
+        ),
+        unrecognized_pending_count=unknown,
+        foreign_pending_count=foreign,
+    )
+    assert can_bootstrap_missing_index(snapshot) is expected
 
 
 def _row(

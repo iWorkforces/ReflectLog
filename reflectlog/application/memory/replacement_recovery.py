@@ -19,6 +19,7 @@ from reflectlog.core.types import (
     IArchiveMemoryStore,
     IMemorySnapshotReader,
     ISemanticSearchEngine,
+    IUnpublishedBootstrap,
     MemoryStoreSnapshot,
     ReplacementTransition,
 )
@@ -176,7 +177,28 @@ def reconcile_pending_replacements(
             with _refusal_of(SearchComponent.TANTIVY, on_refusal):
                 _refresh_engine(tantivy_engine)
         snapshot = _pending_rows(store.list_pending_transitions())
-        for transition in snapshot:
+        transitions_to_apply = snapshot
+        if len(snapshot) > 1 and all(t.kind == TransitionKind.ADD for t in snapshot):
+            # Only a real bool may hold; bare MagicMock engines return truthy mocks.
+            first_publish = (
+                isinstance(semantic_engine, IUnpublishedBootstrap)
+                and semantic_engine.unpublished_bootstrap is True
+            )
+            with _refusal_of(SearchComponent.SEMANTIC, on_refusal):
+                indexed = _stage_pending_adds(
+                    snapshot,
+                    semantic_engine=semantic_engine,
+                    tantivy_engine=tantivy_engine,
+                    precomputed_vectors=precomputed,
+                    logger=logger,
+                )
+            if first_publish and not indexed:
+                logger.warning(
+                    "First add batch is not fully indexed; leaving intents pending",
+                    extra={"pending_count": len(snapshot)},
+                )
+                transitions_to_apply = []
+        for transition in transitions_to_apply:
             try:
                 if not store.is_pending_transition(transition.id):
                     continue
@@ -420,44 +442,17 @@ def _apply_pending_add(
         )
         return True
 
-    existing_id = semantic_engine.get_id_by_content(
-        transition.workspace_id, transition.new_content
-    )
-    vector = (
-        None
-        if precomputed_vectors is None
-        else precomputed_vectors.get(transition.new_content)
-    )
-    if existing_id is None:
-        if precomputed_vectors is not None and vector is None:
-            logger.warning(
-                "Add intent not complete; precomputed vector missing",
-                extra={"transition_id": transition.id},
-            )
-            return False
-        _insert_recovered_add(semantic_engine, transition, vector=vector)
-    else:
-        if (
-            precomputed_vectors is not None
-            and not _vector_present(semantic_engine, existing_id)
-            and vector is None
-        ):
-            logger.warning(
-                "Add intent not complete; precomputed vector missing",
-                extra={"transition_id": transition.id},
-            )
-            return False
-        _reindex_if_vector_missing(
-            semantic_engine,
-            existing_id,
-            transition,
-            vector=vector,
-        )
-
-    if tantivy_engine is not None and not _tantivy_has(
-        tantivy_engine, transition.workspace_id, transition.new_content
+    if not _stage_pending_add(
+        transition,
+        semantic_engine=semantic_engine,
+        tantivy_engine=tantivy_engine,
+        precomputed_vectors=precomputed_vectors,
     ):
-        tantivy_engine.add(transition.workspace_id, transition.new_content)
+        logger.warning(
+            "Add intent not complete; precomputed vector missing",
+            extra={"transition_id": transition.id},
+        )
+        return False
 
     if tantivy_engine is not None:
         tantivy_engine.commit()
@@ -477,6 +472,119 @@ def _apply_pending_add(
         hook=orchestration_hook,
     )
     return True
+
+
+def _stage_pending_add(
+    transition: ReplacementTransition,
+    *,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+    precomputed_vectors: dict[str, list[float]] | None,
+) -> bool:
+    """Stage SQLite, vector and full-text content without committing or completing."""
+    existing_id = semantic_engine.get_id_by_content(
+        transition.workspace_id, transition.new_content
+    )
+    vector = (
+        None
+        if precomputed_vectors is None
+        else precomputed_vectors.get(transition.new_content)
+    )
+    if existing_id is None:
+        if precomputed_vectors is not None and vector is None:
+            return False
+        _insert_recovered_add(semantic_engine, transition, vector=vector)
+    else:
+        if (
+            precomputed_vectors is not None
+            and not _vector_present(semantic_engine, existing_id)
+            and vector is None
+        ):
+            return False
+        _reindex_if_vector_missing(
+            semantic_engine,
+            existing_id,
+            transition,
+            vector=vector,
+        )
+
+    if tantivy_engine is not None and not _tantivy_has(
+        tantivy_engine, transition.workspace_id, transition.new_content
+    ):
+        tantivy_engine.add(transition.workspace_id, transition.new_content)
+    return True
+
+
+def _stage_pending_adds(
+    transitions: list[ReplacementTransition],
+    *,
+    semantic_engine: ISemanticSearchEngine,
+    tantivy_engine: TantivyEngine | None,
+    precomputed_vectors: dict[str, list[float]] | None,
+    logger: IStructuredLogger,
+) -> bool:
+    """Best-effort batch staging; the per-intent pass owns retries and completion."""
+    store = semantic_engine.memory_store
+    staged = False
+    indexed = True
+    active: list[ReplacementTransition] = []
+    for transition in transitions:
+        if _later_intent_exists(
+            store,
+            transition,
+            kind=TransitionKind.DELETE,
+            content=transition.new_content,
+        ):
+            continue
+        active.append(transition)
+        try:
+            if _stage_pending_add(
+                transition,
+                semantic_engine=semantic_engine,
+                tantivy_engine=tantivy_engine,
+                precomputed_vectors=precomputed_vectors,
+            ):
+                staged = True
+            else:
+                indexed = False
+        except InitializationError:
+            raise
+        except Exception:
+            indexed = False
+            logger.warning(
+                "Add intent could not be staged; retrying individually",
+                extra={"transition_id": transition.id},
+            )
+    if not staged:
+        return not active
+    if tantivy_engine is not None:
+        try:
+            tantivy_engine.commit()
+        except InitializationError:
+            raise
+        except Exception:
+            indexed = False
+            logger.warning("Staged add full-text commit failed; retrying individually")
+    try:
+        semantic_engine.commit()
+    except InitializationError:
+        raise
+    except Exception:
+        indexed = False
+        logger.warning("Staged add semantic commit failed; retrying individually")
+    for transition in active:
+        try:
+            if not _add_converged(transition, semantic_engine, tantivy_engine):
+                indexed = False
+        except InitializationError:
+            raise
+        except Exception:
+            indexed = False
+            logger.warning(
+                "Staged add convergence check failed; retrying individually",
+                extra={"transition_id": transition.id},
+            )
+    return indexed
 
 
 def _apply_pending_delete(

@@ -12,6 +12,7 @@ from reflectlog.core.logging import IStructuredLogger
 from reflectlog.core.prompts import format_replacement_detection_prompt
 from reflectlog.infrastructure.llm_provider_base import (
     BaseOpenAIProvider,
+    parse_replacement_decision,
 )
 
 if TYPE_CHECKING:
@@ -169,15 +170,7 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
             max_tokens=150,
         )
 
-        should_replace = self._extract_bool_field(
-            result, "should_replace", default=False
-        )
-        confidence = self._extract_float_field(result, "confidence", default=0.0)
-        reason = self._extract_string_field(
-            result, "reason", default="No reason provided"
-        )
-
-        return (should_replace, confidence, reason)
+        return parse_replacement_decision(result)
 
     async def detect_replacement(
         self,
@@ -208,14 +201,14 @@ class OpenAIReplacementProvider(BaseOpenAIProvider):
                         extra={
                             "attempt": attempt,
                             "max_retries": attempts,
-                            "error": str(exc),
+                            "exception_type": type(exc).__name__,
                         },
                     )
                 if attempt < attempts:
                     await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))
 
-        error_msg = str(last_exception) if last_exception else "Unknown error"
-        return (False, 0.0, f"Error: {error_msg}")
+        error_type = type(last_exception).__name__ if last_exception else "Unknown"
+        return (False, 0.0, f"Error: replacement detection failed ({error_type})")
 
 
 class AnthropicReplacementProvider:
@@ -292,7 +285,7 @@ class AnthropicReplacementProvider:
             except json.JSONDecodeError:
                 continue
 
-        raise ValueError(f"Could not extract JSON from response: {text[:200]}")
+        raise ValueError("Could not extract JSON from response")
 
     async def detect_replacement(
         self,
@@ -326,12 +319,7 @@ class AnthropicReplacementProvider:
 
                 # Parse JSON from response
                 result = self._extract_json_from_response(response_text)
-                should_replace = bool(result.get("should_replace", False))
-                confidence = float(result.get("confidence", 0.0))
-                reason = str(result.get("reason", "No reason provided"))
-                confidence = max(0.0, min(1.0, confidence))
-
-                return (should_replace, confidence, reason)
+                return parse_replacement_decision(result)
 
             except Exception as e:
                 last_exception = e
@@ -343,7 +331,7 @@ class AnthropicReplacementProvider:
                         extra={
                             "attempt": attempt,
                             "max_retries": max_retries,
-                            "error": str(e),
+                            "exception_type": type(e).__name__,
                         },
                     )
 
@@ -357,8 +345,8 @@ class AnthropicReplacementProvider:
                     await asyncio.sleep(delay)
 
         # All retries exhausted - return safe defaults
-        error_msg = str(last_exception) if last_exception else "Unknown error"
-        return (False, 0.0, f"Error: {error_msg}")
+        error_type = type(last_exception).__name__ if last_exception else "Unknown"
+        return (False, 0.0, f"Error: replacement detection failed ({error_type})")
 
 
 def create_replacement_provider(
@@ -495,7 +483,7 @@ class SmartReplacer(BaseModel):
                         "final_should_replace": final_should_replace,
                         "confidence": confidence,
                         "threshold": self.config.threshold,
-                        "reason": reason[:100],
+                        "reason_length": len(reason),
                         "provider": self.config.provider,
                     },
                 )
@@ -505,15 +493,21 @@ class SmartReplacer(BaseModel):
         except json.JSONDecodeError as e:
             if self.logger:
                 self.logger.warning(
-                    f"Invalid JSON from LLM for replacement detection: {e}",
-                    extra={"error": str(e), "provider": self.config.provider},
+                    "Invalid JSON from LLM for replacement detection",
+                    extra={
+                        "exception_type": type(e).__name__,
+                        "provider": self.config.provider,
+                    },
                 )
-            return (False, 0.0, f"JSON parse error: {e}")
+            return (False, 0.0, "JSON parse error: replacement detection failed")
 
         except Exception as e:
             if self.logger:
                 self.logger.warning(
-                    f"Smart replacement check failed: {e}",
-                    extra={"error": str(e), "provider": self.config.provider},
+                    "Smart replacement check failed",
+                    extra={
+                        "exception_type": type(e).__name__,
+                        "provider": self.config.provider,
+                    },
                 )
-            return (False, 0.0, f"Error: {e}")
+            return (False, 0.0, f"Error: replacement check failed ({type(e).__name__})")

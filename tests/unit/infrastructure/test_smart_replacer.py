@@ -1,13 +1,16 @@
 """Unit tests for SmartReplacer and replacement providers."""
 
 import json
-from typing import cast
+import traceback
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from openai import AsyncOpenAI
 import pytest
 
 from reflectlog.application.utils.logging import StructuredLogger
 from reflectlog.core.logging import IStructuredLogger
+from reflectlog.infrastructure.memory_store import MemoryStore
 from reflectlog.infrastructure.smart_replacer import (
     AnthropicReplacementProvider,
     OpenAIReplacementProvider,
@@ -17,10 +20,319 @@ from reflectlog.infrastructure.smart_replacer import (
     create_replacement_provider,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 def create_mock_logger() -> IStructuredLogger:
     """Create a properly typed mock logger for testing."""
     return cast(IStructuredLogger, MagicMock(spec=StructuredLogger))
+
+
+class RecordingLogger:
+    """Capture all structured logging without hiding exception rendering."""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[str, str, dict[str, Any] | None, bool]] = []
+        self.exception_text: list[str] = []
+
+    def debug(
+        self, message: str, extra: dict[str, Any] | None = None, exc_info: bool = False
+    ) -> None:
+        self.records.append(("debug", message, extra, exc_info))
+        if exc_info:
+            self.exception_text.append(traceback.format_exc())
+
+    def info(
+        self, message: str, extra: dict[str, Any] | None = None, exc_info: bool = False
+    ) -> None:
+        self.records.append(("info", message, extra, exc_info))
+        if exc_info:
+            self.exception_text.append(traceback.format_exc())
+
+    def warning(
+        self, message: str, extra: dict[str, Any] | None = None, exc_info: bool = False
+    ) -> None:
+        self.records.append(("warning", message, extra, exc_info))
+        if exc_info:
+            self.exception_text.append(traceback.format_exc())
+
+    def error(
+        self, message: str, extra: dict[str, Any] | None = None, exc_info: bool = False
+    ) -> None:
+        self.records.append(("error", message, extra, exc_info))
+        if exc_info:
+            self.exception_text.append(traceback.format_exc())
+
+    def is_enabled_for(self, level: int) -> bool:
+        return True
+
+
+@pytest.mark.parametrize("provider_name", ["openai", "anthropic"])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        *(("should_replace", value) for value in ["false", "true", 0, 1, None]),
+        *(
+            ("confidence", value)
+            for value in [
+                True,
+                False,
+                "0.9",
+                None,
+                float("nan"),
+                float("inf"),
+                -float("inf"),
+            ]
+        ),
+        *(("reason", value) for value in [123, None, ["x"]]),
+    ],
+)
+async def test_providers_reject_malformed_decisions(
+    provider_name: str, field: str, value: object
+) -> None:
+    decision = {"should_replace": True, "confidence": 0.9, "reason": "private reply"}
+    decision[field] = value
+    logger = RecordingLogger()
+    with patch("reflectlog.utility.utility.init_credentials", autospec=True):
+        provider = (
+            OpenAIReplacementProvider(
+                "key", "https://example.com", "model", logger=logger
+            )
+            if provider_name == "openai"
+            else AnthropicReplacementProvider(logger=logger)
+        )
+    with (
+        patch.object(
+            OpenAIReplacementProvider,
+            "_call_llm_with_structured_output",
+            autospec=True,
+            return_value=decision,
+        ),
+        patch(
+            "reflectlog.utility.utility.generate_content",
+            autospec=True,
+            return_value=json.dumps(decision),
+        ),
+    ):
+        result = await provider.detect_replacement("private memory", 2, 0)
+    assert result[:2] == (False, 0.0)
+    assert result[2].startswith("Error")
+    assert "private" not in repr(logger.records)
+    assert len(logger.records) >= 2
+
+
+@pytest.mark.parametrize("provider_name", ["openai", "anthropic"])
+@pytest.mark.parametrize(
+    ("decision", "expected"),
+    [
+        ({}, (False, 0.0, "No reason provided")),
+        (
+            {
+                "should_replace": True,
+                "confidence": 0.9,
+                "reason": "unchanged",
+                "extra": 1,
+            },
+            (True, 0.9, "unchanged"),
+        ),
+        *(
+            (
+                {"should_replace": True, "confidence": value},
+                (True, expected, "No reason provided"),
+            )
+            for value, expected in [(1.7, 1.0), (-0.2, 0.0), (5, 1.0), (10**400, 1.0)]
+        ),
+    ],
+)
+async def test_providers_preserve_valid_decisions(
+    provider_name: str, decision: dict[str, object], expected: tuple[bool, float, str]
+) -> None:
+    with patch("reflectlog.utility.utility.init_credentials", autospec=True):
+        provider = (
+            OpenAIReplacementProvider("key", "https://example.com", "model")
+            if provider_name == "openai"
+            else AnthropicReplacementProvider()
+        )
+    with (
+        patch.object(
+            OpenAIReplacementProvider,
+            "_call_llm_with_structured_output",
+            autospec=True,
+            return_value=decision,
+        ),
+        patch(
+            "reflectlog.utility.utility.generate_content",
+            autospec=True,
+            return_value=json.dumps(decision),
+        ),
+    ):
+        result = await provider.detect_replacement("prompt", 1, 0)
+    assert result == expected
+
+
+@pytest.mark.parametrize("provider_name", ["openai", "anthropic"])
+@pytest.mark.parametrize("raw", [[], None, "model reply"])
+async def test_providers_reject_non_object_root(
+    provider_name: str, raw: object
+) -> None:
+    with patch("reflectlog.utility.utility.init_credentials", autospec=True):
+        provider = (
+            OpenAIReplacementProvider("key", "https://example.com", "model")
+            if provider_name == "openai"
+            else AnthropicReplacementProvider()
+        )
+    with (
+        patch.object(
+            OpenAIReplacementProvider,
+            "_call_llm_with_structured_output",
+            autospec=True,
+            return_value=raw,
+        ),
+        patch(
+            "reflectlog.utility.utility.generate_content",
+            autospec=True,
+            return_value=json.dumps(raw),
+        ),
+    ):
+        result = await provider.detect_replacement("prompt", 1, 0)
+    assert result[:2] == (False, 0.0)
+    assert result[2].startswith("Error")
+    assert "model reply" not in result[2]
+
+
+@pytest.mark.parametrize("provider_name", ["openai", "anthropic"])
+@pytest.mark.parametrize("scenario", ["accepted", "rejected", "invalid", "json", "sdk"])
+async def test_replacement_flow_keeps_text_private(
+    provider_name: str, scenario: str, tmp_path: Path
+) -> None:
+    sentinel = "PRIVATE_SENTINEL_MODEL_MEMORY"
+    logger = RecordingLogger()
+    decision = {
+        "should_replace": scenario != "rejected",
+        "confidence": 0.9,
+        "reason": sentinel,
+    }
+    if scenario == "invalid":
+        decision["confidence"] = sentinel
+    error = (
+        json.JSONDecodeError(sentinel, sentinel, 0)
+        if scenario == "json"
+        else RuntimeError(sentinel)
+    )
+    with patch("reflectlog.utility.utility.init_credentials", autospec=True):
+        provider = (
+            OpenAIReplacementProvider(
+                "key", "https://example.com", "model", logger=logger
+            )
+            if provider_name == "openai"
+            else AnthropicReplacementProvider(logger=logger)
+        )
+    with patch(
+        "reflectlog.infrastructure.smart_replacer.create_replacement_provider",
+        autospec=True,
+        return_value=provider,
+    ):
+        replacer = SmartReplacer(
+            config=SmartReplacerConfig(
+                "key",
+                "https://example.com",
+                "model",
+                threshold=0.0,
+                max_retries=2,
+                retry_delay=0,
+            ),
+            logger=logger,
+        )
+    with (
+        patch.object(
+            OpenAIReplacementProvider,
+            "_call_llm_with_structured_output",
+            autospec=True,
+            return_value=decision,
+            side_effect=error if scenario in {"json", "sdk"} else None,
+        ),
+        patch(
+            "reflectlog.utility.utility.generate_content",
+            autospec=True,
+            return_value=sentinel if scenario == "json" else json.dumps(decision),
+            side_effect=error if scenario == "sdk" else None,
+        ),
+    ):
+        result = await replacer.check_replacement(sentinel, sentinel)
+    assert logger.records
+    assert sentinel not in repr(logger.records)
+    assert sentinel not in repr(logger.exception_text)
+    assert all(not record[3] for record in logger.records)
+    if scenario in {"accepted", "rejected"}:
+        assert result == (scenario == "accepted", 0.9, sentinel)
+        assert any(
+            record[2] and record[2].get("reason_length") == len(sentinel)
+            for record in logger.records
+        )
+    else:
+        assert result[:2] == (False, 0.0)
+        assert sentinel not in result[2]
+    if scenario == "accepted":
+        store = MemoryStore(str(tmp_path / "archive.db"))
+        try:
+            store.begin_replacement_transition(
+                old_memory_id=1,
+                workspace_id="test",
+                old_content="old memory",
+                new_content="new memory",
+                reason=result[2],
+                confidence=result[1],
+            )
+            assert store.get_archived("test")[0].reason == sentinel
+        finally:
+            store.close()
+
+
+@pytest.mark.parametrize("scenario", ["transport", "fallback_transport"])
+async def test_openai_transport_failures_keep_text_private(scenario: str) -> None:
+    """SDK errors can echo the prompt; the real client boundary must not leak it."""
+    sentinel = "PRIVATE_SENTINEL_TRANSPORT"
+    fallback_message = "Model doesn't support structured outputs, falling back"
+    logger = RecordingLogger()
+    provider = OpenAIReplacementProvider(
+        "key", "https://example.com", "model", logger=logger
+    )
+    attempts = 2
+    errors = (
+        [RuntimeError(f"connection reset {sentinel}") for _ in range(attempts)]
+        if scenario == "transport"
+        else [
+            RuntimeError(f"{message} {sentinel}")
+            for _ in range(attempts)
+            for message in ("json_schema unsupported", "upstream failed")
+        ]
+    )
+    async with AsyncOpenAI(api_key="key") as client:
+        with (
+            patch.object(provider, "_get_client", autospec=True, return_value=client),
+            patch.object(
+                client.chat.completions,
+                "create",
+                new=AsyncMock(spec=client.chat.completions.create, side_effect=errors),
+            ) as create,
+        ):
+            result = await provider.detect_replacement(sentinel, attempts, 0)
+    assert result == (False, 0.0, "Error: replacement detection failed (RuntimeError)")
+    assert create.await_count == len(errors)
+    assert sentinel not in repr(logger.records)
+    assert sentinel not in repr(logger.exception_text)
+    assert all(not record[3] for record in logger.records)
+    failures = [
+        record[2]
+        for record in logger.records
+        if record[1] == "OpenAI replacement detection failed"
+    ]
+    assert [failure and failure["exception_type"] for failure in failures] == [
+        "RuntimeError"
+    ] * attempts
+    fallbacks = [record for record in logger.records if fallback_message in record[1]]
+    assert len(fallbacks) == (attempts if scenario == "fallback_transport" else 0)
 
 
 class TestReplacementDecision:
@@ -862,7 +1174,8 @@ class TestCheckReplacement:
 
         assert should_replace is False
         assert confidence == 0.0
-        assert "Error: Unexpected failure" in reason
+        assert reason == "Error: replacement check failed (RuntimeError)"
+        assert "Unexpected failure" not in reason
         mock_logger.warning.assert_called_once()  # type: ignore
 
     @pytest.mark.asyncio
@@ -883,7 +1196,8 @@ class TestCheckReplacement:
 
         assert should_replace is False
         assert confidence == 0.0
-        assert "Error: Unexpected failure" in reason
+        assert reason == "Error: replacement check failed (RuntimeError)"
+        assert "Unexpected failure" not in reason
 
 
 class TestSmartReplacerIntegration:

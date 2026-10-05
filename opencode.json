@@ -15,6 +15,11 @@
             "enabled": true,
             "oauth": false,
             "headers": { "Authorization": "Bearer 518I1wod29fF" }
+        },
+        "prdiffer-mcp": {
+            "type": "remote",
+            "url": "http://127.0.0.1:9102/mcp",
+            "enabled": true
         }
     }
 }

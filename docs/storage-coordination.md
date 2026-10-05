@@ -18,6 +18,14 @@ and lowercased) and contains:
 
 NFS client-local locks and SMB/CIFS `nobrl` are **unsupported**.
 
+## Lease nesting
+
+An EXCLUSIVE owner may nest EXCLUSIVE and SHARED leases; a SHARED-only owner
+may nest SHARED leases. SHARED-to-EXCLUSIVE requests raise `LeaseUpgradeError`
+immediately, leaving the existing lease and its ownership unchanged. Release
+the SHARED lease before requesting EXCLUSIVE. Other threads and processes
+continue to wait up to the configured lease timeout.
+
 ## Embedding identity and offline rebuild
 
 A workspace reopens with the same embedding provider, model selector, and
@@ -81,6 +89,18 @@ read SQLite, which stays the source of truth for memory text.
 An empty SQLite store with a populated vector index stays refused, including
 the case where the last memory was deleted and the process stopped before the
 index was saved.
+
+A missing `vectors.usearch` next to a populated SQLite store is refused as
+well, with one exception: a workspace whose first add stopped before the first
+publish. When pending ADD journal rows of the workspace account for every
+SQLite row and nothing else is pending (no pending row of another workspace,
+of another kind, or unrecognised), the engine opens an empty in-memory index
+and writes nothing. Recovery then embeds the missing vectors, indexes every
+pending add, publishes the first `vectors.usearch` through the usual temp
+file and replace, and advances the generation only after SQLite, Tantivy and
+the vector index agree. If embedding or indexing fails, the journal rows stay
+pending and the generation stays where it was, `health_check` reports the
+count in `pending_intent_count`, and the next start tries again.
 
 ## Engines
 
